@@ -69,8 +69,8 @@ export async function POST(request: NextRequest) {
         const cajaAccount = await tx.ledgerAccount.findFirst({
           where: {
             storeId,
-            name: 'Caja',
             type: 'ASSET',
+            isDefault: true,
           },
         })
 

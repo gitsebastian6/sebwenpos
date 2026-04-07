@@ -86,7 +86,7 @@ export function AuthPage() {
             <Store className="h-6 w-6 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">MiTienda POS</h1>
+            <h1 className="text-2xl font-bold">Bavaria POS</h1>
             <p className="text-sm text-muted-foreground">Sistema de Punto de Venta</p>
           </div>
         </div>

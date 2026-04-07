@@ -14,9 +14,16 @@ export function sanitizeUser(user: User) {
   return safeUser
 }
 
-export function formatCurrency(amountInCents: number, currencyCode: string = 'MXN'): string {
+export function formatCurrency(amountInCents: number, currencyCode: string = 'COP'): string {
   const amount = amountInCents / 100
-  return new Intl.NumberFormat('es-MX', {
+  const localeMap: Record<string, string> = {
+    COP: 'es-CO',
+    MXN: 'es-MX',
+    USD: 'en-US',
+    EUR: 'es-ES',
+  }
+  const locale = localeMap[currencyCode] || 'es-CO'
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currencyCode,
   }).format(amount)

@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
         store: {
           create: {
             name: data.storeName,
-            currencyCode: 'MXN',
-            countryCode: 'MX',
+            currencyCode: 'COP',
+            countryCode: 'CO',
           },
         },
       },
@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
         { storeId, name: 'Caja General', type: 'ASSET', isDefault: true },
         { storeId, name: 'Banco', type: 'ASSET', isDefault: false },
         { storeId, name: 'Ventas', type: 'INCOME', isDefault: false },
+        { storeId, name: 'Comisiones', type: 'INCOME', isDefault: false },
         { storeId, name: 'Compras', type: 'EXPENSE', isDefault: false },
         { storeId, name: 'Gastos Generales', type: 'EXPENSE', isDefault: false },
         { storeId, name: 'Inventario', type: 'ASSET', isDefault: false },
@@ -57,11 +58,11 @@ export async function POST(req: NextRequest) {
 
     await db.category.createMany({
       data: [
-        { storeId, name: 'Abarrotes' },
-        { storeId, name: 'Bebidas' },
-        { storeId, name: 'Lácteos' },
-        { storeId, name: 'Limpieza' },
-        { storeId, name: 'Snacks' },
+        { storeId, name: 'Cervezas Lager' },
+        { storeId, name: 'Cervezas Premium' },
+        { storeId, name: 'Cervezas Especiales' },
+        { storeId, name: 'Malta y Bebidas' },
+        { storeId, name: 'Promociones' },
         { storeId, name: 'Otros' },
       ],
     })

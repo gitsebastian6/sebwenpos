@@ -101,7 +101,7 @@ const salesChartConfig = {
 
 function formatDateShort(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00')
-  return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })
+  return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })
 }
 
 function statusColor(status: string) {
@@ -295,7 +295,7 @@ export function DashboardView() {
     fetchDashboard()
   }, [fetchDashboard])
 
-  const currencyCode = store?.currencyCode || 'MXN'
+  const currencyCode = store?.currencyCode || 'COP'
 
   // ── Loading state ──
   if (loading) return <DashboardSkeleton />
@@ -350,7 +350,7 @@ export function DashboardView() {
         />
         <StatCard
           title="Órdenes Hoy"
-          value={data.totalOrdersToday.toLocaleString('es-MX')}
+          value={data.totalOrdersToday.toLocaleString('es-CO')}
           icon={ShoppingCart}
           iconBg="bg-sky-100 dark:bg-sky-900/40"
           iconColor="text-sky-600 dark:text-sky-400"
@@ -524,7 +524,7 @@ export function DashboardView() {
                         {formatCurrency(order.total, currencyCode)}
                       </TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground">
-                        {new Date(order.createdAt).toLocaleDateString('es-MX')}
+                        {new Date(order.createdAt).toLocaleDateString('es-CO')}
                       </TableCell>
                     </TableRow>
                   ))}

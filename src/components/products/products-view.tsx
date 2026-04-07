@@ -106,7 +106,7 @@ interface ProductFormData {
 const emptyProductForm: ProductFormData = {
   name: '',
   sku: '',
-  categoryId: '',
+  categoryId: 'none',
   description: '',
   imgUrl: '',
   costPrice: '',
@@ -203,7 +203,7 @@ export function ProductsView() {
     setProductForm({
       name: product.name,
       sku: product.sku || '',
-      categoryId: product.categoryId ? String(product.categoryId) : '',
+      categoryId: product.categoryId ? String(product.categoryId) : 'none',
       description: product.description || '',
       imgUrl: product.imgUrl || '',
       costPrice: product.costPrice ? String(product.costPrice / 100) : '',
@@ -231,7 +231,7 @@ export function ProductsView() {
         storeId: store.id,
         name: productForm.name.trim(),
         sku: productForm.sku.trim() || undefined,
-        categoryId: productForm.categoryId ? Number(productForm.categoryId) : undefined,
+        categoryId: productForm.categoryId !== 'none' ? Number(productForm.categoryId) : undefined,
         description: productForm.description.trim() || undefined,
         imgUrl: productForm.imgUrl.trim() || undefined,
         costPrice: productForm.costPrice ? Math.round(Number(productForm.costPrice) * 100) : 0,
@@ -714,7 +714,7 @@ export function ProductsView() {
                     <SelectValue placeholder="Sin categoría" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Sin categoría</SelectItem>
+                    <SelectItem value="none">Sin categoría</SelectItem>
                     {categories.map((cat) => (
                       <SelectItem key={cat.id} value={String(cat.id)}>
                         {cat.name}

@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
         })
       )
 
-      return NextResponse.json(accountsWithBalance)
+      return NextResponse.json({ accounts: accountsWithBalance })
     }
 
     // GET journal entries

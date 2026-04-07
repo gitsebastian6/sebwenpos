@@ -93,7 +93,7 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.ReactN
 export function POSView() {
   const { store } = useAuthStore()
   const storeId = store?.id
-  const currencyCode = store?.currencyCode || 'MXN'
+  const currencyCode = store?.currencyCode || 'COP'
 
   // ─── Data states ─────────────────────────────────────
   const [products, setProducts] = useState<Product[]>([])

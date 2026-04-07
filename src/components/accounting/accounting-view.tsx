@@ -103,7 +103,7 @@ function getDirectionBadgeClass(direction: string) {
 
 function formatDate(dateStr: string) {
   const date = new Date(dateStr)
-  return date.toLocaleDateString('es-MX', {
+  return date.toLocaleDateString('es-CO', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -112,7 +112,7 @@ function formatDate(dateStr: string) {
 
 function formatTime(dateStr: string) {
   const date = new Date(dateStr)
-  return date.toLocaleTimeString('es-MX', {
+  return date.toLocaleTimeString('es-CO', {
     hour: '2-digit',
     minute: '2-digit',
   })

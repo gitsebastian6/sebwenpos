@@ -131,7 +131,7 @@ const STATUS_ICONS: Record<ServiceStatus, React.ReactNode> = {
 export function ServicesView() {
   const { store } = useAuthStore()
   const storeId = store?.id
-  const currencyCode = store?.currencyCode || 'MXN'
+  const currencyCode = store?.currencyCode || 'COP'
 
   // Data state
   const [transactions, setTransactions] = useState<ServiceTransaction[]>([])
@@ -343,7 +343,7 @@ export function ServicesView() {
 
               {/* Amount */}
               <div className="space-y-2">
-                <Label htmlFor="svc-amount">Monto (MXN) *</Label>
+                <Label htmlFor="svc-amount">Monto (COP) *</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                     $
