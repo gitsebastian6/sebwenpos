@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,20 +7,215 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ----------------------------------------------
+// CONTEXTO: IDENTIDAD Y ACCESO
+// ----------------------------------------------
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  phone        String   @unique
+  email        String?
+  passwordHash String
+  fullName     String?  @map("full_name")
+  role         String   @default("OWNER") // OWNER, EMPLOYEE
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt
+
+  store Store? @relation("UserStore")
+
+  @@map("users")
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
+model Store {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique @map("user_id")
+  name         String
+  currencyCode String   @default("MXN") @map("currency_code")
+  countryCode  String?  @map("country_code")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt
+
+  user              User                 @relation("UserStore", fields: [userId], references: [id])
+  categories        Category[]
+  products          Product[]
+  inventoryMovements InventoryMovement[]
+  customers         Customer[]
+  orders            Order[]
+  ledgerAccounts    LedgerAccount[]
+  journalEntries    JournalEntry[]
+  serviceTransactions ServiceTransaction[]
+
+  @@map("stores")
+}
+
+// ----------------------------------------------
+// CONTEXTO: INVENTARIO Y CATÁLOGO
+// ----------------------------------------------
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  storeId   Int      @map("store_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt
+
+  store    Store     @relation(fields: [storeId], references: [id])
+  products Product[]
+
+  @@unique([storeId, name])
+  @@map("categories")
+}
+
+model Product {
+  id            Int      @id @default(autoincrement())
+  storeId       Int      @map("store_id")
+  categoryId    Int?     @map("category_id")
+  sku           String?
+  name          String
+  description   String?  
+  imgUrl        String?  @map("img_url")
+  costPrice     Int      @default(0) @map("cost_price")       // en centavos
+  salePrice     Int                                         // en centavos
+  currentStock  Int      @default(0) @map("current_stock")
+  minStock      Int      @default(5) @map("min_stock")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt
+
+  store              Store                @relation(fields: [storeId], references: [id])
+  category           Category?            @relation(fields: [categoryId], references: [id])
+  inventoryMovements InventoryMovement[]
+  orderItems         OrderItem[]
+
+  @@unique([storeId, name])
+  @@map("products")
+}
+
+model InventoryMovement {
+  id           Int      @id @default(autoincrement())
+  storeId      Int      @map("store_id")
+  productId    Int      @map("product_id")
+  quantity     Int      // positivo=entrada, negativo=salida
+  movementType String   @map("movement_type") // PURCHASE, SALE, ADJUSTMENT, RETURN
+  referenceId  Int?     @map("reference_id")
+  notes        String?  
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  store   Store   @relation(fields: [storeId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+  order   Order?  @relation("OrderMovements", fields: [referenceId], references: [id])
+
+  @@map("inventory_movements")
+}
+
+// ----------------------------------------------
+// CONTEXTO: VENTAS Y COMERCIO
+// ----------------------------------------------
+
+model Customer {
+  id         Int      @id @default(autoincrement())
+  storeId    Int      @map("store_id")
+  name       String
+  phone      String?
+  email      String?
+  totalDebt  Int      @default(0) @map("total_debt") // en centavos
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt
+
+  store  Store   @relation(fields: [storeId], references: [id])
+  orders Order[]
+
+  @@map("customers")
+}
+
+model Order {
+  id            Int      @id @default(autoincrement())
+  storeId       Int      @map("store_id")
+  customerId    Int?     @map("customer_id")
+  orderNumber   String   @map("order_number")
+  subtotal      Int      // centavos
+  total         Int      // centavos
+  status        String   @default("COMPLETED") // COMPLETED, PENDING, CANCELLED, CREDIT
+  paymentMethod String   @default("CASH") @map("payment_method") // CASH, CARD, TRANSFER, MIXED
+  notes         String?  
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt
+
+  store       Store       @relation(fields: [storeId], references: [id])
+  customer    Customer?   @relation(fields: [customerId], references: [id])
+  orderItems  OrderItem[]
+  inventoryMovements InventoryMovement[] @relation("OrderMovements")
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         Int @id @default(autoincrement())
+  orderId    Int @map("order_id")
+  productId  Int @map("product_id")
+  quantity   Int
+  unitPrice  Int @map("unit_price") // precio al momento de la venta
+  totalRow   Int @map("total_row")  // quantity * unitPrice
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// ----------------------------------------------
+// CONTEXTO: CONTABILIDAD Y FINANZAS
+// ----------------------------------------------
+
+model LedgerAccount {
+  id        Int     @id @default(autoincrement())
+  storeId   Int     @map("store_id")
+  name      String
+  type      String  // ASSET, LIABILITY, EQUITY, INCOME, EXPENSE
+  isDefault Boolean @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt
+
+  store          Store           @relation(fields: [storeId], references: [id])
+  journalEntries JournalEntry[]
+
+  @@map("ledger_accounts")
+}
+
+model JournalEntry {
+  id              Int      @id @default(autoincrement())
+  storeId         Int      @map("store_id")
+  ledgerAccountId Int      @map("ledger_account_id")
+  amount          Int      // siempre positivo
+  direction       String   // DEBIT, CREDIT
+  description     String?
+  referenceType   String?  @map("reference_type") // ORDER, EXPENSE, TOPUP
+  referenceId     Int?     @map("reference_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  store         Store         @relation(fields: [storeId], references: [id])
+  ledgerAccount LedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+
+  @@map("journal_entries")
+}
+
+// ----------------------------------------------
+// CONTEXTO: SERVICIOS
+// ----------------------------------------------
+
+model ServiceTransaction {
+  id               Int      @id @default(autoincrement())
+  storeId          Int      @map("store_id")
+  provider         String   // TELCEL, CFE, etc
+  transactionType  String   @map("transaction_type") // TOPUP, BILL_PAYMENT
+  amount           Int      // centavos
+  commissionEarned Int      @default(0) @map("commission_earned") // centavos
+  status           String   @default("PENDING") // SUCCESS, FAILED, PENDING
+  externalId       String?  @map("external_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@map("service_transactions")
 }

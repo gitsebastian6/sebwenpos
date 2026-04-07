@@ -1,0 +1,88 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { z } from 'zod'
+
+const updateCategorySchema = z.object({
+  name: z.string().min(1, 'El nombre es obligatorio').max(100),
+})
+
+// PUT /api/categories/[id]
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const categoryId = Number(id)
+    if (isNaN(categoryId)) {
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+    }
+
+    const body = await req.json()
+    const data = updateCategorySchema.parse(body)
+
+    const existing = await db.category.findUnique({ where: { id: categoryId } })
+    if (!existing) {
+      return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 404 })
+    }
+
+    const category = await db.category.update({
+      where: { id: categoryId },
+      data: { name: data.name },
+      include: {
+        _count: {
+          select: { products: true },
+        },
+      },
+    })
+
+    return NextResponse.json(category)
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
+    }
+    if (error instanceof Error && error.message.includes('Unique')) {
+      return NextResponse.json({ error: 'Ya existe una categoría con ese nombre' }, { status: 409 })
+    }
+    console.error('PUT /api/categories/[id] error:', error)
+    return NextResponse.json({ error: 'Error al actualizar categoría' }, { status: 500 })
+  }
+}
+
+// DELETE /api/categories/[id]
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const categoryId = Number(id)
+    if (isNaN(categoryId)) {
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+    }
+
+    const existing = await db.category.findUnique({
+      where: { id: categoryId },
+      include: { _count: { select: { products: true } } },
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 404 })
+    }
+
+    // Remove category from products that reference it, then delete
+    await db.product.updateMany({
+      where: { categoryId },
+      data: { categoryId: null },
+    })
+
+    await db.category.delete({
+      where: { id: categoryId },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('DELETE /api/categories/[id] error:', error)
+    return NextResponse.json({ error: 'Error al eliminar categoría' }, { status: 500 })
+  }
+}

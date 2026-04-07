@@ -1,31 +1,44 @@
 'use client'
 
-export default function Home() {
+import { useEffect, useRef } from 'react'
+import { useAuthStore } from '@/stores/auth-store'
+import { AuthPage } from '@/components/auth/auth-page'
+import { AppShell } from '@/components/layout/app-shell'
+import { Skeleton } from '@/components/ui/skeleton'
+
+function LoadingScreen() {
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      gap: '2rem',
-      padding: '1rem'
-    }}>
-      <div style={{
-        position: 'relative',
-        width: '6rem',
-        height: '6rem'
-      }}>
-        <img
-          src="/logo.svg"
-          alt="Z.ai Logo"
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain'
-          }}
-        />
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-4">
+        <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-muted-foreground text-sm">Cargando...</p>
       </div>
     </div>
   )
+}
+
+export default function Home() {
+  const { isAuthenticated, isLoading } = useAuthStore()
+  const initialized = useRef(false)
+
+  useEffect(() => {
+    if (!initialized.current) {
+      initialized.current = true
+      // Allow Zustand to hydrate from localStorage
+      const timer = setTimeout(() => {
+        useAuthStore.getState().setLoading(false)
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [])
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  if (!isAuthenticated) {
+    return <AuthPage />
+  }
+
+  return <AppShell />
 }

@@ -1,0 +1,54 @@
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+
+interface AuthUser {
+  id: number
+  phone: string
+  email: string | null
+  fullName: string | null
+  role: string
+}
+
+interface StoreInfo {
+  id: number
+  name: string
+  currencyCode: string
+  countryCode: string | null
+}
+
+interface AuthState {
+  user: AuthUser | null
+  store: StoreInfo | null
+  token: string | null
+  isAuthenticated: boolean
+  isLoading: boolean
+  login: (user: AuthUser, store: StoreInfo, token: string) => void
+  logout: () => void
+  setLoading: (loading: boolean) => void
+  updateStore: (store: StoreInfo) => void
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      store: null,
+      token: null,
+      isAuthenticated: false,
+      isLoading: true,
+      login: (user, store, token) => set({ user, store, token, isAuthenticated: true, isLoading: false }),
+      logout: () => set({ user: null, store: null, token: null, isAuthenticated: false, isLoading: false }),
+      setLoading: (loading) => set({ isLoading: loading }),
+      updateStore: (store) => set({ store }),
+    }),
+    {
+      name: 'pos-auth',
+      partialize: (state) => ({
+        user: state.user,
+        store: state.store,
+        token: state.token,
+        isAuthenticated: state.isAuthenticated,
+      }),
+    }
+  )
+)
