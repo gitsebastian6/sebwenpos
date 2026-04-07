@@ -70,14 +70,22 @@ interface TopProduct {
   revenue: number
 }
 
+interface TopProductRaw {
+  product: { id: number; name: string; imgUrl?: string | null } | null
+  totalQuantity: number | null
+  totalRevenue: number | null
+}
+
 interface DashboardData {
   totalSalesToday: number
   totalOrdersToday: number
   lowStockProducts: LowStockProduct[]
   totalDebt: number
-  dailySales: DailySale[]
+  salesByDay?: DailySale[]
+  dailySales?: DailySale[]
   recentOrders: RecentOrder[]
-  topProducts: TopProduct[]
+  topProducts?: TopProductRaw[]
+  topProductsFormatted?: TopProduct[]
 }
 
 // ── Chart Config ────────────────────────────────────────
@@ -253,6 +261,28 @@ export function DashboardView() {
       const res = await fetch(`/api/dashboard?storeId=${store.id}`)
       if (!res.ok) throw new Error('Error al cargar datos del dashboard')
       const json = await res.json()
+
+      // Normalize topProducts from API format to view format
+      if (json.topProducts && Array.isArray(json.topProducts)) {
+        json.topProductsFormatted = json.topProducts
+          .map((tp: TopProductRaw) => ({
+            name: tp.product?.name || 'Sin nombre',
+            quantitySold: tp.totalQuantity || 0,
+            revenue: tp.totalRevenue || 0,
+          }))
+          .filter((p: TopProduct) => p.quantitySold > 0)
+      }
+
+      // Normalize dailySales
+      if (!json.dailySales && json.salesByDay) {
+        json.dailySales = json.salesByDay
+      }
+
+      // Null-safe arrays
+      json.dailySales = json.dailySales || []
+      json.recentOrders = json.recentOrders || []
+      json.lowStockProducts = json.lowStockProducts || []
+
       setData(json)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error desconocido')
@@ -298,7 +328,8 @@ export function DashboardView() {
   if (!data) return null
 
   // ── Chart data ──
-  const chartData = data.dailySales.map((d) => ({
+  const dailySales = data.dailySales || []
+  const chartData = dailySales.map((d) => ({
     ...d,
     dateLabel: formatDateShort(d.date),
     sales: d.total / 100,
@@ -513,7 +544,7 @@ export function DashboardView() {
             <CardDescription>Top 5 productos por unidades vendidas</CardDescription>
           </CardHeader>
           <CardContent>
-            {data.topProducts.length === 0 ? (
+            {(data.topProductsFormatted || []).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <Package className="h-10 w-10 text-muted-foreground/40 mb-2" />
                 <p className="text-sm text-muted-foreground">
@@ -522,7 +553,7 @@ export function DashboardView() {
               </div>
             ) : (
               <div className="space-y-3">
-                {data.topProducts.map((product, index) => (
+                {(data.topProductsFormatted || []).map((product, index) => (
                   <div
                     key={product.name}
                     className="flex items-center justify-between rounded-lg border p-3 gap-3"
