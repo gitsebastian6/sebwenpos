@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
     }, { status: 201 })
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
     console.error('Inventory POST error:', error)
     return NextResponse.json({ error: 'Error al crear movimiento' }, { status: 500 })

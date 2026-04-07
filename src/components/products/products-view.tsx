@@ -902,8 +902,8 @@ export function ProductsView() {
             <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteTarget?.type === 'product'
-                ? `Se eliminará el producto "${(deleteTarget.item as Product).name}". Esta acción no se puede deshacer.`
-                : `Se eliminará la categoría "${(deleteTarget.item as Category).name}". Los productos en esta categoría no se eliminarán.`}
+                ? `Se eliminará el producto "${(deleteTarget?.item as Product | null)?.name ?? ''}". Esta acción no se puede deshacer.`
+                : `Se eliminará la categoría "${(deleteTarget?.item as Category | null)?.name ?? ''}". Los productos en esta categoría no se eliminarán.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

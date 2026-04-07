@@ -39,7 +39,7 @@ export async function PUT(
     return NextResponse.json(category)
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
     if (error instanceof Error && error.message.includes('Unique')) {
       return NextResponse.json({ error: 'Ya existe una categoría con ese nombre' }, { status: 409 })

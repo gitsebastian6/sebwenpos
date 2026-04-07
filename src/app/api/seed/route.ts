@@ -101,7 +101,7 @@ export async function POST() {
       { name: 'Pedro Gómez', phone: '5544556677', email: null, debt: 0 },
     ]
 
-    const createdCustomers = []
+    const createdCustomers: Array<{ id: number }> = []
     for (const c of customersData) {
       const customer = await db.customer.create({
         data: { storeId, name: c.name, phone: c.phone, email: c.email, totalDebt: c.debt },

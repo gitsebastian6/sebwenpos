@@ -403,9 +403,9 @@ export function DashboardView() {
                 <ChartTooltip
                   content={
                     <ChartTooltipContent
-                      formatter={(value: number) => (
+                      formatter={(value: any) => (
                         <span className="font-mono font-medium">
-                          {formatCurrency(value * 100, currencyCode)}
+                          {formatCurrency(Number(value) * 100, currencyCode)}
                         </span>
                       )}
                     />

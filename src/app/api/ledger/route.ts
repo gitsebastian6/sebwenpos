@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
-// GET /api/ledger?storeId=1&type=entries&from=2024-01-01&to=2024-12-31
+// GET /api/ledger?storeId=1&type=entries&from=2024-01-01&to=2024-12-31&accountId=5
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type')
     const from = searchParams.get('from')
     const to = searchParams.get('to')
+    const accountId = searchParams.get('accountId')
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeId is required' }, { status: 400 })
@@ -49,8 +50,13 @@ export async function GET(request: NextRequest) {
           }
 
           return {
-            ...account,
+            id: account.id,
+            name: account.name,
+            type: account.type,
+            isDefault: account.isDefault,
             balance,
+            entryCount: account._count.journalEntries,
+            createdAt: account.createdAt.toISOString(),
           }
         })
       )
@@ -61,6 +67,11 @@ export async function GET(request: NextRequest) {
     // GET journal entries
     const where: Record<string, unknown> = {
       storeId: parseInt(storeId),
+    }
+
+    // BUG FIX: Support accountId filter (was missing)
+    if (accountId) {
+      where.ledgerAccountId = parseInt(accountId)
     }
 
     if (from || to) {
@@ -88,7 +99,36 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json(entries)
+    // BUG FIX: Format entries and compute totals (frontend expects {entries, totals})
+    const formattedEntries = entries.map((entry) => ({
+      id: entry.id,
+      ledgerAccountId: entry.ledgerAccountId,
+      accountName: entry.ledgerAccount.name,
+      accountType: entry.ledgerAccount.type,
+      amount: entry.amount,
+      direction: entry.direction,
+      description: entry.description,
+      referenceType: entry.referenceType,
+      referenceId: entry.referenceId,
+      createdAt: entry.createdAt.toISOString(),
+    }))
+
+    const totals = formattedEntries.reduce(
+      (acc, entry) => {
+        if (entry.direction === 'DEBIT') {
+          acc.debits += entry.amount
+        } else {
+          acc.credits += entry.amount
+        }
+        return acc
+      },
+      { debits: 0, credits: 0 },
+    )
+
+    return NextResponse.json({
+      entries: formattedEntries,
+      totals,
+    })
   } catch (error) {
     console.error('Error fetching ledger data:', error)
     return NextResponse.json({ error: 'Failed to fetch ledger data' }, { status: 500 })

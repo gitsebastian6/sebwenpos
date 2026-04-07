@@ -27,12 +27,7 @@ export async function GET(
           },
         },
         orderItems: {
-          select: {
-            id: true,
-            productName: null as any,
-            quantity: true,
-            unitPrice: true,
-            totalRow: true,
+          include: {
             product: {
               select: {
                 name: true,

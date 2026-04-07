@@ -51,23 +51,18 @@ export async function GET(request: NextRequest) {
       }),
 
       // lowStockProducts: products where currentStock <= minStock
-      db.product.findMany({
-        where: {
-          storeId: storeIdNum,
-          isActive: true,
-          currentStock: { lte: 10 }, // reasonable threshold
-        },
-        orderBy: { currentStock: 'asc' },
-        take: 20,
-        select: {
-          id: true,
-          name: true,
-          sku: true,
-          currentStock: true,
-          minStock: true,
-          imgUrl: true,
-        },
-      }),
+      db.$queryRawUnsafe<Array<{
+        id: number; name: string; sku: string | null;
+        currentStock: number; minStock: number; imgUrl: string | null;
+      }>>(`
+        SELECT id, name, sku, current_stock as "currentStock", min_stock as "minStock", img_url as "imgUrl"
+        FROM products
+        WHERE store_id = ${storeIdNum}
+          AND is_active = 1
+          AND current_stock <= min_stock
+        ORDER BY current_stock ASC
+        LIMIT 20
+      `),
 
       // recentOrders: last 10 orders
       db.order.findMany({
@@ -152,7 +147,7 @@ export async function GET(request: NextRequest) {
     const salesByDayMap = new Map(
       salesByDayResult.map((row) => [row.day.split('T')[0], row.total ?? 0])
     )
-    const salesByDay = []
+    const salesByDay: Array<{ date: string; total: number }> = []
     for (let i = 6; i >= 0; i--) {
       const date = new Date()
       date.setDate(date.getDate() - i)
@@ -166,8 +161,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       totalSalesToday: totalSalesTodayResult._sum.total ?? 0,
       totalOrdersToday: totalOrdersTodayResult,
-      lowStockProducts,
-      recentOrders,
+      lowStockProducts: lowStockProducts.map(p => ({
+        id: p.id,
+        name: p.name,
+        currentStock: p.currentStock,
+        minStock: p.minStock,
+      })),
+      recentOrders: recentOrders.map(o => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        status: o.status,
+        total: o.total,
+        createdAt: o.createdAt.toISOString(),
+      })),
       topProducts,
       totalDebt: totalDebtResult._sum.totalDebt ?? 0,
       salesByDay,
