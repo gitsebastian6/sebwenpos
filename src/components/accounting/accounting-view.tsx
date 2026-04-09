@@ -48,6 +48,7 @@ import {
   Loader2,
   Armchair,
   Monitor,
+  Heart,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -150,6 +151,9 @@ interface ReportData {
   period: { from: string | null; to: string | null }
   sales: {
     total: number
+    subtotal: number
+    tips: number
+    tipsOrderCount: number
     completed: number
     credit: number
     orderCount: number
@@ -183,6 +187,8 @@ interface ReportData {
     orderNumber: string
     customer: string
     total: number
+    subtotal: number
+    tipAmount: number
     paymentMethod: string
     status: string
     source: string
@@ -991,23 +997,23 @@ export function AccountingView() {
                     </CardContent>
                   </Card>
 
-                  {/* Comisión Servicios */}
+                  {/* Propinas */}
                   <Card className="relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-violet-500" />
+                    <div className="absolute top-0 left-0 w-1 h-full bg-pink-500" />
                     <CardHeader className="pb-0">
                       <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-lg bg-violet-100 dark:bg-violet-950 flex items-center justify-center">
-                          <Receipt className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                        <div className="h-8 w-8 rounded-lg bg-pink-100 dark:bg-pink-950 flex items-center justify-center">
+                          <Heart className="h-4 w-4 text-pink-600 dark:text-pink-400" />
                         </div>
-                        <CardDescription className="text-xs">Ingresos Servicios</CardDescription>
+                        <CardDescription className="text-xs">Propinas</CardDescription>
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-2xl font-bold text-violet-700 dark:text-violet-400 tabular-nums">
-                        {formatCurrency(reportData.services.totalAmount, currencyCode)}
+                      <p className="text-2xl font-bold text-pink-700 dark:text-pink-400 tabular-nums">
+                        {formatCurrency(reportData.sales.tips, currencyCode)}
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        {reportData.services.transactionCount} transacciones
+                        {reportData.sales.tipsOrderCount} órdenes con propina
                       </p>
                     </CardContent>
                   </Card>
@@ -1569,9 +1575,16 @@ export function AccountingView() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <span className="text-sm font-bold tabular-nums">
-                                    {formatCurrency(order.total, currencyCode)}
-                                  </span>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-sm font-bold tabular-nums">
+                                      {formatCurrency(order.total, currencyCode)}
+                                    </span>
+                                    {order.tipAmount > 0 && (
+                                      <span className="text-[10px] text-pink-600 dark:text-pink-400 font-medium">
+                                        +Propina {formatCurrency(order.tipAmount, currencyCode)}
+                                      </span>
+                                    )}
+                                  </div>
                                 </TableCell>
                                 <TableCell className="hidden lg:table-cell">
                                   <div className="max-w-[200px]">

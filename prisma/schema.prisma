@@ -201,8 +201,9 @@ model Order {
   customerId     Int?           @map("customer_id")
   tableSessionId Int?           @map("table_session_id")
   orderNumber    String         @map("order_number")
-  subtotal       Int            // centavos
-  total          Int            // centavos
+  subtotal       Int            // centavos (solo productos/servicios)
+  tipAmount      Int            @default(0) @map("tip_amount") // propina en pesos
+  total          Int            // centavos (subtotal + tipAmount)
   status         String         @default("COMPLETED") // COMPLETED, PENDING, CANCELLED, CREDIT
   paymentMethod  String         @default("CASH") @map("payment_method") // CASH, CARD, TRANSFER, MIXED
   notes          String?  

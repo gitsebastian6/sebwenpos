@@ -19,6 +19,7 @@ const createOrderSchema = z.object({
   storeId: z.number().int().positive(),
   customerId: z.number().int().positive().nullable().optional(),
   paymentMethod: z.enum(['CASH', 'DAVIPLATA', 'NEQUI', 'CARD', 'TRANSFER', 'MIXED', 'CREDIT', 'FIADO']),
+  tipAmount: z.number().int().min(0).default(0),
   notes: z.string().max(500).optional(),
   items: z.array(orderItemSchema).min(1, 'La orden debe tener al menos un producto o servicio'),
 })
@@ -104,6 +105,16 @@ export async function POST(req: NextRequest) {
       }
     })
     const subtotal = orderItemsData.reduce((sum, i) => sum + i.totalRow, 0)
+    const tipAmount = data.tipAmount || 0
+    const total = subtotal + tipAmount
+
+    // Tip is only allowed for non-credit orders
+    if (tipAmount > 0 && (data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO')) {
+      return NextResponse.json(
+        { error: 'No se puede agregar propina a una venta fiada' },
+        { status: 400 },
+      )
+    }
 
     const orderNumber = generateOrderNumber()
 
@@ -116,7 +127,8 @@ export async function POST(req: NextRequest) {
           customerId: data.customerId ?? null,
           orderNumber,
           subtotal,
-          total: subtotal,
+          tipAmount,
+          total,
           status: (data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO') ? 'CREDIT' : 'COMPLETED',
           paymentMethod: data.paymentMethod,
           notes: data.notes ?? null,
@@ -171,19 +183,21 @@ export async function POST(req: NextRequest) {
           where: { storeId: data.storeId, type: 'INCOME' },
         })
 
+        // DEBIT Caja for full total (subtotal + tip)
         if (cajaAccount) {
           await tx.journalEntry.create({
             data: {
               storeId: data.storeId,
               ledgerAccountId: cajaAccount.id,
-              amount: subtotal,
+              amount: total,
               direction: 'DEBIT',
-              description: `Venta ${orderNumber}`,
+              description: `Venta ${orderNumber}${tipAmount > 0 ? ` + Propina $${tipAmount.toLocaleString()}` : ''}`,
               referenceType: 'ORDER',
               referenceId: createdOrder.id,
             },
           })
         }
+        // CREDIT Ventas for subtotal (product/service value)
         if (ventasAccount) {
           await tx.journalEntry.create({
             data: {
@@ -196,6 +210,25 @@ export async function POST(req: NextRequest) {
               referenceId: createdOrder.id,
             },
           })
+        }
+        // CREDIT Propina for tip amount (if any)
+        if (tipAmount > 0) {
+          const propinaAccount = await tx.ledgerAccount.findFirst({
+            where: { storeId: data.storeId, name: 'Propina' },
+          })
+          if (propinaAccount) {
+            await tx.journalEntry.create({
+              data: {
+                storeId: data.storeId,
+                ledgerAccountId: propinaAccount.id,
+                amount: tipAmount,
+                direction: 'CREDIT',
+                description: `Propina venta ${orderNumber}`,
+                referenceType: 'ORDER',
+                referenceId: createdOrder.id,
+              },
+            })
+          }
         }
       }
 
@@ -217,7 +250,7 @@ export async function POST(req: NextRequest) {
             data: {
               storeId: data.storeId,
               ledgerAccountId: cuentasPorCobrar.id,
-              amount: subtotal,
+              amount: total,
               direction: 'DEBIT',
               description: `Venta fiada ${orderNumber}`,
               referenceType: 'ORDER',

@@ -51,10 +51,12 @@ export async function GET(request: NextRequest) {
     })
 
     const totalSales = orders.reduce((s, o) => s + o.total, 0)
+    const totalTips = orders.reduce((s, o) => s + (o.tipAmount || 0), 0)
     const completedOrders = orders.filter((o) => o.status === 'COMPLETED')
     const creditOrders = orders.filter((o) => o.status === 'CREDIT')
     const totalCompletedSales = completedOrders.reduce((s, o) => s + o.total, 0)
     const totalCreditSales = creditOrders.reduce((s, o) => s + o.total, 0)
+    const ordersWithTips = orders.filter((o) => (o.tipAmount || 0) > 0)
     const totalOrders = orders.length
 
     // 2. Sales by Payment Method
@@ -221,6 +223,9 @@ export async function GET(request: NextRequest) {
       period: { from, to },
       sales: {
         total: totalSales,
+        subtotal: totalSales - totalTips,
+        tips: totalTips,
+        tipsOrderCount: ordersWithTips.length,
         completed: totalCompletedSales,
         credit: totalCreditSales,
         orderCount: totalOrders,
@@ -253,6 +258,8 @@ export async function GET(request: NextRequest) {
         orderNumber: o.orderNumber,
         customer: o.customer?.name || 'Cliente general',
         total: o.total,
+        subtotal: o.subtotal,
+        tipAmount: o.tipAmount || 0,
         paymentMethod: o.paymentMethod,
         status: o.status,
         source: o.tableSessionId ? 'MESA' : 'POS',

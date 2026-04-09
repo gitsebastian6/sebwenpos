@@ -48,6 +48,7 @@ import {
   Smartphone,
   Users,
   Star,
+  Heart,
 } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────
@@ -130,6 +131,8 @@ export function POSView() {
   const [notes, setNotes] = useState('')
   const [showChargeDialog, setShowChargeDialog] = useState(false)
   const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null)
+  const [tipAmount, setTipAmount] = useState<number>(0)
+  const [showTipInput, setShowTipInput] = useState(false)
 
   // ─── Cart state ──────────────────────────────────────
   const [cart, setCart] = useState<CartItem[]>([])
@@ -329,11 +332,14 @@ export function POSView() {
     setNotes('')
     setSelectedCustomer('none')
     setLastOrderNumber(null)
+    setTipAmount(0)
+    setShowTipInput(false)
   }, [])
 
   // ─── Cart calculations ───────────────────────────────
   const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart])
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.salePrice * item.quantity, 0), [cart])
+  const total = useMemo(() => subtotal + tipAmount, [subtotal, tipAmount])
 
   // ─── Submit order ────────────────────────────────────
   const handleSubmitOrder = async () => {
@@ -345,6 +351,7 @@ export function POSView() {
         storeId,
         customerId: selectedCustomer !== 'none' ? Number(selectedCustomer) : null,
         paymentMethod,
+        tipAmount: paymentMethod !== 'FIADO' ? tipAmount : 0,
         notes: notes.trim() || undefined,
         items: cart.map((item) => ({
           ...(item.isService ? { serviceId: item.serviceId } : { productId: item.productId }),
@@ -370,6 +377,8 @@ export function POSView() {
       setLastOrderNumber(order.orderNumber)
       setCart([])
       setNotes('')
+      setTipAmount(0)
+      setShowTipInput(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al registrar la venta')
     } finally {
@@ -690,10 +699,81 @@ export function POSView() {
                   {formatCurrency(subtotal, currencyCode)}
                 </span>
               </div>
+              {/* Tip section */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-full"
+                  onClick={() => setShowTipInput(!showTipInput)}
+                >
+                  <Heart className="h-3.5 w-3.5" />
+                  <span>Propina</span>
+                  {tipAmount > 0 && (
+                    <span className="ml-auto font-medium text-pink-600 dark:text-pink-400">
+                      +{formatCurrency(tipAmount, currencyCode)}
+                    </span>
+                  )}
+                  {!showTipInput && (
+                    <span className="ml-auto text-xs opacity-60">agregar</span>
+                  )}
+                </button>
+                {showTipInput && paymentMethod !== 'FIADO' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground shrink-0">$</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={tipAmount || ''}
+                      onChange={(e) => setTipAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                      placeholder="0"
+                      className="h-8 text-sm tabular-nums"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30"
+                      onClick={() => setTipAmount(Math.round(subtotal * 0.1))}
+                    >
+                      10%
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30"
+                      onClick={() => setTipAmount(Math.round(subtotal * 0.15))}
+                    >
+                      15%
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30"
+                      onClick={() => setTipAmount(0)}
+                    >
+                      Quitar
+                    </Button>
+                  </div>
+                )}
+                {showTipInput && paymentMethod === 'FIADO' && (
+                  <p className="text-xs text-muted-foreground italic">No aplica para ventas fiadas</p>
+                )}
+              </div>
+              {tipAmount > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-pink-600 dark:text-pink-400">Propina</span>
+                  <span className="tabular-nums text-pink-600 dark:text-pink-400">
+                    {formatCurrency(tipAmount, currencyCode)}
+                  </span>
+                </div>
+              )}
+              <Separator className="my-1" />
               <div className="flex items-center justify-between">
                 <span className="text-xl font-bold">Total</span>
                 <span className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(subtotal, currencyCode)}
+                  {formatCurrency(total, currencyCode)}
                 </span>
               </div>
             </div>
@@ -774,7 +854,7 @@ export function POSView() {
             onClick={() => setShowChargeDialog(true)}
           >
             <CreditCard className="h-5 w-5 mr-2" />
-            Cobrar {cart.length > 0 ? formatCurrency(subtotal, currencyCode) : ''}
+            Cobrar {cart.length > 0 ? formatCurrency(total, currencyCode) : ''}
           </Button>
 
           {/* Last order number */}
@@ -814,11 +894,25 @@ export function POSView() {
                       </span>
                     </div>
                   )}
+                  <div className="flex justify-between">
+                    <span className="font-semibold">Subtotal</span>
+                    <span className="font-medium">
+                      {formatCurrency(subtotal, currencyCode)}
+                    </span>
+                  </div>
+                  {tipAmount > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-pink-600 dark:text-pink-400">Propina</span>
+                      <span className="font-medium text-pink-600 dark:text-pink-400">
+                        {formatCurrency(tipAmount, currencyCode)}
+                      </span>
+                    </div>
+                  )}
                   <Separator />
                   <div className="flex justify-between">
                     <span className="font-semibold">Total</span>
                     <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                      {formatCurrency(subtotal, currencyCode)}
+                      {formatCurrency(total, currencyCode)}
                     </span>
                   </div>
                 </div>

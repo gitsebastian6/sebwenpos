@@ -69,6 +69,7 @@ import {
   Power,
   PowerOff,
   Star,
+  Heart,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -285,6 +286,8 @@ export function TablesView() {
   const [paymentMethod, setPaymentMethod] = useState('CASH')
   const [paymentSaving, setPaymentSaving] = useState(false)
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([])
+  const [tipAmount, setTipAmount] = useState<number>(0)
+  const [showTipInput, setShowTipInput] = useState(false)
 
   // ── Close session confirm ──
   const [closeSessionOpen, setCloseSessionOpen] = useState(false)
@@ -726,6 +729,7 @@ export function TablesView() {
           storeId: store.id,
           itemIds: selectedItemIds,
           paymentMethod,
+          tipAmount: (paymentMethod !== 'CREDIT' && paymentMethod !== 'FIADO') ? tipAmount : 0,
         }),
       })
 
@@ -737,6 +741,8 @@ export function TablesView() {
       toast.success(`Pago exitoso - ${paymentMethodLabel(paymentMethod)}`)
       setPaymentOpen(false)
       setSelectedItemIds([])
+      setTipAmount(0)
+      setShowTipInput(false)
       await fetchSession(session.id)
       fetchTables()
     } catch (err) {
@@ -1149,10 +1155,85 @@ export function TablesView() {
                 </div>
               </ScrollArea>
               <Separator />
+              <div className="flex items-center justify-between text-sm">
+                <span>Subtotal</span>
+                <span className="font-medium">
+                  {formatCurrency(selectedItemsTotal, store?.currencyCode)}
+                </span>
+              </div>
+              {/* Tip */}
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-full"
+                onClick={() => setShowTipInput(!showTipInput)}
+              >
+                <Heart className="h-3.5 w-3.5" />
+                <span>Propina</span>
+                {tipAmount > 0 && (
+                  <span className="ml-auto font-medium text-pink-600 dark:text-pink-400">
+                    +{formatCurrency(tipAmount, store?.currencyCode)}
+                  </span>
+                )}
+                {!showTipInput && (
+                  <span className="ml-auto text-xs opacity-60">agregar</span>
+                )}
+              </button>
+              {showTipInput && paymentMethod !== 'CREDIT' && paymentMethod !== 'FIADO' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground shrink-0">$</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={tipAmount || ''}
+                    onChange={(e) => setTipAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                    placeholder="0"
+                    className="h-8 text-sm tabular-nums"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30"
+                    onClick={() => setTipAmount(Math.round(selectedItemsTotal * 0.1))}
+                  >
+                    10%
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30"
+                    onClick={() => setTipAmount(Math.round(selectedItemsTotal * 0.15))}
+                  >
+                    15%
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30"
+                    onClick={() => setTipAmount(0)}
+                  >
+                    Quitar
+                  </Button>
+                </div>
+              )}
+              {showTipInput && (paymentMethod === 'CREDIT' || paymentMethod === 'FIADO') && (
+                <p className="text-xs text-muted-foreground italic">No aplica para ventas fiadas</p>
+              )}
+              {tipAmount > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-pink-600 dark:text-pink-400">Propina</span>
+                  <span className="font-medium text-pink-600 dark:text-pink-400">
+                    {formatCurrency(tipAmount, store?.currencyCode)}
+                  </span>
+                </div>
+              )}
+              <Separator />
               <div className="flex items-center justify-between font-semibold">
                 <span>Total</span>
-                <span className="text-lg">
-                  {formatCurrency(selectedItemsTotal, store?.currencyCode)}
+                <span className="text-lg text-emerald-600 dark:text-emerald-400">
+                  {formatCurrency(selectedItemsTotal + tipAmount, store?.currencyCode)}
                 </span>
               </div>
             </div>

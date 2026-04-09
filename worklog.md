@@ -676,3 +676,66 @@ Stage Summary:
 - Login: 3001234567 / 1234
 - María García has $20,500 debt for testing Abonar feature
 - ORD-006 is in CREDIT status - will change to COMPLETED when debt paid
+
+---
+Task ID: 13
+Agent: Main Agent
+Task: Add tips (propinas) feature to POS and Mesa payment flows
+
+Work Log:
+- Found existing LedgerAccount "Propina" (type: INCOME) in seed data but no way to record tips
+- Added `tipAmount` field (Int, default 0) to Order model in Prisma schema
+- Ran `prisma generate` + `bun run db:push` to sync schema
+- Updated POS Orders API (`/api/orders/route.ts`):
+  - Added `tipAmount` to Zod schema (int >= 0, default 0)
+  - Validation: tips NOT allowed on CREDIT/FIADO orders
+  - `total = subtotal + tipAmount`
+  - Journal entries: DEBIT Caja (total), CREDIT Ventas (subtotal), CREDIT Propina (tipAmount)
+  - Description includes "+ Propina $X,XXX" when tip > 0
+- Updated Mesa Pay API (`/api/tables/sessions/[id]/pay/route.ts`):
+  - Same tip logic as POS API
+  - Customer debt only increments by subtotal (not tip) for credit orders
+  - Response includes tipAmount field
+- Updated POS UI (`pos-view.tsx`):
+  - Added Heart icon, tipAmount/showTipInput states
+  - Collapsible tip section in ticket panel (Heart icon, "agregar" text)
+  - Tip input: manual amount + 10%/15% quick buttons + Quitar button
+  - Pink color scheme for tip display
+  - Shows subtotal/propina/total breakdown
+  - Tip hidden when payment method is FIADO ("No aplica para ventas fiadas")
+  - Charge button shows total (subtotal + tip)
+  - Confirmation dialog shows tip breakdown
+  - Tip resets on successful order/clear cart
+- Updated Mesa UI (`tables-view.tsx`):
+  - Same tip UI in payment dialog
+  - Heart icon, tip section, 10%/15%/Quitar buttons
+  - Total shows selectedItemsTotal + tipAmount
+  - Tip sent in payment payload (disabled for CREDIT/FIADO)
+  - Tip state resets after successful payment
+- Updated Reports API (`/api/reports/route.ts`):
+  - Added totalTips, ordersWithTips calculations
+  - sales object now includes: subtotal, tips, tipsOrderCount
+  - Recent orders include tipAmount and subtotal fields
+- Updated Accounting UI (`accounting-view.tsx`):
+  - Added Heart icon import
+  - Replaced "Ingresos Servicios" KPI card with "Propinas" KPI card (pink theme)
+  - Shows total tips amount + count of orders with tips
+  - Updated ReportData interface with subtotal, tips, tipsOrderCount
+  - Recent orders table shows "+Propina $X" in pink below total
+- Tested via curl:
+  - Order with tipAmount=5000: total=9500 (product=4500 + tip=5000) ✅
+  - Journal entries: DEBIT Caja 9500, CREDIT Ventas 4500, CREDIT Propina 5000 ✅
+  - Reports: tips=$5,000, tipsOrderCount=1 ✅
+
+Stage Summary:
+- Files modified:
+  - `prisma/schema.prisma` - Added tipAmount field to Order model
+  - `src/app/api/orders/route.ts` - tipAmount in schema, order creation, journal entries
+  - `src/app/api/tables/sessions/[id]/pay/route.ts` - tipAmount in schema, order creation, journal entries
+  - `src/components/pos/pos-view.tsx` - Tip input UI in ticket panel + confirmation dialog
+  - `src/components/tables/tables-view.tsx` - Tip input UI in payment dialog
+  - `src/app/api/reports/route.ts` - Tips in sales summary and recent orders
+  - `src/components/accounting/accounting-view.tsx` - Tips KPI card + recent orders tip display
+- Double-entry accounting: DEBIT Caja, CREDIT Ventas, CREDIT Propina
+- Tips only allowed for non-credit payment methods
+- 10%/15% quick tip buttons for convenience
