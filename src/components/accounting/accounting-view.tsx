@@ -49,7 +49,9 @@ import {
   Armchair,
   Monitor,
   Heart,
+  Printer,
 } from 'lucide-react'
+import { printTicket, type TicketItem } from '@/lib/print-ticket'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -200,20 +202,26 @@ interface ReportData {
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: 'Efectivo',
+  EFECTIVO: 'Efectivo',
   CARD: 'Tarjeta',
+  TARJETA: 'Tarjeta',
   TRANSFER: 'Transferencia',
   MIXED: 'Mixto',
   CREDIT: 'Fiado',
+  FIADO: 'Fiado',
   DAVIPLATA: 'Daviplata',
   NEQUI: 'Nequi',
 }
 
 const PAYMENT_METHOD_COLORS: Record<string, string> = {
   CASH: 'bg-emerald-500',
+  EFECTIVO: 'bg-emerald-500',
   CARD: 'bg-violet-500',
+  TARJETA: 'bg-violet-500',
   TRANSFER: 'bg-sky-500',
   MIXED: 'bg-orange-500',
   CREDIT: 'bg-amber-500',
+  FIADO: 'bg-amber-500',
   DAVIPLATA: 'bg-rose-500',
   NEQUI: 'bg-teal-500',
 }
@@ -351,18 +359,35 @@ export function AccountingView() {
   }, [activeTab, reportData, fetchReports])
 
   // ─── Summary calculations ────────────────────────────────────────────────
-
+  // INCOME accounts: balance = DEBIT - CREDIT. Normal balance is negative (credits > debits).
+  // The actual income is the absolute value of the negative balance.
   const totalIngresos = accounts
     .filter((a) => a.type === 'INCOME')
-    .reduce((sum, a) => sum + Math.max(0, a.balance), 0)
+    .reduce((sum, a) => sum + Math.abs(a.balance), 0)
 
+  // EXPENSE accounts: balance = DEBIT - CREDIT. Normal balance is positive (debits > credits).
   const totalGastos = accounts
     .filter((a) => a.type === 'EXPENSE')
     .reduce((sum, a) => sum + Math.max(0, a.balance), 0)
 
+  // Total assets (all ASSET accounts)
+  const totalActivos = accounts
+    .filter((a) => a.type === 'ASSET')
+    .reduce((sum, a) => sum + a.balance, 0)
+
   const balanceCaja = accounts.find((a) => a.type === 'ASSET' && a.isDefault)?.balance ?? 0
 
-  const cuentasPorCobrar = accounts.find((a) => a.name === 'Cuentas por Cobrar')?.balance ?? 0
+  // Cuentas por Cobrar: find by partial name match
+  const cxcAccount = accounts.find((a) => a.type === 'ASSET' && a.name.includes('Cuentas por Cobrar'))
+  const cuentasPorCobrar = cxcAccount?.balance ?? 0
+
+  // Propinas (from Propina INCOME account)
+  const propinaAccount = accounts.find((a) => a.type === 'INCOME' && a.name === 'Propina')
+  const totalPropinas = propinaAccount ? Math.abs(propinaAccount.balance) : 0
+
+  // Ventas (total income minus propinas)
+  const ventasAccount = accounts.find((a) => a.type === 'INCOME' && a.name === 'Ventas')
+  const totalVentas = ventasAccount ? Math.abs(ventasAccount.balance) : (totalIngresos - totalPropinas)
 
   const netIncome = totalIngresos - totalGastos
 
@@ -703,38 +728,42 @@ export function AccountingView() {
           <div className="space-y-6">
             {/* Summary cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Total Ingresos */}
+              {/* Total Ventas */}
               <Card className="relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-teal-500" />
                 <CardHeader className="pb-0">
                   <div className="flex items-center gap-2">
                     <div className="h-8 w-8 rounded-lg bg-teal-100 dark:bg-teal-950 flex items-center justify-center">
-                      <TrendingUp className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                      <DollarSign className="h-4 w-4 text-teal-600 dark:text-teal-400" />
                     </div>
-                    <CardDescription className="text-xs">Total Ingresos</CardDescription>
+                    <CardDescription className="text-xs">Total Ventas</CardDescription>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <p className="text-2xl font-bold text-teal-700 dark:text-teal-400 tabular-nums">
-                    {formatCurrency(totalIngresos, currencyCode)}
+                    {formatCurrency(totalVentas, currencyCode)}
                   </p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Productos y servicios</p>
                 </CardContent>
               </Card>
 
-              {/* Total Gastos */}
+              {/* Propinas */}
               <Card className="relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-red-500" />
+                <div className="absolute top-0 left-0 w-1 h-full bg-pink-500" />
                 <CardHeader className="pb-0">
                   <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-lg bg-red-100 dark:bg-red-950 flex items-center justify-center">
-                      <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    <div className="h-8 w-8 rounded-lg bg-pink-100 dark:bg-pink-950 flex items-center justify-center">
+                      <Heart className="h-4 w-4 text-pink-600 dark:text-pink-400" />
                     </div>
-                    <CardDescription className="text-xs">Total Gastos</CardDescription>
+                    <CardDescription className="text-xs">Propinas</CardDescription>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-2xl font-bold text-red-700 dark:text-red-400 tabular-nums">
-                    {formatCurrency(totalGastos, currencyCode)}
+                  <p className="text-2xl font-bold text-pink-700 dark:text-pink-400 tabular-nums">
+                    {formatCurrency(totalPropinas, currencyCode)}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Total ingresos: {formatCurrency(totalIngresos, currencyCode)}
                   </p>
                 </CardContent>
               </Card>
@@ -747,12 +776,15 @@ export function AccountingView() {
                     <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center">
                       <CircleDollarSign className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                     </div>
-                    <CardDescription className="text-xs">Balance de Caja</CardDescription>
+                    <CardDescription className="text-xs">Caja General</CardDescription>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
                     {formatCurrency(balanceCaja, currencyCode)}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Total activos: {formatCurrency(totalActivos, currencyCode)}
                   </p>
                 </CardContent>
               </Card>
@@ -772,6 +804,7 @@ export function AccountingView() {
                   <p className="text-2xl font-bold text-amber-700 dark:text-amber-400 tabular-nums">
                     {formatCurrency(cuentasPorCobrar, currencyCode)}
                   </p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Fiado pendiente</p>
                 </CardContent>
               </Card>
             </div>
@@ -1520,6 +1553,7 @@ export function AccountingView() {
                               <TableHead>Método</TableHead>
                               <TableHead className="text-right w-[110px]">Total</TableHead>
                               <TableHead className="hidden lg:table-cell text-left">Productos</TableHead>
+                              <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -1602,6 +1636,37 @@ export function AccountingView() {
                                       </p>
                                     )}
                                   </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Imprimir factura"
+                                    onClick={() => {
+                                      const items: TicketItem[] = order.items.map((item) => ({
+                                        name: item.name,
+                                        quantity: item.quantity,
+                                        unitPrice: item.unitPrice,
+                                        total: item.totalRow,
+                                      }))
+                                      printTicket({
+                                        storeName: store?.name || '',
+                                        orderNumber: order.orderNumber,
+                                        date: order.createdAt,
+                                        customer: order.customer || undefined,
+                                        tableName: order.tableName || undefined,
+                                        items,
+                                        subtotal: order.subtotal,
+                                        tipAmount: order.tipAmount || 0,
+                                        total: order.total,
+                                        paymentMethod: order.paymentMethod,
+                                        currencyCode,
+                                      })
+                                    }}
+                                  >
+                                    <Printer className="h-3.5 w-3.5" />
+                                  </Button>
                                 </TableCell>
                               </TableRow>
                             ))}

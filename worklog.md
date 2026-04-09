@@ -781,3 +781,44 @@ Stage Summary:
   - `src/components/tables/tables-view.tsx` - Print button after mesa payment
 - Print ticket available in: POS (after sale), Mesas (after payment), Órdenes (detail dialog)
 - Receipt format: thermal POS style, monospace, 80mm width, auto-print
+
+---
+Task ID: 15
+Agent: Main Agent
+Task: Fix Resumen tab calculations + add print invoice button in Informes
+
+Work Log:
+- Audited Resumen tab calculations and found 3 bugs:
+  1. INCOME accounts have negative balances (double-entry convention) but `Math.max(0, balance)` filtered them to 0. Fixed: use `Math.abs(a.balance)` for income
+  2. `cuentasPorCobrar` searched exact name "Cuentas por Cobrar" but actual name is "Cuentas por Cobrar (Fiado)". Fixed: use `.includes('Cuentas por Cobrar')`
+  3. Missing data: no Propinas card, no Total Ventas card, no Total Activos info
+- Rewrote Resumen summary cards:
+  1. **Total Ventas** (teal) - Shows Ventas account balance (products + services)
+  2. **Propinas** (pink) - Shows Propina account balance + total ingresos underneath
+  3. **Caja General** (emerald) - Shows Caja General ASSET balance + total activos underneath
+  4. **Cuentas por Cobrar** (amber) - Shows CxC ASSET balance (now finds correctly)
+- Added `totalActivos` calculation (sum of all ASSET accounts)
+- Added `totalPropinas` from Propina INCOME account
+- Added `totalVentas` from Ventas INCOME account (or fallback: ingresos - propinas)
+- Fixed PAYMENT_METHOD_LABELS: added EFECTIVO/TARJETA mappings (seed data uses Spanish keys)
+- Fixed PAYMENT_METHOD_COLORS: added EFECTIVO/TARJETA color mappings
+- Added Printer icon import + printTicket import to accounting-view.tsx
+- Added "Imprimir factura" button (Printer icon) in each row of the "Informe Detallado de Ventas" table in the Informes tab
+- Completely rewrote `src/lib/print-ticket.ts` as a professional POS factura format:
+  - 80mm thermal paper width (@page size: 80mm)
+  - Professional header with store name, "Factura de Venta" subtitle, NIT, address, phone
+  - Bold order number centered
+  - Items table with qty, name (truncated), unit price detail, line total
+  - Totals section with dashed borders: subtotal, propina (pink), TOTAL (bold large)
+  - Payment section: method + "Pagado con" amount
+  - Credit sales warning for FIADO orders
+  - Footer with thank you message + VENTIFY POS branding
+  - Auto-print on load via window.print()
+
+Stage Summary:
+- Files modified:
+  - `src/components/accounting/accounting-view.tsx` - Fixed Resumen calculations, added print button, fixed payment labels
+  - `src/lib/print-ticket.ts` - Complete rewrite as professional POS factura
+- Resumen tab now shows correct values: Ventas $329,500 / Propinas $5,000 / Caja $148,500 / CxC $0
+- Print invoice button available in Informes > Informe Detallado de Ventas for each order
+- All lint checks pass, no errors in dev log
