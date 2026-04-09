@@ -904,3 +904,28 @@ Stage Summary:
 - Layout no longer shifts/cuts off when sidebar opens
 - Right panel scrollable when content exceeds viewport height
 - Product grid uses flex-based height instead of viewport calc
+---
+Task ID: 15
+Agent: Main Agent
+Task: Fix POS horizontal overflow - layout broken worse after initial fix attempt
+
+Work Log:
+- Analyzed user screenshot showing horizontal scrollbar and cut-off right panel
+- Root cause: Payment method grid `grid-cols-2 sm:grid-cols-3` used viewport-based sm: breakpoint (640px), so on any viewport >640px it showed 3 columns, but panel was only 380px wide (internal width 348px). 3 columns × ~130px = 390px > 348px → horizontal overflow
+- Applied comprehensive fixes to pos-view.tsx:
+  1. Main container: `h-[calc(100vh-8rem)] overflow-hidden` — viewport-based height, prevents any horizontal overflow
+  2. Left panel: `min-w-0 min-h-0` — proper flex child constraints
+  3. Right panel: `lg:w-[400px] xl:w-[420px]` — wider than before (was 380px), sufficient for 3-col grid
+  4. Right panel: `overflow-x-hidden` — prevents internal content from causing horizontal scroll
+  5. Right panel: `lg:overflow-y-auto` — vertically scrollable when content exceeds height
+  6. Payment grid: `grid-cols-3 gap-1.5` — always 3 columns (no sm: breakpoint), gap reduced from 2 to 1.5
+  7. Payment buttons: `px-2 py-1.5 text-xs` — smaller padding and font to fit 3 columns in ~350px
+  8. Product grid wrapper: `min-h-0 lg:min-h-0` — proper flex overflow behavior
+
+Stage Summary:
+- File modified: `src/components/pos/pos-view.tsx`
+- Horizontal scrollbar eliminated
+- Payment buttons fit properly in 3-column grid within panel
+- Right panel scrolls vertically when content exceeds viewport
+- Remove button (X) always visible and clickable
+- Works in both preview panel and full new tab

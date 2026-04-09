@@ -587,9 +587,9 @@ export function POSView() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full min-h-0">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-[calc(100vh-8rem)] overflow-hidden">
       {/* ═══ LEFT PANEL: Products ═════════════════════ */}
-      <div className="flex-1 flex flex-col min-w-0 lg:min-h-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Search bar */}
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -637,7 +637,7 @@ export function POSView() {
         </div>
 
         {/* Product/Service grid */}
-        <div className="flex-1 overflow-hidden min-h-0">
+        <div className="flex-1 overflow-hidden min-h-0 lg:min-h-0">
           {isLoadingProducts ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 h-full">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -677,7 +677,7 @@ export function POSView() {
       </div>
 
       {/* ═══ RIGHT PANEL: Cart / Ticket ════════════════ */}
-      <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 flex flex-col bg-muted/30 rounded-xl border p-4 lg:h-full lg:overflow-y-auto">
+      <div className="w-full lg:w-[400px] xl:w-[420px] shrink-0 flex flex-col bg-muted/30 rounded-xl border p-4 lg:h-full lg:overflow-y-auto overflow-x-hidden">
         {/* Cart header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -844,7 +844,7 @@ export function POSView() {
                 setPaymentMethod(v as PaymentMethod)
                 if (!['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(v)) setTransferRef('')
               }}
-              className="grid grid-cols-2 sm:grid-cols-3 gap-2"
+              className="grid grid-cols-3 gap-1.5"
             >
               {PAYMENT_METHODS.map((pm) => {
                 const isFiado = pm.value === 'FIADO'
@@ -855,7 +855,7 @@ export function POSView() {
                     key={pm.value}
                     htmlFor={`payment-${pm.value}`}
                     className={`
-                      flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors
+                      flex items-center gap-1.5 px-2 py-1.5 rounded-lg border cursor-pointer transition-colors text-xs
                       ${disabled ? 'opacity-40 cursor-not-allowed border-dashed' :
                         paymentMethod === pm.value
                           ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-600'
@@ -865,7 +865,7 @@ export function POSView() {
                   >
                     <RadioGroupItem value={pm.value} id={`payment-${pm.value}`} className="sr-only" disabled={disabled} />
                     {pm.icon}
-                    <span className="text-sm font-medium">{pm.label}</span>
+                    <span className="font-medium">{pm.label}</span>
                     {fiadoDisabled && (
                       <span className="text-[9px] text-muted-foreground leading-tight ml-auto">Sin cliente</span>
                     )}
