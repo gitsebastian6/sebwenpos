@@ -1036,3 +1036,48 @@ Stage Summary:
 - Products can now be added to comanda directly in the Sheet as before
 - No Dialog/overlay needed - all product selection is inline
 
+
+---
+Task ID: 15
+Agent: Main Agent
+Task: Implement Cash Register, Daily Z-Report, Product Catalog, and Kardex with POS printing
+
+Work Log:
+- Found that subagent had already created most of the implementation before failing
+- Fixed syntax error in `/api/reports/daily/route.ts` - raw SQL template literal had broken parameter interpolation
+  - Rewrote to use template literals with `${var}` syntax for SQLite
+- Verified all 4 APIs working via curl tests:
+  - POST /api/cash-register (open shift) ✅
+  - GET /api/cash-register/current (current shift) ✅  
+  - PUT /api/cash-register/[id] (close shift with expected/actual calculation) ✅
+  - GET /api/reports/daily (daily Z-report) ✅
+  - GET /api/inventory/kardex (product kardex with running balance) ✅
+- Verified 4 print functions exported from print-ticket.ts:
+  - printCashRegisterClose() - Cierre de caja thermal receipt
+  - printDailySummary() - Corte Z daily summary receipt
+  - printProductCatalog() - A-Z product catalog receipt
+  - printKardex() - Product kardex card receipt
+- Verified Caja tab in accounting-view.tsx with:
+  - Current shift status card (open/closed)
+  - Abrir/Cerrar Caja buttons with dialogs
+  - Last closed difference display (green/red)
+  - Print actions: Corte Z, Catálogo A-Z, Imprimir Cierre
+  - Shift history table
+- Prisma schema already had CashRegister model + relations
+- Clean rebuild: deleted .next cache, restarted dev server
+
+Stage Summary:
+- Files created (by subagent):
+  - `prisma/schema.prisma` - CashRegister model added
+  - `src/app/api/cash-register/route.ts` - GET list + POST open shift
+  - `src/app/api/cash-register/[id]/route.ts` - GET detail + PUT close shift
+  - `src/app/api/cash-register/current/route.ts` - GET current open shift
+  - `src/app/api/reports/daily/route.ts` - GET daily Z-report
+  - `src/app/api/inventory/kardex/route.ts` - GET product kardex
+- Files modified (by subagent + fixes):
+  - `src/lib/print-ticket.ts` - 4 new print functions + interfaces
+  - `src/components/accounting/accounting-view.tsx` - New "Caja" tab (5th tab)
+- Files fixed by main agent:
+  - `src/app/api/reports/daily/route.ts` - Fixed raw SQL syntax error
+- All APIs tested and working
+- Lint: zero errors in new/modified files

@@ -406,3 +406,418 @@ export function printTicket(data: TicketData) {
   win.document.write(html)
   win.document.close()
 }
+
+// ─── Shared thermal styles ────────────────────────────────────────────────────
+
+const THERMAL_STYLE = `
+  @page { margin: 0; size: 80mm auto; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: 'Courier New', 'Lucida Console', monospace;
+    font-size: 11px;
+    line-height: 1.35;
+    width: 72mm;
+    max-width: 280px;
+    padding: 4mm 3mm;
+    color: #111;
+    background: #fff;
+  }
+  .header {
+    text-align: center;
+    padding-bottom: 6px;
+    border-bottom: 2px solid #111;
+    margin-bottom: 6px;
+  }
+  .store-name {
+    font-size: 15px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 2px;
+  }
+  .store-subtitle {
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    color: #555;
+    margin-bottom: 4px;
+  }
+  .store-detail {
+    font-size: 10px;
+    color: #333;
+    margin: 1px 0;
+  }
+  .title {
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin: 6px 0;
+    padding: 3px 0;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    font-size: 11px;
+  }
+  .row span:first-child { color: #555; }
+  .row span:last-child { font-weight: 600; text-align: right; }
+  .dashed { border: none; border-top: 1px dashed #999; margin: 4px 0; }
+  .solid { border: none; border-top: 2px solid #111; margin: 4px 0; }
+  .section-title {
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #999;
+    padding-bottom: 2px;
+    margin-bottom: 2px;
+    color: #555;
+  }
+  .table-row {
+    display: flex;
+    padding: 1px 0;
+    font-size: 10px;
+  }
+  .table-header {
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #999;
+    padding-bottom: 2px;
+    margin-bottom: 2px;
+    color: #555;
+  }
+  .footer {
+    text-align: center;
+    padding-top: 6px;
+  }
+  .footer-msg {
+    font-size: 10px;
+    color: #555;
+    margin: 2px 0;
+  }
+  .footer-brand {
+    font-size: 8px;
+    color: #bbb;
+    margin-top: 4px;
+    letter-spacing: 0.5px;
+  }
+  .notes {
+    font-size: 10px;
+    color: #666;
+    font-style: italic;
+    padding: 4px 0;
+    border-bottom: 1px dashed #ccc;
+    margin-bottom: 4px;
+  }
+  @media print { body { padding: 2mm; } }
+`
+
+function openPrintWindow(title: string, body: string) {
+  const win = window.open('', '_blank', 'width=400,height=700')
+  if (!win) {
+    alert('Permite las ventanas emergentes para imprimir')
+    return
+  }
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${title}</title><style>${THERMAL_STYLE}</style></head><body>${body}<script>window.onload=function(){window.print();}</script></body></html>`
+  win.document.write(html)
+  win.document.close()
+}
+
+// ─── Print Cash Register Close ────────────────────────────────────────────────
+
+export interface CashRegisterCloseData {
+  storeName: string
+  storeNIT?: string
+  storeAddress?: string
+  openedAt: string
+  closedAt: string
+  responsibleName: string
+  openingBalance: number
+  totalCashSales: number
+  totalOtherSales: number
+  expectedCash: number
+  actualCash: number
+  difference: number
+  totalTips: number
+  paymentBreakdown: Array<{ method: string; count: number; total: number }>
+  currencyCode: string
+}
+
+export function printCashRegisterClose(data: CashRegisterCloseData) {
+  const f = (n: number) => fmt(n, data.currencyCode)
+  const payLabel = (m: string) => PAYMENT_LABELS[m] || m
+
+  const payRows = data.paymentBreakdown.map(p => `
+    <div class="row"><span>${payLabel(p.method)}</span><span>${f(p.total)}</span></div>
+    <div class="row" style="padding-left:8px;font-size:9px;color:#888;"><span>${p.count} órdenes</span><span></span></div>
+  `).join('')
+
+  const diffColor = data.difference >= 0 ? '#16a34a' : '#dc2626'
+  const diffSign = data.difference >= 0 ? '+' : ''
+
+  const body = `
+    <div class="header">
+      <div class="store-name">${data.storeName}</div>
+      ${data.storeNIT ? `<div class="store-detail">NIT: ${data.storeNIT}</div>` : ''}
+      ${data.storeAddress ? `<div class="store-detail">${data.storeAddress}</div>` : ''}
+    </div>
+
+    <div class="title">CIERRE DE CAJA</div>
+
+    <hr class="dashed">
+    <div class="row"><span>Apertura</span><span>${fmtDate(data.openedAt)}</span></div>
+    <div class="row"><span>Cierre</span><span>${fmtDate(data.closedAt)}</span></div>
+    <div class="row"><span>Responsable</span><span>${data.responsibleName}</span></div>
+    <hr class="dashed">
+
+    <div class="section-title">CAJA</div>
+    <div class="row"><span>Saldo Inicial</span><span>${f(data.openingBalance)}</span></div>
+    <div class="row"><span>Ventas Efectivo</span><span>${f(data.totalCashSales)}</span></div>
+    <div class="row"><span>Otras Ventas</span><span>${f(data.totalOtherSales)}</span></div>
+    <hr class="dashed">
+
+    <div class="row" style="font-weight:bold;font-size:12px;"><span>Efectivo Esperado</span><span>${f(data.expectedCash)}</span></div>
+    <div class="row" style="font-weight:bold;font-size:12px;"><span>Efectivo Real</span><span>${f(data.actualCash)}</span></div>
+    <div class="row" style="font-weight:bold;font-size:12px;color:${diffColor};"><span>Diferencia</span><span>${diffSign}${f(Math.abs(data.difference))}</span></div>
+    <hr class="solid">
+
+    <div class="section-title">VENTAS POR MÉTODO DE PAGO</div>
+    ${payRows}
+    <hr class="dashed">
+
+    <div class="row" style="font-weight:bold;"><span>Total Propinas</span><span>${f(data.totalTips)}</span></div>
+    <hr class="solid">
+
+    <div class="footer">
+      <hr class="dashed">
+      <div class="footer-brand">VENTIFY POS</div>
+    </div>
+  `
+
+  openPrintWindow('Cierre de Caja', body)
+}
+
+// ─── Print Daily Summary (Corte Z) ────────────────────────────────────────────
+
+export interface DailySummaryData {
+  storeName: string
+  storeNIT?: string
+  date: string
+  totalOrders: number
+  completedOrders: number
+  cancelledOrders: number
+  totalSales: number
+  subtotal: number
+  tips: number
+  paymentBreakdown: Array<{ method: string; count: number; total: number; tips: number }>
+  topProducts: Array<{ name: string; quantity: number; total: number }>
+  openingBalance: number
+  expectedCash: number
+  services: number
+  currencyCode: string
+}
+
+export function printDailySummary(data: DailySummaryData) {
+  const f = (n: number) => fmt(n, data.currencyCode)
+  const payLabel = (m: string) => PAYMENT_LABELS[m] || m
+
+  const payRows = data.paymentBreakdown.map(p => `
+    <div class="row"><span>${payLabel(p.method)}</span><span>${f(p.total)}</span></div>
+    <div class="row" style="padding-left:8px;font-size:9px;color:#888;"><span>${p.count} órdenes</span><span></span></div>
+  `).join('')
+
+  const prodRows = data.topProducts.map(p => `
+    <div class="row"><span>${truncate(p.name, 22)} x${p.quantity}</span><span>${f(p.total)}</span></div>
+  `).join('')
+
+  const body = `
+    <div class="header">
+      <div class="store-name">${data.storeName}</div>
+      ${data.storeNIT ? `<div class="store-detail">NIT: ${data.storeNIT}</div>` : ''}
+    </div>
+
+    <div class="title">CORTE Z - RESUMEN DEL DÍA</div>
+    <div class="row"><span>Fecha</span><span>${data.date}</span></div>
+    <hr class="dashed">
+
+    <div class="section-title">ÓRDENES</div>
+    <div class="row"><span>Total</span><span>${data.totalOrders}</span></div>
+    <div class="row"><span>Completadas</span><span>${data.completedOrders}</span></div>
+    <div class="row"><span>Canceladas</span><span>${data.cancelledOrders}</span></div>
+    <hr class="dashed">
+
+    <div class="section-title">VENTAS</div>
+    <div class="row" style="font-weight:bold;font-size:12px;"><span>Total Ventas</span><span>${f(data.totalSales)}</span></div>
+    <div class="row"><span>Subtotal</span><span>${f(data.subtotal)}</span></div>
+    <div class="row"><span>Propinas</span><span>${f(data.tips)}</span></div>
+    <div class="row"><span>Servicios</span><span>${f(data.services)}</span></div>
+    <hr class="solid">
+
+    <div class="section-title">POR MÉTODO DE PAGO</div>
+    ${payRows}
+    <hr class="dashed">
+
+    <div class="section-title">TOP 5 PRODUCTOS</div>
+    ${prodRows}
+    <hr class="dashed">
+
+    <div class="section-title">RESUMEN EFECTIVO</div>
+    <div class="row"><span>Saldo Inicial</span><span>${f(data.openingBalance)}</span></div>
+    <div class="row" style="font-weight:bold;"><span>Efectivo Esperado</span><span>${f(data.expectedCash)}</span></div>
+    <hr class="solid">
+
+    <div class="footer">
+      <hr class="dashed">
+      <div class="footer-brand">VENTIFY POS</div>
+    </div>
+  `
+
+  openPrintWindow('Corte Z', body)
+}
+
+// ─── Print Product Catalog (A-Z) ──────────────────────────────────────────────
+
+export interface ProductCatalogData {
+  storeName: string
+  storeNIT?: string
+  products: Array<{
+    name: string
+    category: string
+    price: number
+    stock: number
+    sku?: string | null
+  }>
+  currencyCode: string
+}
+
+export function printProductCatalog(data: ProductCatalogData) {
+  const f = (n: number) => fmt(n, data.currencyCode)
+
+  // Group by category
+  const groups: Record<string, typeof data.products> = {}
+  for (const p of data.products) {
+    const cat = p.category || 'Sin Categoría'
+    if (!groups[cat]) groups[cat] = []
+    groups[cat].push(p)
+  }
+
+  const categorySections = Object.entries(groups).map(([cat, prods]) => {
+    const rows = prods.map(p => `
+      <div class="row">
+        <span>${truncate(p.name, 24)}</span>
+        <span style="min-width:70px;text-align:right;">${f(p.price)}</span>
+      </div>
+      <div class="row" style="padding-left:8px;font-size:9px;color:#888;">
+        <span>Stock: ${p.stock}${p.sku ? ` · ${p.sku}` : ''}</span>
+        <span></span>
+      </div>
+    `).join('')
+
+    return `
+      <hr class="dashed">
+      <div style="text-align:center;font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;margin:4px 0;">— ${cat} (${prods.length}) —</div>
+      ${rows}
+    `
+  }).join('')
+
+  const now = new Date().toLocaleDateString('es-CO')
+
+  const body = `
+    <div class="header">
+      <div class="store-name">${data.storeName}</div>
+      ${data.storeNIT ? `<div class="store-detail">NIT: ${data.storeNIT}</div>` : ''}
+    </div>
+
+    <div class="title">CATÁLOGO DE PRODUCTOS</div>
+    <div class="row" style="justify-content:center;"><span style="color:#888;">${data.products.length} productos</span></div>
+
+    ${categorySections}
+
+    <hr class="solid">
+    <div class="footer">
+      <div class="footer-msg">${now}</div>
+      <div class="footer-brand">VENTIFY POS</div>
+    </div>
+  `
+
+  openPrintWindow('Catálogo de Productos', body)
+}
+
+// ─── Print Kardex ─────────────────────────────────────────────────────────────
+
+export interface KardexData {
+  storeName: string
+  productName: string
+  category: string
+  sku?: string | null
+  movements: Array<{
+    date: string
+    type: string
+    qty: number
+    balance: number
+    notes: string
+  }>
+  currencyCode: string
+}
+
+const KARDEX_TYPE_LABELS: Record<string, string> = {
+  PURCHASE: 'COMP',
+  SALE: 'VENTA',
+  ADJUSTMENT: 'AJUS',
+  RETURN: 'DEV',
+}
+
+export function printKardex(data: KardexData) {
+  const typeLabel = (t: string) => KARDEX_TYPE_LABELS[t] || t.slice(0, 4)
+  const fmtQty = (q: number) => (q > 0 ? '+' : '') + q
+
+  const movementRows = data.movements.map(m => `
+    <div class="table-row" style="font-size:10px;">
+      <span style="width:68px;">${fmtDate(m.date).slice(0, 5)}</span>
+      <span style="width:35px;">${typeLabel(m.type)}</span>
+      <span style="width:40px;text-align:right;">${fmtQty(m.qty)}</span>
+      <span style="width:40px;text-align:right;font-weight:bold;">${m.balance}</span>
+    </div>
+  `).join('')
+
+  const body = `
+    <div class="header">
+      <div class="store-name">${data.storeName}</div>
+    </div>
+
+    <div class="title">KARDEX - PRODUCTO</div>
+    <hr class="dashed">
+
+    <div class="row"><span>Producto</span><span style="font-weight:bold;text-transform:uppercase;">${data.productName}</span></div>
+    <div class="row"><span>Categoría</span><span>${data.category}</span></div>
+    ${data.sku ? `<div class="row"><span>SKU</span><span>${data.sku}</span></div>` : ''}
+    <hr class="dashed">
+
+    <div class="table-header" style="display:flex;font-size:9px;">
+      <span style="width:68px;">Fecha</span>
+      <span style="width:35px;">Tipo</span>
+      <span style="width:40px;text-align:right;">Cant</span>
+      <span style="width:40px;text-align:right;">Saldo</span>
+    </div>
+    ${movementRows}
+    <hr class="solid">
+
+    ${data.movements.length > 0 ? `
+      <div class="row" style="font-weight:bold;">
+        <span>Stock Final</span>
+        <span>${data.movements[data.movements.length - 1].balance}</span>
+      </div>
+    ` : '<div style="text-align:center;color:#888;font-size:10px;">Sin movimientos</div>'}
+
+    <div class="footer">
+      <hr class="dashed">
+      <div class="footer-brand">VENTIFY POS</div>
+    </div>
+  `
+
+  openPrintWindow(`Kardex - ${data.productName}`, body)
+}

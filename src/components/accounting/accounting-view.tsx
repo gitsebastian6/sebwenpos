@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
+import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +27,15 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Wallet,
   TrendingUp,
@@ -52,6 +62,16 @@ import {
   Printer,
 } from 'lucide-react'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
+import {
+  printCashRegisterClose,
+  type CashRegisterCloseData,
+  printDailySummary,
+  type DailySummaryData,
+  printProductCatalog,
+  type ProductCatalogData,
+  printKardex,
+  type KardexData,
+} from '@/lib/print-ticket'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -242,6 +262,34 @@ function formatDayLabel(dateStr: string) {
   return d.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric' })
 }
 
+// ─── Cash Register Types ──────────────────────────────────────────────────────
+
+interface CashShift {
+  id: number
+  storeId: number
+  userId: number
+  openedAt: string
+  closedAt: string | null
+  openingBalance: number
+  closingBalance: number | null
+  expectedCash: number | null
+  difference: number | null
+  status: string
+  notes: string | null
+  user: { id: number; fullName: string | null; phone: string | null }
+}
+
+interface CashShiftSummary {
+  totalOrders: number
+  totalSales: number
+  totalTips: number
+  cashSales: number
+  otherSales: number
+  byPayment: Record<string, { count: number; total: number; tips: number }>
+}
+
+const CASH_METHODS = ['CASH', 'EFECTIVO', 'CARD', 'TARJETA', 'TRANSFER', 'NEQUI', 'DAVIPLATA', 'MIXED', 'CREDIT', 'FIADO']
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function AccountingView() {
@@ -264,6 +312,20 @@ export function AccountingView() {
   const [isLoadingReport, setIsLoadingReport] = useState(false)
   const [reportFrom, setReportFrom] = useState('')
   const [reportTo, setReportTo] = useState('')
+
+  // ─── Cash Register state ────────────────────────────────────────────────
+  const [currentShift, setCurrentShift] = useState<CashShift | null>(null)
+  const [shiftOrderCount, setShiftOrderCount] = useState(0)
+  const [shiftHistory, setShiftHistory] = useState<CashShift[]>([])
+  const [isLoadingCash, setIsLoadingCash] = useState(false)
+  const [showOpenDialog, setShowOpenDialog] = useState(false)
+  const [showCloseDialog, setShowCloseDialog] = useState(false)
+  const [openBalance, setOpenBalance] = useState('')
+  const [openNotes, setOpenNotes] = useState('')
+  const [closeBalance, setCloseBalance] = useState('')
+  const [closeNotes, setCloseNotes] = useState('')
+  const [isSavingShift, setIsSavingShift] = useState(false)
+  const [lastClosedShift, setLastClosedShift] = useState<{ shift: CashShift; summary: CashShiftSummary } | null>(null)
 
   // ─── Fetch accounts ──────────────────────────────────────────────────────
 
@@ -358,6 +420,218 @@ export function AccountingView() {
     }
   }, [activeTab, reportData, fetchReports])
 
+  // ─── Cash Register fetches ─────────────────────────────────────────────────
+
+  const fetchCurrentShift = useCallback(async () => {
+    if (!store?.id) return
+    try {
+      const res = await fetch(`/api/cash-register/current?storeId=${store.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setCurrentShift(data.shift)
+        setShiftOrderCount(data.orderCount || 0)
+      }
+    } catch { /* silent */ }
+  }, [store?.id])
+
+  const fetchShiftHistory = useCallback(async () => {
+    if (!store?.id) return
+    setIsLoadingCash(true)
+    try {
+      const res = await fetch(`/api/cash-register?storeId=${store.id}&limit=20`)
+      if (res.ok) {
+        const data = await res.json()
+        setShiftHistory(data.shifts || [])
+      }
+    } catch { /* silent */ } finally {
+      setIsLoadingCash(false)
+    }
+  }, [store?.id])
+
+  useEffect(() => {
+    if (activeTab === 'caja') {
+      fetchCurrentShift()
+      fetchShiftHistory()
+    }
+  }, [activeTab, fetchCurrentShift, fetchShiftHistory])
+
+  // ─── Cash Register handlers ────────────────────────────────────────────────
+
+  async function handleOpenShift() {
+    if (!store?.id || !openBalance) return
+    setIsSavingShift(true)
+    try {
+      const res = await fetch('/api/cash-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeId: store.id,
+          userId: useAuthStore.getState().user?.id || 0,
+          openingBalance: parseInt(openBalance) || 0,
+          notes: openNotes || undefined,
+        }),
+      })
+      if (res.ok) {
+        toast.success('Caja abierta exitosamente')
+        setShowOpenDialog(false)
+        setOpenBalance('')
+        setOpenNotes('')
+        fetchCurrentShift()
+        fetchShiftHistory()
+      } else {
+        const err = await res.json()
+        toast.error(err.error || 'Error al abrir caja')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setIsSavingShift(false)
+    }
+  }
+
+  async function handleCloseShift() {
+    if (!currentShift || !closeBalance) return
+    setIsSavingShift(true)
+    try {
+      const res = await fetch(`/api/cash-register/${currentShift.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          closingBalance: parseInt(closeBalance) || 0,
+          notes: closeNotes || undefined,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success('Caja cerrada exitosamente')
+        setShowCloseDialog(false)
+        setCloseBalance('')
+        setCloseNotes('')
+        setLastClosedShift({ shift: data.shift, summary: { totalOrders: 0, totalSales: 0, totalTips: 0, cashSales: 0, otherSales: 0, byPayment: {} } })
+        setCurrentShift(null)
+        setShiftOrderCount(0)
+        fetchShiftHistory()
+        // Fetch full summary for printing
+        const detailRes = await fetch(`/api/cash-register/${currentShift.id}?storeId=${store?.id}`)
+        if (detailRes.ok) {
+          const detail = await detailRes.json()
+          setLastClosedShift({ shift: data.shift, summary: detail.orderSummary })
+        }
+      } else {
+        const err = await res.json()
+        toast.error(err.error || 'Error al cerrar caja')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setIsSavingShift(false)
+    }
+  }
+
+  function handlePrintClose() {
+    if (!lastClosedShift || !store) return
+    const s = lastClosedShift.summary
+    const payBreakdown = Object.entries(s.byPayment).map(([method, data]) => ({
+      method,
+      count: data.count,
+      total: data.total,
+    }))
+    const closeData: CashRegisterCloseData = {
+      storeName: store.name,
+      storeNIT: store.nit || undefined,
+      storeAddress: store.address || undefined,
+      openedAt: lastClosedShift.shift.openedAt,
+      closedAt: lastClosedShift.shift.closedAt || new Date().toISOString(),
+      responsibleName: lastClosedShift.shift.user.fullName || 'Usuario',
+      openingBalance: lastClosedShift.shift.openingBalance,
+      totalCashSales: s.cashSales,
+      totalOtherSales: s.otherSales,
+      expectedCash: lastClosedShift.shift.expectedCash || 0,
+      actualCash: lastClosedShift.shift.closingBalance || 0,
+      difference: lastClosedShift.shift.difference || 0,
+      totalTips: s.totalTips,
+      paymentBreakdown: payBreakdown,
+      currencyCode: currencyCode,
+    }
+    printCashRegisterClose(closeData)
+  }
+
+  async function handlePrintDailySummary() {
+    if (!store?.id) return
+    try {
+      const res = await fetch(`/api/reports/daily?storeId=${store.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        const printData: DailySummaryData = {
+          storeName: store.name,
+          storeNIT: store.nit || undefined,
+          date: data.date,
+          totalOrders: data.orders.total,
+          completedOrders: data.orders.completed,
+          cancelledOrders: data.orders.cancelled,
+          totalSales: data.sales.total,
+          subtotal: data.sales.subtotal,
+          tips: data.sales.tips,
+          paymentBreakdown: Object.entries(data.byPayment).map(([method, d]) => ({
+            method,
+            count: d.count,
+            total: d.total,
+            tips: d.tips,
+          })),
+          topProducts: data.topProducts.map((p: { name: string; quantity: number; total: number }) => p),
+          openingBalance: data.cash.openingBalance,
+          expectedCash: data.cash.expectedCash,
+          services: data.services,
+          currencyCode,
+        }
+        printDailySummary(printData)
+      }
+    } catch { toast.error('Error al generar corte Z') }
+  }
+
+  async function handlePrintCatalog() {
+    if (!store?.id) return
+    try {
+      const res = await fetch(`/api/products?storeId=${store.id}&active=true&limit=500`)
+      if (res.ok) {
+        const data = await res.json()
+        const products = (data.products || []).map((p: { name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }) => ({
+          name: p.name,
+          category: p.category?.name || 'Sin Categoría',
+          price: p.salePrice,
+          stock: p.currentStock,
+          sku: p.sku,
+        }))
+        const printData: ProductCatalogData = {
+          storeName: store.name,
+          storeNIT: store.nit || undefined,
+          products,
+          currencyCode,
+        }
+        printProductCatalog(printData)
+      }
+    } catch { toast.error('Error al generar catálogo') }
+  }
+
+  async function handlePrintKardex(productId: number, productName: string, category: string, sku?: string | null) {
+    if (!store?.id) return
+    try {
+      const res = await fetch(`/api/inventory/kardex?storeId=${store.id}&productId=${productId}`)
+      if (res.ok) {
+        const data = await res.json()
+        const printData: KardexData = {
+          storeName: store.name,
+          productName,
+          category,
+          sku,
+          movements: data.movements,
+          currencyCode,
+        }
+        printKardex(printData)
+      }
+    } catch { toast.error('Error al generar kardex') }
+  }
+
   // ─── Summary calculations ────────────────────────────────────────────────
   // INCOME accounts: balance = DEBIT - CREDIT. Normal balance is negative (credits > debits).
   // The actual income is the absolute value of the negative balance.
@@ -398,7 +672,7 @@ export function AccountingView() {
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4 lg:w-[540px]">
+        <TabsList className="grid w-full grid-cols-5 lg:w-[640px]">
           <TabsTrigger value="cuentas" className="gap-1.5">
             <BookOpen className="h-4 w-4 hidden sm:block" />
             Cuentas
@@ -414,6 +688,10 @@ export function AccountingView() {
           <TabsTrigger value="informes" className="gap-1.5">
             <FileText className="h-4 w-4 hidden sm:block" />
             Informes
+          </TabsTrigger>
+          <TabsTrigger value="caja" className="gap-1.5">
+            <Wallet className="h-4 w-4 hidden sm:block" />
+            Caja
           </TabsTrigger>
         </TabsList>
 
@@ -1703,6 +1981,319 @@ export function AccountingView() {
             ) : null}
           </div>
         </TabsContent>
+
+        {/* ─── Tab 5: Caja ──────────────────────────────────────────────── */}
+        <TabsContent value="caja">
+          <div className="space-y-6">
+            {/* ─── Current Shift Status Card ─────────────────────────────── */}
+            {currentShift ? (
+              <Card className="relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+                <CardHeader className="pb-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center">
+                        <Wallet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <CardDescription className="text-xs">Turno Abierto</CardDescription>
+                    </div>
+                    <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200">
+                      ABIERTA
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Apertura</p>
+                      <p className="text-sm font-semibold">{formatDate(currentShift.openedAt)} {formatTime(currentShift.openedAt)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Saldo Inicial</p>
+                      <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                        {formatCurrency(currentShift.openingBalance, currencyCode)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Ventas del Turno</p>
+                      <p className="text-sm font-bold tabular-nums">{shiftOrderCount} órdenes</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Responsable</p>
+                      <p className="text-sm font-semibold">{currentShift.user.fullName || 'Usuario'}</p>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => setShowCloseDialog(true)} className="gap-1.5">
+                      <Wallet className="h-4 w-4" />
+                      Cerrar Caja
+                    </Button>
+                    <Button variant="outline" onClick={fetchCurrentShift} className="gap-1.5">
+                      <Loader2 className="h-3.5 w-3.5" />
+                      Actualizar
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-amber-500" />
+                <CardHeader className="pb-0">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
+                      <Wallet className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <CardDescription className="text-xs">Caja Cerrada</CardDescription>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-3">No hay un turno abierto. Abre la caja para registrar ventas en efectivo.</p>
+                  <Button onClick={() => setShowOpenDialog(true)} className="gap-1.5">
+                    <Wallet className="h-4 w-4" />
+                    Abrir Caja
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ─── Last Closed Difference ────────────────────────────────── */}
+            {lastClosedShift && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Último Cierre</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Efectivo Esperado</span>
+                    <span className="text-sm font-bold tabular-nums">
+                      {formatCurrency(lastClosedShift.shift.expectedCash || 0, currencyCode)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Efectivo Real</span>
+                    <span className="text-sm font-bold tabular-nums">
+                      {formatCurrency(lastClosedShift.shift.closingBalance || 0, currencyCode)}
+                    </span>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">Diferencia</span>
+                    <span className={`text-base font-bold tabular-nums ${
+                      (lastClosedShift.shift.difference || 0) >= 0
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-red-600 dark:text-red-400'
+                    }`}>
+                      {(lastClosedShift.shift.difference || 0) >= 0 ? '+' : '-'}
+                      {formatCurrency(Math.abs(lastClosedShift.shift.difference || 0), currencyCode)}
+                    </span>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={handlePrintClose} className="gap-1.5 mt-2">
+                    <Printer className="h-3.5 w-3.5" />
+                    Imprimir Cierre
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ─── Print Actions ──────────────────────────────────────────── */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Acciones</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={handlePrintDailySummary} className="gap-1.5">
+                    <FileText className="h-3.5 w-3.5" />
+                    Corte Z del Día
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handlePrintCatalog} className="gap-1.5">
+                    <Receipt className="h-3.5 w-3.5" />
+                    Imprimir Catálogo
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ─── Shift History ──────────────────────────────────────────── */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Historial de Turnos</CardTitle>
+                  <Button variant="outline" size="sm" onClick={fetchShiftHistory} className="gap-1.5">
+                    <Loader2 className="h-3.5 w-3.5" />
+                    Actualizar
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="max-h-[400px] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[110px]">Fecha</TableHead>
+                        <TableHead>Responsable</TableHead>
+                        <TableHead className="text-right w-[120px]">Apertura</TableHead>
+                        <TableHead className="text-right w-[120px]">Cierre</TableHead>
+                        <TableHead className="text-right w-[100px]">Diferencia</TableHead>
+                        <TableHead className="w-[70px]">Estado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoadingCash ? (
+                        Array.from({ length: 5 }).map((_, i) => (
+                          <TableRow key={i}>
+                            {Array.from({ length: 6 }).map((_, j) => (
+                              <TableCell key={j}><Skeleton className="h-4 w-16" /></TableCell>
+                            ))}
+                          </TableRow>
+                        ))
+                      ) : shiftHistory.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground text-sm">
+                            No hay turnos registrados
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        shiftHistory.map((shift) => (
+                          <TableRow key={shift.id}>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span className="text-xs font-medium">{formatDate(shift.openedAt)}</span>
+                                <span className="text-[10px] text-muted-foreground">{formatTime(shift.openedAt)}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-sm truncate max-w-[120px] block">
+                                {shift.user.fullName || 'Usuario'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-sm tabular-nums">{formatCurrency(shift.openingBalance, currencyCode)}</span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-sm tabular-nums">
+                                {shift.closingBalance !== null ? formatCurrency(shift.closingBalance, currencyCode) : '—'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {shift.difference !== null ? (
+                                <span className={`text-sm font-bold tabular-nums ${
+                                  shift.difference >= 0
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : 'text-red-600 dark:text-red-400'
+                                }`}>
+                                  {shift.difference >= 0 ? '+' : '-'}{formatCurrency(Math.abs(shift.difference), currencyCode)}
+                                </span>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={shift.status === 'OPEN'
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 text-[9px]'
+                                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 border-gray-200 text-[9px]'
+                                }
+                              >
+                                {shift.status === 'OPEN' ? 'ABIERTA' : 'CERRADA'}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ─── Dialog: Open Cash ─────────────────────────────────────────── */}
+        <Dialog open={showOpenDialog} onOpenChange={setShowOpenDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Abrir Caja</DialogTitle>
+              <DialogDescription>Registra el saldo inicial en la caja registradora</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Saldo Inicial (COP)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={openBalance}
+                  onChange={(e) => setOpenBalance(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Notas (opcional)</Label>
+                <Textarea
+                  placeholder="Observaciones..."
+                  value={openNotes}
+                  onChange={(e) => setOpenNotes(e.target.value)}
+                  rows={2}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowOpenDialog(false)}>Cancelar</Button>
+              <Button onClick={handleOpenShift} disabled={isSavingShift || !openBalance} className="gap-1.5">
+                {isSavingShift && <Loader2 className="h-4 w-4 animate-spin" />}
+                Abrir Caja
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Dialog: Close Cash ────────────────────────────────────────── */}
+        <Dialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Cerrar Caja</DialogTitle>
+              <DialogDescription>Ingresa el efectivo real en la caja</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              {currentShift && (
+                <div className="bg-muted/50 rounded-lg p-3 space-y-1">
+                  <p className="text-xs text-muted-foreground">Saldo de apertura</p>
+                  <p className="text-lg font-bold tabular-nums">{formatCurrency(currentShift.openingBalance, currencyCode)}</p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>Efectivo Real en Caja (COP)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={closeBalance}
+                  onChange={(e) => setCloseBalance(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Notas (opcional)</Label>
+                <Textarea
+                  placeholder="Observaciones del cierre..."
+                  value={closeNotes}
+                  onChange={(e) => setCloseNotes(e.target.value)}
+                  rows={2}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCloseDialog(false)}>Cancelar</Button>
+              <Button onClick={handleCloseShift} disabled={isSavingShift || !closeBalance} className="gap-1.5">
+                {isSavingShift && <Loader2 className="h-4 w-4 animate-spin" />}
+                Cerrar Caja
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </Tabs>
     </div>
   )

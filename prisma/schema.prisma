@@ -24,6 +24,8 @@ model User {
 
   store Store? @relation("UserStore")
 
+  cashRegisters CashRegister[]
+
   @@map("users")
 }
 
@@ -55,6 +57,7 @@ model Store {
   comandaItems        ComandaItem[]
   providers           Provider[]
   purchases           Purchase[]
+  cashRegisters       CashRegister[]
 
   @@map("stores")
 }
@@ -380,4 +383,27 @@ model ServiceTransaction {
   service Service @relation(fields: [serviceId], references: [id])
 
   @@map("service_transactions")
+}
+
+// ----------------------------------------------
+// CONTEXTO: CAJA REGISTRADORA
+// ----------------------------------------------
+
+model CashRegister {
+  id              Int       @id @default(autoincrement())
+  storeId         Int       @map("store_id")
+  userId          Int       @map("user_id")
+  openedAt        DateTime  @default(now()) @map("opened_at")
+  closedAt        DateTime? @map("closed_at")
+  openingBalance  Int       @default(0) @map("opening_balance") // en pesos
+  closingBalance  Int?      @map("closing_balance") // en pesos
+  expectedCash    Int?      @map("expected_cash") // calculado: apertura + ventas efectivo - pagos fiado
+  difference      Int?      @map("difference") // cierre - esperado
+  status          String    @default("OPEN") // OPEN, CLOSED
+  notes           String?
+
+  store Store @relation(fields: [storeId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@map("cash_registers")
 }
