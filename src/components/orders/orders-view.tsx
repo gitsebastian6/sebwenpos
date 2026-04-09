@@ -43,8 +43,10 @@ import {
   FileText,
   Receipt,
   RotateCcw,
+  Printer,
   X as XIcon,
 } from 'lucide-react'
+import { printTicket, type TicketItem } from '@/lib/print-ticket'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -67,9 +69,11 @@ interface OrderDetail {
   status: string
   paymentMethod: string
   subtotal: number
+  tipAmount: number
   total: number
   notes: string | null
   createdAt: string
+  tableName?: string | null
   customer: {
     id: number
     name: string
@@ -82,6 +86,7 @@ interface OrderDetail {
     quantity: number
     unitPrice: number
     totalRow: number
+    isService?: boolean
   }[]
 }
 
@@ -145,6 +150,31 @@ export function OrdersView() {
     } finally {
       setDetailLoading(false)
     }
+  }
+
+  function handlePrintTicket(detail: OrderDetail) {
+    if (!store) return
+    const items: TicketItem[] = detail.orderItems.map((item) => ({
+      name: item.productName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      total: item.totalRow,
+      isService: item.isService,
+    }))
+    printTicket({
+      storeName: store.name,
+      orderNumber: detail.orderNumber,
+      date: detail.createdAt,
+      customer: detail.customer?.name,
+      tableName: detail.tableName ?? undefined,
+      items,
+      subtotal: detail.subtotal,
+      tipAmount: detail.tipAmount,
+      total: detail.total,
+      paymentMethod: detail.paymentMethod,
+      currencyCode: store.currencyCode,
+      notes: detail.notes ?? undefined,
+    })
   }
 
   function clearFilters() {
@@ -313,18 +343,32 @@ export function OrdersView() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Ver detalle"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openOrderDetail(order.id)
-                          }}
-                        >
-                          <FileText className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Imprimir ticket"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openOrderDetail(order.id)
+                            }}
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Ver detalle"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openOrderDetail(order.id)
+                            }}
+                          >
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -467,12 +511,28 @@ export function OrdersView() {
                   <span>Subtotal</span>
                   <span>{formatCurrency(orderDetail.subtotal, store?.currencyCode)}</span>
                 </div>
+                {orderDetail.tipAmount > 0 && (
+                  <div className="flex justify-between text-sm text-pink-600 dark:text-pink-400">
+                    <span>Propina</span>
+                    <span>{formatCurrency(orderDetail.tipAmount, store?.currencyCode)}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between font-semibold text-base">
                   <span>Total</span>
                   <span>{formatCurrency(orderDetail.total, store?.currencyCode)}</span>
                 </div>
               </div>
+
+              {/* ── Print Ticket Button ──────────────────────────── */}
+              <Button
+                onClick={() => handlePrintTicket(orderDetail)}
+                className="w-full"
+                variant="outline"
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Imprimir Ticket
+              </Button>
 
               {/* ── Notes ────────────────────────────────────── */}
               {orderDetail.notes && (

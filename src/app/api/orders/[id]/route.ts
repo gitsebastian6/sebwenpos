@@ -26,9 +26,24 @@ export async function GET(
             email: true,
           },
         },
+        tableSession: {
+          select: {
+            barTable: {
+              select: {
+                number: true,
+                name: true,
+              },
+            },
+          },
+        },
         orderItems: {
           include: {
             product: {
+              select: {
+                name: true,
+              },
+            },
+            service: {
               select: {
                 name: true,
               },
@@ -48,16 +63,19 @@ export async function GET(
       status: order.status,
       paymentMethod: order.paymentMethod,
       subtotal: Number(order.subtotal),
+      tipAmount: Number(order.tipAmount ?? 0),
       total: Number(order.total),
       notes: order.notes,
       createdAt: order.createdAt.toISOString(),
       customer: order.customer,
+      tableName: order.tableSession?.barTable ? `Mesa ${order.tableSession.barTable.number}` : null,
       orderItems: order.orderItems.map((item: any) => ({
         id: item.id,
-        productName: item.product?.name ?? 'Producto eliminado',
+        productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
         quantity: item.quantity,
         unitPrice: Number(item.unitPrice),
         totalRow: Number(item.totalRow),
+        isService: !!item.serviceId,
       })),
     }
 

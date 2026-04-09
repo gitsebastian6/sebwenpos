@@ -70,7 +70,9 @@ import {
   PowerOff,
   Star,
   Heart,
+  Printer,
 } from 'lucide-react'
+import { printTicket, type TicketItem } from '@/lib/print-ticket'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -288,6 +290,7 @@ export function TablesView() {
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([])
   const [tipAmount, setTipAmount] = useState<number>(0)
   const [showTipInput, setShowTipInput] = useState(false)
+  const [lastPaymentData, setLastPaymentData] = useState<any>(null)
 
   // ── Close session confirm ──
   const [closeSessionOpen, setCloseSessionOpen] = useState(false)
@@ -738,6 +741,8 @@ export function TablesView() {
         throw new Error(data.error || 'Error al procesar pago')
       }
 
+      const paymentData = await res.json()
+      setLastPaymentData(paymentData)
       toast.success(`Pago exitoso - ${paymentMethodLabel(paymentMethod)}`)
       setPaymentOpen(false)
       setSelectedItemIds([])
@@ -1622,7 +1627,7 @@ export function TablesView() {
                                   {paymentMethodLabel(order.paymentMethod)}
                                 </span>
                               </div>
-                              <div className="text-right">
+                              <div className="flex items-center gap-2">
                                 <span className="font-medium">
                                   {formatCurrency(order.total, store?.currencyCode)}
                                 </span>
@@ -1630,6 +1635,39 @@ export function TablesView() {
                             </div>
                           ))}
                         </div>
+                        {/* Print last ticket button */}
+                        {lastPaymentData && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 w-full gap-2"
+                            onClick={() => {
+                              const items: TicketItem[] = (lastPaymentData.orderItems || []).map((item: any) => ({
+                                name: item.productName,
+                                quantity: item.quantity,
+                                unitPrice: item.unitPrice,
+                                total: item.totalRow,
+                                isService: item.isService,
+                              }))
+                              printTicket({
+                                storeName: store?.name || '',
+                                orderNumber: lastPaymentData.orderNumber,
+                                date: lastPaymentData.createdAt,
+                                customer: lastPaymentData.customer?.name || session.customer?.name,
+                                tableName: session.barTable ? `Mesa ${session.barTable.number}${session.barTable.name ? ` - ${session.barTable.name}` : ''}` : undefined,
+                                items,
+                                subtotal: lastPaymentData.subtotal,
+                                tipAmount: lastPaymentData.tipAmount || 0,
+                                total: lastPaymentData.total,
+                                paymentMethod: lastPaymentData.paymentMethod,
+                                currencyCode: store?.currencyCode || 'COP',
+                              })
+                            }}
+                          >
+                            <Printer className="h-4 w-4" />
+                            Imprimir Último Ticket
+                          </Button>
+                        )}
                       </div>
                     )}
 

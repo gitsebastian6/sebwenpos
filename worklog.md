@@ -739,3 +739,45 @@ Stage Summary:
 - Double-entry accounting: DEBIT Caja, CREDIT Ventas, CREDIT Propina
 - Tips only allowed for non-credit payment methods
 - 10%/15% quick tip buttons for convenience
+
+---
+Task ID: 14
+Agent: Main Agent
+Task: Add print ticket (factura POS) feature + tips display in orders
+
+Work Log:
+- Created `src/lib/print-ticket.ts` - Reusable POS thermal receipt printer utility
+  - Generates HTML receipt in new window with auto-print dialog
+  - Monospace font, 80mm thermal paper width
+  - Shows: store name/NIT, order number, date/time, customer, table, items (qty × price), subtotal, tip, total, payment method, footer
+- Updated `src/app/api/orders/[id]/route.ts` - Added tipAmount, tableName, service name to detail response
+  - Includes tableSession.barTable for mesa orders
+  - Includes service relation for service items
+- Updated `src/app/api/orders/route.ts` - POST now returns full order data (items, tipAmount, customer, paymentMethod, subtotal)
+- Updated `src/components/orders/orders-view.tsx`:
+  - Added tipAmount to OrderDetail interface
+  - Shows tip in pink when > 0 in order detail dialog
+  - Added "Imprimir Ticket" button (full-width, outline) in detail dialog
+  - Added Printer icon in orders table actions column
+- Updated `src/components/pos/pos-view.tsx`:
+  - Added lastOrderData state to store full order response
+  - After sale, "Imprimir" button appears next to last order number
+  - Button triggers printTicket() with full order data
+- Updated `src/components/tables/tables-view.tsx`:
+  - Added lastPaymentData state to store payment response
+  - "Imprimir Último Ticket" button in "Pagos Realizados" section after payment
+  - Button triggers printTicket() with mesa name, customer, items, tip
+- All lint checks pass (only pre-existing errors in utility scripts)
+- API verified: tipAmount, tableName, isService fields returned correctly
+
+Stage Summary:
+- Files created:
+  - `src/lib/print-ticket.ts` - POS receipt printing utility
+- Files modified:
+  - `src/app/api/orders/[id]/route.ts` - tipAmount, tableName, service in detail
+  - `src/app/api/orders/route.ts` - Full order data in POST response
+  - `src/components/orders/orders-view.tsx` - Tip display + print button in detail
+  - `src/components/pos/pos-view.tsx` - Print button after sale
+  - `src/components/tables/tables-view.tsx` - Print button after mesa payment
+- Print ticket available in: POS (after sale), Mesas (after payment), Órdenes (detail dialog)
+- Receipt format: thermal POS style, monospace, 80mm width, auto-print

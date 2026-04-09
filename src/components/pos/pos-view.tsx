@@ -49,7 +49,9 @@ import {
   Users,
   Star,
   Heart,
+  Printer,
 } from 'lucide-react'
+import { printTicket, type TicketItem } from '@/lib/print-ticket'
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -131,6 +133,7 @@ export function POSView() {
   const [notes, setNotes] = useState('')
   const [showChargeDialog, setShowChargeDialog] = useState(false)
   const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null)
+  const [lastOrderData, setLastOrderData] = useState<any>(null)
   const [tipAmount, setTipAmount] = useState<number>(0)
   const [showTipInput, setShowTipInput] = useState(false)
 
@@ -332,6 +335,7 @@ export function POSView() {
     setNotes('')
     setSelectedCustomer('none')
     setLastOrderNumber(null)
+    setLastOrderData(null)
     setTipAmount(0)
     setShowTipInput(false)
   }, [])
@@ -375,6 +379,7 @@ export function POSView() {
         description: `Orden ${order.orderNumber}`,
       })
       setLastOrderNumber(order.orderNumber)
+      setLastOrderData(order)
       setCart([])
       setNotes('')
       setTipAmount(0)
@@ -857,11 +862,45 @@ export function POSView() {
             Cobrar {cart.length > 0 ? formatCurrency(total, currencyCode) : ''}
           </Button>
 
-          {/* Last order number */}
+          {/* Last order number + print */}
           {lastOrderNumber && (
-            <p className="text-xs text-center text-muted-foreground">
-              Última venta: <span className="font-semibold">{lastOrderNumber}</span>
-            </p>
+            <div className="flex items-center justify-center gap-3">
+              <p className="text-xs text-center text-muted-foreground">
+                Última venta: <span className="font-semibold">{lastOrderNumber}</span>
+              </p>
+              {lastOrderData && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-primary hover:text-primary"
+                  onClick={() => {
+                    const items: TicketItem[] = (lastOrderData.orderItems || []).map((item: any) => ({
+                      name: item.productName,
+                      quantity: item.quantity,
+                      unitPrice: item.unitPrice,
+                      total: item.totalRow,
+                      isService: item.isService,
+                    }))
+                    printTicket({
+                      storeName: store?.name || '',
+                      orderNumber: lastOrderData.orderNumber,
+                      date: lastOrderData.createdAt,
+                      customer: lastOrderData.customer?.name,
+                      items,
+                      subtotal: lastOrderData.subtotal,
+                      tipAmount: lastOrderData.tipAmount || 0,
+                      total: lastOrderData.total,
+                      paymentMethod: lastOrderData.paymentMethod,
+                      currencyCode: currencyCode,
+                      notes: notes || undefined,
+                    })
+                  }}
+                >
+                  <Printer className="h-3.5 w-3.5 mr-1" />
+                  Imprimir
+                </Button>
+              )}
+            </div>
           )}
         </div>
       </div>
