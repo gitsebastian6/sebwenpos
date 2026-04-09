@@ -976,3 +976,36 @@ Stage Summary:
 - Desktop POS: Unchanged side-by-side layout with proper height management
 - Mesas comanda: Compact "Agregar Producto" button opens Dialog for POS-like tap-to-add experience
 - All existing functionality preserved, no API changes
+
+---
+Task ID: 14
+Agent: Main Agent
+Task: Redesign POS to use Sheet pattern + mobile responsiveness
+
+Work Log:
+- Analyzed user issue: POS comanda with fixed right panel breaks on mobile and in new browser tab
+- Remove button for deleting cart items not accessible due to overflow/clipping
+- Studied Mesas (Tables) view pattern: uses Sheet overlay for comanda management
+- Completely redesigned POS view (pos-view.tsx):
+  - Removed fixed right panel layout (w-[400px] side panel)
+  - Products grid now takes full width (responsive: 2 cols mobile, 3-6 cols desktop)
+  - Added floating action button (FAB) for cart access (fixed bottom-right, emerald green)
+  - FAB shows item count + total price (price hidden on mobile)
+  - Cart opens as Sheet overlay (slides from right) like Mesas
+  - Sheet is responsive: full width on mobile, max-w-md on desktop
+  - Sheet contains: scrollable cart items with delete buttons, payment options, charge button
+  - Auto-opens Sheet when first product is added
+  - Cart items have proper remove buttons (X icon) that work on all screen sizes
+  - All existing functionality preserved (tips, fiado validation, transfer ref, notes, print)
+- Fixed parenthesis bug: line 630 had extra `)` consuming the `return (` paren
+- Made app-shell responsive: header padding px-4 sm:px-6, content padding p-4 sm:p-6
+- Product grid: responsive columns (2/3/4/5/6 based on breakpoint)
+
+Stage Summary:
+- Files modified:
+  - `src/components/pos/pos-view.tsx` - Complete redesign: full-width products + Sheet cart overlay
+  - `src/components/layout/app-shell.tsx` - Responsive padding adjustments
+- POS now works identically on mobile, preview panel, and new browser tab
+- Cart Sheet pattern matches Mesas comanda approach
+- No fixed panel = no overflow/clipping issues
+

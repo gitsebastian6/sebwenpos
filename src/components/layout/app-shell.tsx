@@ -136,10 +136,10 @@ export function AppShell() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <header className="flex h-14 items-center gap-4 border-b bg-background px-6">
+        <header className="flex h-14 items-center gap-3 sm:gap-4 border-b bg-background px-4 sm:px-6">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-6" />
-          <h1 className="text-lg font-semibold capitalize">
+          <h1 className="text-base sm:text-lg font-semibold capitalize">
             {currentView === 'pos' ? 'Punto de Venta' :
              currentView === 'tables' ? 'Mesas y Comandas' :
              currentView === 'services' ? 'Servicios' :
@@ -148,7 +148,7 @@ export function AppShell() {
              menuItems.find(m => m.view === currentView)?.label || 'Dashboard'}
           </h1>
         </header>
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-4 sm:p-6">
           <ViewRouter currentView={currentView} />
         </main>
       </SidebarInset>
