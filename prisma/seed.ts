@@ -603,10 +603,10 @@ async function main() {
   // =============================================
   const barServices = [
     await prisma.service.create({
-      data: { storeId, name: 'Servicio de Daños', description: 'Cargo por daños a elementos del bar (vasos, muebles, etc.)', price: 15000, icon: 'AlertTriangle', unit: 'servicio', isActive: true },
+      data: { storeId, name: 'Baños', description: 'Cargo por uso de baños del bar', price: 15000, icon: 'Bath', unit: 'servicio', isActive: true },
     }),
     await prisma.service.create({
-      data: { storeId, name: 'Billarana', description: 'Servicio de mesa de billar por hora', price: 8000, icon: 'CircleDot', unit: 'hora', isActive: true },
+      data: { storeId, name: 'Bolirana', description: 'Servicio de mesa de billar por hora', price: 8000, icon: 'CircleDot', unit: 'hora', isActive: true },
     }),
     await prisma.service.create({
       data: { storeId, name: 'Guardado de Elementos', description: 'Guarda y custodia de elementos personales', price: 5000, icon: 'ShieldCheck', unit: 'servicio', isActive: true },
@@ -622,13 +622,13 @@ async function main() {
     data: { storeId, serviceId: barServices[3].id, quantity: 3, unitPrice: 3500, totalAmount: 10500, notes: 'Rollos usados en el día', status: 'COMPLETED', createdAt: yesterday },
   })
   await prisma.serviceTransaction.create({
-    data: { storeId, serviceId: barServices[1].id, quantity: 2, unitPrice: 8000, totalAmount: 16000, notes: 'Billarana 2 horas - Mesa VIP', status: 'COMPLETED', createdAt: yesterday },
+    data: { storeId, serviceId: barServices[1].id, quantity: 2, unitPrice: 8000, totalAmount: 16000, notes: 'Bolirana 2 horas - Mesa VIP', status: 'COMPLETED', createdAt: yesterday },
   })
   await prisma.serviceTransaction.create({
     data: { storeId, serviceId: barServices[3].id, quantity: 4, unitPrice: 3500, totalAmount: 14000, notes: 'Rollos usados en el día', status: 'COMPLETED', createdAt: dayBefore },
   })
   await prisma.serviceTransaction.create({
-    data: { storeId, serviceId: barServices[0].id, quantity: 1, unitPrice: 15000, totalAmount: 15000, notes: 'Vaso roto en mesa 3', status: 'COMPLETED', createdAt: dayBefore },
+    data: { storeId, serviceId: barServices[0].id, quantity: 1, unitPrice: 15000, totalAmount: 15000, notes: 'Uso de baños mesa 3', status: 'COMPLETED', createdAt: dayBefore },
   })
   console.log('✅ 4 transacciones de servicio creadas')
 

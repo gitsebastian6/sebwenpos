@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import {
   AlertTriangle,
+  Bath,
   CircleDot,
   ShieldCheck,
   ScrollText,
@@ -101,6 +102,7 @@ interface ServiceTransaction {
 
 const ICON_MAP: Record<string, React.ReactNode> = {
   AlertTriangle: <AlertTriangle className="h-6 w-6" />,
+  Bath: <Bath className="h-6 w-6" />,
   CircleDot: <CircleDot className="h-6 w-6" />,
   ShieldCheck: <ShieldCheck className="h-6 w-6" />,
   ScrollText: <ScrollText className="h-6 w-6" />,
@@ -109,6 +111,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
 
 const ICON_SMALL: Record<string, React.ReactNode> = {
   AlertTriangle: <AlertTriangle className="h-4 w-4" />,
+  Bath: <Bath className="h-4 w-4" />,
   CircleDot: <CircleDot className="h-4 w-4" />,
   ShieldCheck: <ShieldCheck className="h-4 w-4" />,
   ScrollText: <ScrollText className="h-4 w-4" />,
@@ -117,6 +120,7 @@ const ICON_SMALL: Record<string, React.ReactNode> = {
 
 const COLOR_MAP: Record<string, { color: string; bgColor: string }> = {
   AlertTriangle: { color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/50' },
+  Bath: { color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/50' },
   CircleDot: { color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50' },
   ShieldCheck: { color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50' },
   ScrollText: { color: 'text-sky-600 dark:text-sky-400', bgColor: 'bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800/50' },
@@ -124,8 +128,8 @@ const COLOR_MAP: Record<string, { color: string; bgColor: string }> = {
 }
 
 const ICON_OPTIONS = [
-  { value: 'AlertTriangle', label: 'Alerta / Daños' },
-  { value: 'CircleDot', label: 'Billar / Juegos' },
+  { value: 'Bath', label: 'Baños' },
+  { value: 'CircleDot', label: 'Bolirana / Billar' },
   { value: 'ShieldCheck', label: 'Guarda / Seguridad' },
   { value: 'ScrollText', label: 'Registro / Papel' },
   { value: 'Star', label: 'General' },
