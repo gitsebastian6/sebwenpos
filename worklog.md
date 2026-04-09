@@ -822,3 +822,31 @@ Stage Summary:
 - Resumen tab now shows correct values: Ventas $329,500 / Propinas $5,000 / Caja $148,500 / CxC $0
 - Print invoice button available in Informes > Informe Detallado de Ventas for each order
 - All lint checks pass, no errors in dev log
+---
+Task ID: 1-7
+Agent: Main
+Task: Settings page + Store/User fields + UX fixes (POS, Mesas, Comanda)
+
+Work Log:
+- Added new fields to Prisma schema: Store (legalName, nit, address, phone), User (cedula)
+- Pushed schema to database with `bun run db:push`
+- Updated stores API (PUT /api/stores) to accept new fields
+- Created users API (PUT /api/users) for profile updates
+- Updated auth-store with new fields in AuthUser and StoreInfo interfaces
+- Added updateUser method to auth store
+- Created professional settings page with 3 tabs: Negocio, Personal, Facturación
+- Added Settings menu item and route to app-shell
+- POS: Made remove button always visible (removed hover-only opacity)
+- Mesas: Moved onClick from inner divs to entire Card component for full-area click
+- Comanda: Made item rows clickable for selection (cursor-pointer + onClick on row)
+- Comanda: Made product/service rows in "Agregar a Comanda" fully clickable
+- Updated all printTicket calls (POS, Orders, Mesas) to pass storeNIT, storeAddress, storePhone
+
+Stage Summary:
+- All 7 tasks completed
+- Settings page with 3 tabs: Negocio, Personal, Facturación with live preview
+- POS remove button always visible on touch/mobile
+- Table cards fully clickable
+- Comanda items selectable by clicking anywhere on the row
+- Product add in comanda: entire row is clickable
+- Store data (NIT, address, phone) now flows to printed tickets

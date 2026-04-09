@@ -18,12 +18,6 @@ export async function GET(
 
     const store = await db.store.findUnique({
       where: { id: storeId },
-      select: {
-        id: true,
-        name: true,
-        currencyCode: true,
-        countryCode: true,
-      },
     })
 
     if (!store) {

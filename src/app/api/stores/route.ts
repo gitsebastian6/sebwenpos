@@ -6,6 +6,10 @@ export const dynamic = 'force-dynamic'
 
 const storeUpdateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
+  legalName: z.string().max(200).optional().nullable(),
+  nit: z.string().max(50).optional().nullable(),
+  address: z.string().max(300).optional().nullable(),
+  phone: z.string().max(30).optional().nullable(),
   currencyCode: z.string().length(3).optional(),
   countryCode: z.string().max(10).optional().nullable(),
 })
@@ -68,6 +72,10 @@ export async function PUT(request: NextRequest) {
       data: {
         ...parsed.data,
         countryCode: parsed.data.countryCode ?? undefined,
+        legalName: parsed.data.legalName ?? undefined,
+        nit: parsed.data.nit ?? undefined,
+        address: parsed.data.address ?? undefined,
+        phone: parsed.data.phone ?? undefined,
       },
     })
 

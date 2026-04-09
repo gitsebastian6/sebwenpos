@@ -6,12 +6,17 @@ interface AuthUser {
   phone: string
   email: string | null
   fullName: string | null
+  cedula: string | null
   role: string
 }
 
 interface StoreInfo {
   id: number
   name: string
+  legalName: string | null
+  nit: string | null
+  address: string | null
+  phone: string | null
   currencyCode: string
   countryCode: string | null
 }
@@ -26,6 +31,7 @@ interface AuthState {
   logout: () => void
   setLoading: (loading: boolean) => void
   updateStore: (store: StoreInfo) => void
+  updateUser: (user: Partial<AuthUser>) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -40,6 +46,10 @@ export const useAuthStore = create<AuthState>()(
       logout: () => set({ user: null, store: null, token: null, isAuthenticated: false, isLoading: false }),
       setLoading: (loading) => set({ isLoading: loading }),
       updateStore: (store) => set({ store }),
+      updateUser: (userData) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, ...userData } : null,
+        })),
     }),
     {
       name: 'pos-auth',

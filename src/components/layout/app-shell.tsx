@@ -37,6 +37,7 @@ const AccountingView = dynamic(() => import('@/components/accounting/accounting-
 const ServicesView = dynamic(() => import('@/components/services/services-view').then(m => ({ default: m.ServicesView })), { ssr: false })
 const TablesView = dynamic(() => import('@/components/tables/tables-view').then(m => ({ default: m.TablesView })), { ssr: false })
 const ProvidersView = dynamic(() => import('@/components/providers/providers-view').then(m => ({ default: m.ProvidersView })), { ssr: false })
+const SettingsView = dynamic(() => import('@/components/settings/settings-view').then(m => ({ default: m.SettingsView })), { ssr: false })
 
 const menuItems: { view: AppView; label: string; icon: React.ReactNode }[] = [
   { view: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -49,6 +50,7 @@ const menuItems: { view: AppView; label: string; icon: React.ReactNode }[] = [
   { view: 'inventory', label: 'Inventario', icon: <Warehouse className="h-4 w-4" /> },
   { view: 'accounting', label: 'Contabilidad', icon: <Calculator className="h-4 w-4" /> },
   { view: 'services', label: 'Servicios', icon: <Zap className="h-4 w-4" /> },
+  { view: 'settings', label: 'Configuración', icon: <Settings className="h-4 w-4" /> },
 ]
 
 export function AppShell() {
@@ -142,6 +144,7 @@ export function AppShell() {
              currentView === 'tables' ? 'Mesas y Comandas' :
              currentView === 'services' ? 'Servicios' :
              currentView === 'providers' ? 'Proveedores' :
+             currentView === 'settings' ? 'Configuración' :
              menuItems.find(m => m.view === currentView)?.label || 'Dashboard'}
           </h1>
         </header>
@@ -165,6 +168,7 @@ function ViewRouter({ currentView }: { currentView: AppView }) {
     case 'inventory': return <InventoryView />
     case 'accounting': return <AccountingView />
     case 'services': return <ServicesView />
+    case 'settings': return <SettingsView />
     default: return <DashboardView />
   }
 }

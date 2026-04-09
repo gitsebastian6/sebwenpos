@@ -163,6 +163,9 @@ export function OrdersView() {
     }))
     printTicket({
       storeName: store.name,
+      storeNIT: store.nit || undefined,
+      storeAddress: store.address || undefined,
+      storePhone: store.phone || undefined,
       orderNumber: detail.orderNumber,
       date: detail.createdAt,
       customer: detail.customer?.name,

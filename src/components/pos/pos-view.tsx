@@ -547,12 +547,13 @@ export function POSView() {
             {formatCurrency(item.salePrice * item.quantity, currencyCode)}
         </p>
 
-        {/* Remove button */}
+        {/* Remove button - always visible for touch/mobile */}
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
           onClick={() => removeFromCart(itemId, item.isService)}
+          title="Eliminar producto"
         >
           <X className="h-3.5 w-3.5" />
         </Button>
@@ -883,6 +884,9 @@ export function POSView() {
                     }))
                     printTicket({
                       storeName: store?.name || '',
+                      storeNIT: store?.nit || undefined,
+                      storeAddress: store?.address || undefined,
+                      storePhone: store?.phone || undefined,
                       orderNumber: lastOrderData.orderNumber,
                       date: lastOrderData.createdAt,
                       customer: lastOrderData.customer?.name,

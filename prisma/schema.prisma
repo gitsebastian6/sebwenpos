@@ -17,6 +17,7 @@ model User {
   email        String?
   passwordHash String
   fullName     String?  @map("full_name")
+  cedula       String?  // Número de identificación / cédula
   role         String   @default("OWNER") // OWNER, EMPLOYEE
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt
@@ -30,6 +31,10 @@ model Store {
   id           Int      @id @default(autoincrement())
   userId       Int      @unique @map("user_id")
   name         String
+  legalName    String?  @map("legal_name") // Razón social / nombre legal
+  nit          String?  // Número de Identificación Tributaria
+  address      String?  // Dirección del negocio
+  phone        String?  // Teléfono del negocio
   currencyCode String   @default("COP") @map("currency_code")
   countryCode  String?  @map("country_code")
   createdAt    DateTime @default(now()) @map("created_at")

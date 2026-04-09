@@ -1479,10 +1479,11 @@ export function TablesView() {
                               <div
                                 key={item.id}
                                 className={`
-                                  flex items-center gap-2 rounded-lg border p-2.5 transition-colors
-                                  ${isPaidOrCancelled ? 'opacity-50' : 'hover:bg-muted/50'}
+                                  flex items-center gap-2 rounded-lg border p-2.5 transition-colors cursor-pointer
+                                  ${isPaidOrCancelled ? 'opacity-50' : 'hover:bg-muted/50 active:bg-muted/70'}
                                   ${selectedItemIds.includes(item.id) ? 'border-primary/50 bg-primary/5' : ''}
                                 `}
+                                onClick={!isPaidOrCancelled ? () => toggleItemSelection(item.id) : undefined}
                               >
                                 {!isPaidOrCancelled && (
                                   <Checkbox
@@ -1651,6 +1652,9 @@ export function TablesView() {
                               }))
                               printTicket({
                                 storeName: store?.name || '',
+                                storeNIT: store?.nit || undefined,
+                                storeAddress: store?.address || undefined,
+                                storePhone: store?.phone || undefined,
                                 orderNumber: lastPaymentData.orderNumber,
                                 date: lastPaymentData.createdAt,
                                 customer: lastPaymentData.customer?.name || session.customer?.name,
@@ -1741,7 +1745,8 @@ export function TablesView() {
                             {products.map((product) => (
                               <div
                                 key={`p-${product.id}`}
-                                className="flex items-center justify-between rounded-lg border p-2.5 hover:bg-muted/50 transition-colors"
+                                className="flex items-center justify-between rounded-lg border p-2.5 hover:bg-muted/50 active:bg-muted/70 transition-colors cursor-pointer"
+                                onClick={() => handleAddItem(product.id, null)}
                               >
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium truncate">{product.name}</p>
@@ -1751,20 +1756,13 @@ export function TablesView() {
                                     {formatCurrency(product.salePrice, store?.currencyCode)}
                                   </p>
                                 </div>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="shrink-0 gap-1 h-8 text-xs"
-                                  onClick={() => handleAddItem(product.id, null)}
-                                  disabled={addingItem === product.id}
-                                >
+                                <div className="shrink-0">
                                   {addingItem === product.id ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
                                   ) : (
-                                    <Plus className="h-3.5 w-3.5" />
+                                    <Plus className="h-4 w-4 text-primary" />
                                   )}
-                                  Agregar
-                                </Button>
+                                </div>
                               </div>
                             ))}
                             {/* Services section */}
@@ -1781,7 +1779,8 @@ export function TablesView() {
                                   .map((service) => (
                                   <div
                                     key={`s-${service.id}`}
-                                    className="flex items-center justify-between rounded-lg border p-2.5 hover:bg-violet-50 dark:hover:bg-violet-950/20 transition-colors border-violet-200/50 dark:border-violet-800/50"
+                                    className="flex items-center justify-between rounded-lg border p-2.5 hover:bg-violet-50 dark:hover:bg-violet-950/20 active:bg-violet-100 dark:active:bg-violet-950/40 transition-colors border-violet-200/50 dark:border-violet-800/50 cursor-pointer"
+                                    onClick={() => handleAddItem(null, service.id)}
                                   >
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-1.5">
@@ -1796,20 +1795,13 @@ export function TablesView() {
                                         {service.unit}
                                       </p>
                                     </div>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="shrink-0 gap-1 h-8 text-xs text-violet-600 hover:text-violet-700"
-                                      onClick={() => handleAddItem(null, service.id)}
-                                      disabled={addingItem === service.id}
-                                    >
+                                    <div className="shrink-0">
                                       {addingItem === service.id ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
                                       ) : (
-                                        <Plus className="h-3.5 w-3.5" />
+                                        <Plus className="h-4 w-4 text-violet-600" />
                                       )}
-                                      Agregar
-                                    </Button>
+                                    </div>
                                   </div>
                                 ))}
                               </>
@@ -1882,17 +1874,15 @@ function TableCard({
         ${isMaintenance ? 'opacity-60' : 'hover:shadow-md hover:-translate-y-0.5'}
         ${cardBg}
       `}
+      onClick={isMaintenance ? undefined : onClick}
+      role={isMaintenance ? undefined : 'button'}
+      tabIndex={isMaintenance ? undefined : 0}
+      onKeyDown={isMaintenance ? undefined : (e) => { if (e.key === 'Enter' || e.key === ' ') onClick() }}
     >
       <CardContent className="p-4">
         {/* Top row: Table number + Zone + Actions */}
         <div className="flex items-start justify-between mb-3">
-          <div
-            className="flex items-center gap-2 flex-1 min-w-0"
-            onClick={isMaintenance ? undefined : onClick}
-            role={isMaintenance ? undefined : 'button'}
-            tabIndex={isMaintenance ? undefined : 0}
-            onKeyDown={isMaintenance ? undefined : (e) => { if (e.key === 'Enter' || e.key === ' ') onClick() }}
-          >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 shrink-0">
               <span className="text-sm font-bold text-primary">
                 {table.number}
@@ -1910,7 +1900,7 @@ function TableCard({
               </Badge>
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0 ml-2">
+          <div className="flex items-center gap-1 shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
             <span className={`h-2.5 w-2.5 rounded-full ${statusColor} animate-pulse`} />
             {/* Toggle active button */}
             <Button
@@ -1948,20 +1938,14 @@ function TableCard({
         </div>
 
         {/* Status */}
-        <div
-          className="flex items-center gap-1.5 mb-2"
-          onClick={isMaintenance ? undefined : onClick}
-        >
+        <div className="flex items-center gap-1.5 mb-2">
           <span className={`text-xs font-medium ${statusTextColor}`}>
             {statusLabel}
           </span>
         </div>
 
         {/* Capacity */}
-        <div
-          className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3"
-          onClick={isMaintenance ? undefined : onClick}
-        >
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
           <Users className="h-3.5 w-3.5" />
           <span>{table.capacity} personas</span>
         </div>
@@ -2003,10 +1987,7 @@ function TableCard({
 
         {/* Available CTA */}
         {isAvailable && (
-          <div
-            className="flex items-center justify-center gap-1.5 mt-1"
-            onClick={onClick}
-          >
+          <div className="flex items-center justify-center gap-1.5 mt-1">
             <DoorOpen className="h-3.5 w-3.5 text-emerald-500" />
             <span className="text-xs text-emerald-600 dark:text-emerald-400">Clic para abrir</span>
           </div>
