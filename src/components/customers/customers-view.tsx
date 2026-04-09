@@ -36,6 +36,7 @@ import {
   CalendarDays,
   AlertTriangle,
   Wallet,
+  Banknote,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
@@ -348,6 +349,18 @@ export function CustomersView() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {customer.totalDebt > 0 && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="h-8 gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                              title="Abonar a deuda"
+                              onClick={() => openPayDialog(customer)}
+                            >
+                              <Banknote className="h-3.5 w-3.5" />
+                              <span className="hidden sm:inline">Abonar</span>
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -438,6 +451,97 @@ export function CustomersView() {
                     : 'Crear Cliente'}
               </Button>
             </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Pay Debt Dialog ──────────────────────────────────── */}
+      <Dialog open={!!payingCustomer} onOpenChange={(open) => !open && setPayingCustomer(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Banknote className="h-5 w-5 text-emerald-600" />
+              Abonar a Deuda
+            </DialogTitle>
+            <DialogDescription>
+              {payingCustomer && (
+                <>
+                  Registrar abono de{' '}
+                  <span className="font-medium text-foreground">{payingCustomer.name}</span>
+                  {payingCustomer.totalDebt > 0 && (
+                    <span className="block mt-1 text-sm">
+                      Deuda actual:{' '}
+                      <span className="font-semibold text-red-600 dark:text-red-400">
+                        {formatCurrency(payingCustomer.totalDebt, store?.currencyCode)}
+                      </span>
+                    </span>
+                  )}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handlePayDebt} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="pay-amount">
+                Monto del Abono <span className="text-destructive">*</span>
+              </Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">$</span>
+                <Input
+                  id="pay-amount"
+                  type="number"
+                  min="1"
+                  max={payingCustomer?.totalDebt || 99999999}
+                  placeholder="0"
+                  className="pl-7 text-lg font-semibold"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              {payingCustomer && Number(payAmount) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Saldo restante:{' '}
+                  {formatCurrency(
+                  Math.max(0, payingCustomer.totalDebt - Number(payAmount)),
+                  store?.currencyCode
+                  )}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pay-note">Nota (opcional)</Label>
+              <Input
+                id="pay-note"
+                placeholder="Ej: Abono parcial del 15 de junio"
+                value={payNote}
+                onChange={(e) => setPayNote(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                size="sm"
+                disabled={paying}
+                onClick={() => {
+                  if (payingCustomer && payingCustomer.totalDebt > 0) {
+                    setPayAmount(String(payingCustomer.totalDebt))
+                  }
+                }}
+              >
+                Saldo Completo
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                size="sm"
+                disabled={paying || !payAmount || Number(payAmount) <= 0}
+              >
+                {paying ? 'Procesando...' : `Pagar $${Number(payAmount || 0).toLocaleString('es-CO')}`}
+              </Button>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
