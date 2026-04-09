@@ -879,3 +879,28 @@ Stage Summary:
 - formatCurrency() handles COP correctly (no division, 0 decimal places)
 - Verified: no remaining *100 or /100 for monetary conversions in components
 - Only remaining *100 are for percentage bar widths (correct usage)
+---
+Task ID: 14
+Agent: Main Agent
+Task: Fix POS layout - remove button not working in new tab, layout shifts with sidebar
+
+Work Log:
+- Identified root cause: POS right panel had `lg:overflow-hidden` which clipped cart items (including remove button) when sidebar was open and viewport was shorter
+- Product grid used viewport-relative `max-h-[calc(100vh-16rem)]` which broke when sidebar shifted the layout
+- Cart items container used `flex-1` which collapsed to 0px when fixed content (payment options, notes, charge button) exceeded available space
+- Applied fixes to `src/components/pos/pos-view.tsx`:
+  1. Right panel: `lg:overflow-y-auto` instead of `lg:overflow-hidden` - panel now scrolls when content exceeds height
+  2. Right panel width: `lg:w-[380px] xl:w-[420px]` (reduced from 420/440) to accommodate sidebar
+  3. Cart items: removed `flex-1` (which was collapsing), uses fixed `max-h-[200px] lg:max-h-[250px]` with ScrollArea
+  4. Order options: removed `mt-auto` since panel is now scrollable
+  5. Product grid: replaced `max-h-[calc(100vh-16rem)]` with `h-full` (uses flex layout height)
+  6. Product grid wrapper: added `min-h-0` for proper flex overflow behavior
+  7. Left panel: changed `lg:min-h-0` to `min-h-0` (applies at all breakpoints)
+- Verified: lint passes (only pre-existing errors in utility scripts), dev server running
+
+Stage Summary:
+- File modified: `src/components/pos/pos-view.tsx`
+- Remove button (X) now always accessible in both preview panel and new tab
+- Layout no longer shifts/cuts off when sidebar opens
+- Right panel scrollable when content exceeds viewport height
+- Product grid uses flex-based height instead of viewport calc

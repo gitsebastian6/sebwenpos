@@ -587,7 +587,7 @@ export function POSView() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-[calc(100vh-8rem)]">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full min-h-0">
       {/* ═══ LEFT PANEL: Products ═════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 lg:min-h-0">
         {/* Search bar */}
@@ -637,7 +637,7 @@ export function POSView() {
         </div>
 
         {/* Product/Service grid */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden min-h-0">
           {isLoadingProducts ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 h-full">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -657,7 +657,7 @@ export function POSView() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 auto-rows-min overflow-y-auto max-h-[calc(100vh-16rem)] pr-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 auto-rows-min overflow-y-auto h-full pr-1">
                 {filteredServices.map(renderServiceCard)}
               </div>
             )
@@ -669,7 +669,7 @@ export function POSView() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 auto-rows-min overflow-y-auto max-h-[calc(100vh-16rem)] pr-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 auto-rows-min overflow-y-auto h-full pr-1">
               {filteredProducts.map(renderProductCard)}
             </div>
           )}
@@ -677,7 +677,7 @@ export function POSView() {
       </div>
 
       {/* ═══ RIGHT PANEL: Cart / Ticket ════════════════ */}
-      <div className="w-full lg:w-[420px] xl:w-[440px] shrink-0 flex flex-col bg-muted/30 rounded-xl border p-4 lg:h-full lg:overflow-hidden">
+      <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 flex flex-col bg-muted/30 rounded-xl border p-4 lg:h-full lg:overflow-y-auto">
         {/* Cart header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -703,7 +703,7 @@ export function POSView() {
         </div>
 
         {/* Cart items */}
-        <div className="flex-1 overflow-hidden">
+        <div className="overflow-hidden">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full min-h-[120px] text-muted-foreground gap-2">
               <ShoppingCart className="h-10 w-10 opacity-20" />
@@ -711,7 +711,7 @@ export function POSView() {
               <p className="text-xs">Haz clic en un producto para agregarlo</p>
             </div>
           ) : (
-            <ScrollArea className="h-full max-h-[240px] lg:max-h-none">
+            <ScrollArea className="max-h-[200px] lg:max-h-[250px]">
               <div className="flex flex-col">
                 {cart.map(renderCartItem)}
               </div>
@@ -813,7 +813,7 @@ export function POSView() {
         )}
 
         {/* Order options */}
-        <div className="space-y-3 mt-auto">
+        <div className="space-y-3">
           {/* Customer selection */}
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground font-medium">Cliente (opcional)</Label>
