@@ -584,3 +584,50 @@ Stage Summary:
 - Prevention: Modified .zscripts/dev.sh to auto-delete .config before prisma commands
 - All 33 routes compiled, all APIs verified returning data
 - Auth working with phone/password login
+
+================================================================================
+  🔧 VENTIFY - SOLUCIÓN CRÍTICA: App no carga (Pantalla negra con Z)
+================================================================================
+
+PROBLEMA:
+- El usuario ve pantalla negra con logo "Z" en el preview
+- Caddy devuelve 502 porque el servidor Next.js no está corriendo
+
+CAUSA RAÍZ:
+- Un archivo fantasma `.config` (ARTEFACTO DE JUICEFS) aparece en la raíz
+  del proyecto como un ARCHIVO (no directorio)
+- Este archivo BLOQUEA `prisma generate` y `prisma db push` porque Prisma
+  intenta leer `.config/prisma` como directorio y falla con ENOTDIR
+- El script `.zscripts/dev.sh` tiene `set -euo pipefail`, así que FALLA
+  completamente al encontrar el error de Prisma
+- Como el script falla, el servidor Next.js NUNCA arranca
+- Caddy (proxy puerto 81) no tiene backend → 502 → pantalla negra con Z
+
+SOLUCIÓN PASO A PASO:
+1. Eliminar el archivo .config:     rm -f /home/z/my-project/.config
+2. Regenerar Prisma client:        npx prisma generate
+3. Empujar schema a DB:            bun run db:push
+4. Iniciar servidor:               bun run dev
+
+NOTA IMPORTANTE: El servidor dev se debe iniciar con un timeout largo para
+que sobreviva como proceso huérfano. Ejecutar con timeout de 600000ms para
+mantenerlo vivo durante la sesión.
+
+PREVENCIÓN (ya aplicada):
+- Se modificó `.zscripts/dev.sh` para auto-eliminar `.config` ANTES de
+  ejecutar `bun run db:push` en futuros reinicios del contenedor
+
+VERIFICACIÓN:
+- Las APIs usan `storeId=1` (camelCase) como parámetro, NO `store_id`
+- Login: phone 3001234567 / password 1234
+- Usuario: Carlos Bar Manager (OWNER), Bar La Terraza
+- 113 productos, 10 mesas, 8 categorías, 5 proveedores
+
+COMANDOS DE DIAGNÓSTICO:
+- Verificar .config:    ls -la /home/z/my-project/.config
+- Verificar servidor:   ps aux | grep next-server
+- Verificar APIs:       curl http://localhost:3000/api/products?storeId=1
+- Verificar Caddy:      curl http://localhost:81/
+- Ver logs:             tail -20 /home/z/my-project/dev.log
+
+================================================================================
