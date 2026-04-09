@@ -587,9 +587,9 @@ export function POSView() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-[calc(100vh-8rem)] overflow-hidden">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 overflow-x-hidden lg:h-[calc(100vh-8rem)] lg:overflow-hidden">
       {/* ═══ LEFT PANEL: Products ═════════════════════ */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 h-[50vh] lg:h-auto">
         {/* Search bar */}
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -637,7 +637,7 @@ export function POSView() {
         </div>
 
         {/* Product/Service grid */}
-        <div className="flex-1 overflow-hidden min-h-0 lg:min-h-0">
+        <div className="flex-1 overflow-hidden min-h-0">
           {isLoadingProducts ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 h-full">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -677,7 +677,7 @@ export function POSView() {
       </div>
 
       {/* ═══ RIGHT PANEL: Cart / Ticket ════════════════ */}
-      <div className="w-full lg:w-[400px] xl:w-[420px] shrink-0 flex flex-col bg-muted/30 rounded-xl border p-4 lg:h-full lg:overflow-y-auto overflow-x-hidden">
+      <div className="w-full lg:w-[400px] xl:w-[420px] shrink-0 flex flex-col bg-muted/30 rounded-xl border p-4 overflow-x-hidden lg:h-full lg:overflow-y-auto">
         {/* Cart header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">

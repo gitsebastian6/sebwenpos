@@ -305,6 +305,7 @@ export function TablesView() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [categories, setCategories] = useState<Category[]>([])
   const [addingItem, setAddingItem] = useState<number | null>(null)
+  const [addProductDialogOpen, setAddProductDialogOpen] = useState(false)
 
   // ── Comanda actions ──
   const [servingItemIds, setServingItemIds] = useState<number[]>([])
@@ -1462,6 +1463,15 @@ export function TablesView() {
                       <Button
                         size="sm"
                         variant="outline"
+                        className="gap-1.5 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                        onClick={() => setAddProductDialogOpen(true)}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Agregar Producto
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
                         className="gap-1.5 text-xs"
                         onClick={selectAllPayable}
                         disabled={!hasUnpaidItems}
@@ -1742,130 +1752,7 @@ export function TablesView() {
                     )}
 
                     {/* ── Add Items to Comanda ────────────────────────── */}
-                    <div>
-                      <Separator className="mb-4" />
-                      <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-primary">
-                        <Plus className="h-4 w-4" />
-                        Agregar a la Comanda
-                      </h3>
-
-                      {/* Category filter */}
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center mb-3">
-                        <div className="relative flex-1">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Buscar producto..."
-                            className="pl-9 h-10"
-                            value={productSearch}
-                            onChange={(e) => {
-                              setProductSearch(e.target.value)
-                              fetchProducts(e.target.value, categoryFilter)
-                            }}
-                          />
-                        </div>
-                        <Select
-                          value={categoryFilter}
-                          onValueChange={(val) => {
-                            setCategoryFilter(val)
-                            fetchProducts(productSearch, val)
-                          }}
-                        >
-                          <SelectTrigger className="w-full sm:w-44">
-                            <SelectValue placeholder="Todas" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">Todas las categorías</SelectItem>
-                            {categories.map((cat) => (
-                              <SelectItem key={cat.id} value={String(cat.id)}>
-                                {cat.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* Product list + Services list */}
-                      {productsLoading ? (
-                        <div className="space-y-2">
-                          {Array.from({ length: 3 }).map((_, i) => (
-                            <Skeleton key={i} className="h-12 w-full rounded-md" />
-                          ))}
-                        </div>
-                      ) : products.length === 0 && services.length === 0 && !productSearch ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          No se encontraron productos ni servicios
-                        </p>
-                      ) : (
-                        <ScrollArea className="max-h-64">
-                          <div className="space-y-1.5">
-                            {products.map((product) => (
-                              <div
-                                key={`p-${product.id}`}
-                                className="flex items-center justify-between rounded-lg border p-2.5 hover:bg-muted/50 active:bg-muted/70 transition-colors cursor-pointer"
-                                onClick={() => handleAddItem(product.id, null)}
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium truncate">{product.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {product.category?.name ?? 'Sin categoría'}
-                                    {' · '}
-                                    {formatCurrency(product.salePrice, store?.currencyCode)}
-                                  </p>
-                                </div>
-                                <div className="shrink-0">
-                                  {addingItem === product.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                  ) : (
-                                    <Plus className="h-4 w-4 text-primary" />
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                            {/* Services section */}
-                            {services.length > 0 && (
-                              <>
-                                <div className="pt-2 pb-1">
-                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                                    <Star className="h-3 w-3" />
-                                    Servicios
-                                  </p>
-                                </div>
-                                {services
-                                  .filter((s) => !productSearch || s.name.toLowerCase().includes(productSearch.toLowerCase()))
-                                  .map((service) => (
-                                  <div
-                                    key={`s-${service.id}`}
-                                    className="flex items-center justify-between rounded-lg border p-2.5 hover:bg-violet-50 dark:hover:bg-violet-950/20 active:bg-violet-100 dark:active:bg-violet-950/40 transition-colors border-violet-200/50 dark:border-violet-800/50 cursor-pointer"
-                                    onClick={() => handleAddItem(null, service.id)}
-                                  >
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-1.5">
-                                        <p className="text-sm font-medium truncate">{service.name}</p>
-                                        <Badge variant="secondary" className="text-[10px] px-1 py-0 shrink-0 bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300">
-                                          Svc
-                                        </Badge>
-                                      </div>
-                                      <p className="text-xs text-muted-foreground">
-                                        {formatCurrency(service.price, store?.currencyCode)}
-                                        {' · por '}
-                                        {service.unit}
-                                      </p>
-                                    </div>
-                                    <div className="shrink-0">
-                                      {addingItem === service.id ? (
-                                        <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
-                                      ) : (
-                                        <Plus className="h-4 w-4 text-violet-600" />
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </>
-                            )}
-                          </div>
-                        </ScrollArea>
-                      )}
-                    </div>
+                    {/* Moved to Dialog: "Agregar Producto" button in Quick Actions */}
                   </div>
                 ) : null}
               </div>
@@ -1873,6 +1760,159 @@ export function TablesView() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* ═══ ADD PRODUCT DIALOG ══════════════════════════ */}
+      <Dialog open={addProductDialogOpen} onOpenChange={setAddProductDialogOpen}>
+        <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Agregar a la Comanda
+            </DialogTitle>
+            <DialogDescription>
+              Busca y selecciona productos o servicios para agregar a la comanda.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Search input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar producto o servicio..."
+              className="pl-9 h-10"
+              value={productSearch}
+              onChange={(e) => {
+                setProductSearch(e.target.value)
+                fetchProducts(e.target.value, categoryFilter)
+              }}
+            />
+          </div>
+
+          {/* Category filter buttons (POS-style) */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <Button
+              size="sm"
+              variant={categoryFilter === 'all' ? 'default' : 'outline'}
+              className="shrink-0 h-8 text-xs"
+              onClick={() => {
+                setCategoryFilter('all')
+                fetchProducts(productSearch, 'all')
+              }}
+            >
+              Todos
+            </Button>
+            {categories.map((cat) => (
+              <Button
+                key={cat.id}
+                size="sm"
+                variant={categoryFilter === String(cat.id) ? 'default' : 'outline'}
+                className="shrink-0 h-8 text-xs"
+                onClick={() => {
+                  setCategoryFilter(String(cat.id))
+                  fetchProducts(productSearch, String(cat.id))
+                }}
+              >
+                {cat.name}
+              </Button>
+            ))}
+            {services.length > 0 && (
+              <Button
+                size="sm"
+                variant={categoryFilter === 'servicios' ? 'default' : 'outline'}
+                className="shrink-0 h-8 text-xs gap-1"
+                onClick={() => {
+                  setCategoryFilter('servicios')
+                }}
+              >
+                <Star className="h-3.5 w-3.5" />
+                Servicios
+              </Button>
+            )}
+          </div>
+
+          {/* Product/Service list */}
+          <div className="flex-1 min-h-0 overflow-y-auto -mx-1">
+            {productsLoading ? (
+              <div className="space-y-2 p-1">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-14 w-full rounded-md" />
+                ))}
+              </div>
+            ) : categoryFilter !== 'servicios' && products.length === 0 && !productSearch ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No se encontraron productos
+              </p>
+            ) : categoryFilter === 'servicios' && services.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No hay servicios activos
+              </p>
+            ) : (
+              <div className="space-y-1.5 p-1">
+                {categoryFilter !== 'servicios' && products.map((product) => (
+                  <div
+                    key={`p-${product.id}`}
+                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 active:bg-muted/70 transition-colors cursor-pointer"
+                    onClick={() => handleAddItem(product.id, null)}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{product.name}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{product.category?.name ?? 'Sin categoría'}</span>
+                        <span>·</span>
+                        <span className="font-medium text-foreground">
+                          {formatCurrency(product.salePrice, store?.currencyCode)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 ml-2">
+                      {addingItem === product.id ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      ) : (
+                        <Plus className="h-5 w-5 text-primary" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {/* Services section */}
+                {categoryFilter === 'servicios' && services.length > 0 && (
+                  <>
+                    {services
+                      .filter((s) => !productSearch || s.name.toLowerCase().includes(productSearch.toLowerCase()))
+                      .map((service) => (
+                      <div
+                        key={`s-${service.id}`}
+                        className="flex items-center justify-between rounded-lg border p-3 hover:bg-violet-50 dark:hover:bg-violet-950/20 active:bg-violet-100 dark:active:bg-violet-950/40 transition-colors border-violet-200/50 dark:border-violet-800/50 cursor-pointer"
+                        onClick={() => handleAddItem(null, service.id)}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium truncate">{service.name}</p>
+                            <Badge variant="secondary" className="text-[10px] px-1 py-0 shrink-0 bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300">
+                              Svc
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>{formatCurrency(service.price, store?.currencyCode)}</span>
+                            <span>·</span>
+                            <span>por {service.unit}</span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 ml-2">
+                          {addingItem === service.id ? (
+                            <Loader2 className="h-5 w-5 animate-spin text-violet-600" />
+                          ) : (
+                            <Plus className="h-5 w-5 text-violet-600" />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* tick ref for reactivity */}
       <span className="hidden">{_tick}</span>

@@ -929,3 +929,50 @@ Stage Summary:
 - Right panel scrolls vertically when content exceeds viewport
 - Remove button (X) always visible and clickable
 - Works in both preview panel and full new tab
+
+---
+Task ID: 14
+Agent: Main Agent
+Task: Fix POS mobile layout + make Mesas comanda product picker POS-like
+
+Work Log:
+- Read worklog and analyzed both files for context
+- Task 1: Fixed POS layout for mobile responsiveness in pos-view.tsx
+  - Main container: Changed from fixed `h-[calc(100vh-8rem)] overflow-hidden` to responsive `overflow-x-hidden lg:h-[calc(100vh-8rem)] lg:overflow-hidden`
+    - Mobile: No fixed height, natural vertical flow, no horizontal scroll
+    - Desktop (lg+): Fixed height with overflow hidden (side-by-side layout)
+  - Left panel (products): Added `h-[50vh] lg:h-auto` so on mobile the product grid gets 50vh with internal scroll, desktop uses flex-1
+  - Product grid wrapper: Simplified to `flex-1 overflow-hidden min-h-0` (removed redundant `lg:min-h-0`)
+  - Right panel (ticket): Reordered classes for clarity — `overflow-x-hidden` on all sizes, `lg:h-full lg:overflow-y-auto` on desktop
+  - Cart items ScrollArea: Already had responsive `max-h-[200px] lg:max-h-[250px]` — no change needed
+
+- Task 2: Replaced comanda product picker with compact Dialog in tables-view.tsx
+  - Added `addProductDialogOpen` state variable (boolean) to control new dialog
+  - Removed the entire "Agregar a la Comanda" inline section (lines 1754-1878)
+    - Was: persistent section at bottom of Sheet with search, category dropdown, scrollable product list (max-h-64)
+    - Took too much space and was always visible
+  - Added "Agregar Producto" button to Quick Actions bar
+    - Green outline styling (border-emerald-300 text-emerald-700)
+    - Placed as first button in the flex-wrap actions row
+  - Created new Dialog component with POS-like product picker:
+    - Title: "Agregar a la Comanda" with Plus icon
+    - Search input at top (reuses productSearch state + fetchProducts)
+    - Category filter: Small buttons like POS (not dropdown), including "Servicios" tab
+    - Product list in scrollable area — each item shows name, category, price, and Plus icon
+    - Services shown with violet "Svc" badge and violet styling
+    - Dialog stays open after adding (no auto-close) for quick multi-add
+    - Loading skeletons for product fetch
+    - Empty states for no products or no services
+  - Reused all existing state: productSearch, categoryFilter, products, services, productsLoading, categories, addingItem
+  - Reused existing handleAddItem() function — toast "Item agregado a la comanda" shown on success
+  - Dialog is responsive: `w-[calc(100%-2rem)] sm:max-w-lg max-h-[80vh]`
+- ESLint: Zero new errors (all 9 errors are pre-existing in keepalive.cjs and mini-services)
+
+Stage Summary:
+- Files modified:
+  - `src/components/pos/pos-view.tsx` - Mobile-responsive layout (no fixed height on mobile, 50vh product grid, natural ticket flow)
+  - `src/components/tables/tables-view.tsx` - Replaced inline product picker with compact Dialog + "Agregar Producto" button in Quick Actions
+- Mobile POS: Products (50vh scroll) → Ticket (natural flow, no cut-off)
+- Desktop POS: Unchanged side-by-side layout with proper height management
+- Mesas comanda: Compact "Agregar Producto" button opens Dialog for POS-like tap-to-add experience
+- All existing functionality preserved, no API changes
