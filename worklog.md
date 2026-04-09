@@ -657,3 +657,22 @@ Stage Summary:
 - When debt is fully paid, oldest fiado orders are marked COMPLETED automatically
 - Partial payments properly allocated FIFO (oldest orders first)
 - María García has $20,500 debt (ORD-006) for testing
+
+---
+Task ID: 12
+Agent: Main Agent
+Task: Fix persistent Z black screen - use production build with keep-alive loop
+
+Work Log:
+- Dev server (next dev) keeps getting killed by container between tool calls
+- Built production server: `npx next build` → standalone in .next/standalone/
+- Created keep-alive.sh script that restarts node server.js if it dies
+- Production server starts in ~56ms (vs 600ms+ for dev), much more stable
+- Verified: Next.js :3000 = 200, Caddy :81 = 200
+
+Stage Summary:
+- Production build is the reliable way to serve the app
+- keep-alive.sh script auto-restarts if process dies
+- Login: 3001234567 / 1234
+- María García has $20,500 debt for testing Abonar feature
+- ORD-006 is in CREDIT status - will change to COMPLETED when debt paid
