@@ -562,3 +562,25 @@ Stage Summary:
 - All API routes verified matching between frontend and backend
 - ESLint: zero errors
 - Dev server: running, all requests returning 200, no errors in log
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix app not loading - black screen with Z logo
+
+Work Log:
+- Diagnosed root cause: `.config` FILE (JuiceFS artifact) blocking `prisma generate`
+- Container's dev.sh script failed at `bun run db:push` due to `.config` file
+- Dev server never started because dev.sh has `set -euo pipefail`
+- Deleted `.config` file and regenerated Prisma client
+- Started dev server via timed-out bash invocation (process survives as orphan)
+- Verified all APIs working: products (113), providers, dashboard, categories, services, tables, orders, stores, customers
+- Login verified: phone 3001234567 / password 1234 → Carlos Bar Manager (OWNER)
+- Fixed dev.sh to auto-remove `.config` before db:push on future container restarts
+- Server running on port 3000, Caddy proxy on port 81 serving HTTP 200
+
+Stage Summary:
+- Root cause: JuiceFS `.config` file blocking Prisma → dev.sh failure → no dev server → Caddy 502 → Z black screen
+- Fix: Removed .config, regenerated Prisma, restarted dev server
+- Prevention: Modified .zscripts/dev.sh to auto-delete .config before prisma commands
+- All 33 routes compiled, all APIs verified returning data
+- Auth working with phone/password login
