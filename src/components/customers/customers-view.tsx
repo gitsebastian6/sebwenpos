@@ -35,6 +35,7 @@ import {
   Mail,
   CalendarDays,
   AlertTriangle,
+  Wallet,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
@@ -70,6 +71,12 @@ export function CustomersView() {
   const [formName, setFormName] = useState('')
   const [formPhone, setFormPhone] = useState('')
   const [formEmail, setFormEmail] = useState('')
+
+  // Debt payment state
+  const [payingCustomer, setPayingCustomer] = useState<Customer | null>(null)
+  const [payAmount, setPayAmount] = useState('')
+  const [payNote, setPayNote] = useState('')
+  const [paying, setPaying] = useState(false)
 
   const fetchCustomers = useCallback(async () => {
     if (!store?.id) return
@@ -179,6 +186,48 @@ export function CustomersView() {
     } finally {
       setHistoryLoading(false)
     }
+  }
+
+  async function handlePayDebt(e: React.FormEvent) {
+    e.preventDefault()
+    if (!payingCustomer || !store?.id) return
+    const amount = Number(payAmount)
+    if (!amount || amount <= 0) {
+      toast.error('Ingresa un monto válido')
+      return
+    }
+    setPaying(true)
+    try {
+      const res = await fetch(`/api/customers/${payingCustomer.id}/pay-debt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeId: store.id,
+          amount,
+          note: payNote.trim() || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Error al registrar abono')
+      }
+      const data = await res.json()
+      toast.success(data.message)
+      setPayingCustomer(null)
+      setPayAmount('')
+      setPayNote('')
+      fetchCustomers()
+    } catch (err: any) {
+      toast.error(err.message || 'Error al registrar abono')
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  function openPayDialog(customer: Customer) {
+    setPayingCustomer(customer)
+    setPayAmount('')
+    setPayNote('')
   }
 
   return (
