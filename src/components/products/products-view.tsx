@@ -74,6 +74,8 @@ import {
   Printer,
   Upload,
   FileSpreadsheet,
+  CheckCircle,
+  Info,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -414,11 +416,12 @@ export function ProductsView() {
     if (thermal) {
       const lines: { left: string; right?: string; bold?: boolean; separator?: boolean }[] = []
       lines.push({ left: subtitle, separator: true })
-      lines.push({ left: 'PRODUCTO', right: 'P.VENTA', bold: true, separator: true })
+      lines.push({ left: 'SKU  PRODUCTO', right: 'P.VTA', bold: true, separator: true })
       filteredProducts.forEach(p => {
-        const name = p.name.length > 22 ? p.name.slice(0, 22) + '..' : p.name
+        const sku = (p.sku || '---').padEnd(6, ' ').slice(0, 6)
+        const name = p.name.length > 16 ? p.name.slice(0, 16) + '..' : p.name.padEnd(18, ' ')
         lines.push({
-          left: `${name} (${p.currentStock})`,
+          left: `${sku} ${name} (${p.currentStock})`,
           right: formatCurrency(p.salePrice, currencyCode),
         })
       })
@@ -457,6 +460,124 @@ export function ProductsView() {
 
   const xmlInputRef = useRef<HTMLInputElement>(null)
   const [xmlUploading, setXmlUploading] = useState(false)
+  const [xmlPreview, setXmlPreview] = useState<{ fileName: string; items: { name: string; quantity: number; unitCost: number }[] } | null>(null)
+
+  // Parse XML file and extract items generically
+  function parseXmlItems(xmlDoc: Document): { name: string; quantity: number; unitCost: number }[] {
+    const xmlItems: { name: string; quantity: number; unitCost: number }[] = []
+
+    // Helper: try multiple selectors and return first match
+    const getText = (el: Element | null, selectors: string[]): string => {
+      if (!el) return ''
+      for (const sel of selectors) {
+        const found = el.querySelector(sel)
+        if (found?.textContent?.trim()) return found.textContent.trim()
+      }
+      return ''
+    }
+    const getNum = (el: Element | null, selectors: string[]): number => {
+      const txt = getText(el, selectors)
+      return parseFloat(txt) || 0
+    }
+
+    // Strategy 1: UBL 2.1 standard (Colombian DIAN / CFDI)
+    const invoiceLines = xmlDoc.querySelectorAll('InvoiceLine')
+    if (invoiceLines.length > 0) {
+      invoiceLines.forEach(line => {
+        const name = getText(line, ['Item Name', 'Item cbc\:Name', 'cbc\:Name'])
+        const qty = getNum(line, ['InvoicedQuantity', 'cbc\:InvoicedQuantity', 'cbc\:Quantity'])
+        const price = getNum(line, ['PriceAmount', 'Price cbc\:PriceAmount', 'cbc\:PriceAmount', 'cbc\:Amount'])
+        if (name && qty > 0) {
+          xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+        }
+      })
+    }
+
+    // Strategy 2: FeCo Colombian format
+    if (xmlItems.length === 0) {
+      const feItems = xmlDoc.querySelectorAll('item')
+      if (feItems.length > 0) {
+        feItems.forEach(item => {
+          const name = getText(item, ['descripcion', 'nombre', 'name', 'descripcionPro'])
+          const qty = getNum(item, ['cantidad', 'quantity', 'cant'])
+          const price = getNum(item, ['precioUnitario', 'unitPrice', 'valor', 'precio', 'precioTotal'])
+          if (name && qty > 0) {
+            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+          }
+        })
+      }
+    }
+
+    // Strategy 3: generic producto/product
+    if (xmlItems.length === 0) {
+      const genericItems = xmlDoc.querySelectorAll('producto, product')
+      if (genericItems.length > 0) {
+        genericItems.forEach(item => {
+          const name = getText(item, ['nombre', 'name', 'descripcion', 'description'])
+          const qty = getNum(item, ['cantidad', 'quantity', 'cant'])
+          const price = getNum(item, ['precio', 'price', 'precioUnitario', 'unitPrice', 'valor', 'costo'])
+          if (name && qty > 0) {
+            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+          }
+        })
+      }
+    }
+
+    // Strategy 4: Try to find ANY repeating element that could be a line item
+    if (xmlItems.length === 0) {
+      // Get all child elements of the root
+      const root = xmlDoc.documentElement
+      const children = Array.from(root.children)
+      // Find groups of elements that repeat (potential line items)
+      const tagNameCounts = new Map<string, number>()
+      children.forEach(child => {
+        const tag = child.tagName.replace(/.*:/, '') // remove namespace
+        tagNameCounts.set(tag, (tagNameCounts.get(tag) || 0) + 1)
+      })
+      // Find the most common tag (likely line items)
+      let bestTag = ''
+      let bestCount = 1
+      tagNameCounts.forEach((count, tag) => {
+        if (count > bestCount && count >= 2) {
+          bestCount = count
+          bestTag = tag
+        }
+      })
+      if (bestTag) {
+        const lineItems = xmlDoc.querySelectorAll(bestTag)
+        lineItems.forEach(item => {
+          // Try to find name and quantity in any child elements
+          const itemChildren = Array.from(item.children)
+          let name = ''
+          let qty = 0
+          let price = 0
+          itemChildren.forEach(child => {
+            const tag = child.tagName.replace(/.*:/, '').toLowerCase()
+            const val = child.textContent?.trim() || ''
+            if (!name && val && !name) {
+              // First non-empty text that's not a number could be a name
+              const numVal = parseFloat(val)
+              if (isNaN(numVal) || val.length > 5) {
+                name = val
+              }
+            }
+            if (/cant|qty|quantity|cantidad/.test(tag)) {
+              qty = parseFloat(val) || 0
+            }
+            if (/prec|price|cost|valor|unit|amount|total|importe/.test(tag)) {
+              const parsed = parseFloat(val) || 0
+              if (price === 0 || parsed < price) price = parsed // prefer unit price over total
+            }
+          })
+          if (name && qty > 0) {
+            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+          }
+        })
+      }
+    }
+
+    return xmlItems
+  }
 
   async function handleXmlUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -479,67 +600,31 @@ export function ProductsView() {
         return
       }
 
-      // Extract items from Colombian DIAN XML (UBL 2.1 / FeCo)
-      const xmlItems: { name: string; quantity: number; unitCost: number }[] = []
-
-      // Try UBL 2.1 standard: //cac:InvoiceLine/cac:Item/cbc:Name
-      const invoiceLines = xmlDoc.querySelectorAll('InvoiceLine')
-      if (invoiceLines.length > 0) {
-        invoiceLines.forEach(line => {
-          const name = line.querySelector('Item Name')?.textContent?.trim()
-          const qty = parseFloat(line.querySelector('InvoicedQuantity')?.textContent || '0')
-          const price = parseFloat(line.querySelector('PriceAmount')?.textContent || '0')
-          if (name && qty > 0) {
-            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
-          }
-        })
-      }
-
-      // Try FeCo Colombian format: //item
-      if (xmlItems.length === 0) {
-        const feItems = xmlDoc.querySelectorAll('item')
-        if (feItems.length > 0) {
-          feItems.forEach(item => {
-            const name = item.querySelector('descripcion')?.textContent?.trim()
-              || item.querySelector('nombre')?.textContent?.trim()
-              || item.querySelector('name')?.textContent?.trim()
-            const qty = parseFloat(item.querySelector('cantidad')?.textContent
-              || item.querySelector('quantity')?.textContent || '0')
-            const price = parseFloat(item.querySelector('precioUnitario')?.textContent
-              || item.querySelector('unitPrice')?.textContent
-              || item.querySelector('valor')?.textContent || '0')
-            if (name && qty > 0) {
-              xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
-            }
-          })
-        }
-      }
-
-      // Try generic: //producto or //product
-      if (xmlItems.length === 0) {
-        const genericItems = xmlDoc.querySelectorAll('producto, product')
-        if (genericItems.length > 0) {
-          genericItems.forEach(item => {
-            const name = item.querySelector('nombre, name, descripcion, description')?.textContent?.trim()
-            const qty = parseFloat(item.querySelector('cantidad, quantity')?.textContent || '0')
-            const price = parseFloat(item.querySelector('precio, price, precioUnitario, unitPrice')?.textContent || '0')
-            if (name && qty > 0) {
-              xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
-            }
-          })
-        }
-      }
+      const xmlItems = parseXmlItems(xmlDoc)
 
       if (xmlItems.length === 0) {
-        toast.error('No se encontraron productos en el XML. Verifica el formato.')
+        toast.error('No se pudieron extraer productos del XML. Verifica el formato del archivo.')
         return
       }
 
-      // Create purchase from XML items
+      // Show preview dialog instead of importing directly
+      setXmlPreview({ fileName: file.name, items: xmlItems })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al procesar XML')
+    } finally {
+      setXmlUploading(false)
+      if (xmlInputRef.current) xmlInputRef.current.value = ''
+    }
+  }
+
+  async function confirmXmlImport() {
+    if (!xmlPreview || !store?.id) return
+    setXmlUploading(true)
+    try {
       const body = {
         storeId: store.id,
-        notes: `Importado desde XML: ${file.name}`,
-        items: xmlItems.map(item => ({
+        notes: `Importado desde XML: ${xmlPreview.fileName}`,
+        items: xmlPreview.items.map(item => ({
           productId: 0,
           quantity: item.quantity,
           unitCost: item.unitCost,
@@ -559,13 +644,13 @@ export function ProductsView() {
       }
 
       const result = await res.json()
-      toast.success(`Factura XML importada: ${result.itemsCreated} producto${result.itemsCreated !== 1 ? 's' : ''} creados`)
+      toast.success(`Factura XML importada: ${result.itemsCreated} producto${result.itemsCreated !== 1 ? 's' : ''} procesados`)
+      setXmlPreview(null)
       fetchProducts()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al procesar XML')
+      toast.error(err instanceof Error ? err.message : 'Error al importar XML')
     } finally {
       setXmlUploading(false)
-      if (xmlInputRef.current) xmlInputRef.current.value = ''
     }
   }
 
@@ -695,7 +780,7 @@ export function ProductsView() {
                       <TableHead className="text-right min-w-[100px]">P. Venta</TableHead>
                       <TableHead className="text-right min-w-[70px]">Stock</TableHead>
                       <TableHead className="hidden sm:table-cell min-w-[80px]">Estado</TableHead>
-                      <TableHead className="text-center min-w-[70px]">Acciones</TableHead>
+                      <TableHead className="text-center w-[50px] sticky right-0 bg-background z-10">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -793,7 +878,7 @@ export function ProductsView() {
                               {product.isActive ? 'Activo' : 'Inactivo'}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center sticky right-0 bg-background">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -801,7 +886,7 @@ export function ProductsView() {
                                   <span className="sr-only">Acciones</span>
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="center">
+                              <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => openEditProductDialog(product)}>
                                   <Pencil className="h-4 w-4 mr-2" />
                                   Editar
@@ -1214,6 +1299,95 @@ export function ProductsView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ─── XML PREVIEW DIALOG ──────────────────────────────────── */}
+      <Dialog open={!!xmlPreview} onOpenChange={(open) => !open && setXmlPreview(null)}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Vista previa de XML
+            </DialogTitle>
+            <DialogDescription>
+              Se encontraron <strong>{xmlPreview?.items.length || 0}</strong> producto{xmlPreview && xmlPreview.items.length !== 1 ? 's' : ''} en el archivo.
+              Revisa los datos antes de importar.
+            </DialogDescription>
+          </DialogHeader>
+
+          {xmlPreview && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+                <Info className="h-4 w-4 shrink-0" />
+                <span className="truncate">{xmlPreview.fileName}</span>
+              </div>
+
+              <div className="max-h-[300px] overflow-y-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[8px]">#</TableHead>
+                      <TableHead>Producto</TableHead>
+                      <TableHead className="text-right w-[70px]">Cant.</TableHead>
+                      <TableHead className="text-right w-[100px]">Costo Unit.</TableHead>
+                      <TableHead className="text-right w-[100px]">Subtotal</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {xmlPreview.items.map((item, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
+                        <TableCell className="font-medium text-sm">{item.name}</TableCell>
+                        <TableCell className="text-right text-sm">{item.quantity}</TableCell>
+                        <TableCell className="text-right text-sm">${formatCurrency(item.unitCost, store?.currencyCode || 'COP')}</TableCell>
+                        <TableCell className="text-right text-sm font-medium">${formatCurrency(item.unitCost * item.quantity, store?.currencyCode || 'COP')}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 text-sm">
+                <span className="font-medium">Total estimado:</span>
+                <span className="font-bold">
+                  {formatCurrency(xmlPreview.items.reduce((s, i) => s + i.unitCost * i.quantity, 0), store?.currencyCode || 'COP')}
+                </span>
+              </div>
+
+              <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <p>Los productos que no existan se crearán automáticamente. Los existentes se actualizarán con el stock y costo.</p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setXmlPreview(null)}
+              disabled={xmlUploading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmXmlImport}
+              disabled={xmlUploading}
+              className="gap-2"
+            >
+              {xmlUploading ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  Importando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="h-4 w-4" />
+                  Importar Compra
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

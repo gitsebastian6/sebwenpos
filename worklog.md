@@ -1173,3 +1173,23 @@ Stage Summary:
   - src/components/purchases/purchases-view.tsx - Print dropdown, individual print button, centered actions, FileSpreadsheet import
 - All existing functionality preserved
 - Tested: XML import creates purchase + products + stock + inventory movements
+---
+Task ID: 1
+Agent: main
+Task: Fix product print SKU, XML preview dialog, Inventory Excel download, Actions column
+
+Work Log:
+- Read current state of products-view.tsx, inventory-view.tsx, print-report.ts, xml-import API
+- Fixed thermal 80mm print to include SKU column (shows "---" if no SKU registered)
+- Normal printer format already had SKU column
+- Rewrote XML upload handler with 4 parsing strategies (UBL 2.1, FeCo, generic producto/product, auto-detect repeating elements)
+- Changed XML import from auto-import to showing a preview dialog with extracted data table
+- Preview dialog shows: file name, item list (product, qty, unit cost, subtotal), total, and info about auto-creation
+- Added Excel download button to Inventory movements table (exports all filtered movements)
+- Fixed actions column in Products table: made it sticky right, proper z-index, changed dropdown alignment to "end"
+
+Stage Summary:
+- Product thermal print now shows SKU for each product
+- XML upload reads ANY XML file and shows preview before importing
+- Inventory movements now have Excel export button
+- Actions column in products table is sticky and responsive

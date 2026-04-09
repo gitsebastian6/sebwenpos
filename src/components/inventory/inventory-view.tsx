@@ -28,10 +28,12 @@ import {
   ArrowUpDown,
   RotateCcw,
   Filter,
+  Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import * as XLSX from 'xlsx'
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -241,6 +243,37 @@ export function InventoryView() {
 
   const filteredMovements = movements
 
+  // ─── Excel Export for Movements ───────────────────────────────
+
+  function handleExportMovementsExcel() {
+    if (filteredMovements.length === 0) {
+      toast.error('No hay movimientos para exportar')
+      return
+    }
+    const rows = filteredMovements.map((m, i) => ({
+      '#': i + 1,
+      'Fecha': format(new Date(m.createdAt), 'yyyy-MM-dd HH:mm:ss'),
+      'Producto': m.productName,
+      'Tipo': MOVEMENT_TYPE_LABELS[m.movementType] || m.movementType,
+      'Cantidad': m.quantity,
+      'Notas': m.notes || '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws['!cols'] = [
+      { wch: 5 },
+      { wch: 20 },
+      { wch: 30 },
+      { wch: 14 },
+      { wch: 10 },
+      { wch: 30 },
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Movimientos')
+    const fileName = `Movimientos_${format(new Date(), 'yyyy-MM-dd')}.xlsx`
+    XLSX.writeFile(wb, fileName)
+    toast.success(`Archivo ${fileName} descargado`)
+  }
+
   // ─── Render ───────────────────────────────────────────────
 
   return (
@@ -316,10 +349,22 @@ export function InventoryView() {
             <h2 className="text-lg font-semibold">Movimientos de Inventario</h2>
             <p className="text-sm text-muted-foreground">Registro de entradas y salidas de productos</p>
           </div>
-          <Button onClick={openNewMovementDialog} className="w-full sm:w-auto">
-            <Plus className="h-4 w-4 mr-2" />
-            Nuevo Movimiento
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportMovementsExcel}
+              disabled={isLoadingMovements || filteredMovements.length === 0}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Excel</span>
+            </Button>
+            <Button onClick={openNewMovementDialog} className="w-full sm:w-auto">
+              <Plus className="h-4 w-4 mr-2" />
+              Nuevo Movimiento
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
