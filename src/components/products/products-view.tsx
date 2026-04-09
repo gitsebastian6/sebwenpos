@@ -53,8 +53,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { ProductImage } from '@/components/ui/product-image'
-import { printReport } from '@/lib/print-report'
+import { printReport, printThermal80mm } from '@/lib/print-report'
 import dynamic from 'next/dynamic'
+import { useRef } from 'react'
 
 const PurchasesView = dynamic(() => import('@/components/purchases/purchases-view').then(m => ({ default: m.PurchasesView })), { ssr: false })
 
@@ -71,6 +72,8 @@ import {
   ShoppingCart,
   Truck,
   Printer,
+  Upload,
+  FileSpreadsheet,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -400,31 +403,170 @@ export function ProductsView() {
 
   // ─── Print Products ──────────────────────────────────────────────────
 
-  function handlePrintProducts() {
+  function handlePrintProducts(thermal = false) {
     const currencyCode = store?.currencyCode || 'COP'
     const activeFilterLabel = activeFilter === 'all' ? 'Todos' : activeFilter === 'true' ? 'Activos' : 'Inactivos'
     const categoryLabel = categoryFilter === 'all' ? 'Todas las categorías' : categories.find(c => String(c.id) === categoryFilter)?.name || ''
+    const subtitle = searchQuery || categoryFilter !== 'all' || activeFilter !== 'all'
+      ? `${searchQuery ? `"${searchQuery}" · ` : ''}${categoryFilter !== 'all' ? `${categoryLabel} · ` : ''}${activeFilterLabel}`
+      : 'Todos los productos'
 
-    printReport({
-      title: 'Reporte de Productos',
-      subtitle: searchQuery || categoryFilter !== 'all' || activeFilter !== 'all'
-        ? `Filtros: ${searchQuery ? `Búsqueda: "${searchQuery}" · ` : ''}${categoryFilter !== 'all' ? `Categoría: ${categoryLabel} · ` : ''}Estado: ${activeFilterLabel}`
-        : 'Todos los productos',
-      headers: ['#', 'Nombre', 'SKU', 'Proveedor', 'Categoría', 'Precio Compra', 'Precio Venta', 'Stock', 'Estado'],
-      columnWidths: ['30px', '1fr', '70px', '120px', '100px', '90px', '90px', '50px', '70px'],
-      rows: filteredProducts.map((p, i) => [
-        i + 1,
-        p.name,
-        p.sku || '—',
-        p.provider?.name || '—',
-        p.category?.name || '—',
-        p.costPrice ? formatCurrency(p.costPrice, currencyCode) : '—',
-        formatCurrency(p.salePrice, currencyCode),
-        p.currentStock,
-        p.isActive ? 'Activo' : 'Inactivo',
-      ]),
-      footer: `Total: ${filteredProducts.length} producto${filteredProducts.length !== 1 ? 's' : ''}`,
-    })
+    if (thermal) {
+      const lines: { left: string; right?: string; bold?: boolean; separator?: boolean }[] = []
+      lines.push({ left: subtitle, separator: true })
+      lines.push({ left: 'PRODUCTO', right: 'P.VENTA', bold: true, separator: true })
+      filteredProducts.forEach(p => {
+        const name = p.name.length > 22 ? p.name.slice(0, 22) + '..' : p.name
+        lines.push({
+          left: `${name} (${p.currentStock})`,
+          right: formatCurrency(p.salePrice, currencyCode),
+        })
+      })
+      lines.push({ left: '────────────────────────────────', separator: false })
+      lines.push({ left: `TOTAL: ${filteredProducts.length} productos`, bold: true })
+      printThermal80mm({
+        title: 'LISTADO DE PRODUCTOS',
+        lines,
+        footer: `Generado: ${new Date().toLocaleDateString('es-CO')}`,
+      })
+    } else {
+      printReport({
+        title: 'Reporte de Productos',
+        subtitle: `Filtros: ${subtitle}`,
+        headers: ['#', 'Nombre', 'SKU', 'Proveedor', 'Categoría', 'P. Compra', 'P. Venta', 'Stock', 'Estado'],
+        columnAligns: ['center', 'left', 'center', 'left', 'left', 'right', 'right', 'center', 'center'],
+        columnWidths: ['30px', '1fr', '70px', '120px', '100px', '90px', '90px', '50px', '70px'],
+        rows: filteredProducts.map((p, i) => [
+          i + 1,
+          p.name,
+          p.sku || '—',
+          p.provider?.name || '—',
+          p.category?.name || '—',
+          p.costPrice ? formatCurrency(p.costPrice, currencyCode) : '—',
+          formatCurrency(p.salePrice, currencyCode),
+          p.currentStock,
+          p.isActive ? 'Activo' : 'Inactivo',
+        ]),
+        footer: `Total: ${filteredProducts.length} producto${filteredProducts.length !== 1 ? 's' : ''}`,
+        orientation: 'landscape',
+      })
+    }
+  }
+
+  // ─── XML Invoice Upload ─────────────────────────────────────────────
+
+  const xmlInputRef = useRef<HTMLInputElement>(null)
+  const [xmlUploading, setXmlUploading] = useState(false)
+
+  async function handleXmlUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!store?.id) return
+
+    if (!file.name.endsWith('.xml')) {
+      toast.error('Solo se permiten archivos XML')
+      return
+    }
+
+    setXmlUploading(true)
+    try {
+      const text = await file.text()
+      const parser = new DOMParser()
+      const xmlDoc = parser.parseFromString(text, 'text/xml')
+      const parseError = xmlDoc.querySelector('parsererror')
+      if (parseError) {
+        toast.error('Error al leer el archivo XML')
+        return
+      }
+
+      // Extract items from Colombian DIAN XML (UBL 2.1 / FeCo)
+      const xmlItems: { name: string; quantity: number; unitCost: number }[] = []
+
+      // Try UBL 2.1 standard: //cac:InvoiceLine/cac:Item/cbc:Name
+      const invoiceLines = xmlDoc.querySelectorAll('InvoiceLine')
+      if (invoiceLines.length > 0) {
+        invoiceLines.forEach(line => {
+          const name = line.querySelector('Item Name')?.textContent?.trim()
+          const qty = parseFloat(line.querySelector('InvoicedQuantity')?.textContent || '0')
+          const price = parseFloat(line.querySelector('PriceAmount')?.textContent || '0')
+          if (name && qty > 0) {
+            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+          }
+        })
+      }
+
+      // Try FeCo Colombian format: //item
+      if (xmlItems.length === 0) {
+        const feItems = xmlDoc.querySelectorAll('item')
+        if (feItems.length > 0) {
+          feItems.forEach(item => {
+            const name = item.querySelector('descripcion')?.textContent?.trim()
+              || item.querySelector('nombre')?.textContent?.trim()
+              || item.querySelector('name')?.textContent?.trim()
+            const qty = parseFloat(item.querySelector('cantidad')?.textContent
+              || item.querySelector('quantity')?.textContent || '0')
+            const price = parseFloat(item.querySelector('precioUnitario')?.textContent
+              || item.querySelector('unitPrice')?.textContent
+              || item.querySelector('valor')?.textContent || '0')
+            if (name && qty > 0) {
+              xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+            }
+          })
+        }
+      }
+
+      // Try generic: //producto or //product
+      if (xmlItems.length === 0) {
+        const genericItems = xmlDoc.querySelectorAll('producto, product')
+        if (genericItems.length > 0) {
+          genericItems.forEach(item => {
+            const name = item.querySelector('nombre, name, descripcion, description')?.textContent?.trim()
+            const qty = parseFloat(item.querySelector('cantidad, quantity')?.textContent || '0')
+            const price = parseFloat(item.querySelector('precio, price, precioUnitario, unitPrice')?.textContent || '0')
+            if (name && qty > 0) {
+              xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+            }
+          })
+        }
+      }
+
+      if (xmlItems.length === 0) {
+        toast.error('No se encontraron productos en el XML. Verifica el formato.')
+        return
+      }
+
+      // Create purchase from XML items
+      const body = {
+        storeId: store.id,
+        notes: `Importado desde XML: ${file.name}`,
+        items: xmlItems.map(item => ({
+          productId: 0,
+          quantity: item.quantity,
+          unitCost: item.unitCost,
+          name: item.name,
+        })),
+      }
+
+      const res = await fetch('/api/purchases/xml-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Error al importar factura XML')
+      }
+
+      const result = await res.json()
+      toast.success(`Factura XML importada: ${result.itemsCreated} producto${result.itemsCreated !== 1 ? 's' : ''} creados`)
+      fetchProducts()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al procesar XML')
+    } finally {
+      setXmlUploading(false)
+      if (xmlInputRef.current) xmlInputRef.current.value = ''
+    }
   }
 
   // ─── Filtered Products ─────────────────────────────────────────────────
@@ -493,14 +635,43 @@ export function ProductsView() {
               </Select>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    disabled={productsLoading || filteredProducts.length === 0}
+                    className="gap-2"
+                  >
+                    <Printer className="h-4 w-4" />
+                    <span className="hidden sm:inline">Imprimir</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handlePrintProducts(false)}>
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Impresora Normal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handlePrintProducts(true)}>
+                    <Printer className="h-4 w-4 mr-2" />
+                    Térmica 80mm
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="outline"
-                onClick={handlePrintProducts}
-                disabled={productsLoading || filteredProducts.length === 0}
+                onClick={() => xmlInputRef.current?.click()}
+                disabled={xmlUploading}
                 className="gap-2"
               >
-                <Printer className="h-4 w-4" />
-                <span className="hidden sm:inline">Imprimir</span>
+                <Upload className="h-4 w-4" />
+                <span className="hidden sm:inline">XML</span>
+                <input
+                  ref={xmlInputRef}
+                  type="file"
+                  accept=".xml"
+                  className="hidden"
+                  onChange={handleXmlUpload}
+                />
               </Button>
               <Button onClick={openNewProductDialog} className="gap-2">
                 <Plus className="h-4 w-4" />
@@ -516,15 +687,15 @@ export function ProductsView() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[180px]">Nombre</TableHead>
-                      <TableHead className="hidden sm:table-cell min-w-[100px]">SKU</TableHead>
-                      <TableHead className="min-w-[120px]">Proveedor</TableHead>
-                      <TableHead className="min-w-[120px]">Categoría</TableHead>
-                      <TableHead className="text-right min-w-[110px]">Precio Compra</TableHead>
-                      <TableHead className="text-right min-w-[110px]">Precio Venta</TableHead>
-                      <TableHead className="text-right min-w-[80px]">Stock</TableHead>
-                      <TableHead className="min-w-[100px]">Estado</TableHead>
-                      <TableHead className="text-right min-w-[80px]">Acciones</TableHead>
+                      <TableHead className="min-w-[160px]">Nombre</TableHead>
+                      <TableHead className="hidden md:table-cell min-w-[90px]">SKU</TableHead>
+                      <TableHead className="hidden lg:table-cell min-w-[100px]">Proveedor</TableHead>
+                      <TableHead className="hidden lg:table-cell min-w-[100px]">Categoría</TableHead>
+                      <TableHead className="text-right min-w-[100px]">P. Compra</TableHead>
+                      <TableHead className="text-right min-w-[100px]">P. Venta</TableHead>
+                      <TableHead className="text-right min-w-[70px]">Stock</TableHead>
+                      <TableHead className="hidden sm:table-cell min-w-[80px]">Estado</TableHead>
+                      <TableHead className="text-center min-w-[70px]">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -567,20 +738,20 @@ export function ProductsView() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="hidden sm:table-cell text-muted-foreground text-sm font-mono">
+                          <TableCell className="hidden md:table-cell text-muted-foreground text-sm font-mono">
                             {product.sku || '—'}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden lg:table-cell">
                             {product.provider ? (
                               <div className="flex items-center gap-1.5">
                                 <Truck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                                 <span className="text-sm truncate max-w-[140px]">{product.provider.name}</span>
                               </div>
                             ) : (
-                              <span className="text-muted-foreground text-sm">Sin proveedor</span>
+                              <span className="text-muted-foreground text-sm">—</span>
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden lg:table-cell">
                             {product.category ? (
                               <Badge variant="secondary">{product.category.name}</Badge>
                             ) : (
@@ -610,7 +781,7 @@ export function ProductsView() {
                               <AlertTriangle className="inline-block h-3.5 w-3.5 ml-1 text-red-500" />
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden sm:table-cell">
                             <Badge
                               className={
                                 product.isActive
@@ -622,7 +793,7 @@ export function ProductsView() {
                               {product.isActive ? 'Activo' : 'Inactivo'}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-center">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -630,7 +801,7 @@ export function ProductsView() {
                                   <span className="sr-only">Acciones</span>
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
+                              <DropdownMenuContent align="center">
                                 <DropdownMenuItem onClick={() => openEditProductDialog(product)}>
                                   <Pencil className="h-4 w-4 mr-2" />
                                   Editar

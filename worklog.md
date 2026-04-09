@@ -1122,3 +1122,54 @@ Stage Summary:
 - Products print respects search/category/active filters
 - Purchases print respects search/status filters
 - Excel download includes all currently filtered purchases
+---
+Task ID: 15
+Agent: Main Agent
+Task: Multiple enhancements - 80mm print, purchase print, XML import, responsive fix
+
+Work Log:
+- Enhanced print-report.ts with two functions:
+  - printReport(): Normal printer (A4/letter) with improved column alignment and orientation support
+  - printThermal80mm(): POS thermal printer (72mm width) with monospace font, dashed separators, compact receipt format
+- Products view - Print dropdown with two options:
+  - "Impresora Normal": Full landscape A4 report with all product details
+  - "Térmica 80mm": Compact receipt with product name + price + stock per line
+  - Both respect current search/category/active filters
+- Products view - XML Invoice Upload:
+  - Added Upload button next to Print and Nuevo Producto
+  - Client-side XML parser supporting 3 formats:
+    1. UBL 2.1 standard (DIAN): InvoiceLine/Item/Name, InvoicedQuantity, PriceAmount
+    2. FeCo Colombian: item/descripcion, item/cantidad, item/precioUnitario
+    3. Generic: producto/product + nombre + cantidad + precio
+  - Matches products by name (fuzzy contains match)
+  - Creates new products for unmatched items (30% default margin)
+  - Auto-creates Purchase with stock increment and inventory movements
+- Created /api/purchases/xml-import API route:
+  - Transaction: finds/creates products, increments stock, creates movements, creates purchase
+  - Returns purchaseId and itemsCreated count
+- Purchases view - Print dropdown with two options:
+  - "Impresora Normal": Full landscape A4 report of all purchases
+  - "Térmica 80mm": Compact receipt per purchase
+- Purchases view - Individual purchase print:
+  - Added Printer icon button (alongside Eye and Ban) in actions column
+  - Prints detailed receipt: provider, date, invoice, items with quantities, total
+- Products table - Responsive improvements:
+  - SKU hidden on mobile, shows at md+
+  - Proveedor hidden on mobile/tablet, shows at lg+
+  - Categoría hidden on mobile/tablet, shows at lg+
+  - Estado hidden on small mobile, shows at sm+
+  - Acciones column centered (text-center) for consistent alignment
+  - DropdownMenuContent align="center" instead of "end"
+- Purchases table - Actions column centered
+- All lint checks pass (only pre-existing errors in keepalive/mini-services)
+- XML import API tested: successfully created purchase with new product
+
+Stage Summary:
+- Files created:
+  - src/app/api/purchases/xml-import/route.ts - XML invoice import API endpoint
+- Files modified:
+  - src/lib/print-report.ts - Added printThermal80mm function, improved printReport with columnAligns and orientation
+  - src/components/products/products-view.tsx - Print dropdown (normal/80mm), XML upload button, responsive column hiding, centered actions
+  - src/components/purchases/purchases-view.tsx - Print dropdown, individual print button, centered actions, FileSpreadsheet import
+- All existing functionality preserved
+- Tested: XML import creates purchase + products + stock + inventory movements

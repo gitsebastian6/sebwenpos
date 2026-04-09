@@ -56,12 +56,19 @@ import {
   FileText,
   Printer,
   Download,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import * as XLSX from 'xlsx'
-import { printReport } from '@/lib/print-report'
+import { printReport, printThermal80mm } from '@/lib/print-report'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -346,26 +353,88 @@ export function PurchasesView() {
 
   // ─── Print Purchases ──────────────────────────────────────────────
 
-  function handlePrintPurchases() {
+  function handlePrintPurchases(thermal = false) {
     const statusFilterLabel = statusFilter === 'ALL' ? 'Todas' : statusFilter === 'COMPLETED' ? 'Completadas' : 'Canceladas'
+    const subtitle = search || statusFilter !== 'ALL'
+      ? `${search ? `"${search}" · ` : ''}${statusFilterLabel}`
+      : 'Todas las compras'
 
-    printReport({
-      title: 'Reporte de Compras',
-      subtitle: search || statusFilter !== 'ALL'
-        ? `Filtros: ${search ? `Búsqueda: "${search}" · ` : ''}Estado: ${statusFilterLabel}`
-        : 'Todas las compras',
-      headers: ['#', 'Fecha', 'Factura', 'Proveedor', 'Productos', 'Total', 'Estado'],
-      columnWidths: ['30px', '100px', '100px', '1fr', '60px', '100px', '80px'],
-      rows: purchases.map((p, i) => [
-        i + 1,
-        format(new Date(p.date), 'd MMM yyyy', { locale: es }),
-        p.invoiceNumber || '—',
-        p.provider?.name || 'Sin proveedor',
-        p.itemCount,
-        formatCurrency(p.total, currencyCode),
-        p.status === 'COMPLETED' ? 'Completada' : 'Cancelada',
-      ]),
-      footer: `Total compras: ${purchases.length} · Total valor: ${formatCurrency(purchases.filter(p => p.status === 'COMPLETED').reduce((s, p) => s + p.total, 0), currencyCode)}`,
+    if (thermal) {
+      const lines: { left: string; right?: string; bold?: boolean; separator?: boolean }[] = []
+      lines.push({ left: subtitle, separator: true })
+      purchases.forEach(p => {
+        const prov = p.provider?.name || 'Sin prov.'
+        lines.push({ left: `${prov}`, right: formatCurrency(p.total, currencyCode), bold: true, separator: true })
+        const dateStr = format(new Date(p.date), 'dd/MM/yy', { locale: es })
+        const inv = p.invoiceNumber || ''
+        lines.push({ left: `${dateStr} ${inv ? '· ' + inv : ''} · ${p.itemCount} prod.` })
+        lines.push({ left: p.status === 'COMPLETED' ? '✓ Completada' : '✗ Cancelada', separator: true })
+      })
+      const totalVal = purchases.filter(p => p.status === 'COMPLETED').reduce((s, p) => s + p.total, 0)
+      lines.push({ left: '────────────────────────────────', separator: false })
+      lines.push({ left: `TOTAL COMPLETADAS:`, right: formatCurrency(totalVal, currencyCode), bold: true })
+      printThermal80mm({
+        title: 'COMPRAS',
+        lines,
+        footer: `Total: ${purchases.length} compra${purchases.length !== 1 ? 's' : ''}`,
+      })
+    } else {
+      printReport({
+        title: 'Reporte de Compras',
+        subtitle: `Filtros: ${subtitle}`,
+        headers: ['#', 'Fecha', 'Factura', 'Proveedor', 'Productos', 'Total', 'Estado'],
+        columnAligns: ['center', 'center', 'center', 'left', 'center', 'right', 'center'],
+        columnWidths: ['30px', '100px', '100px', '1fr', '60px', '100px', '80px'],
+        rows: purchases.map((p, i) => [
+          i + 1,
+          format(new Date(p.date), 'd MMM yyyy', { locale: es }),
+          p.invoiceNumber || '—',
+          p.provider?.name || 'Sin proveedor',
+          p.itemCount,
+          formatCurrency(p.total, currencyCode),
+          p.status === 'COMPLETED' ? 'Completada' : 'Cancelada',
+        ]),
+        footer: `Total compras: ${purchases.length} · Total valor: ${formatCurrency(purchases.filter(p => p.status === 'COMPLETED').reduce((s, p) => s + p.total, 0), currencyCode)}`,
+        orientation: 'landscape',
+      })
+    }
+  }
+
+  // ─── Print Single Purchase (detail) ────────────────────────────────
+
+  function handlePrintPurchaseDetail(purchase: Purchase) {
+    const lines: { left: string; right?: string; bold?: boolean; separator?: boolean }[] = []
+    const dateStr = format(new Date(purchase.date), 'dd/MM/yyyy', { locale: es })
+    const prov = purchase.provider?.name || 'Sin proveedor'
+
+    lines.push({ left: `Compra #${purchase.id}`, bold: true, separator: true })
+    lines.push({ left: `Fecha: ${dateStr}` })
+    lines.push({ left: `Proveedor: ${prov}` })
+    if (purchase.invoiceNumber) {
+      lines.push({ left: `Factura: ${purchase.invoiceNumber}` })
+    }
+    if (purchase.notes) {
+      lines.push({ left: `Notas: ${purchase.notes}` })
+    }
+    lines.push({ separator: true })
+    lines.push({ left: 'PRODUCTO', right: 'SUBTOTAL', bold: true, separator: true })
+
+    purchase.purchaseItems.forEach(item => {
+      const name = item.product.name.length > 24 ? item.product.name.slice(0, 24) + '..' : item.product.name
+      lines.push({
+        left: `${item.quantity}x ${name}`,
+        right: formatCurrency(item.total, currencyCode),
+      })
+    })
+
+    lines.push({ left: '────────────────────────────────', separator: false })
+    lines.push({ left: `TOTAL:`, right: formatCurrency(purchase.total, currencyCode), bold: true })
+    lines.push({ left: purchase.status === 'COMPLETED' ? 'ESTADO: COMPLETADA' : 'ESTADO: CANCELADA', separator: true })
+
+    printThermal80mm({
+      title: 'COMPRA DETALLE',
+      lines,
+      footer: `Generado: ${new Date().toLocaleDateString('es-CO')}`,
     })
   }
 
@@ -426,16 +495,30 @@ export function PurchasesView() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePrintPurchases}
-            disabled={loading || purchases.length === 0}
-            className="gap-2"
-          >
-            <Printer className="h-4 w-4" />
-            <span className="hidden sm:inline">Imprimir</span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePrintPurchases(false)}
+                disabled={loading || purchases.length === 0}
+                className="gap-2"
+              >
+                <Printer className="h-4 w-4" />
+                <span className="hidden sm:inline">Imprimir</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handlePrintPurchases(false)}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Impresora Normal
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handlePrintPurchases(true)}>
+                <Printer className="h-4 w-4 mr-2" />
+                Térmica 80mm
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             variant="outline"
             size="sm"
@@ -521,7 +604,7 @@ export function PurchasesView() {
                       <TableHead className="text-center">Productos</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead>Estado</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
+                      <TableHead className="text-center">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -563,8 +646,8 @@ export function PurchasesView() {
                         <TableCell>
                           <StatusBadge status={purchase.status} />
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-1">
                             <Button
                               variant="ghost"
                               size="icon"
@@ -573,6 +656,15 @@ export function PurchasesView() {
                               onClick={() => openDetail(purchase)}
                             >
                               <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Imprimir compra"
+                              onClick={() => handlePrintPurchaseDetail(purchase)}
+                            >
+                              <Printer className="h-4 w-4" />
                             </Button>
                             {purchase.status === 'COMPLETED' && (
                               <Button
