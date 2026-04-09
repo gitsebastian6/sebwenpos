@@ -53,6 +53,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { ProductImage } from '@/components/ui/product-image'
+import { printReport } from '@/lib/print-report'
 import dynamic from 'next/dynamic'
 
 const PurchasesView = dynamic(() => import('@/components/purchases/purchases-view').then(m => ({ default: m.PurchasesView })), { ssr: false })
@@ -69,6 +70,7 @@ import {
   AlertTriangle,
   ShoppingCart,
   Truck,
+  Printer,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -396,6 +398,35 @@ export function ProductsView() {
     }
   }
 
+  // ─── Print Products ──────────────────────────────────────────────────
+
+  function handlePrintProducts() {
+    const currencyCode = store?.currencyCode || 'COP'
+    const activeFilterLabel = activeFilter === 'all' ? 'Todos' : activeFilter === 'true' ? 'Activos' : 'Inactivos'
+    const categoryLabel = categoryFilter === 'all' ? 'Todas las categorías' : categories.find(c => String(c.id) === categoryFilter)?.name || ''
+
+    printReport({
+      title: 'Reporte de Productos',
+      subtitle: searchQuery || categoryFilter !== 'all' || activeFilter !== 'all'
+        ? `Filtros: ${searchQuery ? `Búsqueda: "${searchQuery}" · ` : ''}${categoryFilter !== 'all' ? `Categoría: ${categoryLabel} · ` : ''}Estado: ${activeFilterLabel}`
+        : 'Todos los productos',
+      headers: ['#', 'Nombre', 'SKU', 'Proveedor', 'Categoría', 'Precio Compra', 'Precio Venta', 'Stock', 'Estado'],
+      columnWidths: ['30px', '1fr', '70px', '120px', '100px', '90px', '90px', '50px', '70px'],
+      rows: filteredProducts.map((p, i) => [
+        i + 1,
+        p.name,
+        p.sku || '—',
+        p.provider?.name || '—',
+        p.category?.name || '—',
+        p.costPrice ? formatCurrency(p.costPrice, currencyCode) : '—',
+        formatCurrency(p.salePrice, currencyCode),
+        p.currentStock,
+        p.isActive ? 'Activo' : 'Inactivo',
+      ]),
+      footer: `Total: ${filteredProducts.length} producto${filteredProducts.length !== 1 ? 's' : ''}`,
+    })
+  }
+
   // ─── Filtered Products ─────────────────────────────────────────────────
 
   const filteredProducts = products
@@ -461,10 +492,21 @@ export function ProductsView() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={openNewProductDialog} className="gap-2 shrink-0">
-              <Plus className="h-4 w-4" />
-              Nuevo Producto
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                onClick={handlePrintProducts}
+                disabled={productsLoading || filteredProducts.length === 0}
+                className="gap-2"
+              >
+                <Printer className="h-4 w-4" />
+                <span className="hidden sm:inline">Imprimir</span>
+              </Button>
+              <Button onClick={openNewProductDialog} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Nuevo Producto
+              </Button>
+            </div>
           </div>
 
           {/* Products Table */}

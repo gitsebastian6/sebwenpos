@@ -54,10 +54,14 @@ import {
   Ban,
   Eye,
   FileText,
+  Printer,
+  Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import * as XLSX from 'xlsx'
+import { printReport } from '@/lib/print-report'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -340,6 +344,63 @@ export function PurchasesView() {
     }
   }
 
+  // ─── Print Purchases ──────────────────────────────────────────────
+
+  function handlePrintPurchases() {
+    const statusFilterLabel = statusFilter === 'ALL' ? 'Todas' : statusFilter === 'COMPLETED' ? 'Completadas' : 'Canceladas'
+
+    printReport({
+      title: 'Reporte de Compras',
+      subtitle: search || statusFilter !== 'ALL'
+        ? `Filtros: ${search ? `Búsqueda: "${search}" · ` : ''}Estado: ${statusFilterLabel}`
+        : 'Todas las compras',
+      headers: ['#', 'Fecha', 'Factura', 'Proveedor', 'Productos', 'Total', 'Estado'],
+      columnWidths: ['30px', '100px', '100px', '1fr', '60px', '100px', '80px'],
+      rows: purchases.map((p, i) => [
+        i + 1,
+        format(new Date(p.date), 'd MMM yyyy', { locale: es }),
+        p.invoiceNumber || '—',
+        p.provider?.name || 'Sin proveedor',
+        p.itemCount,
+        formatCurrency(p.total, currencyCode),
+        p.status === 'COMPLETED' ? 'Completada' : 'Cancelada',
+      ]),
+      footer: `Total compras: ${purchases.length} · Total valor: ${formatCurrency(purchases.filter(p => p.status === 'COMPLETED').reduce((s, p) => s + p.total, 0), currencyCode)}`,
+    })
+  }
+
+  // ─── Export Excel ───────────────────────────────────────────────────
+
+  function handleExportExcel() {
+    const rows = purchases.map((p, i) => ({
+      '#': i + 1,
+      'Fecha': format(new Date(p.date), 'yyyy-MM-dd'),
+      'Factura': p.invoiceNumber || '',
+      'Proveedor': p.provider?.name || 'Sin proveedor',
+      'N° Productos': p.itemCount,
+      'Total': p.total,
+      'Estado': p.status === 'COMPLETED' ? 'Completada' : 'Cancelada',
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws['!cols'] = [
+      { wch: 5 },
+      { wch: 12 },
+      { wch: 16 },
+      { wch: 25 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 12 },
+    ]
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Compras')
+
+    const fileName = `Compras_${format(new Date(), 'yyyy-MM-dd')}.xlsx`
+    XLSX.writeFile(wb, fileName)
+    toast.success(`Archivo ${fileName} descargado`)
+  }
+
   // ─── Counts ─────────────────────────────────────────────────────────
 
   const completedCount = purchases.filter((p) => p.status === 'COMPLETED').length
@@ -364,10 +425,32 @@ export function PurchasesView() {
             </p>
           </div>
         </div>
-        <Button onClick={openCreateDialog} size="sm">
-          <Plus className="h-4 w-4" />
-          Nueva Compra
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePrintPurchases}
+            disabled={loading || purchases.length === 0}
+            className="gap-2"
+          >
+            <Printer className="h-4 w-4" />
+            <span className="hidden sm:inline">Imprimir</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportExcel}
+            disabled={loading || purchases.length === 0}
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Excel</span>
+          </Button>
+          <Button onClick={openCreateDialog} size="sm">
+            <Plus className="h-4 w-4" />
+            Nueva Compra
+          </Button>
+        </div>
       </div>
 
       {/* ── Search + Filter Bar ────────────────────────────────────── */}

@@ -1081,3 +1081,44 @@ Stage Summary:
   - `src/app/api/reports/daily/route.ts` - Fixed raw SQL syntax error
 - All APIs tested and working
 - Lint: zero errors in new/modified files
+---
+Task ID: 14
+Agent: Main Agent
+Task: Add print and Excel export features to Products and Purchases
+
+Work Log:
+- Created reusable print utility at src/lib/print-report.ts
+  - Opens a new browser window with formatted HTML table for printing
+  - Supports title, subtitle, headers, rows, column widths, and footer
+  - Professional print-optimized CSS with landscape orientation
+  - Print button visible in new window (hidden when printing)
+- Added Print button to Products page (products-view.tsx)
+  - Printer icon button next to "Nuevo Producto" in toolbar
+  - Respects current filters: search query, category, active/inactive status
+  - Shows filtered subtitle when filters applied
+  - Prints: #, Name, SKU, Provider, Category, Cost Price, Sale Price, Stock, Status
+  - Footer shows total product count
+- Added Print button to Purchases tab (purchases-view.tsx)
+  - Printer icon button in purchases header toolbar
+  - Respects search and status filters
+  - Prints: #, Date, Invoice, Provider, Product Count, Total, Status
+  - Footer shows total purchases and total value (completed only)
+- Added Excel download button to Purchases tab
+  - Download icon button in purchases header toolbar
+  - Uses xlsx npm package (installed) for client-side Excel generation
+  - Exports: #, Date, Invoice, Provider, Product Count, Total, Status
+  - File named Compras_YYYY-MM-DD.xlsx
+  - Toast notification on successful download
+- All lint checks pass (only pre-existing errors in keepalive/mini-services)
+
+Stage Summary:
+- Files created:
+  - src/lib/print-report.ts - Reusable print utility function
+- Files modified:
+  - src/components/products/products-view.tsx - Added Printer import + print button + handlePrintProducts function
+  - src/components/purchases/purchases-view.tsx - Added Printer/Download imports, xlsx, print-report + print button + Excel button + handlers
+- Packages installed: xlsx@0.18.5
+- Print opens in new browser window within same browser (not external)
+- Products print respects search/category/active filters
+- Purchases print respects search/status filters
+- Excel download includes all currently filtered purchases
