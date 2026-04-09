@@ -455,45 +455,47 @@ export function POSView() {
           cursor-pointer transition-all duration-150 select-none
           hover:shadow-md active:scale-[0.98]
           ${isOutOfStock ? 'opacity-50 cursor-not-allowed' : ''}
-          ${inCart ? 'ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-background' : ''}
+          ${inCart ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-background' : ''}
         `}
         onClick={() => !isOutOfStock && addToCart(product)}
       >
-        <CardContent className="p-3 sm:p-4 flex flex-col gap-2">
-          {/* Product image or placeholder */}
-          <div className="aspect-square rounded-md bg-muted flex items-center justify-center overflow-hidden relative">
+        <CardContent className="p-2 sm:p-2.5 flex items-center gap-2.5">
+          {/* Product icon — small square */}
+          <div className="w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-md bg-muted flex items-center justify-center overflow-hidden relative">
             <ProductImage
               src={product.imgUrl}
               alt={product.name}
               categoryName={product.category?.name}
               className="w-full h-full object-cover rounded-md"
-              fallbackClassName="aspect-square rounded-md bg-muted flex items-center justify-center w-full h-full"
-              iconClassName="h-10 w-10 text-muted-foreground/30"
+              fallbackClassName="w-full h-full rounded-md bg-muted flex items-center justify-center"
+              iconClassName="h-5 w-5 text-muted-foreground/40"
             />
             {isOutOfStock && (
               <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
-                <Badge variant="secondary" className="text-xs font-medium">
-                  Agotado
-                </Badge>
-              </div>
-            )}
-            {inCart && !isOutOfStock && (
-              <div className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold">
-                {cartItem!.quantity}
+                <Badge variant="secondary" className="text-[9px] px-1 py-0">Agotado</Badge>
               </div>
             )}
           </div>
 
           {/* Product info */}
-          <div className="flex flex-col gap-0.5 min-w-0">
-            <p className="text-sm font-medium leading-tight truncate">{product.name}</p>
-            <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">
-              {formatCurrency(product.salePrice, currencyCode)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Stock: {product.currentStock}
-            </p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs sm:text-sm font-medium leading-tight truncate">{product.name}</p>
+            <div className="flex items-center justify-between gap-2 mt-0.5">
+              <p className="text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                {formatCurrency(product.salePrice, currencyCode)}
+              </p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground shrink-0">
+                {product.currentStock} disp.
+              </p>
+            </div>
           </div>
+
+          {/* Cart quantity badge */}
+          {inCart && !isOutOfStock && (
+            <div className="h-5 w-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+              {cartItem!.quantity}
+            </div>
+          )}
         </CardContent>
       </Card>
     )
@@ -514,27 +516,29 @@ export function POSView() {
         `}
         onClick={() => addServiceToCart(service)}
       >
-        <CardContent className="p-3 sm:p-4 flex flex-col gap-2">
-          <div className="aspect-square rounded-md bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center relative">
-            <Star className="h-10 w-10 text-violet-400/50" />
-            <Badge variant="secondary" className="absolute top-1.5 left-1.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300">
-              Servicio
+        <CardContent className="p-2 sm:p-2.5 flex items-center gap-2.5">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-md bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center relative">
+            <Star className="h-5 w-5 text-violet-400/50" />
+            <Badge variant="secondary" className="absolute -top-1 -left-1 text-[8px] px-1 py-0 bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300">
+              Svc
             </Badge>
-            {inCart && (
-              <div className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-violet-500 text-white flex items-center justify-center text-xs font-bold">
-                {cartItem!.quantity}
-              </div>
-            )}
           </div>
-          <div className="flex flex-col gap-0.5 min-w-0">
-            <p className="text-sm font-medium leading-tight truncate">{service.name}</p>
-            <p className="text-base font-bold text-violet-600 dark:text-violet-400">
-              {formatCurrency(service.price, currencyCode)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              por {service.unit}
-            </p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs sm:text-sm font-medium leading-tight truncate">{service.name}</p>
+            <div className="flex items-center justify-between gap-2 mt-0.5">
+              <p className="text-xs sm:text-sm font-bold text-violet-600 dark:text-violet-400">
+                {formatCurrency(service.price, currencyCode)}
+              </p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground shrink-0">
+                /{service.unit}
+              </p>
+            </div>
           </div>
+          {inCart && (
+            <div className="h-5 w-5 rounded-full bg-violet-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+              {cartItem!.quantity}
+            </div>
+          )}
         </CardContent>
       </Card>
     )
@@ -544,12 +548,14 @@ export function POSView() {
   const renderProductGrid = () => (
     <div className="flex-1 min-h-0">
       {isLoadingProducts ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-2">
           {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="space-y-2">
-              <Skeleton className="aspect-square rounded-md" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-5 w-1/2" />
+            <div key={i} className="flex items-center gap-2.5 p-2">
+              <Skeleton className="w-10 h-10 rounded-md shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
             </div>
           ))}
         </div>
@@ -562,7 +568,7 @@ export function POSView() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-2">
             {filteredServices.map(renderServiceCard)}
           </div>
         )
@@ -574,7 +580,7 @@ export function POSView() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-2">
           {filteredProducts.map(renderProductCard)}
         </div>
       )}
