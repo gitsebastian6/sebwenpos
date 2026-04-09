@@ -850,3 +850,32 @@ Stage Summary:
 - Comanda items selectable by clicking anywhere on the row
 - Product add in comanda: entire row is clickable
 - Store data (NIT, address, phone) now flows to printed tickets
+---
+Task ID: cop-currency-audit
+Agent: Main
+Task: Audit and fix COP currency handling across all modules
+
+Work Log:
+- Full audit of all monetary values across the codebase
+- Found data is already stored as whole pesos (no migration needed)
+- Found Products frontend multiplied by 100 on save and divided by 100 on edit
+- Found Services frontend had 9 instances of *100 and /100
+- Found Purchases frontend had pesosToCents/centsToPesos helper functions with 7 usages
+- Found Dashboard chart divided by 100 for Y-axis and multiplied by 100 for tooltip (double compensation)
+- Found Accounting had misleading parameter name 'balanceInCents'
+- Found 9 schema comments incorrectly saying "centavos" instead of "pesos"
+
+Fixes applied:
+- Products: Removed *100 from save (line 270-271), removed /100 from edit (line 241-242)
+- Services: Removed all 9 instances of *100 and /100 conversions
+- Purchases: Removed centsToPesos/pesosToCents helpers, removed all 7 usages
+- Dashboard: Removed /100 from chart data, removed *100 from tooltip
+- Accounting: Fixed balanceInCents variable references → balance
+- Schema: Fixed all 9 "centavos" comments to "pesos"
+
+Stage Summary:
+- All monetary values now stored and displayed consistently as whole pesos for COP
+- No data migration needed (data was already in whole pesos)
+- formatCurrency() handles COP correctly (no division, 0 decimal places)
+- Verified: no remaining *100 or /100 for monetary conversions in components
+- Only remaining *100 are for percentage bar widths (correct usage)

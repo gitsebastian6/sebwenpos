@@ -130,7 +130,7 @@ model Purchase {
   invoiceNumber String?  @map("invoice_number") // Número de factura del proveedor
   date          DateTime @default(now())
   notes         String?
-  total         Int      @default(0) // total en centavos
+  total         Int      @default(0) // total en pesos
   status        String   @default("COMPLETED") // COMPLETED, CANCELLED
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt
@@ -147,7 +147,7 @@ model PurchaseItem {
   purchaseId Int @map("purchase_id")
   productId  Int @map("product_id")
   quantity   Int
-  unitCost   Int @map("unit_cost") // costo unitario en centavos
+  unitCost   Int @map("unit_cost") // costo unitario en pesos
   total      Int // quantity * unitCost
 
   purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
@@ -189,7 +189,7 @@ model Customer {
   name       String
   phone      String?
   email      String?
-  totalDebt  Int      @default(0) @map("total_debt") // en centavos
+  totalDebt  Int      @default(0) @map("total_debt") // en pesos
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt
 
@@ -206,9 +206,9 @@ model Order {
   customerId     Int?           @map("customer_id")
   tableSessionId Int?           @map("table_session_id")
   orderNumber    String         @map("order_number")
-  subtotal       Int            // centavos (solo productos/servicios)
+  subtotal       Int            // pesos (solo productos/servicios)
   tipAmount      Int            @default(0) @map("tip_amount") // propina en pesos
-  total          Int            // centavos (subtotal + tipAmount)
+  total          Int            // pesos (subtotal + tipAmount)
   status         String         @default("COMPLETED") // COMPLETED, PENDING, CANCELLED, CREDIT
   paymentMethod  String         @default("CASH") @map("payment_method") // CASH, CARD, TRANSFER, MIXED
   notes          String?  
@@ -290,8 +290,8 @@ model ComandaItem {
   serviceId      Int?     @map("service_id")
   productName    String   @map("product_name") // nombre al momento de pedir
   quantity       Int
-  unitPrice      Int      @map("unit_price") // precio al momento de pedir (centavos)
-  total          Int      // quantity * unitPrice (centavos)
+  unitPrice      Int      @map("unit_price") // precio al momento de pedir (pesos)
+  total          Int      // quantity * unitPrice (pesos)
   status         String   @default("PENDING") // PENDING, SERVED, PAID, CANCELLED
   createdAt      DateTime @default(now()) @map("created_at")
 
@@ -348,7 +348,7 @@ model Service {
   storeId     Int      @map("store_id")
   name        String
   description String?
-  price       Int      @default(0) // precio unitario en centavos
+  price       Int      @default(0) // precio unitario en pesos
   icon        String   @default("Star") // nombre del icono Lucide
   unit        String   @default("servicio") // unidad: "servicio", "unidad", "rollo", "hora"
   isActive    Boolean  @default(true) @map("is_active")
@@ -369,8 +369,8 @@ model ServiceTransaction {
   storeId      Int      @map("store_id")
   serviceId    Int      @map("service_id")
   quantity     Int      @default(1)
-  unitPrice    Int      @map("unit_price") // precio al momento de la transacción (centavos)
-  totalAmount  Int      @map("total_amount") // quantity * unitPrice (centavos)
+  unitPrice    Int      @map("unit_price") // precio al momento de la transacción (pesos)
+  totalAmount  Int      @map("total_amount") // quantity * unitPrice (pesos)
   notes        String?
   status       String   @default("COMPLETED") // COMPLETED, CANCELLED
   createdAt    DateTime @default(now()) @map("created_at")

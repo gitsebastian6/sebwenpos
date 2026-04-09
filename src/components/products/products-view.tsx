@@ -238,8 +238,8 @@ export function ProductsView() {
       providerId: product.providerId ? String(product.providerId) : 'none',
       description: product.description || '',
       imgUrl: product.imgUrl || '',
-      costPrice: product.costPrice ? String(product.costPrice / 100) : '',
-      salePrice: String(product.salePrice / 100),
+      costPrice: product.costPrice ? String(product.costPrice) : '',
+      salePrice: String(product.salePrice),
       minStock: String(product.minStock),
       isActive: product.isActive,
     })
@@ -267,8 +267,8 @@ export function ProductsView() {
         providerId: productForm.providerId !== 'none' ? Number(productForm.providerId) : undefined,
         description: productForm.description.trim() || undefined,
         imgUrl: productForm.imgUrl.trim() || undefined,
-        costPrice: productForm.costPrice ? Math.round(Number(productForm.costPrice) * 100) : 0,
-        salePrice: Math.round(Number(productForm.salePrice) * 100),
+        costPrice: productForm.costPrice ? Math.round(Number(productForm.costPrice)) : 0,
+        salePrice: Math.round(Number(productForm.salePrice)),
         minStock: productForm.minStock ? Number(productForm.minStock) : 5,
         isActive: productForm.isActive,
       }

@@ -368,7 +368,7 @@ export function DashboardView() {
   const chartData = dailySales.map((d) => ({
     ...d,
     dateLabel: formatDateShort(d.date),
-    sales: d.total / 100,
+    sales: d.total,
   }))
 
   // ── Profitability metrics ──
@@ -484,7 +484,7 @@ export function DashboardView() {
                     <ChartTooltipContent
                       formatter={(value: any) => (
                         <span className="font-mono font-medium">
-                          {formatCurrency(Number(value) * 100, currencyCode)}
+                          {formatCurrency(Number(value), currencyCode)}
                         </span>
                       )}
                     />

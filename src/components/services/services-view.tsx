@@ -262,7 +262,7 @@ export function ServicesView() {
           storeId,
           name: formName.trim(),
           description: formDescription.trim() || null,
-          price: Math.round(parseFloat(formPrice) * 100),
+          price: Math.round(parseFloat(formPrice)),
           icon: formIcon,
           unit: formUnit,
         }),
@@ -285,7 +285,7 @@ export function ServicesView() {
     setEditingService(s)
     setEditName(s.name)
     setEditDescription(s.description || '')
-    setEditPrice(String(s.price / 100))
+    setEditPrice(String(s.price))
     setEditIcon(s.icon)
     setEditUnit(s.unit)
   }
@@ -300,7 +300,7 @@ export function ServicesView() {
         body: JSON.stringify({
           name: editName.trim(),
           description: editDescription.trim() || null,
-          price: Math.round(parseFloat(editPrice) * 100),
+          price: Math.round(parseFloat(editPrice)),
           icon: editIcon,
           unit: editUnit,
         }),
@@ -341,7 +341,7 @@ export function ServicesView() {
     }
     setTxServiceId(services[0].id)
     setTxQuantity('1')
-    setTxUnitPrice(String(services[0].price / 100))
+    setTxUnitPrice(String(services[0].price))
     setTxNotes('')
     setShowCreateTransaction(true)
   }
@@ -351,7 +351,7 @@ export function ServicesView() {
     if (txServiceId) {
       const svc = services.find(s => s.id === txServiceId)
       if (svc) {
-        setTxUnitPrice(String(svc.price / 100))
+        setTxUnitPrice(String(svc.price))
       }
     }
   }, [txServiceId, services])
@@ -362,7 +362,7 @@ export function ServicesView() {
       return
     }
     const qty = parseInt(txQuantity)
-    const price = Math.round(parseFloat(txUnitPrice) * 100)
+    const price = Math.round(parseFloat(txUnitPrice))
     if (isNaN(qty) || qty < 1 || isNaN(price) || price < 0) {
       toast.error('Valores inválidos')
       return
@@ -399,7 +399,7 @@ export function ServicesView() {
   function openEditTx(tx: ServiceTransaction) {
     setEditingTx(tx)
     setEditTxQuantity(String(tx.quantity))
-    setEditTxUnitPrice(String(tx.unitPrice / 100))
+    setEditTxUnitPrice(String(tx.unitPrice))
     setEditTxNotes(tx.notes || '')
     setEditTxStatus(tx.status)
   }
@@ -407,7 +407,7 @@ export function ServicesView() {
   async function handleSaveTx() {
     if (!editingTx) return
     const qty = parseInt(editTxQuantity)
-    const price = Math.round(parseFloat(editTxUnitPrice) * 100)
+    const price = Math.round(parseFloat(editTxUnitPrice))
     if (isNaN(qty) || isNaN(price)) return
     setIsSavingTx(true)
     try {
@@ -863,7 +863,7 @@ export function ServicesView() {
               <div className="rounded-lg bg-muted/50 p-3 text-center">
                 <span className="text-sm text-muted-foreground">Total: </span>
                 <span className="text-lg font-bold">
-                  {formatCurrency(Math.round(parseFloat(txQuantity) * parseFloat(txUnitPrice) * 100), currencyCode)}
+                  {formatCurrency(Math.round(parseFloat(txQuantity) * parseFloat(txUnitPrice)), currencyCode)}
                 </span>
               </div>
             )}

@@ -132,19 +132,19 @@ function formatTime(dateStr: string) {
   })
 }
 
-function formatBalance(balanceInCents: number, type: string, currencyCode?: string) {
-  const prefix = balanceInCents < 0 ? '-' : ''
-  return `${prefix}${formatCurrency(Math.abs(balanceInCents), currencyCode)}`
+function formatBalance(balance: number, type: string, currencyCode?: string) {
+  const prefix = balance < 0 ? '-' : ''
+  return `${prefix}${formatCurrency(Math.abs(balance), currencyCode)}`
 }
 
-function getBalanceColor(balanceInCents: number, type: string) {
-  if (balanceInCents === 0) return 'text-muted-foreground'
+function getBalanceColor(balance: number, type: string) {
+  if (balance === 0) return 'text-muted-foreground'
   const isDebitNormal = type === 'ASSET' || type === 'EXPENSE'
   if (isDebitNormal) {
-    return balanceInCents > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+    return balance > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
   }
   // Credit-normal accounts: positive balance = debt/obligation (red), negative = favorable (green)
-  return balanceInCents > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
+  return balance > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
 }
 
 // ─── Report Types ──────────────────────────────────────────────────────────────

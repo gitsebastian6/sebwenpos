@@ -111,13 +111,8 @@ type StatusFilter = 'ALL' | 'COMPLETED' | 'CANCELLED'
 
 // ── Helper ────────────────────────────────────────────────────────────────
 
-function centsToPesos(cents: number): number {
-  return Math.round(cents / 100)
-}
-
-function pesosToCents(pesos: number): number {
-  return Math.round(pesos * 100)
-}
+// Nota: Todos los valores monetarios se almacenan en pesos enteros (sin centavos para COP)
+// El usuario ingresa el valor en pesos y se guarda directamente.
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -281,7 +276,7 @@ export function PurchasesView() {
         items: validItems.map((item) => ({
           productId: Number(item.productId),
           quantity: Number(item.quantity),
-          unitCost: pesosToCents(Number(item.unitCost)),
+          unitCost: Math.round(Number(item.unitCost)),
         })),
       }
 
@@ -480,7 +475,7 @@ export function PurchasesView() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatCurrency(centsToPesos(purchase.total), currencyCode)}
+                          {formatCurrency(purchase.total, currencyCode)}
                         </TableCell>
                         <TableCell>
                           <StatusBadge status={purchase.status} />
@@ -546,7 +541,7 @@ export function PurchasesView() {
                         {purchase.itemCount} producto{purchase.itemCount !== 1 ? 's' : ''}
                       </span>
                       <span className="font-semibold text-sm">
-                        {formatCurrency(centsToPesos(purchase.total), currencyCode)}
+                        {formatCurrency(purchase.total, currencyCode)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 pt-1">
@@ -850,10 +845,10 @@ export function PurchasesView() {
                         <TableCell className="text-sm font-medium">{item.product.name}</TableCell>
                         <TableCell className="text-center text-sm">{item.quantity}</TableCell>
                         <TableCell className="text-right text-sm">
-                          {formatCurrency(centsToPesos(item.unitCost), currencyCode)}
+                          {formatCurrency(item.unitCost, currencyCode)}
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium">
-                          {formatCurrency(centsToPesos(item.total), currencyCode)}
+                          {formatCurrency(item.total, currencyCode)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -865,7 +860,7 @@ export function PurchasesView() {
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                 <span className="font-semibold">Total</span>
                 <span className="text-xl font-bold">
-                  {formatCurrency(centsToPesos(detailPurchase.total), currencyCode)}
+                  {formatCurrency(detailPurchase.total, currencyCode)}
                 </span>
               </div>
             </div>
@@ -887,7 +882,7 @@ export function PurchasesView() {
               Se cancelará la compra por{' '}
               <span className="font-semibold text-foreground">
                 {formatCurrency(
-                  centsToPesos(cancelPurchase?.total || 0),
+                  (cancelPurchase?.total || 0),
                   currencyCode,
                 )}
               </span>{' '}
