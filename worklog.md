@@ -1009,3 +1009,30 @@ Stage Summary:
 - Cart Sheet pattern matches Mesas comanda approach
 - No fixed panel = no overflow/clipping issues
 
+---
+Task ID: 14
+Agent: Main Agent
+Task: Fix broken Mesas comanda - restore inline product adding
+
+Work Log:
+- User reported that Mesas comanda was broken - products could not be added anymore
+- Found that previous session moved the inline product list from the comanda Sheet to a separate Dialog
+- The inline product list (with search, category filter, product/service list) was replaced with just a comment and an "Agregar Producto" button
+- A separate Dialog was added for product selection but caused UX issues (extra click, layering problems with Sheet)
+- Restored the original inline product list in the comanda Sheet:
+  - Search input with product filtering
+  - Category Select dropdown
+  - ScrollArea with max-h-64 containing product list
+  - Services section with violet styling below products
+  - Loading skeletons and empty states
+- Removed the redundant separate Dialog component
+- Removed the "Agregar Producto" button from Quick Actions
+- Removed the unused addProductDialogOpen state variable
+- Verified: dev server running, lint passes (only pre-existing errors from utility files), app responds with 200
+
+Stage Summary:
+- Files modified:
+  - `src/components/tables/tables-view.tsx` - Restored inline product list in comanda Sheet, removed Dialog
+- Products can now be added to comanda directly in the Sheet as before
+- No Dialog/overlay needed - all product selection is inline
+
