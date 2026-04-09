@@ -126,10 +126,11 @@ bun install
 log_step_end "bun install"
 
 # Remove .config file if it exists (JuiceFS artifact that blocks Prisma)
-if [ -f "$PROJECT_DIR/.config" ]; then
+while [ -f "$PROJECT_DIR/.config" ]; do
   echo "[BUN] Removing stale .config file (JuiceFS artifact)..."
   rm -f "$PROJECT_DIR/.config"
-fi
+  sleep 1
+done
 
 log_step_start "bun run db:push"
 echo "[BUN] Setting up database..."
@@ -157,4 +158,17 @@ start_mini_services
 echo "Next.js dev server is running in background (PID: $DEV_PID)."
 echo "Use 'kill $DEV_PID' to stop it."
 disown "$DEV_PID" 2>/dev/null || true
-unset DEV_PID
+
+# Keep script alive - restart dev server if it dies
+while true; do
+  if ! kill -0 "$DEV_PID" 2>/dev/null; then
+    echo "[BUN] Dev server died, restarting..."
+    cd "$PROJECT_DIR"
+    rm -f "$PROJECT_DIR/.config"
+    bun run dev &
+    DEV_PID=$!
+    disown "$DEV_PID" 2>/dev/null || true
+    echo "[BUN] Restarted dev server (PID: $DEV_PID)"
+  fi
+  sleep 5
+done
