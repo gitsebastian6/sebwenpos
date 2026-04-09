@@ -631,3 +631,29 @@ COMANDOS DE DIAGNÓSTICO:
 - Ver logs:             tail -20 /home/z/my-project/dev.log
 
 ================================================================================
+---
+Task ID: 11
+Agent: Main Agent
+Task: Add debt payment module and FIFO order status update
+
+Work Log:
+- Server was down (Z black screen) - applied .config fix: rm -f .config + prisma generate
+- Added "Abonar" (green Banknote button) to customers table for debtors (totalDebt > 0)
+- Added Pay Debt Dialog with: amount input, note field, "Saldo Completo" quick-fill button, live remaining balance calculation
+- API endpoint `/api/customers/[id]/pay-debt` was already created in previous session
+- Enhanced pay-debt API with FIFO logic:
+  - Fetches all CREDIT orders for the customer (oldest first)
+  - Allocates payment to orders sequentially (FIFO)
+  - When an order is fully paid, its status changes from CREDIT → COMPLETED
+  - Creates dual journal entries: DEBIT Caja + CREDIT CxC
+  - Response includes orderDetails with which orders were settled
+- Tested end-to-end: María García $20,500 debt → paid full → ORD-006 changed CREDIT→COMPLETED, debt→$0
+- Re-seeded database for UI testing
+
+Stage Summary:
+- Files modified:
+  - `src/components/customers/customers-view.tsx` - Added Banknote icon, Abonar button in table, Pay Debt Dialog
+  - `src/app/api/customers/[id]/pay-debt/route.ts` - Rewrote with FIFO order settlement + dual journal entries
+- When debt is fully paid, oldest fiado orders are marked COMPLETED automatically
+- Partial payments properly allocated FIFO (oldest orders first)
+- María García has $20,500 debt (ORD-006) for testing
