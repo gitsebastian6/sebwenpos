@@ -291,6 +291,7 @@ export function TablesView() {
   const [tipAmount, setTipAmount] = useState<number>(0)
   const [showTipInput, setShowTipInput] = useState(false)
   const [lastPaymentData, setLastPaymentData] = useState<any>(null)
+  const [transferRef, setTransferRef] = useState('')
 
   // ── Close session confirm ──
   const [closeSessionOpen, setCloseSessionOpen] = useState(false)
@@ -719,10 +720,25 @@ export function TablesView() {
     }
     setPaymentMethod('CASH')
     setPaymentOpen(true)
+    setTransferRef('')
   }
 
   async function handleConfirmPayment() {
     if (!session || !store?.id || selectedItemIds.length === 0) return
+
+    // Fiado/CREDIT requires a customer
+    if ((paymentMethod === 'FIADO' || paymentMethod === 'CREDIT') && !session.customerId) {
+      toast.error('Para vender fiado la mesa debe tener un cliente asignado')
+      setPaymentOpen(false)
+      return
+    }
+
+    // Transfer/Nequi/Daviplata require reference number
+    if (['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && !transferRef.trim()) {
+      toast.error(`Ingresa el número de ${paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod}`)
+      return
+    }
+
     setPaymentSaving(true)
     try {
       const res = await fetch(`/api/tables/sessions/${session.id}/pay`, {
@@ -748,6 +764,7 @@ export function TablesView() {
       setSelectedItemIds([])
       setTipAmount(0)
       setShowTipInput(false)
+      setTransferRef('')
       await fetchSession(session.id)
       fetchTables()
     } catch (err) {
@@ -1249,21 +1266,60 @@ export function TablesView() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {PAYMENT_METHODS.map((method) => {
                   const Icon = method.icon
+                  const isFiado = method.value === 'FIADO' || method.value === 'CREDIT'
+                  const fiadoDisabled = isFiado && !session?.customerId
                   return (
                     <Button
                       key={method.value}
                       type="button"
                       variant={paymentMethod === method.value ? 'default' : 'outline'}
-                      className="justify-start gap-2 h-auto py-3"
-                      onClick={() => setPaymentMethod(method.value)}
+                      className={`justify-start gap-2 h-auto py-3 ${fiadoDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                      onClick={() => {
+                        if (fiadoDisabled) return
+                        setPaymentMethod(method.value)
+                        if (!['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(method.value)) setTransferRef('')
+                      }}
+                      disabled={fiadoDisabled}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       {method.label}
+                      {fiadoDisabled && <span className="text-[9px] ml-auto opacity-60">Sin cliente</span>}
                     </Button>
                   )
                 })}
               </div>
+              {(paymentMethod === 'FIADO' || paymentMethod === 'CREDIT') && !session?.customerId && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <Users className="h-3 w-3" />
+                  La mesa debe tener un cliente asignado para vender fiado
+                </p>
+              )}
             </div>
+
+            {/* Transfer reference number */}
+            {['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && (
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1.5">
+                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                  Número de {paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod}
+                  <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={transferRef}
+                  onChange={(e) => setTransferRef(e.target.value)}
+                  placeholder={paymentMethod === 'TRANSFER' ? 'Ej: 000123456789' : 'Ej: 3111234567'}
+                  className="text-sm tabular-nums"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {paymentMethod === 'TRANSFER'
+                    ? 'Número de referencia de la transferencia bancaria'
+                    : paymentMethod === 'NEQUI'
+                      ? 'Número de transacción o celular asociado'
+                      : 'Número de transacción de Daviplata'
+                  }
+                </p>
+              </div>
+            )}
           </div>
 
           <DialogFooter>

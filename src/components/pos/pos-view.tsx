@@ -136,6 +136,7 @@ export function POSView() {
   const [lastOrderData, setLastOrderData] = useState<any>(null)
   const [tipAmount, setTipAmount] = useState<number>(0)
   const [showTipInput, setShowTipInput] = useState(false)
+  const [transferRef, setTransferRef] = useState('')
 
   // ─── Cart state ──────────────────────────────────────
   const [cart, setCart] = useState<CartItem[]>([])
@@ -338,6 +339,7 @@ export function POSView() {
     setLastOrderData(null)
     setTipAmount(0)
     setShowTipInput(false)
+    setTransferRef('')
   }, [])
 
   // ─── Cart calculations ───────────────────────────────
@@ -348,7 +350,26 @@ export function POSView() {
   // ─── Submit order ────────────────────────────────────
   const handleSubmitOrder = async () => {
     if (!storeId || cart.length === 0) return
+
+    // Fiado requires a customer
+    if (paymentMethod === 'FIADO' && selectedCustomer === 'none') {
+      toast.error('Para vender fiado debes seleccionar un cliente')
+      setShowChargeDialog(false)
+      return
+    }
+
+    // Transfer/Nequi/Daviplata require reference number
+    if (['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && !transferRef.trim()) {
+      toast.error(`Ingresa el número de ${paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod === 'NEQUI' ? 'Nequi' : 'Daviplata'}`)
+      setShowChargeDialog(false)
+      return
+    }
+
     setIsSubmitting(true)
+
+    // Transfer/Nequi/Daviplata: append reference to notes
+    const isTransferMethod = ['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod)
+    const transferNote = isTransferMethod && transferRef.trim() ? `Ref: ${transferRef.trim()}` : ''
 
     try {
       const payload = {
@@ -356,7 +377,10 @@ export function POSView() {
         customerId: selectedCustomer !== 'none' ? Number(selectedCustomer) : null,
         paymentMethod,
         tipAmount: paymentMethod !== 'FIADO' ? tipAmount : 0,
-        notes: notes.trim() || undefined,
+        notes: [
+          notes.trim(),
+          transferNote,
+        ].filter(Boolean).join(' | ') || undefined,
         items: cart.map((item) => ({
           ...(item.isService ? { serviceId: item.serviceId } : { productId: item.productId }),
           quantity: item.quantity,
@@ -384,6 +408,7 @@ export function POSView() {
       setNotes('')
       setTipAmount(0)
       setShowTipInput(false)
+      setTransferRef('')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al registrar la venta')
     } finally {
@@ -815,28 +840,71 @@ export function POSView() {
             <Label className="text-xs text-muted-foreground font-medium">Método de pago</Label>
             <RadioGroup
               value={paymentMethod}
-              onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}
+              onValueChange={(v) => {
+                setPaymentMethod(v as PaymentMethod)
+                if (!['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(v)) setTransferRef('')
+              }}
               className="grid grid-cols-2 sm:grid-cols-3 gap-2"
             >
-              {PAYMENT_METHODS.map((pm) => (
-                <Label
-                  key={pm.value}
-                  htmlFor={`payment-${pm.value}`}
-                  className={`
-                    flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors
-                    ${paymentMethod === pm.value
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-600'
-                      : 'border-border hover:bg-muted'
-                    }
-                  `}
-                >
-                  <RadioGroupItem value={pm.value} id={`payment-${pm.value}`} className="sr-only" />
-                  {pm.icon}
-                  <span className="text-sm font-medium">{pm.label}</span>
-                </Label>
-              ))}
+              {PAYMENT_METHODS.map((pm) => {
+                const isFiado = pm.value === 'FIADO'
+                const fiadoDisabled = isFiado && selectedCustomer === 'none'
+                const disabled = fiadoDisabled
+                return (
+                  <Label
+                    key={pm.value}
+                    htmlFor={`payment-${pm.value}`}
+                    className={`
+                      flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors
+                      ${disabled ? 'opacity-40 cursor-not-allowed border-dashed' :
+                        paymentMethod === pm.value
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-600'
+                          : 'border-border hover:bg-muted'
+                      }
+                    `}
+                  >
+                    <RadioGroupItem value={pm.value} id={`payment-${pm.value}`} className="sr-only" disabled={disabled} />
+                    {pm.icon}
+                    <span className="text-sm font-medium">{pm.label}</span>
+                    {fiadoDisabled && (
+                      <span className="text-[9px] text-muted-foreground leading-tight ml-auto">Sin cliente</span>
+                    )}
+                  </Label>
+                )
+              })}
             </RadioGroup>
+            {paymentMethod === 'FIADO' && selectedCustomer === 'none' && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                Selecciona un cliente para habilitar el fiado
+              </p>
+            )}
           </div>
+
+          {/* Transfer reference number */}
+          {['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                Número de {paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod}
+                <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={transferRef}
+                onChange={(e) => setTransferRef(e.target.value)}
+                placeholder={paymentMethod === 'TRANSFER' ? 'Ej: 000123456789' : 'Ej: 3111234567'}
+                className="text-sm tabular-nums"
+              />
+              <p className="text-xs text-muted-foreground">
+                {paymentMethod === 'TRANSFER'
+                  ? 'Número de referencia de la transferencia bancaria'
+                  : paymentMethod === 'NEQUI'
+                    ? 'Número de transacción o celular asociado'
+                    : 'Número de transacción de Daviplata'
+                }
+              </p>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="space-y-1.5">
