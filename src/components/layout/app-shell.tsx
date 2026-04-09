@@ -20,6 +20,8 @@ import {
   LogOut,
   Moon,
   Sun,
+  Armchair,
+  Truck,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -33,12 +35,16 @@ const OrdersView = dynamic(() => import('@/components/orders/orders-view').then(
 const InventoryView = dynamic(() => import('@/components/inventory/inventory-view').then(m => ({ default: m.InventoryView })), { ssr: false })
 const AccountingView = dynamic(() => import('@/components/accounting/accounting-view').then(m => ({ default: m.AccountingView })), { ssr: false })
 const ServicesView = dynamic(() => import('@/components/services/services-view').then(m => ({ default: m.ServicesView })), { ssr: false })
+const TablesView = dynamic(() => import('@/components/tables/tables-view').then(m => ({ default: m.TablesView })), { ssr: false })
+const ProvidersView = dynamic(() => import('@/components/providers/providers-view').then(m => ({ default: m.ProvidersView })), { ssr: false })
 
 const menuItems: { view: AppView; label: string; icon: React.ReactNode }[] = [
   { view: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
   { view: 'pos', label: 'Punto de Venta', icon: <ShoppingCart className="h-4 w-4" /> },
+  { view: 'tables', label: 'Mesas', icon: <Armchair className="h-4 w-4" /> },
   { view: 'products', label: 'Productos', icon: <Package className="h-4 w-4" /> },
   { view: 'customers', label: 'Clientes', icon: <Users className="h-4 w-4" /> },
+  { view: 'providers', label: 'Proveedores', icon: <Truck className="h-4 w-4" /> },
   { view: 'orders', label: 'Órdenes', icon: <ClipboardList className="h-4 w-4" /> },
   { view: 'inventory', label: 'Inventario', icon: <Warehouse className="h-4 w-4" /> },
   { view: 'accounting', label: 'Contabilidad', icon: <Calculator className="h-4 w-4" /> },
@@ -133,7 +139,9 @@ export function AppShell() {
           <Separator orientation="vertical" className="h-6" />
           <h1 className="text-lg font-semibold capitalize">
             {currentView === 'pos' ? 'Punto de Venta' :
+             currentView === 'tables' ? 'Mesas y Comandas' :
              currentView === 'services' ? 'Servicios' :
+             currentView === 'providers' ? 'Proveedores' :
              menuItems.find(m => m.view === currentView)?.label || 'Dashboard'}
           </h1>
         </header>
@@ -149,8 +157,10 @@ function ViewRouter({ currentView }: { currentView: AppView }) {
   switch (currentView) {
     case 'dashboard': return <DashboardView />
     case 'pos': return <POSView />
+    case 'tables': return <TablesView />
     case 'products': return <ProductsView />
     case 'customers': return <CustomersView />
+    case 'providers': return <ProvidersView />
     case 'orders': return <OrdersView />
     case 'inventory': return <InventoryView />
     case 'accounting': return <AccountingView />

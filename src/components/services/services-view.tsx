@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -26,107 +27,119 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  Phone,
-  Zap,
-  Droplets,
-  CircleDollarSign,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  AlertTriangle,
+  CircleDot,
+  ShieldCheck,
+  ScrollText,
   MoreHorizontal,
-  Receipt,
+  Plus,
   Loader2,
-  CreditCard,
+  Pencil,
+  Trash2,
+  History,
+  TrendingUp,
   CheckCircle2,
   XCircle,
-  Clock,
+  Package,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-// ─── Types ───────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────
 
-type Provider = 'TELCEL' | 'ATT' | 'MOVISTAR' | 'CFE' | 'AGUA' | 'OTROS'
-type TransactionType = 'TOPUP' | 'BILL_PAYMENT'
-type ServiceStatus = 'SUCCESS' | 'FAILED' | 'PENDING'
+interface Service {
+  id: number
+  name: string
+  description: string | null
+  price: number
+  icon: string
+  unit: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  _count?: { serviceTransactions: number }
+}
 
 interface ServiceTransaction {
   id: number
-  provider: Provider
-  transactionType: TransactionType
-  amount: number
-  commissionEarned: number
-  status: ServiceStatus
-  externalId: string | null
+  serviceId: number
+  quantity: number
+  unitPrice: number
+  totalAmount: number
+  notes: string | null
+  status: string
   createdAt: string
+  updatedAt: string
+  service: {
+    id: number
+    name: string
+    icon: string
+    unit: string
+  }
 }
 
-// ─── Constants ───────────────────────────────────────────────────
+// ─── Icon Map ────────────────────────────────────────────────
 
-const PROVIDER_CONFIG: Record<Provider, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
-  TELCEL: {
-    label: 'Recarga Telcel',
-    icon: <Phone className="h-6 w-6" />,
-    color: 'text-rose-600 dark:text-rose-400',
-    bgColor: 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/50',
-  },
-  ATT: {
-    label: 'Recarga AT&T',
-    icon: <Phone className="h-6 w-6" />,
-    color: 'text-sky-600 dark:text-sky-400',
-    bgColor: 'bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800/50',
-  },
-  MOVISTAR: {
-    label: 'Recarga Movistar',
-    icon: <Phone className="h-6 w-6" />,
-    color: 'text-emerald-600 dark:text-emerald-400',
-    bgColor: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50',
-  },
-  CFE: {
-    label: 'Pago CFE',
-    icon: <Zap className="h-6 w-6" />,
-    color: 'text-amber-600 dark:text-amber-400',
-    bgColor: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50',
-  },
-  AGUA: {
-    label: 'Pago de Agua',
-    icon: <Droplets className="h-6 w-6" />,
-    color: 'text-cyan-600 dark:text-cyan-400',
-    bgColor: 'bg-cyan-50 dark:bg-cyan-950/30 border-cyan-200 dark:border-cyan-800/50',
-  },
-  OTROS: {
-    label: 'Otro Servicio',
-    icon: <MoreHorizontal className="h-6 w-6" />,
-    color: 'text-violet-600 dark:text-violet-400',
-    bgColor: 'bg-violet-50 dark:bg-violet-950/30 border-violet-200 dark:border-violet-800/50',
-  },
+const ICON_MAP: Record<string, React.ReactNode> = {
+  AlertTriangle: <AlertTriangle className="h-6 w-6" />,
+  CircleDot: <CircleDot className="h-6 w-6" />,
+  ShieldCheck: <ShieldCheck className="h-6 w-6" />,
+  ScrollText: <ScrollText className="h-6 w-6" />,
+  Star: <MoreHorizontal className="h-6 w-6" />,
 }
 
-const PROVIDER_SELECT_OPTIONS: { value: Provider; label: string }[] = [
-  { value: 'TELCEL', label: 'Telcel' },
-  { value: 'ATT', label: 'AT&T' },
-  { value: 'MOVISTAR', label: 'Movistar' },
-  { value: 'CFE', label: 'CFE' },
-  { value: 'AGUA', label: 'Agua' },
-  { value: 'OTROS', label: 'Otros' },
+const ICON_SMALL: Record<string, React.ReactNode> = {
+  AlertTriangle: <AlertTriangle className="h-4 w-4" />,
+  CircleDot: <CircleDot className="h-4 w-4" />,
+  ShieldCheck: <ShieldCheck className="h-4 w-4" />,
+  ScrollText: <ScrollText className="h-4 w-4" />,
+  Star: <MoreHorizontal className="h-4 w-4" />,
+}
+
+const COLOR_MAP: Record<string, { color: string; bgColor: string }> = {
+  AlertTriangle: { color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/50' },
+  CircleDot: { color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50' },
+  ShieldCheck: { color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50' },
+  ScrollText: { color: 'text-sky-600 dark:text-sky-400', bgColor: 'bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800/50' },
+  Star: { color: 'text-violet-600 dark:text-violet-400', bgColor: 'bg-violet-50 dark:bg-violet-950/30 border-violet-200 dark:border-violet-800/50' },
+}
+
+const ICON_OPTIONS = [
+  { value: 'AlertTriangle', label: 'Alerta / Daños' },
+  { value: 'CircleDot', label: 'Billar / Juegos' },
+  { value: 'ShieldCheck', label: 'Guarda / Seguridad' },
+  { value: 'ScrollText', label: 'Registro / Papel' },
+  { value: 'Star', label: 'General' },
 ]
 
-const TRANSACTION_TYPE_OPTIONS: { value: TransactionType; label: string }[] = [
-  { value: 'TOPUP', label: 'Recarga (Tiempo Aire)' },
-  { value: 'BILL_PAYMENT', label: 'Pago de Servicio' },
+const UNIT_OPTIONS = [
+  { value: 'servicio', label: 'Servicio' },
+  { value: 'hora', label: 'Hora' },
+  { value: 'rollo', label: 'Rollo' },
+  { value: 'unidad', label: 'Unidad' },
+  { value: 'vez', label: 'Vez' },
 ]
 
-const STATUS_BADGE_VARIANTS: Record<ServiceStatus, { variant: 'default' | 'destructive' | 'outline'; className: string; label: string }> = {
-  SUCCESS: { variant: 'outline', className: 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400', label: 'Éxito' },
-  FAILED: { variant: 'destructive', className: '', label: 'Fallido' },
-  PENDING: { variant: 'outline', className: 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-400', label: 'Pendiente' },
-}
-
-const STATUS_ICONS: Record<ServiceStatus, React.ReactNode> = {
-  SUCCESS: <CheckCircle2 className="h-3.5 w-3.5" />,
-  FAILED: <XCircle className="h-3.5 w-3.5" />,
-  PENDING: <Clock className="h-3.5 w-3.5" />,
-}
-
-// ─── Component ───────────────────────────────────────────────────
+// ─── Component ───────────────────────────────────────────────
 
 export function ServicesView() {
   const { store } = useAuthStore()
@@ -134,351 +147,890 @@ export function ServicesView() {
   const currencyCode = store?.currencyCode || 'COP'
 
   // Data state
+  const [services, setServices] = useState<Service[]>([])
   const [transactions, setTransactions] = useState<ServiceTransaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('servicios')
 
-  // Form state
-  const [formProvider, setFormProvider] = useState<Provider | ''>('')
-  const [formTransactionType, setFormTransactionType] = useState<TransactionType | ''>('')
-  const [formExternalId, setFormExternalId] = useState('')
-  const [formAmount, setFormAmount] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  // Service form state
+  const [showCreateService, setShowCreateService] = useState(false)
+  const [formName, setFormName] = useState('')
+  const [formDescription, setFormDescription] = useState('')
+  const [formPrice, setFormPrice] = useState('')
+  const [formIcon, setFormIcon] = useState('Star')
+  const [formUnit, setFormUnit] = useState('servicio')
+  const [isSubmittingService, setIsSubmittingService] = useState(false)
+
+  // Transaction form state
+  const [showCreateTransaction, setShowCreateTransaction] = useState(false)
+  const [txServiceId, setTxServiceId] = useState<number | ''>('')
+  const [txQuantity, setTxQuantity] = useState('1')
+  const [txUnitPrice, setTxUnitPrice] = useState('')
+  const [txNotes, setTxNotes] = useState('')
+  const [isSubmittingTx, setIsSubmittingTx] = useState(false)
+
+  // Edit service dialog
+  const [editingService, setEditingService] = useState<Service | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editPrice, setEditPrice] = useState('')
+  const [editIcon, setEditIcon] = useState('Star')
+  const [editUnit, setEditUnit] = useState('servicio')
+  const [isSavingService, setIsSavingService] = useState(false)
+
+  // Edit transaction dialog
+  const [editingTx, setEditingTx] = useState<ServiceTransaction | null>(null)
+  const [editTxQuantity, setEditTxQuantity] = useState('')
+  const [editTxUnitPrice, setEditTxUnitPrice] = useState('')
+  const [editTxNotes, setEditTxNotes] = useState('')
+  const [editTxStatus, setEditTxStatus] = useState('')
+  const [isSavingTx, setIsSavingTx] = useState(false)
+
+  // Delete confirmations
+  const [deleteService, setDeleteService] = useState<Service | null>(null)
+  const [deleteTx, setDeleteTx] = useState<ServiceTransaction | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // ─── Fetch ────────────────────────────────────────────────
 
-  const fetchTransactions = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     if (!storeId) return
     setIsLoading(true)
     try {
-      const res = await fetch(`/api/services?storeId=${storeId}`)
-      if (!res.ok) throw new Error('Error al cargar transacciones')
-      const data = await res.json()
-      setTransactions(data)
+      const [servicesRes, transactionsRes] = await Promise.all([
+        fetch(`/api/services?storeId=${storeId}`),
+        fetch(`/api/services?storeId=${storeId}&include=transactions`),
+      ])
+      if (!servicesRes.ok || !transactionsRes.ok) throw new Error('Error al cargar datos')
+      const servicesData = await servicesRes.json()
+      const transactionsData = await transactionsRes.json()
+
+      setServices(servicesData)
+
+      // Flatten all transactions from all services
+      const allTx: ServiceTransaction[] = []
+      for (const s of transactionsData) {
+        if (s.serviceTransactions) {
+          for (const tx of s.serviceTransactions) {
+            allTx.push({
+              ...tx,
+              unitPrice: Number(tx.unitPrice),
+              totalAmount: Number(tx.totalAmount),
+            })
+          }
+        }
+      }
+      allTx.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      setTransactions(allTx)
     } catch {
-      toast.error('Error al cargar transacciones')
+      toast.error('Error al cargar datos')
     } finally {
       setIsLoading(false)
     }
   }, [storeId])
 
   useEffect(() => {
-    fetchTransactions()
-  }, [fetchTransactions])
+    fetchData()
+  }, [fetchData])
 
-  // ─── Handlers ─────────────────────────────────────────────
+  // ─── Service Handlers ───────────────────────────────────
 
-  function handleQuickAction(provider: Provider) {
-    setFormProvider(provider)
-    // Auto-set transaction type based on provider
-    if (provider === 'CFE' || provider === 'AGUA' || provider === 'OTROS') {
-      setFormTransactionType('BILL_PAYMENT')
-    } else {
-      setFormTransactionType('TOPUP')
-    }
+  function openCreateService() {
+    setFormName('')
+    setFormDescription('')
+    setFormPrice('')
+    setFormIcon('Star')
+    setFormUnit('servicio')
+    setShowCreateService(true)
   }
 
-  async function handleSubmitService() {
-    if (!storeId || !formProvider || !formTransactionType || !formAmount) {
-      toast.error('Completa todos los campos requeridos')
+  async function handleCreateService() {
+    if (!storeId || !formName.trim() || !formPrice) {
+      toast.error('Completa el nombre y precio')
       return
     }
-
-    const amountInPesos = parseFloat(formAmount)
-    if (isNaN(amountInPesos) || amountInPesos <= 0) {
-      toast.error('Ingresa un monto válido mayor a 0')
-      return
-    }
-
-    // Convert pesos to cents
-    const amountInCents = Math.round(amountInPesos * 100)
-
-    setIsSubmitting(true)
+    setIsSubmittingService(true)
     try {
-      const body: Record<string, unknown> = {
-        storeId,
-        provider: formProvider,
-        transactionType: formTransactionType,
-        amount: amountInCents,
-      }
-      if (formExternalId.trim()) {
-        body.externalId = formExternalId.trim()
-      }
-
       const res = await fetch('/api/services', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          storeId,
+          name: formName.trim(),
+          description: formDescription.trim() || null,
+          price: Math.round(parseFloat(formPrice) * 100),
+          icon: formIcon,
+          unit: formUnit,
+        }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al procesar servicio')
+        throw new Error(err.error || 'Error al crear servicio')
       }
-      toast.success('Servicio procesado exitosamente')
-      // Reset form
-      setFormProvider('')
-      setFormTransactionType('')
-      setFormExternalId('')
-      setFormAmount('')
-      fetchTransactions()
+      toast.success('Servicio creado')
+      setShowCreateService(false)
+      fetchData()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al procesar servicio')
+      toast.error(e instanceof Error ? e.message : 'Error al crear servicio')
     } finally {
-      setIsSubmitting(false)
+      setIsSubmittingService(false)
     }
   }
 
+  function openEditService(s: Service) {
+    setEditingService(s)
+    setEditName(s.name)
+    setEditDescription(s.description || '')
+    setEditPrice(String(s.price / 100))
+    setEditIcon(s.icon)
+    setEditUnit(s.unit)
+  }
+
+  async function handleSaveService() {
+    if (!editingService) return
+    setIsSavingService(true)
+    try {
+      const res = await fetch(`/api/services/${editingService.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editName.trim(),
+          description: editDescription.trim() || null,
+          price: Math.round(parseFloat(editPrice) * 100),
+          icon: editIcon,
+          unit: editUnit,
+        }),
+      })
+      if (!res.ok) throw new Error('Error al actualizar')
+      toast.success('Servicio actualizado')
+      setEditingService(null)
+      fetchData()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al actualizar')
+    } finally {
+      setIsSavingService(false)
+    }
+  }
+
+  async function handleDeleteService() {
+    if (!deleteService) return
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/services/${deleteService.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Error al eliminar')
+      toast.success('Servicio eliminado')
+      setDeleteService(null)
+      fetchData()
+    } catch {
+      toast.error('Error al eliminar servicio')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // ─── Transaction Handlers ──────────────────────────────
+
+  function openCreateTransaction() {
+    if (services.length === 0) {
+      toast.error('Primero crea un servicio')
+      return
+    }
+    setTxServiceId(services[0].id)
+    setTxQuantity('1')
+    setTxUnitPrice(String(services[0].price / 100))
+    setTxNotes('')
+    setShowCreateTransaction(true)
+  }
+
+  // Auto-set unit price when service changes
+  useEffect(() => {
+    if (txServiceId) {
+      const svc = services.find(s => s.id === txServiceId)
+      if (svc) {
+        setTxUnitPrice(String(svc.price / 100))
+      }
+    }
+  }, [txServiceId, services])
+
+  async function handleCreateTransaction() {
+    if (!storeId || !txServiceId || !txQuantity || !txUnitPrice) {
+      toast.error('Completa todos los campos')
+      return
+    }
+    const qty = parseInt(txQuantity)
+    const price = Math.round(parseFloat(txUnitPrice) * 100)
+    if (isNaN(qty) || qty < 1 || isNaN(price) || price < 0) {
+      toast.error('Valores inválidos')
+      return
+    }
+    setIsSubmittingTx(true)
+    try {
+      const res = await fetch('/api/services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'transaction',
+          storeId,
+          serviceId: txServiceId,
+          quantity: qty,
+          unitPrice: price,
+          totalAmount: qty * price,
+          notes: txNotes.trim() || null,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Error al registrar')
+      }
+      toast.success('Servicio registrado')
+      setShowCreateTransaction(false)
+      fetchData()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al registrar')
+    } finally {
+      setIsSubmittingTx(false)
+    }
+  }
+
+  function openEditTx(tx: ServiceTransaction) {
+    setEditingTx(tx)
+    setEditTxQuantity(String(tx.quantity))
+    setEditTxUnitPrice(String(tx.unitPrice / 100))
+    setEditTxNotes(tx.notes || '')
+    setEditTxStatus(tx.status)
+  }
+
+  async function handleSaveTx() {
+    if (!editingTx) return
+    const qty = parseInt(editTxQuantity)
+    const price = Math.round(parseFloat(editTxUnitPrice) * 100)
+    if (isNaN(qty) || isNaN(price)) return
+    setIsSavingTx(true)
+    try {
+      const res = await fetch(`/api/services/transactions/${editingTx.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quantity: qty,
+          unitPrice: price,
+          totalAmount: qty * price,
+          notes: editTxNotes.trim() || null,
+          status: editTxStatus,
+        }),
+      })
+      if (!res.ok) throw new Error('Error al actualizar')
+      toast.success('Transacción actualizada')
+      setEditingTx(null)
+      fetchData()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al actualizar')
+    } finally {
+      setIsSavingTx(false)
+    }
+  }
+
+  async function handleDeleteTx() {
+    if (!deleteTx) return
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/services/transactions/${deleteTx.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Error al eliminar')
+      toast.success('Transacción eliminada')
+      setDeleteTx(null)
+      fetchData()
+    } catch {
+      toast.error('Error al eliminar transacción')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // ─── Helpers ─────────────────────────────────────────────
+
   function formatDate(dateStr: string) {
+    if (!dateStr) return '—'
     const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return '—'
     return format(d, "d MMM yyyy, HH:mm", { locale: es })
+  }
+
+  function formatDateShort(dateStr: string) {
+    if (!dateStr) return '—'
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return '—'
+    return format(d, "dd/MM/yy", { locale: es })
+  }
+
+  // Calculate daily stats for papel higiénico
+  function getTodayPapelStats() {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const papelService = services.find(s => s.name.toLowerCase().includes('papel'))
+    if (!papelService) return null
+    const todayTx = transactions.filter(
+      t => t.serviceId === papelService.id && t.status === 'COMPLETED' && new Date(t.createdAt) >= today
+    )
+    const totalRollos = todayTx.reduce((sum, t) => sum + t.quantity, 0)
+    const totalCosto = todayTx.reduce((sum, t) => sum + t.totalAmount, 0)
+    return { totalRollos, totalCosto, txCount: todayTx.length }
   }
 
   // ─── Render ───────────────────────────────────────────────
 
+  const papelStats = getTodayPapelStats()
+
   return (
     <div className="space-y-6">
-      {/* Quick Actions */}
-      <div>
-        <h2 className="text-lg font-semibold mb-1">Acciones Rápidas</h2>
-        <p className="text-sm text-muted-foreground mb-4">Selecciona un servicio para procesar</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {(Object.entries(PROVIDER_CONFIG) as [Provider, typeof PROVIDER_CONFIG[Provider]][]).map(
-            ([key, config]) => (
-              <Card
-                key={key}
-                className={`cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] active:scale-[0.98] border ${config.bgColor} ${formProvider === key ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
-                onClick={() => handleQuickAction(key)}
-              >
-                <CardContent className="flex flex-col items-center justify-center gap-2 pt-6">
-                  <div className={config.color}>{config.icon}</div>
-                  <span className="text-xs font-medium text-center leading-tight">
-                    {config.label}
-                  </span>
-                </CardContent>
-              </Card>
-            )
-          )}
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Main Section: Form + Transactions */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        {/* Left: Service Form */}
-        <div className="lg:col-span-2">
-          <Card className="sticky top-6">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                  <Receipt className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <CardTitle className="text-base">Procesar Servicio</CardTitle>
-                  <CardDescription>Nueva transacción de servicio</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Provider */}
-              <div className="space-y-2">
-                <Label htmlFor="svc-provider">Proveedor *</Label>
-                <Select
-                  value={formProvider}
-                  onValueChange={(v) => {
-                    setFormProvider(v as Provider)
-                    // Auto-set transaction type
-                    if (['CFE', 'AGUA', 'OTROS'].includes(v)) {
-                      setFormTransactionType('BILL_PAYMENT')
-                    } else {
-                      setFormTransactionType('TOPUP')
-                    }
-                  }}
-                >
-                  <SelectTrigger id="svc-provider">
-                    <SelectValue placeholder="Selecciona proveedor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PROVIDER_SELECT_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Transaction Type */}
-              <div className="space-y-2">
-                <Label htmlFor="svc-type">Tipo de Transacción *</Label>
-                <Select
-                  value={formTransactionType}
-                  onValueChange={(v) => setFormTransactionType(v as TransactionType)}
-                >
-                  <SelectTrigger id="svc-type">
-                    <SelectValue placeholder="Selecciona tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TRANSACTION_TYPE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Phone / Account Number */}
-              <div className="space-y-2">
-                <Label htmlFor="svc-external-id">
-                  {formTransactionType === 'TOPUP' ? 'Número Telefónico' : 'Número de Cuenta'}
-                </Label>
-                <Input
-                  id="svc-external-id"
-                  type="tel"
-                  placeholder={formTransactionType === 'TOPUP' ? 'Ej: 5512345678' : 'Ej: 123456789012'}
-                  value={formExternalId}
-                  onChange={(e) => setFormExternalId(e.target.value)}
-                />
-              </div>
-
-              {/* Amount */}
-              <div className="space-y-2">
-                <Label htmlFor="svc-amount">Monto (COP) *</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                    $
-                  </span>
-                  <Input
-                    id="svc-amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                    className="pl-7"
-                    value={formAmount}
-                    onChange={(e) => setFormAmount(e.target.value)}
-                  />
-                </div>
-                {formAmount && !isNaN(parseFloat(formAmount)) && parseFloat(formAmount) > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Monto: {formatCurrency(Math.round(parseFloat(formAmount) * 100), currencyCode)}
-                  </p>
-                )}
-              </div>
-
-              {/* Submit */}
-              <Button
-                className="w-full"
-                onClick={handleSubmitService}
-                disabled={
-                  isSubmitting || !formProvider || !formTransactionType || !formAmount
-                }
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Procesando...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Procesar Servicio
-                  </>
-                )}
-              </Button>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center pt-4 pb-4">
+            <Package className="h-5 w-5 text-muted-foreground mb-1" />
+            <span className="text-2xl font-bold">{services.length}</span>
+            <span className="text-xs text-muted-foreground">Servicios</span>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center pt-4 pb-4">
+            <History className="h-5 w-5 text-muted-foreground mb-1" />
+            <span className="text-2xl font-bold">{transactions.length}</span>
+            <span className="text-xs text-muted-foreground">Registros</span>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center pt-4 pb-4">
+            <TrendingUp className="h-5 w-5 text-emerald-600 mb-1" />
+            <span className="text-2xl font-bold">
+              {formatCurrency(
+                transactions.filter(t => t.status === 'COMPLETED').reduce((s, t) => s + t.totalAmount, 0),
+                currencyCode
+              )}
+            </span>
+            <span className="text-xs text-muted-foreground">Total Ingresado</span>
+          </CardContent>
+        </Card>
+        {papelStats && (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center pt-4 pb-4">
+              <ScrollText className="h-5 w-5 text-sky-600 mb-1" />
+              <span className="text-2xl font-bold">{papelStats.totalRollos}</span>
+              <span className="text-xs text-muted-foreground">Rollos Hoy</span>
             </CardContent>
           </Card>
-        </div>
+        )}
+      </div>
 
-        {/* Right: Recent Transactions */}
-        <div className="lg:col-span-3">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                  <CircleDollarSign className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <CardTitle className="text-base">Transacciones Recientes</CardTitle>
-                  <CardDescription>Historial de servicios procesados</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : transactions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                  <Receipt className="h-10 w-10 mb-2 opacity-40" />
-                  <p className="text-sm">No hay transacciones</p>
-                  <p className="text-xs">Los servicios procesados aparecerán aquí</p>
-                </div>
-              ) : (
-                <div className="max-h-[520px] overflow-y-auto">
-                  <Table>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="servicios">Servicios</TabsTrigger>
+          <TabsTrigger value="historial">Historial</TabsTrigger>
+        </TabsList>
+
+        {/* ═══ SERVICIOS TAB ═══ */}
+        <TabsContent value="servicios" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Servicios del Bar</h2>
+              <p className="text-sm text-muted-foreground">Administra los servicios que ofreces</p>
+            </div>
+            <Button onClick={openCreateService} size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              Nuevo Servicio
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-40 w-full rounded-xl" />
+              ))}
+            </div>
+          ) : services.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <Package className="h-10 w-10 mb-2 opacity-40" />
+                <p className="text-sm">No hay servicios creados</p>
+                <p className="text-xs">Crea tu primer servicio</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {services.map((s) => {
+                const colors = COLOR_MAP[s.icon] || COLOR_MAP.Star
+                return (
+                  <Card key={s.id} className={`relative border ${colors.bgColor} ${!s.isActive ? 'opacity-60' : ''}`}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={colors.color}>
+                            {ICON_MAP[s.icon] || ICON_MAP.Star}
+                          </div>
+                          <div>
+                            <CardTitle className="text-sm font-semibold">{s.name}</CardTitle>
+                            <CardDescription className="text-xs mt-0.5">
+                              {s.description || 'Sin descripción'}
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => openEditService(s)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            onClick={() => setDeleteService(s)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xl font-bold">{formatCurrency(s.price, currencyCode)}</span>
+                          <span className="text-xs text-muted-foreground ml-1">/ {s.unit}</span>
+                        </div>
+                        <Badge variant={s.isActive ? 'outline' : 'secondary'} className="text-xs">
+                          {s.isActive ? 'Activo' : 'Inactivo'}
+                        </Badge>
+                      </div>
+                      {s._count && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {s._count.serviceTransactions} registro(s)
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ═══ HISTORIAL TAB ═══ */}
+        <TabsContent value="historial" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Historial de Servicios</h2>
+              <p className="text-sm text-muted-foreground">Registro de servicios prestados</p>
+            </div>
+            <Button onClick={openCreateTransaction} size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              Registrar Servicio
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : transactions.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <History className="h-10 w-10 mb-2 opacity-40" />
+                <p className="text-sm">No hay registros</p>
+                <p className="text-xs">Los servicios registrados aparecerán aquí</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <div className="max-h-[500px] overflow-y-auto">
+                  {/* Desktop Table */}
+                  <Table className="hidden md:table">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[150px]">Fecha</TableHead>
-                        <TableHead>Proveedor</TableHead>
-                        <TableHead className="hidden sm:table-cell">Tipo</TableHead>
-                        <TableHead className="text-right">Monto</TableHead>
-                        <TableHead className="hidden sm:table-cell text-right">Comisión</TableHead>
-                        <TableHead className="text-right">Estado</TableHead>
+                        <TableHead className="w-[130px]">Fecha</TableHead>
+                        <TableHead>Servicio</TableHead>
+                        <TableHead className="text-center">Cantidad</TableHead>
+                        <TableHead className="text-right">Precio Unit.</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="hidden lg:table-cell">Notas</TableHead>
+                        <TableHead className="text-center">Estado</TableHead>
+                        <TableHead className="w-[80px]">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {transactions.map((tx) => {
-                        const statusConfig = STATUS_BADGE_VARIANTS[tx.status]
-                        return (
-                          <TableRow key={tx.id}>
-                            <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                              {formatDate(tx.createdAt)}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <div className={PROVIDER_CONFIG[tx.provider as Provider]?.color || ''}>
-                                  {PROVIDER_CONFIG[tx.provider as Provider]?.icon || <CircleDollarSign className="h-4 w-4" />}
-                                </div>
-                                <span className="text-sm font-medium">
-                                  {PROVIDER_CONFIG[tx.provider as Provider]?.label || tx.provider}
-                                </span>
+                      {transactions.map((tx) => (
+                        <TableRow key={tx.id}>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {formatDate(tx.createdAt)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <div className={COLOR_MAP[tx.service?.icon]?.color || ''}>
+                                {ICON_SMALL[tx.service?.icon] || ICON_SMALL.Star}
                               </div>
-                            </TableCell>
-                            <TableCell className="hidden sm:table-cell">
-                              <Badge variant="outline" className="text-xs">
-                                {tx.transactionType === 'TOPUP' ? 'Recarga' : 'Pago'}
+                              <span className="text-sm font-medium">{tx.service?.name || 'N/A'}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center text-sm">
+                            {tx.quantity} {tx.service?.unit || ''}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {formatCurrency(tx.unitPrice, currencyCode)}
+                          </TableCell>
+                          <TableCell className="text-right text-sm font-semibold">
+                            {formatCurrency(tx.totalAmount, currencyCode)}
+                          </TableCell>
+                          <TableCell className="hidden lg:table-cell text-sm text-muted-foreground truncate max-w-[200px]">
+                            {tx.notes || '—'}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {tx.status === 'COMPLETED' ? (
+                              <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 gap-1">
+                                <CheckCircle2 className="h-3 w-3" />
+                                Completado
                               </Badge>
-                            </TableCell>
-                            <TableCell className="text-right text-sm font-medium">
-                              {formatCurrency(tx.amount, currencyCode)}
-                            </TableCell>
-                            <TableCell className="hidden sm:table-cell text-right text-sm text-emerald-600 dark:text-emerald-400">
-                              +{formatCurrency(tx.commissionEarned, currencyCode)}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Badge
-                                variant={statusConfig.variant}
-                                className={`gap-1 text-[10px] ${statusConfig.className}`}
-                              >
-                                {STATUS_ICONS[tx.status]}
-                                {statusConfig.label}
+                            ) : (
+                              <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/30 dark:text-red-400 gap-1">
+                                <XCircle className="h-3 w-3" />
+                                Cancelado
                               </Badge>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 justify-end">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditTx(tx)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteTx(tx)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
+
+                  {/* Mobile Cards */}
+                  <div className="md:hidden divide-y">
+                    {transactions.map((tx) => (
+                      <div key={tx.id} className="p-4 space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className={COLOR_MAP[tx.service?.icon]?.color || ''}>
+                              {ICON_SMALL[tx.service?.icon] || ICON_SMALL.Star}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{tx.service?.name || 'N/A'}</p>
+                              <p className="text-xs text-muted-foreground">{formatDate(tx.createdAt)}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold">{formatCurrency(tx.totalAmount, currencyCode)}</p>
+                            {tx.status === 'COMPLETED' ? (
+                              <Badge variant="outline" className="text-[10px] border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
+                                Completado
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/30 dark:text-red-400">
+                                Cancelado
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{tx.quantity} {tx.service?.unit || 'servicio'} × {formatCurrency(tx.unitPrice, currencyCode)}</span>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEditTx(tx)}>
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => setDeleteTx(tx)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                        {tx.notes && (
+                          <p className="text-xs text-muted-foreground italic">{tx.notes}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* ═══ CREATE SERVICE DIALOG ═══ */}
+      <Dialog open={showCreateService} onOpenChange={(open) => !open && setShowCreateService(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nuevo Servicio</DialogTitle>
+            <DialogDescription>Crea un nuevo servicio para el bar</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre *</Label>
+              <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Ej: Servicio de Billar" />
+            </div>
+            <div className="space-y-2">
+              <Label>Descripción</Label>
+              <Input value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Descripción opcional" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Precio (COP) *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <Input type="number" min="0" className="pl-7" value={formPrice} onChange={(e) => setFormPrice(e.target.value)} placeholder="0" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Unidad</Label>
+                <Select value={formUnit} onValueChange={setFormUnit}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {UNIT_OPTIONS.map(u => (
+                      <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Ícono</Label>
+              <Select value={formIcon} onValueChange={setFormIcon}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ICON_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateService(false)}>Cancelar</Button>
+            <Button onClick={handleCreateService} disabled={isSubmittingService}>
+              {isSubmittingService && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Crear Servicio
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ CREATE TRANSACTION DIALOG ═══ */}
+      <Dialog open={showCreateTransaction} onOpenChange={(open) => !open && setShowCreateTransaction(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar Servicio</DialogTitle>
+            <DialogDescription>Registra la prestación de un servicio</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Servicio *</Label>
+              <Select value={String(txServiceId)} onValueChange={(v) => setTxServiceId(Number(v))}>
+                <SelectTrigger><SelectValue placeholder="Selecciona servicio" /></SelectTrigger>
+                <SelectContent>
+                  {services.filter(s => s.isActive).map(s => (
+                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Cantidad *</Label>
+                <Input type="number" min="1" value={txQuantity} onChange={(e) => setTxQuantity(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Precio Unit. (COP)</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <Input type="number" min="0" className="pl-7" value={txUnitPrice} onChange={(e) => setTxUnitPrice(e.target.value)} />
+                </div>
+              </div>
+            </div>
+            {txQuantity && txUnitPrice && !isNaN(parseFloat(txQuantity)) && !isNaN(parseFloat(txUnitPrice)) && (
+              <div className="rounded-lg bg-muted/50 p-3 text-center">
+                <span className="text-sm text-muted-foreground">Total: </span>
+                <span className="text-lg font-bold">
+                  {formatCurrency(Math.round(parseFloat(txQuantity) * parseFloat(txUnitPrice) * 100), currencyCode)}
+                </span>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Notas</Label>
+              <Input value={txNotes} onChange={(e) => setTxNotes(e.target.value)} placeholder="Descripción opcional del registro" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateTransaction(false)}>Cancelar</Button>
+            <Button onClick={handleCreateTransaction} disabled={isSubmittingTx}>
+              {isSubmittingTx && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Registrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ EDIT SERVICE DIALOG ═══ */}
+      <Dialog open={!!editingService} onOpenChange={(open) => !open && setEditingService(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Servicio</DialogTitle>
+            <DialogDescription>Modifica los datos del servicio</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre *</Label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Descripción</Label>
+              <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Precio (COP) *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <Input type="number" min="0" className="pl-7" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Unidad</Label>
+                <Select value={editUnit} onValueChange={setEditUnit}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {UNIT_OPTIONS.map(u => (
+                      <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Ícono</Label>
+              <Select value={editIcon} onValueChange={setEditIcon}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ICON_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingService(null)}>Cancelar</Button>
+            <Button onClick={handleSaveService} disabled={isSavingService}>
+              {isSavingService && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ EDIT TRANSACTION DIALOG ═══ */}
+      <Dialog open={!!editingTx} onOpenChange={(open) => !open && setEditingTx(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Registro #{editingTx?.id}</DialogTitle>
+            <DialogDescription>Modifica los datos del registro</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg bg-muted/50 p-3">
+              <p className="text-sm font-medium">{editingTx?.service?.name}</p>
+              <p className="text-xs text-muted-foreground">{editingTx ? formatDate(editingTx.createdAt) : ''}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Cantidad *</Label>
+                <Input type="number" min="1" value={editTxQuantity} onChange={(e) => setEditTxQuantity(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Precio Unit. (COP)</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <Input type="number" min="0" className="pl-7" value={editTxUnitPrice} onChange={(e) => setEditTxUnitPrice(e.target.value)} />
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Notas</Label>
+              <Input value={editTxNotes} onChange={(e) => setEditTxNotes(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Estado</Label>
+              <Select value={editTxStatus} onValueChange={setEditTxStatus}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="COMPLETED">Completado</SelectItem>
+                  <SelectItem value="CANCELLED">Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingTx(null)}>Cancelar</Button>
+            <Button onClick={handleSaveTx} disabled={isSavingTx}>
+              {isSavingTx && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ DELETE SERVICE CONFIRMATION ═══ */}
+      <AlertDialog open={!!deleteService} onOpenChange={(open) => !open && setDeleteService(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Servicio</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar &quot;{deleteService?.name}&quot;? Se eliminarán todos sus registros asociados. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteService}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ═══ DELETE TRANSACTION CONFIRMATION ═══ */}
+      <AlertDialog open={!!deleteTx} onOpenChange={(open) => !open && setDeleteTx(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar Registro</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de eliminar este registro de servicio? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTx}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

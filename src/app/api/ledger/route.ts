@@ -42,10 +42,11 @@ export async function GET(request: NextRequest) {
 
           let balance = 0
           for (const entry of entries) {
+            const amount = Number(entry.amount)
             if (entry.direction === 'DEBIT') {
-              balance += entry.amount
+              balance += amount
             } else {
-              balance -= entry.amount
+              balance -= amount
             }
           }
 
@@ -105,7 +106,7 @@ export async function GET(request: NextRequest) {
       ledgerAccountId: entry.ledgerAccountId,
       accountName: entry.ledgerAccount.name,
       accountType: entry.ledgerAccount.type,
-      amount: entry.amount,
+      amount: Number(entry.amount),
       direction: entry.direction,
       description: entry.description,
       referenceType: entry.referenceType,

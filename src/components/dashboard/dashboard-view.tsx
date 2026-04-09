@@ -38,8 +38,12 @@ import {
   ShoppingCart,
   AlertTriangle,
   Users,
+  TrendingUp,
   TrendingDown,
   Package,
+  Armchair,
+  Percent,
+  Receipt,
 } from 'lucide-react'
 
 // ── Types ───────────────────────────────────────────────
@@ -68,12 +72,38 @@ interface TopProduct {
   name: string
   quantitySold: number
   revenue: number
+  cogs?: number
+  grossProfit?: number
+  marginPercent?: number
 }
 
 interface TopProductRaw {
   product: { id: number; name: string; imgUrl?: string | null } | null
   totalQuantity: number | null
   totalRevenue: number | null
+  totalCOGS?: number | null
+  grossProfit?: number | null
+  marginPercent?: number | null
+}
+
+interface OpenTable {
+  id: number
+  tableNumber: number
+  tableName: string | null
+  tableZone: string
+  customerName: string | null
+  guests: number
+  startedAt: string
+  itemsCount: number
+  ordersCount: number
+}
+
+interface Profitability {
+  totalRevenue: number
+  totalCOGS: number
+  grossProfit: number
+  grossMarginPercent: number
+  avgTicket: number
 }
 
 interface DashboardData {
@@ -86,6 +116,9 @@ interface DashboardData {
   recentOrders: RecentOrder[]
   topProducts?: TopProductRaw[]
   topProductsFormatted?: TopProduct[]
+  profitability?: Profitability
+  openTables?: OpenTable[]
+  openTablesCount?: number
 }
 
 // ── Chart Config ────────────────────────────────────────
@@ -269,6 +302,9 @@ export function DashboardView() {
             name: tp.product?.name || 'Sin nombre',
             quantitySold: tp.totalQuantity || 0,
             revenue: tp.totalRevenue || 0,
+            cogs: tp.totalCOGS || 0,
+            grossProfit: (tp.totalRevenue || 0) - (tp.totalCOGS || 0),
+            marginPercent: tp.marginPercent || 0,
           }))
           .filter((p: TopProduct) => p.quantitySold > 0)
       }
@@ -335,11 +371,14 @@ export function DashboardView() {
     sales: d.total / 100,
   }))
 
+  // ── Profitability metrics ──
+  const profit = data.profitability
+
   // ── Render ──
   return (
     <div className="space-y-6">
       {/* ── Top Stats Row ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="Ventas Hoy"
           value={formatCurrency(data.totalSalesToday, currencyCode)}
@@ -349,20 +388,28 @@ export function DashboardView() {
           description="Total de ventas del día"
         />
         <StatCard
-          title="Órdenes Hoy"
-          value={data.totalOrdersToday.toLocaleString('es-CO')}
-          icon={ShoppingCart}
-          iconBg="bg-sky-100 dark:bg-sky-900/40"
-          iconColor="text-sky-600 dark:text-sky-400"
-          description="Órdenes realizadas hoy"
+          title="Ganancia Bruta"
+          value={formatCurrency(profit?.grossProfit ?? 0, currencyCode)}
+          icon={TrendingUp}
+          iconBg="bg-emerald-100 dark:bg-emerald-900/40"
+          iconColor="text-emerald-600 dark:text-emerald-400"
+          description={`Margen: ${profit?.grossMarginPercent ?? 0}%`}
         />
         <StatCard
-          title="Productos con Stock Bajo"
-          value={data.lowStockProducts.length.toLocaleString('es-MX')}
-          icon={AlertTriangle}
+          title="Ticket Promedio"
+          value={formatCurrency(profit?.avgTicket ?? 0, currencyCode)}
+          icon={Receipt}
+          iconBg="bg-sky-100 dark:bg-sky-900/40"
+          iconColor="text-sky-600 dark:text-sky-400"
+          description="Promedio por orden"
+        />
+        <StatCard
+          title="Mesas Abiertas"
+          value={(data.openTablesCount ?? 0).toString()}
+          icon={Armchair}
           iconBg="bg-amber-100 dark:bg-amber-900/40"
           iconColor="text-amber-600 dark:text-amber-400"
-          description="Requieren reabastecimiento"
+          description="Mesas ocupadas ahora"
         />
         <StatCard
           title="Cuentas por Cobrar"
@@ -373,6 +420,38 @@ export function DashboardView() {
           description="Deuda total de clientes"
         />
       </div>
+
+      {/* ── Profitability Summary Bar ── */}
+      {profit && (profit.totalRevenue > 0 || data.totalOrdersToday > 0) && (
+        <Card className="border-dashed">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <Percent className="h-4 w-4 text-emerald-500" />
+                <span className="text-muted-foreground">Ingresos:</span>
+                <span className="font-semibold">{formatCurrency(profit.totalRevenue, currencyCode)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Costos (COGS):</span>
+                <span className="font-semibold text-red-600 dark:text-red-400">{formatCurrency(profit.totalCOGS, currencyCode)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Utilidad Bruta:</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(profit.grossProfit, currencyCode)}</span>
+              </div>
+              <Badge className={
+                profit.grossMarginPercent >= 40
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-400'
+                  : profit.grossMarginPercent >= 25
+                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400'
+                  : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
+              }>
+                Margen: {profit.grossMarginPercent}%
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Middle Row ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -541,7 +620,7 @@ export function DashboardView() {
               <TrendingDown className="h-4 w-4 text-emerald-500" />
               Productos Más Vendidos
             </CardTitle>
-            <CardDescription>Top 5 productos por unidades vendidas</CardDescription>
+            <CardDescription>Top 5 por unidades con margen de ganancia</CardDescription>
           </CardHeader>
           <CardContent>
             {(data.topProductsFormatted || []).length === 0 ? (
@@ -568,12 +647,24 @@ export function DashboardView() {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {product.quantitySold} vendidos
+                          {product.marginPercent !== undefined && product.marginPercent > 0 && (
+                            <span className="ml-2 text-emerald-600 dark:text-emerald-400">
+                              ({product.marginPercent}% margen)
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>
-                    <span className="text-sm font-semibold shrink-0">
-                      {formatCurrency(product.revenue, currencyCode)}
-                    </span>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold">
+                        {formatCurrency(product.revenue, currencyCode)}
+                      </p>
+                      {product.grossProfit !== undefined && product.grossProfit > 0 && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                          +{formatCurrency(product.grossProfit, currencyCode)}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -581,6 +672,52 @@ export function DashboardView() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Open Tables Section ── */}
+      {(data.openTables && data.openTables.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Armchair className="h-4 w-4 text-amber-500" />
+              Mesas Abiertas Ahora
+            </CardTitle>
+            <CardDescription>{data.openTables.length} mesa(s) ocupada(s) en este momento</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {data.openTables.map((table) => {
+                const started = new Date(table.startedAt)
+                const elapsed = Math.floor((Date.now() - started.getTime()) / 60000)
+                const hours = Math.floor(elapsed / 60)
+                const mins = elapsed % 60
+                return (
+                  <div key={table.id} className="flex items-center justify-between rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3 gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">
+                        Mesa {table.tableNumber}{table.tableName ? ` — ${table.tableName}` : ''}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {table.customerName ?? 'Sin cliente'}
+                        {' · '}
+                        {table.guests} persona{table.guests !== 1 ? 's' : ''}
+                        {' · '}
+                        {hours > 0 ? `${hours}h ` : ''}{mins}m
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {table.itemsCount} items pedidos
+                        {table.ordersCount > 0 && ` · ${table.ordersCount} cobro(s)`}
+                      </p>
+                    </div>
+                    <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400 border-amber-200 dark:border-amber-800 shrink-0">
+                      {table.tableZone}
+                    </Badge>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

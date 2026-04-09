@@ -1,28 +1,82 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST() {
+// ─── DELETE: Clear ALL data ─────────────────────────────────────
+
+export async function DELETE() {
   try {
-    const existingUsers = await db.user.count()
-    if (existingUsers > 0) {
-      return NextResponse.json({ message: 'Ya existen datos en la base de datos', seeded: false })
+    const deleteOrder = [
+      'comanda_items', 'order_items', 'inventory_movements',
+      'journal_entries', 'table_sessions', 'orders',
+      'service_transactions', 'customers', 'products',
+      'ledger_accounts', 'bar_tables', 'categories', 'stores', 'users',
+    ] as const
+
+    for (const table of deleteOrder) {
+      await db.$executeRawUnsafe(`DELETE FROM ${table}`)
     }
 
-    const passwordHash = await hashPassword('123456')
+    return NextResponse.json({ message: 'Todos los datos eliminados', cleared: true })
+  } catch (error) {
+    console.error('Seed delete error:', error)
+    return NextResponse.json({ error: 'Error al eliminar datos' }, { status: 500 })
+  }
+}
 
+// ─── POST: Seed with comprehensive Colombian bar data ───────────────
+
+const resetSchema = z.object({
+  confirm: z.literal('RESET'),
+})
+
+export async function POST(req: NextRequest) {
+  try {
+    // Optionally allow force-reset
+    let forceReset = false
+    try {
+      const body = await req.json()
+      const parsed = resetSchema.safeParse(body)
+      forceReset = parsed.success
+    } catch { /* no body is ok */ }
+
+    const existingUsers = await db.user.count()
+    if (existingUsers > 0 && !forceReset) {
+      return NextResponse.json({
+        message: 'Ya existen datos. Envía { "confirm": "RESET" } para reiniciar.',
+        seeded: false,
+        hint: 'POST /api/seed con body: { "confirm": "RESET" }',
+      })
+    }
+
+    if (forceReset) {
+      const deleteOrder = [
+        'comanda_items', 'order_items', 'inventory_movements',
+        'journal_entries', 'table_sessions', 'orders',
+        'service_transactions', 'customers', 'products',
+        'ledger_accounts', 'bar_tables', 'categories', 'stores', 'users',
+      ] as const
+      for (const table of deleteOrder) {
+        await db.$executeRawUnsafe(`DELETE FROM ${table}`)
+      }
+    }
+
+    const passwordHash = await hashPassword('1234')
+
+    // ─── User + Store ─────────────────────────────────────────
     const user = await db.user.create({
       data: {
-        phone: '5512345678',
-        email: 'tienda@ejemplo.com',
+        phone: '3001234567',
+        email: 'admin@ventify.com',
         passwordHash,
-        fullName: 'María García',
+        fullName: 'Carlos Bar Manager',
         role: 'OWNER',
         store: {
           create: {
-            name: 'Bodega Bavaria',
+            name: 'Bar La Terraza',
             currencyCode: 'COP',
             countryCode: 'CO',
           },
@@ -33,197 +87,298 @@ export async function POST() {
 
     const storeId = user.store!.id
 
-    await db.ledgerAccount.createMany({
-      data: [
-        { storeId, name: 'Caja General', type: 'ASSET', isDefault: true },
-        { storeId, name: 'Banco', type: 'ASSET', isDefault: false },
-        { storeId, name: 'Ventas', type: 'INCOME', isDefault: false },
-        { storeId, name: 'Comisiones', type: 'INCOME', isDefault: false },
-        { storeId, name: 'Compras', type: 'EXPENSE', isDefault: false },
-        { storeId, name: 'Gastos Generales', type: 'EXPENSE', isDefault: false },
-        { storeId, name: 'Inventario', type: 'ASSET', isDefault: false },
-        { storeId, name: 'Cuentas por Cobrar', type: 'ASSET', isDefault: false },
-        { storeId, name: 'Capital', type: 'EQUITY', isDefault: false },
-      ],
-    })
+    // ─── Categories ────────────────────────────────────────────
+    const catMap: Record<string, number> = {}
+    const catNames = [
+      'Cervezas Bavaria', 'Cervezas Importadas', 'Cigarrillos',
+      'Licores', 'Snacks', 'Bebidas No Alcohólicas', 'Cocteles',
+    ]
+    for (const name of catNames) {
+      const cat = await db.category.create({ data: { storeId, name } })
+      catMap[name] = cat.id
+    }
+    const cat = (name: string) => catMap[name]
 
-    await db.category.createMany({
-      data: [
-        { storeId, name: 'Cervezas Lager' },
-        { storeId, name: 'Cervezas Premium' },
-        { storeId, name: 'Cervezas Especiales' },
-        { storeId, name: 'Malta y Bebidas' },
-        { storeId, name: 'Promociones' },
-      ],
-    })
-
-    const cats = await db.category.findMany({ where: { storeId } })
-
-    // ─── Bavaria Products ──────────────────────────────────────────
-    // Prices in COP cents (e.g. 3500 = $3.500 COP)
-    const products = [
-      // Cervezas Lager
-      { name: 'Cerveza Águila 330ml', catId: cats.find(c => c.name === 'Cervezas Lager')!.id, cost: 1300, sale: 2000, stock: 120, min: 24, sku: 'BAV-001', desc: 'La cerveza colombiana por excelencia' },
-      { name: 'Cerveza Águila 6-Pack', catId: cats.find(c => c.name === 'Cervezas Lager')!.id, cost: 7500, sale: 10500, stock: 40, min: 10, sku: 'BAV-002', desc: 'Pack de 6 unidades Águila 330ml' },
-      { name: 'Cerveza Poker 330ml', catId: cats.find(c => c.name === 'Cervezas Lager')!.id, cost: 1300, sale: 2000, stock: 100, min: 24, sku: 'BAV-003', desc: 'La cervecita de todos' },
-      { name: 'Cerveza Poker 6-Pack', catId: cats.find(c => c.name === 'Cervezas Lager')!.id, cost: 7500, sale: 10500, stock: 35, min: 10, sku: 'BAV-004', desc: 'Pack de 6 unidades Poker 330ml' },
-      { name: 'Cerveza Costeña 330ml', catId: cats.find(c => c.name === 'Cervezas Lager')!.id, cost: 1200, sale: 1800, stock: 80, min: 20, sku: 'BAV-005', desc: 'Cerveza costeña refrescante' },
-      { name: 'Cerveza Pilsen 330ml', catId: cats.find(c => c.name === 'Cervezas Lager')!.id, cost: 1300, sale: 2000, stock: 90, min: 20, sku: 'BAV-006', desc: 'Cerveza Pilsen tradición colombiana' },
-      { name: 'Cerveza Brava 330ml', catId: cats.find(c => c.name === 'Cervezas Lager')!.id, cost: 1100, sale: 1700, stock: 70, min: 15, sku: 'BAV-007', desc: 'Cerveza Brava sabor intenso' },
-
-      // Cervezas Premium
-      { name: 'Club Colombia Dorada 355ml', catId: cats.find(c => c.name === 'Cervezas Premium')!.id, cost: 2200, sale: 3200, stock: 60, min: 12, sku: 'BAV-010', desc: 'Cerveza premium dorada' },
-      { name: 'Club Colombia Roja 355ml', catId: cats.find(c => c.name === 'Cervezas Premium')!.id, cost: 2400, sale: 3500, stock: 50, min: 12, sku: 'BAV-011', desc: 'Cerveza premium roja con cuerpo' },
-      { name: 'Club Colombia Negra 355ml', catId: cats.find(c => c.name === 'Cervezas Premium')!.id, cost: 2600, sale: 3800, stock: 40, min: 10, sku: 'BAV-012', desc: 'Cerveza premium negra estilo Munich' },
-      { name: 'Águila Light 330ml', catId: cats.find(c => c.name === 'Cervezas Premium')!.id, cost: 1500, sale: 2300, stock: 55, min: 12, sku: 'BAV-013', desc: 'Baja en calorías, todo el sabor' },
-      { name: 'Poker Red 330ml', catId: cats.find(c => c.name === 'Cervezas Premium')!.id, cost: 1600, sale: 2500, stock: 45, min: 10, sku: 'BAV-014', desc: 'Cerveza roja con toque de caramelo' },
-
-      // Cervezas Especiales
-      { name: 'Amparada APA 355ml', catId: cats.find(c => c.name === 'Cervezas Especiales')!.id, cost: 3500, sale: 5500, stock: 24, min: 6, sku: 'BAV-020', desc: 'American Pale Ale de Bavaria' },
-      { name: 'Cerveza Costeñita 296ml', catId: cats.find(c => c.name === 'Cervezas Especiales')!.id, cost: 900, sale: 1500, stock: 100, min: 24, sku: 'BAV-021', desc: 'La cervecita costeña pequeña' },
-      { name: 'Poker Trópico 330ml', catId: cats.find(c => c.name === 'Cervezas Especiales')!.id, cost: 1400, sale: 2200, stock: 3, min: 10, sku: 'BAV-022', desc: 'Edición limitada sabor tropical' },
-      { name: 'Águila Zero 330ml', catId: cats.find(c => c.name === 'Cervezas Especiales')!.id, cost: 1600, sale: 2500, stock: 0, min: 8, sku: 'BAV-023', desc: 'Sin alcohol, puro sabor Águila' },
-
-      // Malta y Bebidas
-      { name: 'Malta Leona 350ml', catId: cats.find(c => c.name === 'Malta y Bebidas')!.id, cost: 800, sale: 1500, stock: 80, min: 20, sku: 'BAV-030', desc: 'Malta energizante tradicional' },
-      { name: 'Pony Malta 235ml', catId: cats.find(c => c.name === 'Malta y Bebidas')!.id, cost: 600, sale: 1200, stock: 100, min: 24, sku: 'BAV-031', desc: 'Malta nutritiva para toda la familia' },
-      { name: 'Pony Malta Familiar 1L', catId: cats.find(c => c.name === 'Malta y Bebidas')!.id, cost: 2200, sale: 3800, stock: 30, min: 8, sku: 'BAV-032', desc: 'Formato familiar 1 litro' },
-      { name: 'Agua Cristal 600ml', catId: cats.find(c => c.name === 'Malta y Bebidas')!.id, cost: 400, sale: 1000, stock: 200, min: 48, sku: 'BAV-033', desc: 'Agua purificada Bavaria' },
-
-      // Promociones
-      { name: 'Combo Caguama Poker 1.2L', catId: cats.find(c => c.name === 'Promociones')!.id, cost: 4500, sale: 7500, stock: 20, min: 5, sku: 'BAV-040', desc: 'Caguama grande de Poker para compartir' },
-      { name: 'Combo Caguama Águila 1.2L', catId: cats.find(c => c.name === 'Promociones')!.id, cost: 4500, sale: 7500, stock: 20, min: 5, sku: 'BAV-041', desc: 'Caguama grande de Águila para compartir' },
-      { name: 'Pack 12 Águila Latas', catId: cats.find(c => c.name === 'Promociones')!.id, cost: 14500, sale: 20000, stock: 15, min: 5, sku: 'BAV-042', desc: 'Pack de 12 latas de Águila 330ml' },
-      { name: 'Pack 12 Poker Latas', catId: cats.find(c => c.name === 'Promociones')!.id, cost: 14500, sale: 20000, stock: 15, min: 5, sku: 'BAV-043', desc: 'Pack de 12 latas de Poker 330ml' },
-      { name: 'Combo Fiesta 24 Latas Mixtas', catId: cats.find(c => c.name === 'Promociones')!.id, cost: 28000, sale: 38000, stock: 8, min: 3, sku: 'BAV-044', desc: '12 Águila + 12 Poker para tu fiesta' },
+    // ─── Products ─────────────────────────────────────────────
+    const allProducts: Array<{ name: string; salePrice: number; costPrice: number; stock: number }> = [
+      // Cervezas Bavaria (26)
+      { name: 'Aguila Light Botella 330ml', salePrice: 4500, costPrice: 2200, stock: 120 },
+      { name: 'Aguila Light Lata 355ml', salePrice: 4200, costPrice: 2000, stock: 150 },
+      { name: 'Aguila Original Botella 330ml', salePrice: 4500, costPrice: 2200, stock: 80 },
+      { name: 'Aguila Original Lata 355ml', salePrice: 4200, costPrice: 2000, stock: 100 },
+      { name: 'Poker Lata 355ml', salePrice: 4800, costPrice: 2400, stock: 100 },
+      { name: 'Poker Botella 330ml', salePrice: 5000, costPrice: 2500, stock: 80 },
+      { name: 'Club Colombia Dorada Lata 355ml', salePrice: 5500, costPrice: 2800, stock: 80 },
+      { name: 'Club Colombia Dorada Botella 330ml', salePrice: 5800, costPrice: 2900, stock: 60 },
+      { name: 'Club Colombia Negra Lata 355ml', salePrice: 6000, costPrice: 3100, stock: 50 },
+      { name: 'Club Colombia Negra Botella 330ml', salePrice: 6200, costPrice: 3200, stock: 40 },
+      { name: 'Costeña Lata 355ml', salePrice: 5000, costPrice: 2500, stock: 60 },
+      { name: 'Costeña Botella 330ml', salePrice: 5200, costPrice: 2600, stock: 50 },
+      { name: 'Pilsen Lata 355ml', salePrice: 3800, costPrice: 1800, stock: 100 },
+      { name: 'Pilsen Botella 330ml', salePrice: 4000, costPrice: 1900, stock: 80 },
+      { name: 'Brahma Lata 355ml', salePrice: 4400, costPrice: 2100, stock: 70 },
+      { name: 'Brahma Botella 330ml', salePrice: 4600, costPrice: 2200, stock: 50 },
+      { name: 'Poker Red IPA Lata 440ml', salePrice: 7500, costPrice: 4000, stock: 30 },
+      { name: 'Poker Black Lata 355ml', salePrice: 5500, costPrice: 2800, stock: 40 },
+      { name: 'Aguila Shandy Lata 355ml', salePrice: 4800, costPrice: 2500, stock: 50 },
+      { name: 'Club Colombia Red Lager Lata', salePrice: 8000, costPrice: 4200, stock: 25 },
+      { name: 'Club Colombia Trigo Lata 355ml', salePrice: 7200, costPrice: 3800, stock: 20 },
+      { name: 'Costeñita Lata 330ml', salePrice: 3500, costPrice: 1700, stock: 80 },
+      { name: 'Pony Malta 330ml', salePrice: 2500, costPrice: 1200, stock: 100 },
+      { name: 'Pony Malta 500ml', salePrice: 3500, costPrice: 1600, stock: 80 },
+      { name: 'Aguila Zero Lata 355ml', salePrice: 4500, costPrice: 2200, stock: 60 },
+      { name: 'Poker Sin Alcohol Lata 355ml', salePrice: 4800, costPrice: 2400, stock: 40 },
+      // Cervezas Importadas (10)
+      { name: 'Corona Extra Botella 355ml', salePrice: 8000, costPrice: 5000, stock: 48 },
+      { name: 'Heineken Lata 330ml', salePrice: 7500, costPrice: 4500, stock: 48 },
+      { name: 'Budweiser Lata 355ml', salePrice: 7000, costPrice: 4200, stock: 36 },
+      { name: 'Stella Artois Lata 330ml', salePrice: 8500, costPrice: 5200, stock: 36 },
+      { name: 'Miller Genuine Draft Lata', salePrice: 6800, costPrice: 4000, stock: 30 },
+      { name: 'Guinness Draught Lata 440ml', salePrice: 10000, costPrice: 6500, stock: 24 },
+      { name: 'Samuel Adams Lata 355ml', salePrice: 12000, costPrice: 8000, stock: 18 },
+      { name: 'Sierra Nevada Pale Ale Lata', salePrice: 11000, costPrice: 7000, stock: 18 },
+      { name: 'Modelo Especial Lata 355ml', salePrice: 7500, costPrice: 4500, stock: 36 },
+      { name: 'Patagonia Amber Lager Lata', salePrice: 9500, costPrice: 5800, stock: 24 },
+      // Cigarrillos (16)
+      { name: 'Marlboro Red Cajetilla 20', salePrice: 7500, costPrice: 5200, stock: 30 },
+      { name: 'Marlboro Lights Cajetilla 20', salePrice: 7500, costPrice: 5200, stock: 25 },
+      { name: 'Marlboro Ice Blast Cajetilla 20', salePrice: 8200, costPrice: 5800, stock: 20 },
+      { name: 'Camel Filters Cajetilla 20', salePrice: 7200, costPrice: 5000, stock: 20 },
+      { name: 'Camel Blue Cajetilla 20', salePrice: 7200, costPrice: 5000, stock: 18 },
+      { name: 'Winston Red Cajetilla 20', salePrice: 6500, costPrice: 4500, stock: 25 },
+      { name: 'Winston Blue Cajetilla 20', salePrice: 6500, costPrice: 4500, stock: 22 },
+      { name: 'Lucky Strike Red Cajetilla 20', salePrice: 7000, costPrice: 4800, stock: 20 },
+      { name: 'Lucky Strike Blue Cajetilla 20', salePrice: 7000, costPrice: 4800, stock: 18 },
+      { name: 'Pielroja Cajetilla 20', salePrice: 4500, costPrice: 2800, stock: 35 },
+      { name: 'Derby Cajetilla 20', salePrice: 4200, costPrice: 2600, stock: 30 },
+      { name: 'Belmont Cajetilla 20', salePrice: 5500, costPrice: 3500, stock: 25 },
+      { name: 'Fox Cajetilla 20', salePrice: 3800, costPrice: 2200, stock: 40 },
+      { name: 'Jinja Cajetilla 20', salePrice: 4000, costPrice: 2500, stock: 35 },
+      { name: 'Prestige Cajetilla 20', salePrice: 3600, costPrice: 2100, stock: 30 },
+      { name: 'Mustang Cajetilla 20', salePrice: 3200, costPrice: 1800, stock: 40 },
+      // Licores (15)
+      { name: 'Aguardiente Antioqueño Sin Azúcar 750ml', salePrice: 55000, costPrice: 35000, stock: 12 },
+      { name: 'Aguardiente Antioqueño 750ml', salePrice: 48000, costPrice: 30000, stock: 15 },
+      { name: 'Ron Medellín 8 Años 750ml', salePrice: 65000, costPrice: 42000, stock: 10 },
+      { name: 'Ron Medellín Reserva 12 Años 750ml', salePrice: 85000, costPrice: 58000, stock: 6 },
+      { name: 'Ron Viejo de Caldas 750ml', salePrice: 52000, costPrice: 33000, stock: 12 },
+      { name: 'Ron Santafereño 750ml', salePrice: 45000, costPrice: 28000, stock: 10 },
+      { name: 'Whisky Old Parr 12 Años 750ml', salePrice: 120000, costPrice: 85000, stock: 6 },
+      { name: 'Whisky Buchanan 12 Años 750ml', salePrice: 135000, costPrice: 95000, stock: 5 },
+      { name: 'Vodka Absolut 750ml', salePrice: 85000, costPrice: 55000, stock: 8 },
+      { name: 'Vodka Smirnoff 750ml', salePrice: 65000, costPrice: 40000, stock: 8 },
+      { name: 'Tequila José Cuervo Gold 750ml', salePrice: 90000, costPrice: 58000, stock: 6 },
+      { name: 'Tequila Don Julio Blanco 750ml', salePrice: 150000, costPrice: 100000, stock: 4 },
+      { name: 'Gin Gordon´s 750ml', salePrice: 75000, costPrice: 48000, stock: 6 },
+      { name: 'Gin Hendricks 750ml', salePrice: 180000, costPrice: 130000, stock: 3 },
+      { name: 'Refajo Costeño', salePrice: 8000, costPrice: 4000, stock: 30 },
+      // Snacks (8)
+      { name: 'Nachos con Guacamole', salePrice: 12000, costPrice: 5000, stock: 20 },
+      { name: 'Papas Fritas Colombianas', salePrice: 8000, costPrice: 3000, stock: 30 },
+      { name: 'Chicharrón Colombiano', salePrice: 10000, costPrice: 4000, stock: 25 },
+      { name: 'Empanada Colombiana', salePrice: 6000, costPrice: 2000, stock: 40 },
+      { name: 'Patacón con Hogao', salePrice: 9000, costPrice: 3500, stock: 25 },
+      { name: 'Arepas con Queso', salePrice: 7000, costPrice: 2500, stock: 30 },
+      { name: 'Mango Biche con Limón y Sal', salePrice: 5000, costPrice: 1500, stock: 50 },
+      { name: 'Plátano Maduro Frito', salePrice: 6000, costPrice: 2000, stock: 35 },
+      // Bebidas No Alcohólicas (12)
+      { name: 'Coca-Cola Personal 400ml', salePrice: 3500, costPrice: 1800, stock: 80 },
+      { name: 'Coca-Cola 600ml', salePrice: 4500, costPrice: 2200, stock: 60 },
+      { name: 'Pepsi Personal 400ml', salePrice: 3200, costPrice: 1600, stock: 60 },
+      { name: 'Postobón Manzana 400ml', salePrice: 2800, costPrice: 1400, stock: 70 },
+      { name: 'Postobón Uva 400ml', salePrice: 2800, costPrice: 1400, stock: 70 },
+      { name: 'Postobón Cola 400ml', salePrice: 2800, costPrice: 1400, stock: 70 },
+      { name: 'Agua Cristal 500ml', salePrice: 2500, costPrice: 1000, stock: 100 },
+      { name: 'Agua Brisa 500ml', salePrice: 2500, costPrice: 1000, stock: 100 },
+      { name: 'Jugo Hit Naranja 1L', salePrice: 5500, costPrice: 3000, stock: 30 },
+      { name: 'Jugo Tropicana Naranja 1L', salePrice: 8500, costPrice: 5200, stock: 20 },
+      { name: 'Limonada Natural 500ml', salePrice: 5000, costPrice: 1800, stock: 40 },
+      { name: 'Lulada 500ml', salePrice: 7000, costPrice: 3000, stock: 30 },
+      // Cocteles (10)
+      { name: 'Cuba Libre', salePrice: 15000, costPrice: 6000, stock: 20 },
+      { name: 'Mojito', salePrice: 18000, costPrice: 7000, stock: 20 },
+      { name: 'Agua de Valencia', salePrice: 16000, costPrice: 6500, stock: 15 },
+      { name: 'Margarita', salePrice: 20000, costPrice: 8000, stock: 15 },
+      { name: 'Piña Colada', salePrice: 18000, costPrice: 7000, stock: 15 },
+      { name: 'Caipiriña', salePrice: 19000, costPrice: 7500, stock: 15 },
+      { name: 'Canelazo Colombiano', salePrice: 12000, costPrice: 4500, stock: 20 },
+      { name: 'Campesino Colombiano', salePrice: 14000, costPrice: 5500, stock: 18 },
+      { name: 'Ron con Limón', salePrice: 10000, costPrice: 4000, stock: 25 },
+      { name: 'Cerveza Preparada (Refajo)', salePrice: 9000, costPrice: 4500, stock: 25 },
     ]
 
-    for (const p of products) {
-      await db.product.create({
+    const products = []
+    for (let i = 0; i < allProducts.length; i++) {
+      const p = allProducts[i]
+      let categoryId: number | null = null
+      if (i < 26) categoryId = cat('Cervezas Bavaria')
+      else if (i < 36) categoryId = cat('Cervezas Importadas')
+      else if (i < 52) categoryId = cat('Cigarrillos')
+      else if (i < 67) categoryId = cat('Licores')
+      else if (i < 75) categoryId = cat('Snacks')
+      else if (i < 87) categoryId = cat('Bebidas No Alcohólicas')
+      else categoryId = cat('Cocteles')
+
+      products.push(await db.product.create({
         data: {
           storeId,
+          categoryId,
           name: p.name,
-          categoryId: p.catId,
-          sku: p.sku,
-          costPrice: p.cost,
-          salePrice: p.sale,
+          salePrice: p.salePrice,
+          costPrice: p.costPrice,
           currentStock: p.stock,
-          minStock: p.min,
+          minStock: 5,
           isActive: true,
-          description: p.desc,
         },
-      })
+      }))
     }
 
-    const customersData = [
-      { name: 'Roberto López', phone: '3101234567', email: 'roberto@email.com', debt: 45000 },
-      { name: 'Ana Martínez', phone: '3209876543', email: 'ana@email.com', debt: 25000 },
-      { name: 'Carlos Hernández', phone: '3155551234', email: null, debt: 0 },
-      { name: 'Laura Sánchez', phone: '3124448899', email: 'laura@email.com', debt: 96000 },
-      { name: 'Pedro Gómez', phone: '3186667788', email: null, debt: 0 },
+    // ─── Tables ────────────────────────────────────────────────
+    const tableData = [
+      { number: 1, name: 'Ventana 1', capacity: 4, zone: 'PRINCIPAL' },
+      { number: 2, name: 'Ventana 2', capacity: 4, zone: 'PRINCIPAL' },
+      { number: 3, name: 'Centro 1', capacity: 6, zone: 'PRINCIPAL' },
+      { number: 4, name: 'Centro 2', capacity: 6, zone: 'PRINCIPAL' },
+      { number: 5, name: 'VIP 1', capacity: 8, zone: 'VIP' },
+      { number: 6, name: 'VIP 2', capacity: 8, zone: 'VIP' },
+      { number: 7, name: 'Terraza 1', capacity: 4, zone: 'TERRAZA' },
+      { number: 8, name: 'Terraza 2', capacity: 4, zone: 'TERRAZA' },
+      { number: 9, name: 'Barra 1', capacity: 2, zone: 'BARRA' },
+      { number: 10, name: 'Barra 2', capacity: 2, zone: 'BARRA' },
     ]
-
-    const createdCustomers: Array<{ id: number }> = []
-    for (const c of customersData) {
-      const customer = await db.customer.create({
-        data: { storeId, name: c.name, phone: c.phone, email: c.email, totalDebt: c.debt },
-      })
-      createdCustomers.push(customer)
+    const tables = []
+    for (const t of tableData) {
+      tables.push(await db.barTable.create({ data: { storeId, ...t, isActive: true } }))
     }
 
-    const allProducts = await db.product.findMany({ where: { storeId } })
-    const caja = await db.ledgerAccount.findFirst({ where: { storeId, name: 'Caja General' } })
-    const ventas = await db.ledgerAccount.findFirst({ where: { storeId, name: 'Ventas' } })
-
-    // ─── Sample Orders ─────────────────────────────────────────────
-    const orderData = [
-      { custIdx: 0, status: 'COMPLETED', pay: 'CASH', hours: 2, items: [{ pIdx: 0, qty: 3 }, { pIdx: 7, qty: 2 }] },
-      { custIdx: 1, status: 'COMPLETED', pay: 'CARD', hours: 4, items: [{ pIdx: 2, qty: 1 }, { pIdx: 14, qty: 3 }, { pIdx: 16, qty: 1 }] },
-      { custIdx: 3, status: 'CREDIT', pay: 'MREDIT', hours: 6, items: [{ pIdx: 1, qty: 2 }, { pIdx: 5, qty: 4 }] },
-      { custIdx: -1, status: 'COMPLETED', pay: 'CASH', hours: 8, items: [{ pIdx: 0, qty: 6 }, { pIdx: 2, qty: 6 }] },
-      { custIdx: 2, status: 'COMPLETED', pay: 'CASH', hours: 12, items: [{ pIdx: 9, qty: 2 }, { pIdx: 15, qty: 5 }] },
-      { custIdx: -1, status: 'COMPLETED', pay: 'TRANSFER', hours: 24, items: [{ pIdx: 7, qty: 3 }, { pIdx: 8, qty: 3 }] },
-      { custIdx: 0, status: 'COMPLETED', pay: 'CASH', hours: 36, items: [{ pIdx: 4, qty: 12 }, { pIdx: 10, qty: 6 }] },
-      { custIdx: -1, status: 'COMPLETED', pay: 'CARD', hours: 48, items: [{ pIdx: 20, qty: 1 }, { pIdx: 14, qty: 4 }] },
+    // ─── Customers ────────────────────────────────────────────
+    const customers = [
+      await db.customer.create({ data: { storeId, name: 'Juan Pérez', phone: '3101111111', totalDebt: 0 } }),
+      await db.customer.create({ data: { storeId, name: 'María García', phone: '3202222222', totalDebt: 0 } }),
+      await db.customer.create({ data: { storeId, name: 'Pedro Martínez', phone: '3153333333', totalDebt: 0 } }),
     ]
 
-    for (const o of orderData) {
-      const itemsData = o.items.map(item => {
-        const product = allProducts[item.pIdx]
-        return { productId: product.id, quantity: item.qty, unitPrice: product.salePrice, totalRow: product.salePrice * item.qty }
-      })
-      const subtotal = itemsData.reduce((sum, i) => sum + i.totalRow, 0)
-      const date = new Date(Date.now() - o.hours * 3600000)
-      const orderNum = `TK-${date.toISOString().slice(2, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`
+    // ─── Ledger Accounts ───────────────────────────────────────
+    const accs = [
+      await db.ledgerAccount.create({ data: { storeId, name: 'Caja General', type: 'ASSET', isDefault: true } }),
+      await db.ledgerAccount.create({ data: { storeId, name: 'Cuenta Daviplata', type: 'ASSET', isDefault: false } }),
+      await db.ledgerAccount.create({ data: { storeId, name: 'Cuenta Nequi', type: 'ASSET', isDefault: false } }),
+      await db.ledgerAccount.create({ data: { storeId, name: 'Cuenta Tarjeta', type: 'ASSET', isDefault: false } }),
+      await db.ledgerAccount.create({ data: { storeId, name: 'Inventario Productos', type: 'ASSET', isDefault: false } }),
+      await db.ledgerAccount.create({ data: { storeId, name: 'Cuentas por Cobrar (Fiado)', type: 'ASSET', isDefault: false } }),
+      await db.ledgerAccount.create({ data: { storeId, name: 'Ventas', type: 'INCOME', isDefault: false } }),
+      await db.ledgerAccount.create({ data: { storeId, name: 'Costo de Ventas', type: 'EXPENSE', isDefault: false } }),
+      await db.ledgerAccount.create({ data: { storeId, name: 'Propina', type: 'INCOME', isDefault: false } }),
+    ]
+    const Caja = accs[0].id
+    const Daviplata = accs[1].id
+    const Nequi = accs[2].id
+    const Tarjeta = accs[3].id
+    const CxC = accs[5].id
+    const Ventas = accs[6].id
 
-      const status = o.pay === 'MREDIT' ? 'CREDIT' : o.status
-      const paymentMethod = o.pay === 'MREDIT' ? 'CREDIT' : o.pay
-
-      const order = await db.order.create({
-        data: {
-          storeId,
-          customerId: o.custIdx >= 0 ? createdCustomers[o.custIdx].id : null,
-          orderNumber: orderNum,
-          subtotal,
-          total: subtotal,
-          status,
-          paymentMethod,
-          createdAt: date,
-          orderItems: { create: itemsData },
-        },
-      })
-
-      if (status === 'COMPLETED' && caja && ventas) {
-        await db.journalEntry.createMany({
-          data: [
-            { storeId, ledgerAccountId: caja.id, amount: subtotal, direction: 'DEBIT', description: `Venta ${orderNum}`, referenceType: 'ORDER', referenceId: order.id, createdAt: date },
-            { storeId, ledgerAccountId: ventas.id, amount: subtotal, direction: 'CREDIT', description: `Venta ${orderNum}`, referenceType: 'ORDER', referenceId: order.id, createdAt: date },
-          ],
+    // Helper: create full order with complete transaction
+    async function createOrder(data: {
+      orderNumber: string; customerId: number | null; paymentMethod: string;
+      status: string; items: Array<{ productId: number; qty: number }>; createdAt: Date;
+    }) {
+      const total = data.items.reduce((s, i) => s + products[i.productId - 1].salePrice * i.qty, 0)
+      return await db.$transaction(async (tx) => {
+        const o = await tx.order.create({
+          data: {
+            storeId, customerId: data.customerId, orderNumber: data.orderNumber,
+            subtotal: total, total, status: data.status, paymentMethod: data.paymentMethod,
+            createdAt: data.createdAt,
+            orderItems: {
+              create: data.items.map(i => ({
+                productId: i.productId, quantity: i.qty,
+                unitPrice: products[i.productId - 1].salePrice,
+                totalRow: products[i.productId - 1].salePrice * i.qty,
+              })),
+            },
+          },
         })
-      }
+        for (const item of data.items) {
+          await tx.product.update({ where: { id: item.productId }, data: { currentStock: { decrement: item.qty } } })
+          await tx.inventoryMovement.create({
+            data: { storeId, productId: item.productId, quantity: -item.qty, movementType: 'SALE', referenceId: o.id, notes: `Venta ${data.orderNumber}`, createdAt: data.createdAt },
+          })
+        }
+        const isFiado = data.paymentMethod === 'FIADO' || data.paymentMethod === 'CREDIT'
+        if (isFiado) {
+          await tx.journalEntry.create({ data: { storeId, ledgerAccountId: CxC, amount: total, direction: 'DEBIT', description: `Fiado ${data.orderNumber}`, referenceType: 'ORDER', referenceId: o.id, createdAt: data.createdAt } })
+          await tx.journalEntry.create({ data: { storeId, ledgerAccountId: Ventas, amount: total, direction: 'CREDIT', description: `Venta fiada ${data.orderNumber}`, referenceType: 'ORDER', referenceId: o.id, createdAt: data.createdAt } })
+          if (data.customerId) await tx.customer.update({ where: { id: data.customerId }, data: { totalDebt: { increment: total } } })
+        } else {
+          let payAcc = Caja
+          if (data.paymentMethod === 'DAVIPLATA') payAcc = Daviplata
+          else if (data.paymentMethod === 'NEQUI') payAcc = Nequi
+          else if (data.paymentMethod === 'TARJETA') payAcc = Tarjeta
+          await tx.journalEntry.create({ data: { storeId, ledgerAccountId: payAcc, amount: total, direction: 'DEBIT', description: `Pago ${data.orderNumber} ${data.paymentMethod}`, referenceType: 'ORDER', referenceId: o.id, createdAt: data.createdAt } })
+          await tx.journalEntry.create({ data: { storeId, ledgerAccountId: Ventas, amount: total, direction: 'CREDIT', description: `Venta ${data.orderNumber}`, referenceType: 'ORDER', referenceId: o.id, createdAt: data.createdAt } })
+        }
+        return o
+      })
     }
 
-    // Sample inventory movement
-    await db.inventoryMovement.create({
+    // ─── Historical Orders ────────────────────────────────────
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1)
+    const dayBefore = new Date(today); dayBefore.setDate(dayBefore.getDate() - 2)
+
+    await createOrder({ orderNumber: 'ORD-001', customerId: customers[0].id, paymentMethod: 'EFECTIVO', status: 'COMPLETED', createdAt: yesterday, items: [{ productId: 1, qty: 3 }] })
+    await createOrder({ orderNumber: 'ORD-002', customerId: customers[2].id, paymentMethod: 'DAVIPLATA', status: 'COMPLETED', createdAt: yesterday, items: [{ productId: 7, qty: 4 }, { productId: 84, qty: 2 }] })
+    await createOrder({ orderNumber: 'ORD-003', customerId: null, paymentMethod: 'NEQUI', status: 'COMPLETED', createdAt: dayBefore, items: [{ productId: 37, qty: 1 }] })
+    await createOrder({ orderNumber: 'ORD-004', customerId: customers[1].id, paymentMethod: 'TARJETA', status: 'COMPLETED', createdAt: today, items: [{ productId: 37, qty: 1 }, { productId: 91, qty: 2 }] })
+    await createOrder({ orderNumber: 'ORD-005', customerId: null, paymentMethod: 'EFECTIVO', status: 'COMPLETED', createdAt: today, items: [{ productId: 27, qty: 5 }] })
+    await createOrder({ orderNumber: 'ORD-006', customerId: customers[1].id, paymentMethod: 'FIADO', status: 'CREDIT', createdAt: today, items: [{ productId: 1, qty: 3 }, { productId: 58, qty: 2 }] })
+
+    // ─── Open Sessions ─────────────────────────────────────────
+    const now = Date.now()
+    await db.tableSession.create({
       data: {
-        storeId,
-        productId: allProducts[0].id,
-        quantity: 48,
-        movementType: 'PURCHASE',
-        notes: 'Reposición semanal Águila',
-        createdAt: new Date(Date.now() - 48 * 3600000),
+        storeId, barTableId: tables[0].id, customerId: customers[0].id, guests: 4, status: 'OPEN',
+        startedAt: new Date(now - 2 * 3600000),
+        comandaItems: { create: [
+          { storeId, productId: 1, productName: 'Aguila Light Botella 330ml', quantity: 4, unitPrice: 4500, total: 18000, status: 'SERVED' },
+          { storeId, productId: 58, productName: 'Coca-Cola Personal 400ml', quantity: 2, unitPrice: 3500, total: 7000, status: 'SERVED' },
+          { storeId, productId: 84, productName: 'Nachos con Guacamole', quantity: 1, unitPrice: 12000, total: 12000, status: 'PENDING' },
+        ] },
       },
     })
-
-    await db.inventoryMovement.create({
+    await db.tableSession.create({
       data: {
-        storeId,
-        productId: allProducts[7].id,
-        quantity: 24,
-        movementType: 'PURCHASE',
-        notes: 'Reposición semanal Club Colombia Dorada',
-        createdAt: new Date(Date.now() - 48 * 3600000),
+        storeId, barTableId: tables[4].id, customerId: customers[1].id, guests: 6, status: 'OPEN',
+        startedAt: new Date(now - 1 * 3600000),
+        comandaItems: { create: [
+          { storeId, productId: 7, productName: 'Club Colombia Dorada Lata 355ml', quantity: 6, unitPrice: 5500, total: 33000, status: 'SERVED' },
+          { storeId, productId: 37, productName: 'Aguardiente Antioqueño 750ml', quantity: 2, unitPrice: 55000, total: 110000, status: 'PENDING' },
+          { storeId, productId: 91, productName: 'Cuba Libre', quantity: 3, unitPrice: 15000, total: 45000, status: 'PENDING' },
+        ] },
       },
     })
-
-    // Sample service transactions
-    await db.serviceTransaction.createMany({
-      data: [
-        { storeId, provider: 'CLARO', transactionType: 'TOPUP', amount: 10000, commissionEarned: 300, status: 'SUCCESS', externalId: 'TXN-001', createdAt: new Date(Date.now() - 3 * 3600000) },
-        { storeId, provider: 'MOVISTAR', transactionType: 'TOPUP', amount: 5000, commissionEarned: 150, status: 'SUCCESS', externalId: 'TXN-002', createdAt: new Date(Date.now() - 6 * 3600000) },
-        { storeId, provider: 'TUENA', transactionType: 'BILL_PAYMENT', amount: 85000, commissionEarned: 850, status: 'SUCCESS', externalId: 'TXN-003', createdAt: new Date(Date.now() - 12 * 3600000) },
-        { storeId, provider: 'CLARO', transactionType: 'TOPUP', amount: 20000, commissionEarned: 600, status: 'PENDING', externalId: 'TXN-004', createdAt: new Date(Date.now() - 1 * 3600000) },
-      ],
+    await db.tableSession.create({
+      data: {
+        storeId, barTableId: tables[8].id, guests: 2, status: 'OPEN',
+        startedAt: new Date(now - 30 * 60000),
+        comandaItems: { create: [
+          { storeId, productId: 11, productName: 'Costeña Lata 355ml', quantity: 2, unitPrice: 5000, total: 10000, status: 'SERVED' },
+        ] },
+      },
     })
 
     return NextResponse.json({
-      message: 'Datos de ejemplo creados exitosamente — Bavaria POS',
       seeded: true,
-      login: { phone: '5512345678', password: '123456' },
-      stats: { users: 1, stores: 1, products: products.length, customers: customersData.length, orders: orderData.length },
+      storeId,
+      user: { phone: '3001234567', password: '1234' },
+      store: { name: 'Bar La Terraza', currencyCode: 'COP' },
+      stats: { products: products.length, tables: tables.length, orders: 6, customers: customers.length },
     })
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
+    }
     console.error('Seed error:', error)
-    return NextResponse.json({ error: 'Error al crear datos de ejemplo' }, { status: 500 })
+    return NextResponse.json({ error: 'Error al sembrar datos' }, { status: 500 })
   }
 }

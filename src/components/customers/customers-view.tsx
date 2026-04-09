@@ -115,10 +115,14 @@ export function CustomersView() {
       toast.error('El nombre es obligatorio')
       return
     }
+    if (!store?.id) {
+      toast.error('Tienda no disponible')
+      return
+    }
     setSubmitting(true)
     try {
       const body: any = {
-        storeId: store!.id,
+        storeId: store.id,
         name: formName.trim(),
       }
       if (formPhone.trim()) body.phone = formPhone.trim()
@@ -154,12 +158,16 @@ export function CustomersView() {
   }
 
   async function viewOrderHistory(customer: Customer) {
+    if (!store?.id) {
+      toast.error('Tienda no disponible')
+      return
+    }
     setHistoryCustomer(customer)
     setHistoryOrders([])
     setHistoryLoading(true)
     try {
       const params = new URLSearchParams({
-        storeId: store!.id.toString(),
+        storeId: store.id.toString(),
         customerId: customer.id.toString(),
       })
       const res = await fetch(`/api/orders?${params}`)

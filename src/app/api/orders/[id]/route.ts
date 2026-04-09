@@ -47,8 +47,8 @@ export async function GET(
       orderNumber: order.orderNumber,
       status: order.status,
       paymentMethod: order.paymentMethod,
-      subtotal: order.subtotal,
-      total: order.total,
+      subtotal: Number(order.subtotal),
+      total: Number(order.total),
       notes: order.notes,
       createdAt: order.createdAt.toISOString(),
       customer: order.customer,
@@ -56,8 +56,8 @@ export async function GET(
         id: item.id,
         productName: item.product?.name ?? 'Producto eliminado',
         quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalRow: item.totalRow,
+        unitPrice: Number(item.unitPrice),
+        totalRow: Number(item.totalRow),
       })),
     }
 

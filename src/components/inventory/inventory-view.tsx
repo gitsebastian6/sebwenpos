@@ -171,7 +171,8 @@ export function InventoryView() {
   useEffect(() => {
     fetchLowStock()
     fetchMovements()
-  }, [fetchLowStock, fetchMovements])
+    fetchProducts()
+  }, [fetchLowStock, fetchMovements, fetchProducts])
 
   // ─── Handlers ─────────────────────────────────────────────
 
@@ -196,11 +197,8 @@ export function InventoryView() {
       return
     }
 
-    // For adjustments, allow negative by using a sign
-    let finalQuantity = quantity
-    if (formMovementType === 'ADJUSTMENT') {
-      // quantity is absolute, user can specify positive or negative
-    }
+    // For adjustments, quantity sign determines direction
+    // (positive = increase stock, negative = decrease stock)
 
     setIsSubmitting(true)
     try {
@@ -211,7 +209,7 @@ export function InventoryView() {
           storeId,
           productId: parseInt(formProductId, 10),
           movementType: formMovementType,
-          quantity: finalQuantity,
+          quantity,
           notes: formNotes || undefined,
         }),
       })
@@ -509,8 +507,7 @@ export function InventoryView() {
               <Input
                 id="movement-quantity"
                 type="number"
-                min="1"
-                placeholder="Ej: 10"
+                placeholder="Ej: 10 o -5 para ajustes"
                 value={formQuantity}
                 onChange={(e) => setFormQuantity(e.target.value)}
               />

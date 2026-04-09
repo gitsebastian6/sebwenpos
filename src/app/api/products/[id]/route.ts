@@ -6,6 +6,7 @@ const updateProductSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   sku: z.string().max(100).nullable().optional(),
   categoryId: z.number().int().positive().nullable().optional(),
+  providerId: z.number().int().positive().nullable().optional(),
   description: z.string().max(1000).nullable().optional(),
   imgUrl: z.string().max(500).nullable().optional(),
   costPrice: z.number().int().min(0).optional(),
@@ -52,6 +53,7 @@ export async function PUT(
         ...(data.name !== undefined && { name: data.name }),
         ...(data.sku !== undefined && { sku: data.sku }),
         ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
+        ...(data.providerId !== undefined && { providerId: data.providerId }),
         ...(data.description !== undefined && { description: data.description }),
         ...(data.imgUrl !== undefined && { imgUrl: data.imgUrl }),
         ...(data.costPrice !== undefined && { costPrice: data.costPrice }),
@@ -62,6 +64,9 @@ export async function PUT(
       },
       include: {
         category: {
+          select: { id: true, name: true },
+        },
+        provider: {
           select: { id: true, name: true },
         },
       },

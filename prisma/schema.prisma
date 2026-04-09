@@ -30,20 +30,26 @@ model Store {
   id           Int      @id @default(autoincrement())
   userId       Int      @unique @map("user_id")
   name         String
-  currencyCode String   @default("MXN") @map("currency_code")
+  currencyCode String   @default("COP") @map("currency_code")
   countryCode  String?  @map("country_code")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt
 
-  user              User                 @relation("UserStore", fields: [userId], references: [id])
-  categories        Category[]
-  products          Product[]
-  inventoryMovements InventoryMovement[]
-  customers         Customer[]
-  orders            Order[]
-  ledgerAccounts    LedgerAccount[]
-  journalEntries    JournalEntry[]
+  user                User                 @relation("UserStore", fields: [userId], references: [id])
+  categories          Category[]
+  products            Product[]
+  inventoryMovements  InventoryMovement[]
+  customers           Customer[]
+  orders              Order[]
+  ledgerAccounts      LedgerAccount[]
+  journalEntries      JournalEntry[]
+  services            Service[]
   serviceTransactions ServiceTransaction[]
+  barTables           BarTable[]
+  tableSessions       TableSession[]
+  comandaItems        ComandaItem[]
+  providers           Provider[]
+  purchases           Purchase[]
 
   @@map("stores")
 }
@@ -70,12 +76,13 @@ model Product {
   id            Int      @id @default(autoincrement())
   storeId       Int      @map("store_id")
   categoryId    Int?     @map("category_id")
+  providerId    Int?     @map("provider_id")
   sku           String?
   name          String
   description   String?  
   imgUrl        String?  @map("img_url")
-  costPrice     Int      @default(0) @map("cost_price")       // en centavos
-  salePrice     Int                                         // en centavos
+  costPrice     Int      @default(0) @map("cost_price")       // en pesos colombianos
+  salePrice     Int                                         // en pesos colombianos
   currentStock  Int      @default(0) @map("current_stock")
   minStock      Int      @default(5) @map("min_stock")
   isActive      Boolean  @default(true) @map("is_active")
@@ -84,8 +91,11 @@ model Product {
 
   store              Store                @relation(fields: [storeId], references: [id])
   category           Category?            @relation(fields: [categoryId], references: [id])
+  provider           Provider?            @relation(fields: [providerId], references: [id])
   inventoryMovements InventoryMovement[]
   orderItems         OrderItem[]
+  comandaItems       ComandaItem[]
+  purchaseItems      PurchaseItem[]
 
   @@unique([storeId, name])
   @@map("products")
@@ -108,6 +118,62 @@ model InventoryMovement {
   @@map("inventory_movements")
 }
 
+model Purchase {
+  id            Int      @id @default(autoincrement())
+  storeId       Int      @map("store_id")
+  providerId    Int?     @map("provider_id")
+  invoiceNumber String?  @map("invoice_number") // Número de factura del proveedor
+  date          DateTime @default(now())
+  notes         String?
+  total         Int      @default(0) // total en centavos
+  status        String   @default("COMPLETED") // COMPLETED, CANCELLED
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt
+
+  store         Store          @relation(fields: [storeId], references: [id])
+  provider      Provider?      @relation(fields: [providerId], references: [id])
+  purchaseItems PurchaseItem[]
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         Int @id @default(autoincrement())
+  purchaseId Int @map("purchase_id")
+  productId  Int @map("product_id")
+  quantity   Int
+  unitCost   Int @map("unit_cost") // costo unitario en centavos
+  total      Int // quantity * unitCost
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@map("purchase_items")
+}
+
+model Provider {
+  id          Int      @id @default(autoincrement())
+  storeId     Int      @map("store_id")
+  name        String
+  contactName String?  @map("contact_name")
+  phone       String?
+  email       String?
+  address     String?
+  city        String?
+  nit         String?  // Número de Identificación Tributaria
+  notes       String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt
+
+  store     Store      @relation(fields: [storeId], references: [id])
+  products  Product[]
+  purchases Purchase[]
+
+  @@unique([storeId, name])
+  @@map("providers")
+}
+
 // ----------------------------------------------
 // CONTEXTO: VENTAS Y COMERCIO
 // ----------------------------------------------
@@ -122,45 +188,113 @@ model Customer {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt
 
-  store  Store   @relation(fields: [storeId], references: [id])
-  orders Order[]
+  store          Store          @relation(fields: [storeId], references: [id])
+  orders         Order[]
+  tableSessions  TableSession[]
 
   @@map("customers")
 }
 
 model Order {
-  id            Int      @id @default(autoincrement())
-  storeId       Int      @map("store_id")
-  customerId    Int?     @map("customer_id")
-  orderNumber   String   @map("order_number")
-  subtotal      Int      // centavos
-  total         Int      // centavos
-  status        String   @default("COMPLETED") // COMPLETED, PENDING, CANCELLED, CREDIT
-  paymentMethod String   @default("CASH") @map("payment_method") // CASH, CARD, TRANSFER, MIXED
-  notes         String?  
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt
+  id             Int            @id @default(autoincrement())
+  storeId        Int            @map("store_id")
+  customerId     Int?           @map("customer_id")
+  tableSessionId Int?           @map("table_session_id")
+  orderNumber    String         @map("order_number")
+  subtotal       Int            // centavos
+  total          Int            // centavos
+  status         String         @default("COMPLETED") // COMPLETED, PENDING, CANCELLED, CREDIT
+  paymentMethod  String         @default("CASH") @map("payment_method") // CASH, CARD, TRANSFER, MIXED
+  notes          String?  
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt
 
-  store       Store       @relation(fields: [storeId], references: [id])
-  customer    Customer?   @relation(fields: [customerId], references: [id])
-  orderItems  OrderItem[]
+  store              Store               @relation(fields: [storeId], references: [id])
+  customer           Customer?           @relation(fields: [customerId], references: [id])
+  tableSession       TableSession?       @relation(fields: [tableSessionId], references: [id])
+  orderItems         OrderItem[]
   inventoryMovements InventoryMovement[] @relation("OrderMovements")
 
   @@map("orders")
 }
 
 model OrderItem {
-  id         Int @id @default(autoincrement())
-  orderId    Int @map("order_id")
-  productId  Int @map("product_id")
+  id         Int      @id @default(autoincrement())
+  orderId    Int      @map("order_id")
+  productId  Int?     @map("product_id")
+  serviceId  Int?     @map("service_id")
   quantity   Int
-  unitPrice  Int @map("unit_price") // precio al momento de la venta
-  totalRow   Int @map("total_row")  // quantity * unitPrice
+  unitPrice  Int      @map("unit_price") // precio al momento de la venta
+  totalRow   Int      @map("total_row")  // quantity * unitPrice
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+  service Service? @relation(fields: [serviceId], references: [id])
 
   @@map("order_items")
+}
+
+// ----------------------------------------------
+// CONTEXTO: MESAS Y COMANDAS (RESTAURANTE/BAR)
+// ----------------------------------------------
+
+model BarTable {
+  id        Int      @id @default(autoincrement())
+  storeId   Int      @map("store_id")
+  number    Int      // número de mesa
+  name      String?  // nombre opcional (ej: "Terraza 1")
+  capacity  Int      @default(4) // capacidad en personas
+  zone      String   @default("PRINCIPAL") // PRINCIPAL, TERRAZA, VIP, BARRA, EXTERIOR
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt
+
+  store          Store          @relation(fields: [storeId], references: [id])
+  tableSessions  TableSession[]
+
+  @@unique([storeId, number])
+  @@map("bar_tables")
+}
+
+model TableSession {
+  id           Int      @id @default(autoincrement())
+  storeId      Int      @map("store_id")
+  barTableId   Int      @map("bar_table_id")
+  customerId   Int?     @map("customer_id")
+  guests       Int      @default(1) // número de personas en la mesa
+  startedAt    DateTime @default(now()) @map("started_at")
+  closedAt     DateTime? @map("closed_at")
+  status       String   @default("OPEN") // OPEN, CLOSED
+  notes        String?  
+
+  store       Store        @relation(fields: [storeId], references: [id])
+  barTable    BarTable     @relation(fields: [barTableId], references: [id])
+  customer    Customer?    @relation(fields: [customerId], references: [id])
+  orders      Order[]
+  comandaItems ComandaItem[]
+
+  @@map("table_sessions")
+}
+
+model ComandaItem {
+  id             Int      @id @default(autoincrement())
+  storeId        Int      @map("store_id")
+  tableSessionId Int      @map("table_session_id")
+  productId      Int?     @map("product_id")
+  serviceId      Int?     @map("service_id")
+  productName    String   @map("product_name") // nombre al momento de pedir
+  quantity       Int
+  unitPrice      Int      @map("unit_price") // precio al momento de pedir (centavos)
+  total          Int      // quantity * unitPrice (centavos)
+  status         String   @default("PENDING") // PENDING, SERVED, PAID, CANCELLED
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  store        Store         @relation(fields: [storeId], references: [id])
+  tableSession TableSession  @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  product      Product?      @relation(fields: [productId], references: [id])
+  service      Service?      @relation(fields: [serviceId], references: [id])
+
+  @@map("comanda_items")
 }
 
 // ----------------------------------------------
@@ -200,22 +334,44 @@ model JournalEntry {
 }
 
 // ----------------------------------------------
-// CONTEXTO: SERVICIOS
+// CONTEXTO: SERVICIOS DEL BAR
 // ----------------------------------------------
 
-model ServiceTransaction {
-  id               Int      @id @default(autoincrement())
-  storeId          Int      @map("store_id")
-  provider         String   // TELCEL, CFE, etc
-  transactionType  String   @map("transaction_type") // TOPUP, BILL_PAYMENT
-  amount           Int      // centavos
-  commissionEarned Int      @default(0) @map("commission_earned") // centavos
-  status           String   @default("PENDING") // SUCCESS, FAILED, PENDING
-  externalId       String?  @map("external_id")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt
+model Service {
+  id          Int      @id @default(autoincrement())
+  storeId     Int      @map("store_id")
+  name        String
+  description String?
+  price       Int      @default(0) // precio unitario en centavos
+  icon        String   @default("Star") // nombre del icono Lucide
+  unit        String   @default("servicio") // unidad: "servicio", "unidad", "rollo", "hora"
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt
 
-  store Store @relation(fields: [storeId], references: [id])
+  store              Store                @relation(fields: [storeId], references: [id])
+  serviceTransactions ServiceTransaction[]
+  comandaItems        ComandaItem[]
+  orderItems         OrderItem[]
+
+  @@unique([storeId, name])
+  @@map("services")
+}
+
+model ServiceTransaction {
+  id           Int      @id @default(autoincrement())
+  storeId      Int      @map("store_id")
+  serviceId    Int      @map("service_id")
+  quantity     Int      @default(1)
+  unitPrice    Int      @map("unit_price") // precio al momento de la transacción (centavos)
+  totalAmount  Int      @map("total_amount") // quantity * unitPrice (centavos)
+  notes        String?
+  status       String   @default("COMPLETED") // COMPLETED, CANCELLED
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt
+
+  store   Store   @relation(fields: [storeId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
 
   @@map("service_transactions")
 }

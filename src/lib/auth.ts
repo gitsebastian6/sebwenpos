@@ -14,8 +14,12 @@ export function sanitizeUser(user: User) {
   return safeUser
 }
 
-export function formatCurrency(amountInCents: number, currencyCode: string = 'COP'): string {
-  const amount = amountInCents / 100
+export function formatCurrency(amount: number, currencyCode: string = 'COP'): string {
+  // COP (and most LatAm currencies) don't use centavos in practice.
+  // Prices are stored as whole pesos — no division needed.
+  // For USD/EUR, prices would need to be in cents and divided by 100.
+  const needsCentsConversion = ['USD', 'EUR', 'GBP', 'MXN'].includes(currencyCode)
+  const value = needsCentsConversion ? amount / 100 : amount
   const localeMap: Record<string, string> = {
     COP: 'es-CO',
     MXN: 'es-MX',
@@ -26,7 +30,9 @@ export function formatCurrency(amountInCents: number, currencyCode: string = 'CO
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currencyCode,
-  }).format(amount)
+    minimumFractionDigits: needsCentsConversion ? 2 : 0,
+    maximumFractionDigits: needsCentsConversion ? 2 : 0,
+  }).format(value)
 }
 
 export function generateOrderNumber(): string {

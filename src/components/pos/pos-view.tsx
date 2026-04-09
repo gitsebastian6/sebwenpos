@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
+import { ProductImage } from '@/components/ui/product-image'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -44,6 +45,9 @@ import {
   StickyNote,
   X,
   PackageSearch,
+  Smartphone,
+  Users,
+  Star,
 } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────
@@ -56,6 +60,16 @@ interface Product {
   categoryId: number | null
   imgUrl: string | null
   sku: string | null
+  category?: { id: number; name: string } | null
+}
+
+interface Service {
+  id: number
+  name: string
+  price: number
+  icon: string
+  unit: string
+  isActive: boolean
 }
 
 interface Category {
@@ -70,22 +84,26 @@ interface Customer {
 }
 
 interface CartItem {
-  productId: number
+  productId: number | null
+  serviceId: number | null
   name: string
   salePrice: number
   quantity: number
   maxStock: number
+  isService: boolean
 }
 
-type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER' | 'MIXED'
+type PaymentMethod = 'CASH' | 'DAVIPLATA' | 'NEQUI' | 'CARD' | 'TRANSFER' | 'FIADO'
 
 // ─── Payment method labels ──────────────────────────────
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.ReactNode }[] = [
   { value: 'CASH', label: 'Efectivo', icon: <Banknote className="h-4 w-4" /> },
+  { value: 'DAVIPLATA', label: 'Daviplata', icon: <Smartphone className="h-4 w-4" /> },
+  { value: 'NEQUI', label: 'Nequi', icon: <Smartphone className="h-4 w-4" /> },
   { value: 'CARD', label: 'Tarjeta', icon: <CreditCard className="h-4 w-4" /> },
   { value: 'TRANSFER', label: 'Transferencia', icon: <ArrowRightLeft className="h-4 w-4" /> },
-  { value: 'MIXED', label: 'Mixto', icon: <Layers className="h-4 w-4" /> },
+  { value: 'FIADO', label: 'Fiado', icon: <Users className="h-4 w-4" /> },
 ]
 
 // ─── Main Component ─────────────────────────────────────
@@ -97,6 +115,7 @@ export function POSView() {
 
   // ─── Data states ─────────────────────────────────────
   const [products, setProducts] = useState<Product[]>([])
+  const [services, setServices] = useState<Service[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
@@ -131,6 +150,19 @@ export function POSView() {
     }
   }, [storeId])
 
+  // ─── Fetch services ──────────────────────────────────
+  const fetchServices = useCallback(async () => {
+    if (!storeId) return
+    try {
+      const res = await fetch(`/api/services?storeId=${storeId}`)
+      if (!res.ok) throw new Error('Error al cargar servicios')
+      const data = await res.json()
+      setServices(data.filter((s: Service) => s.isActive))
+    } catch {
+      // Silent fail - services are optional
+    }
+  }, [storeId])
+
   // ─── Fetch categories ────────────────────────────────
   const fetchCategories = useCallback(async () => {
     if (!storeId) return
@@ -162,12 +194,14 @@ export function POSView() {
 
   useEffect(() => {
     fetchProducts()
+    fetchServices()
     fetchCategories()
     fetchCustomers()
-  }, [fetchProducts, fetchCategories, fetchCustomers])
+  }, [fetchProducts, fetchServices, fetchCategories, fetchCustomers])
 
   // ─── Filtered products ───────────────────────────────
   const filteredProducts = useMemo(() => {
+    if (selectedCategory === 'servicios') return []
     let filtered = products
 
     if (selectedCategory !== 'all') {
@@ -185,6 +219,16 @@ export function POSView() {
 
     return filtered
   }, [products, selectedCategory, searchQuery])
+
+  // ─── Filtered services ───────────────────────────────
+  const filteredServices = useMemo(() => {
+    if (selectedCategory !== 'servicios') return []
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim()
+      return services.filter((s) => s.name.toLowerCase().includes(query))
+    }
+    return services
+  }, [services, selectedCategory, searchQuery])
 
   // ─── Cart operations ─────────────────────────────────
   const addToCart = useCallback(
@@ -210,10 +254,40 @@ export function POSView() {
           ...prev,
           {
             productId: product.id,
+            serviceId: null,
             name: product.name,
             salePrice: product.salePrice,
             quantity: 1,
             maxStock: product.currentStock,
+            isService: false,
+          },
+        ]
+      })
+    },
+    []
+  )
+
+  const addServiceToCart = useCallback(
+    (service: Service) => {
+      setCart((prev) => {
+        const existing = prev.find((item) => item.serviceId === service.id)
+        if (existing) {
+          return prev.map((item) =>
+            item.serviceId === service.id
+              ? { ...item, quantity: item.quantity + 1 }
+              : item
+          )
+        }
+        return [
+          ...prev,
+          {
+            productId: null,
+            serviceId: service.id,
+            name: service.name,
+            salePrice: service.price,
+            quantity: 1,
+            maxStock: 999999,
+            isService: true,
           },
         ]
       })
@@ -222,14 +296,15 @@ export function POSView() {
   )
 
   const updateQuantity = useCallback(
-    (productId: number, delta: number) => {
+    (itemId: number, delta: number, isService: boolean) => {
       setCart((prev) =>
         prev
           .map((item) => {
-            if (item.productId !== productId) return item
+            const match = isService ? item.serviceId === itemId : item.productId === itemId
+            if (!match) return item
             const newQty = item.quantity + delta
             if (newQty <= 0) return null
-            if (newQty > item.maxStock) {
+            if (!item.isService && newQty > item.maxStock) {
               toast.warning('Stock insuficiente')
               return item
             }
@@ -241,8 +316,12 @@ export function POSView() {
     []
   )
 
-  const removeFromCart = useCallback((productId: number) => {
-    setCart((prev) => prev.filter((item) => item.productId !== productId))
+  const removeFromCart = useCallback((itemId: number, isService: boolean) => {
+    setCart((prev) =>
+      prev.filter((item) =>
+        isService ? item.serviceId !== itemId : item.productId !== itemId
+      )
+    )
   }, [])
 
   const clearCart = useCallback(() => {
@@ -268,7 +347,7 @@ export function POSView() {
         paymentMethod,
         notes: notes.trim() || undefined,
         items: cart.map((item) => ({
-          productId: item.productId,
+          ...(item.isService ? { serviceId: item.serviceId } : { productId: item.productId }),
           quantity: item.quantity,
         })),
       }
@@ -299,6 +378,10 @@ export function POSView() {
     }
   }
 
+  // ─── Cart item key helper ──────────────────────────
+  const cartItemKey = (item: CartItem) =>
+    item.isService ? `svc-${item.serviceId}` : `prd-${item.productId}`
+
   // ─── Render: Product Card ────────────────────────────
   const renderProductCard = (product: Product) => {
     const isOutOfStock = product.currentStock <= 0
@@ -319,15 +402,14 @@ export function POSView() {
         <CardContent className="p-3 sm:p-4 flex flex-col gap-2">
           {/* Product image or placeholder */}
           <div className="aspect-square rounded-md bg-muted flex items-center justify-center overflow-hidden relative">
-            {product.imgUrl ? (
-              <img
-                src={product.imgUrl}
-                alt={product.name}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <PackageSearch className="h-8 w-8 text-muted-foreground/40" />
-            )}
+            <ProductImage
+              src={product.imgUrl}
+              alt={product.name}
+              categoryName={product.category?.name}
+              className="w-full h-full object-cover rounded-md"
+              fallbackClassName="aspect-square rounded-md bg-muted flex items-center justify-center w-full h-full"
+              iconClassName="h-10 w-10 text-muted-foreground/30"
+            />
             {isOutOfStock && (
               <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
                 <Badge variant="secondary" className="text-xs font-medium">
@@ -357,61 +439,112 @@ export function POSView() {
     )
   }
 
-  // ─── Render: Cart Item ───────────────────────────────
-  const renderCartItem = (item: CartItem) => (
-    <div
-      key={item.productId}
-      className="flex items-center gap-3 py-2.5 px-1 group"
-    >
-      {/* Product info */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{item.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {formatCurrency(item.salePrice, currencyCode)} c/u
-        </p>
-      </div>
+  // ─── Render: Service Card ────────────────────────────
+  const renderServiceCard = (service: Service) => {
+    const cartItem = cart.find((item) => item.serviceId === service.id)
+    const inCart = !!cartItem
 
-      {/* Quantity controls */}
-      <div className="flex items-center gap-1">
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => updateQuantity(item.productId, -1)}
-          disabled={item.quantity <= 1}
-        >
-          <Minus className="h-3 w-3" />
-        </Button>
-        <span className="w-8 text-center text-sm font-semibold tabular-nums">
-          {item.quantity}
-        </span>
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => updateQuantity(item.productId, 1)}
-          disabled={item.quantity >= item.maxStock}
-        >
-          <Plus className="h-3 w-3" />
-        </Button>
-      </div>
-
-      {/* Line total */}
-      <p className="text-sm font-semibold tabular-nums w-20 text-right">
-        {formatCurrency(item.salePrice * item.quantity, currencyCode)}
-      </p>
-
-      {/* Remove button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-        onClick={() => removeFromCart(item.productId)}
+    return (
+      <Card
+        key={service.id}
+        className={`
+          cursor-pointer transition-all duration-150 select-none
+          hover:shadow-md active:scale-[0.98]
+          ${inCart ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-background' : ''}
+        `}
+        onClick={() => addServiceToCart(service)}
       >
-        <X className="h-3.5 w-3.5" />
-      </Button>
-    </div>
-  )
+        <CardContent className="p-3 sm:p-4 flex flex-col gap-2">
+          <div className="aspect-square rounded-md bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center relative">
+            <Star className="h-10 w-10 text-violet-400/50" />
+            <Badge variant="secondary" className="absolute top-1.5 left-1.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300">
+              Servicio
+            </Badge>
+            {inCart && (
+              <div className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-violet-500 text-white flex items-center justify-center text-xs font-bold">
+                {cartItem!.quantity}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <p className="text-sm font-medium leading-tight truncate">{service.name}</p>
+            <p className="text-base font-bold text-violet-600 dark:text-violet-400">
+              {formatCurrency(service.price, currencyCode)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              por {service.unit}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // ─── Render: Cart Item ───────────────────────────────
+  const renderCartItem = (item: CartItem) => {
+    const itemId = item.isService ? item.serviceId! : item.productId!
+    return (
+      <div
+        key={cartItemKey(item)}
+        className="flex items-center gap-3 py-2.5 px-1 group"
+      >
+        {/* Item info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium truncate">{item.name}</p>
+            {item.isService && (
+              <Badge variant="secondary" className="text-[10px] px-1 py-0 shrink-0 bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300">
+                Svc
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {formatCurrency(item.salePrice, currencyCode)} c/u
+          </p>
+        </div>
+
+        {/* Quantity controls */}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => updateQuantity(itemId, -1, item.isService)}
+            disabled={item.quantity <= 1}
+          >
+            <Minus className="h-3 w-3" />
+          </Button>
+          <span className="w-8 text-center text-sm font-semibold tabular-nums">
+            {item.quantity}
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => updateQuantity(itemId, 1, item.isService)}
+            disabled={!item.isService && item.quantity >= item.maxStock}
+          >
+            <Plus className="h-3 w-3" />
+          </Button>
+        </div>
+
+        {/* Line total */}
+        <p className="text-sm font-semibold tabular-nums w-20 text-right">
+            {formatCurrency(item.salePrice * item.quantity, currencyCode)}
+        </p>
+
+        {/* Remove button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={() => removeFromCart(itemId, item.isService)}
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-[calc(100vh-8rem)]">
@@ -450,9 +583,20 @@ export function POSView() {
               {cat.name}
             </Button>
           ))}
+          {services.length > 0 && (
+            <Button
+              variant={selectedCategory === 'servicios' ? 'default' : 'outline'}
+              size="sm"
+              className="shrink-0 h-8 gap-1"
+              onClick={() => setSelectedCategory('servicios')}
+            >
+              <Star className="h-3.5 w-3.5" />
+              Servicios
+            </Button>
+          )}
         </div>
 
-        {/* Product grid */}
+        {/* Product/Service grid */}
         <div className="flex-1 overflow-hidden">
           {isLoadingProducts ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 h-full">
@@ -464,6 +608,19 @@ export function POSView() {
                 </div>
               ))}
             </div>
+          ) : selectedCategory === 'servicios' ? (
+            filteredServices.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
+                <PackageSearch className="h-12 w-12 opacity-30" />
+                <p className="text-sm">
+                  {searchQuery ? 'No se encontraron servicios' : 'No hay servicios activos'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 auto-rows-min overflow-y-auto max-h-[calc(100vh-16rem)] pr-1">
+                {filteredServices.map(renderServiceCard)}
+              </div>
+            )
           ) : filteredProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
               <PackageSearch className="h-12 w-12 opacity-30" />
@@ -573,7 +730,7 @@ export function POSView() {
             <RadioGroup
               value={paymentMethod}
               onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}
-              className="grid grid-cols-2 gap-2"
+              className="grid grid-cols-2 sm:grid-cols-3 gap-2"
             >
               {PAYMENT_METHODS.map((pm) => (
                 <Label

@@ -4,7 +4,6 @@ import { useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { AuthPage } from '@/components/auth/auth-page'
 import { AppShell } from '@/components/layout/app-shell'
-import { Skeleton } from '@/components/ui/skeleton'
 
 function LoadingScreen() {
   return (
@@ -21,10 +20,10 @@ export default function Home() {
   const { isAuthenticated, isLoading } = useAuthStore()
   const initialized = useRef(false)
 
+  // Allow Zustand to hydrate from localStorage on mount
   useEffect(() => {
     if (!initialized.current) {
       initialized.current = true
-      // Allow Zustand to hydrate from localStorage
       const timer = setTimeout(() => {
         useAuthStore.getState().setLoading(false)
       }, 100)

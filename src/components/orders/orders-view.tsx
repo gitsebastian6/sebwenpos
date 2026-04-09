@@ -128,11 +128,15 @@ export function OrdersView() {
   }, [fetchOrders])
 
   async function openOrderDetail(orderId: number) {
+    if (!store?.id) {
+      toast.error('Tienda no disponible')
+      return
+    }
     setSelectedOrderId(orderId)
     setOrderDetail(null)
     setDetailLoading(true)
     try {
-      const res = await fetch(`/api/orders/${orderId}?storeId=${store!.id}`)
+      const res = await fetch(`/api/orders/${orderId}?storeId=${store.id}`)
       if (!res.ok) throw new Error('Error')
       const data = await res.json()
       setOrderDetail(data)

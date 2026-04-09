@@ -5,15 +5,22 @@ import { z } from 'zod'
 
 // ─── POST: Create order ─────────────────────────────────────────────
 
+const orderItemSchema = z.object({
+  productId: z.number().int().positive().optional(),
+  serviceId: z.number().int().positive().optional(),
+  quantity: z.number().int().min(1),
+}).refine((d) => d.productId || d.serviceId, {
+  message: 'Debe especificar productId o serviceId',
+}).refine((d) => !(d.productId && d.serviceId), {
+  message: 'Solo puede especificar productId o serviceId, no ambos',
+})
+
 const createOrderSchema = z.object({
   storeId: z.number().int().positive(),
   customerId: z.number().int().positive().nullable().optional(),
-  paymentMethod: z.enum(['CASH', 'CARD', 'TRANSFER', 'MIXED', 'CREDIT']),
+  paymentMethod: z.enum(['CASH', 'DAVIPLATA', 'NEQUI', 'CARD', 'TRANSFER', 'MIXED', 'CREDIT', 'FIADO']),
   notes: z.string().max(500).optional(),
-  items: z.array(z.object({
-    productId: z.number().int().positive(),
-    quantity: z.number().int().min(1),
-  })).min(1, 'La orden debe tener al menos un producto'),
+  items: z.array(orderItemSchema).min(1, 'La orden debe tener al menos un producto o servicio'),
 })
 
 export async function POST(req: NextRequest) {
@@ -21,17 +28,35 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = createOrderSchema.parse(body)
 
-    // Resolve product info for all items in one query
-    const productIds = data.items.map((i) => i.productId)
-    const products = await db.product.findMany({
-      where: { id: { in: productIds }, storeId: data.storeId, isActive: true },
-      select: { id: true, name: true, salePrice: true, currentStock: true },
-    })
-    const productMap = new Map(products.map((p) => [p.id, p]))
+    // Separate product and service items
+    const productItems = data.items.filter((i) => i.productId)
+    const serviceItems = data.items.filter((i) => i.serviceId)
 
-    // Validate all products exist and have enough stock
-    for (const item of data.items) {
-      const product = productMap.get(item.productId)
+    // Resolve product info
+    const productMap = new Map<number, { id: number; name: string; salePrice: number; currentStock: number }>()
+    if (productItems.length > 0) {
+      const productIds = productItems.map((i) => i.productId!)
+      const products = await db.product.findMany({
+        where: { id: { in: productIds }, storeId: data.storeId, isActive: true },
+        select: { id: true, name: true, salePrice: true, currentStock: true },
+      })
+      for (const p of products) productMap.set(p.id, p)
+    }
+
+    // Resolve service info
+    const serviceMap = new Map<number, { id: number; name: string; price: number }>()
+    if (serviceItems.length > 0) {
+      const serviceIds = serviceItems.map((i) => i.serviceId!)
+      const services = await db.service.findMany({
+        where: { id: { in: serviceIds }, storeId: data.storeId, isActive: true },
+        select: { id: true, name: true, price: true },
+      })
+      for (const s of services) serviceMap.set(s.id, s)
+    }
+
+    // Validate all items exist
+    for (const item of productItems) {
+      const product = productMap.get(item.productId!)
       if (!product) {
         return NextResponse.json(
           { error: `Producto con ID ${item.productId} no encontrado o inactivo` },
@@ -46,14 +71,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Calculate totals
+    for (const item of serviceItems) {
+      const service = serviceMap.get(item.serviceId!)
+      if (!service) {
+        return NextResponse.json(
+          { error: `Servicio con ID ${item.serviceId} no encontrado o inactivo` },
+          { status: 400 },
+        )
+      }
+    }
+
+    // Calculate totals and build order item data
     const orderItemsData = data.items.map((item) => {
-      const product = productMap.get(item.productId)!
-      return {
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: product.salePrice,
-        totalRow: product.salePrice * item.quantity,
+      if (item.productId) {
+        const product = productMap.get(item.productId)!
+        return {
+          productId: item.productId,
+          serviceId: null,
+          quantity: item.quantity,
+          unitPrice: product.salePrice,
+          totalRow: product.salePrice * item.quantity,
+        }
+      } else {
+        const service = serviceMap.get(item.serviceId!)!
+        return {
+          productId: null,
+          serviceId: item.serviceId,
+          quantity: item.quantity,
+          unitPrice: service.price,
+          totalRow: service.price * item.quantity,
+        }
       }
     })
     const subtotal = orderItemsData.reduce((sum, i) => sum + i.totalRow, 0)
@@ -70,7 +117,7 @@ export async function POST(req: NextRequest) {
           orderNumber,
           subtotal,
           total: subtotal,
-          status: data.paymentMethod === 'CREDIT' ? 'CREDIT' : 'COMPLETED',
+          status: (data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO') ? 'CREDIT' : 'COMPLETED',
           paymentMethod: data.paymentMethod,
           notes: data.notes ?? null,
           orderItems: { create: orderItemsData },
@@ -81,8 +128,8 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      // 2. Create inventory movements and decrement stock
-      for (const item of data.items) {
+      // 2. Create inventory movements and decrement stock (only for product items)
+      for (const item of productItems) {
         await tx.inventoryMovement.create({
           data: {
             storeId: data.storeId,
@@ -99,8 +146,23 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      // 2b. Create ServiceTransactions for service items
+      for (const item of serviceItems) {
+        await tx.serviceTransaction.create({
+          data: {
+            storeId: data.storeId,
+            serviceId: item.serviceId,
+            quantity: item.quantity,
+            unitPrice: serviceMap.get(item.serviceId!)!.price,
+            totalAmount: serviceMap.get(item.serviceId!)!.price * item.quantity,
+            notes: `Venta ${orderNumber}`,
+            status: 'COMPLETED',
+          },
+        })
+      }
+
       // 3. Create journal entries (double-entry accounting)
-      if (data.paymentMethod !== 'CREDIT') {
+      if (data.paymentMethod !== 'CREDIT' && data.paymentMethod !== 'FIADO') {
         // Find or use default asset account (Caja) and income account (Ventas)
         const cajaAccount = await tx.ledgerAccount.findFirst({
           where: { storeId: data.storeId, type: 'ASSET', isDefault: true },
@@ -137,15 +199,15 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 4. Update customer debt if CREDIT payment
-      if (data.paymentMethod === 'CREDIT' && data.customerId) {
+      // 4. Update customer debt if CREDIT/FIADO payment
+      if ((data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO') && data.customerId) {
         await tx.customer.update({
           where: { id: data.customerId },
           data: { totalDebt: { increment: subtotal } },
         })
         // Also create accounts receivable journal entry
         const cuentasPorCobrar = await tx.ledgerAccount.findFirst({
-          where: { storeId: data.storeId, name: 'Cuentas por Cobrar' },
+          where: { storeId: data.storeId, name: { contains: 'Cuentas por Cobrar' } },
         })
         const ventasAccount = await tx.ledgerAccount.findFirst({
           where: { storeId: data.storeId, type: 'INCOME' },
@@ -186,7 +248,7 @@ export async function POST(req: NextRequest) {
         id: order.id,
         orderNumber: order.orderNumber,
         status: order.status,
-        total: order.total,
+        total: Number(order.total),
       },
       { status: 201 },
     )
@@ -267,7 +329,7 @@ export async function GET(request: NextRequest) {
       customerName: order.customer?.name ?? null,
       status: order.status,
       paymentMethod: order.paymentMethod,
-      total: order.total,
+      total: Number(order.total),
       createdAt: order.createdAt.toISOString(),
     }))
 

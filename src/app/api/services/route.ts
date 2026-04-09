@@ -4,43 +4,104 @@ import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
-const serviceCreateSchema = z.object({
+// ─── Schemas ─────────────────────────────────────────────────
+
+const createServiceSchema = z.object({
   storeId: z.number().int().positive(),
-  provider: z.string().min(1).max(100),
-  transactionType: z.enum(['TOPUP', 'BILL_PAYMENT']),
-  amount: z.number().int().positive(),
-  commissionEarned: z.number().int().min(0).default(0),
-  externalId: z.string().max(200).optional().nullable(),
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional().nullable(),
+  price: z.number().int().min(0),
+  icon: z.string().min(1).max(50),
+  unit: z.string().min(1).max(50),
 })
 
-// GET /api/services?storeId=1
+const createTransactionSchema = z.object({
+  storeId: z.number().int().positive(),
+  serviceId: z.number().int().positive(),
+  quantity: z.number().int().min(1).default(1),
+  unitPrice: z.number().int().min(0),
+  totalAmount: z.number().int().min(0),
+  notes: z.string().max(500).optional().nullable(),
+})
+
+// ─── GET ─────────────────────────────────────────────────────
+// GET /api/services?storeId=1&include=transactions
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
     const storeId = searchParams.get('storeId')
+    const include = searchParams.get('include')
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeId is required' }, { status: 400 })
     }
 
-    const transactions = await db.serviceTransaction.findMany({
+    const services = await db.service.findMany({
       where: { storeId: parseInt(storeId) },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
+      include: include === 'transactions' ? {
+        serviceTransactions: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        },
+        _count: { select: { serviceTransactions: true } },
+      } : {
+        _count: { select: { serviceTransactions: true } },
+      },
     })
 
-    return NextResponse.json(transactions)
+    return NextResponse.json(services)
   } catch (error) {
-    console.error('Error fetching service transactions:', error)
-    return NextResponse.json({ error: 'Failed to fetch service transactions' }, { status: 500 })
+    console.error('Error fetching services:', error)
+    return NextResponse.json({ error: 'Failed to fetch services' }, { status: 500 })
   }
 }
 
-// POST /api/services — Create service transaction with journal entry for commission
+// ─── POST ────────────────────────────────────────────────────
+// POST /api/services — Create service or transaction
+// body.type = "service" | "transaction"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const parsed = serviceCreateSchema.safeParse(body)
 
+    if (body.type === 'transaction') {
+      // Create a service transaction
+      const parsed = createTransactionSchema.safeParse(body)
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: 'Validation failed', details: parsed.error.flatten() },
+          { status: 400 }
+        )
+      }
+
+      const { storeId, serviceId, quantity, unitPrice, totalAmount, notes } = parsed.data
+
+      // Verify service exists and belongs to store
+      const service = await db.service.findFirst({
+        where: { id: serviceId, storeId },
+      })
+      if (!service) {
+        return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
+      }
+
+      const transaction = await db.serviceTransaction.create({
+        data: {
+          storeId,
+          serviceId,
+          quantity,
+          unitPrice,
+          totalAmount,
+          notes: notes ?? null,
+          status: 'COMPLETED',
+        },
+        include: { service: true },
+      })
+
+      return NextResponse.json(transaction, { status: 201 })
+    }
+
+    // Create a service (default)
+    const parsed = createServiceSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
         { error: 'Validation failed', details: parsed.error.flatten() },
@@ -48,77 +109,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { storeId, provider, transactionType, amount, commissionEarned, externalId } = parsed.data
+    const { storeId, name, description, price, icon, unit } = parsed.data
 
-    const result = await db.$transaction(async (tx) => {
-      // Create service transaction
-      const serviceTransaction = await tx.serviceTransaction.create({
-        data: {
-          storeId,
-          provider,
-          transactionType,
-          amount,
-          commissionEarned,
-          status: 'SUCCESS',
-          externalId: externalId ?? null,
-        },
-      })
-
-      // Create journal entry for commission income if > 0
-      if (commissionEarned > 0) {
-        const cajaAccount = await tx.ledgerAccount.findFirst({
-          where: {
-            storeId,
-            type: 'ASSET',
-            isDefault: true,
-          },
-        })
-
-        const comisionesAccount = await tx.ledgerAccount.findFirst({
-          where: {
-            storeId,
-            name: 'Comisiones',
-            type: 'INCOME',
-          },
-        })
-
-        const description = `${transactionType} commission - ${provider} - ${serviceTransaction.id}`
-
-        if (cajaAccount) {
-          await tx.journalEntry.create({
-            data: {
-              storeId,
-              ledgerAccountId: cajaAccount.id,
-              amount: commissionEarned,
-              direction: 'DEBIT',
-              description,
-              referenceType: 'TOPUP',
-              referenceId: serviceTransaction.id,
-            },
-          })
-        }
-
-        if (comisionesAccount) {
-          await tx.journalEntry.create({
-            data: {
-              storeId,
-              ledgerAccountId: comisionesAccount.id,
-              amount: commissionEarned,
-              direction: 'CREDIT',
-              description,
-              referenceType: 'TOPUP',
-              referenceId: serviceTransaction.id,
-            },
-          })
-        }
-      }
-
-      return serviceTransaction
+    const service = await db.service.create({
+      data: {
+        storeId,
+        name,
+        description: description ?? null,
+        price,
+        icon,
+        unit,
+        isActive: true,
+      },
     })
 
-    return NextResponse.json(result, { status: 201 })
+    return NextResponse.json(service, { status: 201 })
   } catch (error) {
-    console.error('Error creating service transaction:', error)
-    return NextResponse.json({ error: 'Failed to create service transaction' }, { status: 500 })
+    console.error('Error creating service:', error)
+    return NextResponse.json({ error: 'Failed to create service' }, { status: 500 })
   }
 }

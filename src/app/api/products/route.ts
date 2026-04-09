@@ -7,6 +7,7 @@ const createProductSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(200),
   sku: z.string().max(100).optional(),
   categoryId: z.number().int().positive().optional(),
+  providerId: z.number().int().positive().optional(),
   description: z.string().max(1000).optional(),
   imgUrl: z.string().max(500).optional(),
   costPrice: z.number().int().min(0).default(0),
@@ -50,6 +51,9 @@ export async function GET(req: NextRequest) {
         category: {
           select: { id: true, name: true },
         },
+        provider: {
+          select: { id: true, name: true },
+        },
         _count: {
           select: { orderItems: true },
         },
@@ -89,6 +93,7 @@ export async function POST(req: NextRequest) {
         name: data.name,
         sku: data.sku || null,
         categoryId: data.categoryId || null,
+        providerId: data.providerId || null,
         description: data.description || null,
         imgUrl: data.imgUrl || null,
         costPrice: data.costPrice,
@@ -98,6 +103,9 @@ export async function POST(req: NextRequest) {
       },
       include: {
         category: {
+          select: { id: true, name: true },
+        },
+        provider: {
           select: { id: true, name: true },
         },
       },
