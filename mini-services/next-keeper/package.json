@@ -1,0 +1,6 @@
+{
+  "name": "next-keeper",
+  "scripts": {
+    "dev": "node index.js"
+  }
+}
