@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
       profitThisYearResult,
       inventoryCostResult,
       avgDailyCogsResult,
+      outOfStockCountResult,
       outOfStockProducts,
       recentSalesVelocity,
       totalDebtResult,
@@ -70,6 +71,7 @@ export async function GET(request: NextRequest) {
       runSafe('profitYear', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(o.subtotal),0) as "totalRevenue", COALESCE(SUM(p.cost_price * oi.quantity),0) as "totalCOGS" FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${yearStart.getTime()} AND o.created_at <= ${todayEnd.getTime()}`)),
       runSafe('inventoryCost', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(cost_price * current_stock), 0) as "totalCost" FROM products WHERE store_id = ${storeIdNum} AND is_active = 1 AND current_stock > 0`)),
       runSafe('avgDailyCOGS', () => db.$queryRawUnsafe(`SELECT CASE WHEN COUNT(DISTINCT date(created_at / 1000, 'unixepoch')) > 0 THEN SUM(p.cost_price * oi.quantity) / COUNT(DISTINCT date(created_at / 1000, 'unixepoch')) ELSE 0 END as "avgDailyCOGS" FROM order_items oi JOIN products p ON p.id = oi.product_id JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${new Date(now.getTime() - 30 * 86400000).getTime()} AND oi.product_id IS NOT NULL GROUP BY oi.product_id`)),
+      runSafe('outOfStockCount', () => db.product.count({ where: { storeId: storeIdNum, isActive: true, currentStock: 0 } })),
       runSafe('outOfStock', () => db.$queryRawUnsafe(`SELECT id, name, salePrice as "salePrice" FROM products WHERE store_id = ${storeIdNum} AND is_active = 1 AND current_stock = 0 ORDER BY name ASC LIMIT 50`)),
       runSafe('velocity', () => db.$queryRawUnsafe(`SELECT oi.product_id as "productId", SUM(oi.quantity) as "totalQty" FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${new Date(now.getTime() - 30 * 86400000).getTime()} AND oi.product_id IS NOT NULL GROUP BY oi.product_id`)),
       runSafe('totalDebt', () => db.customer.aggregate({ where: { storeId: storeIdNum }, _sum: { totalDebt: true } })),
@@ -141,7 +143,7 @@ export async function GET(request: NextRequest) {
     // ── 4. PÉRDIDAS Y FALTANTES ──
     // Out of stock products
     const safeOutOfStock = Array.isArray(outOfStockProducts) ? outOfStockProducts : []
-    const outOfStockCount = safeOutOfStock.length
+    const outOfStockCount = outOfStockCountResult ?? safeOutOfStock.length
     const outOfStockValue = safeOutOfStock.reduce((sum, p) => sum + N(p.salePrice), 0)
 
     // Lost sales estimation: for out-of-stock products, estimate daily lost revenue

@@ -1068,3 +1068,21 @@ Stage Summary:
 - Tables scroll horizontally when needed
 - Font sizes reduced to text-xs in table cells for better mobile fit
 - Files modified: products-view, orders-view, inventory-view, customers-view, providers-view, services-view, accounting-view, purchases-view, pos-view, settings-view
+---
+Task ID: 1
+Agent: main
+Task: Fix "Agotados 50" count showing wrong number in products KPI bar
+
+Work Log:
+- Investigated why KPI bar showed "Agotados 50" when 97 products exist
+- Found ALL 97 active products have stock = 0 (all out of stock)
+- Found root cause: dashboard API query had LIMIT 50 and count used .length of limited results
+- Added separate COUNT query (outOfStockCount) without LIMIT for accurate counting
+- Updated destructuring to include outOfStockCountResult
+- Verified API now returns outOfStockCount: 97
+
+Stage Summary:
+- Fixed /api/dashboard outOfStockCount from 50 (capped by LIMIT) to 97 (actual count)
+- All 97 products have stock = 0 (agotados)
+- No mobile visibility issues found - all information already visible on all screen sizes
+
