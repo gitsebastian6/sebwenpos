@@ -995,3 +995,23 @@ Stage Summary:
 - When creating or editing a category, user can pick from 90+ icons
 - If a category has a saved icon, it's used with priority; otherwise falls back to keyword name matching
 - Files: prisma/schema.prisma, src/app/api/categories/route.ts, src/app/api/categories/[id]/route.ts, src/app/api/products/route.ts, src/app/api/products/[id]/route.ts, src/components/ui/category-icon-picker.tsx, src/components/ui/product-image.tsx, src/components/products/products-view.tsx
+
+---
+Task ID: 6
+Agent: main
+Task: Add icon picker to service creation/edit dialog
+
+Work Log:
+- Service model already had `icon` field (String, default "Star") — no Prisma change needed
+- Removed hardcoded `ICON_MAP`, `ICON_SMALL`, `COLOR_MAP`, and `ICON_OPTIONS` (only 5 icons)
+- Created dynamic `getServiceColors()` function that deterministically assigns colors from 10 options based on icon name hash (same icon = same color)
+- Created `renderServiceIcon()` function using `getCategoryIconByName()` from the shared icon picker
+- Replaced Select dropdowns with `CategoryIconPicker` in both Create and Edit service dialogs
+- Updated all service card displays and transaction history to use new dynamic icon rendering
+- Updated imports: replaced individual lucide imports with needed set + CategoryIconPicker
+
+Stage Summary:
+- Services now use the same 90+ icon picker as categories
+- Colors are auto-assigned deterministically (10 color themes cycling by icon name hash)
+- Existing services (Bath, CircleDot, ShieldCheck, etc.) continue to render correctly
+- Files: src/components/services/services-view.tsx

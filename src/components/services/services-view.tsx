@@ -44,27 +44,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import {
-  AlertTriangle,
-  Bath,
-  CircleDot,
-  ShieldCheck,
-  ScrollText,
-  MoreHorizontal,
-  Plus,
-  Loader2,
-  Pencil,
-  Trash2,
-  History,
-  TrendingUp,
-  CheckCircle2,
-  XCircle,
-  Package,
-} from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { KPIBar } from '@/components/shared/kpi-bar'
 import { es } from 'date-fns/locale'
+import { CategoryIconPicker, getCategoryIconByName } from '@/components/ui/category-icon-picker'
+import {
+  Package,
+  History,
+  TrendingUp,
+  CheckCircle2,
+  XCircle,
+  Plus,
+  Loader2,
+  Pencil,
+  Trash2,
+  Star,
+  ScrollText,
+} from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -99,42 +96,39 @@ interface ServiceTransaction {
   }
 }
 
-// ─── Icon Map ────────────────────────────────────────────────
+// ─── Icon Rendering ─────────────────────────────────────────
 
-const ICON_MAP: Record<string, React.ReactNode> = {
-  AlertTriangle: <AlertTriangle className="h-6 w-6" />,
-  Bath: <Bath className="h-6 w-6" />,
-  CircleDot: <CircleDot className="h-6 w-6" />,
-  ShieldCheck: <ShieldCheck className="h-6 w-6" />,
-  ScrollText: <ScrollText className="h-6 w-6" />,
-  Star: <MoreHorizontal className="h-6 w-6" />,
-}
-
-const ICON_SMALL: Record<string, React.ReactNode> = {
-  AlertTriangle: <AlertTriangle className="h-4 w-4" />,
-  Bath: <Bath className="h-4 w-4" />,
-  CircleDot: <CircleDot className="h-4 w-4" />,
-  ShieldCheck: <ShieldCheck className="h-4 w-4" />,
-  ScrollText: <ScrollText className="h-4 w-4" />,
-  Star: <MoreHorizontal className="h-4 w-4" />,
-}
-
-const COLOR_MAP: Record<string, { color: string; bgColor: string }> = {
-  AlertTriangle: { color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/50' },
-  Bath: { color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/50' },
-  CircleDot: { color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50' },
-  ShieldCheck: { color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50' },
-  ScrollText: { color: 'text-sky-600 dark:text-sky-400', bgColor: 'bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800/50' },
-  Star: { color: 'text-violet-600 dark:text-violet-400', bgColor: 'bg-violet-50 dark:bg-violet-950/30 border-violet-200 dark:border-violet-800/50' },
-}
-
-const ICON_OPTIONS = [
-  { value: 'Bath', label: 'Baños' },
-  { value: 'CircleDot', label: 'Bolirana / Billar' },
-  { value: 'ShieldCheck', label: 'Guarda / Seguridad' },
-  { value: 'ScrollText', label: 'Registro / Papel' },
-  { value: 'Star', label: 'General' },
+const SERVICE_COLORS = [
+  { color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/50' },
+  { color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50' },
+  { color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50' },
+  { color: 'text-sky-600 dark:text-sky-400', bgColor: 'bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800/50' },
+  { color: 'text-violet-600 dark:text-violet-400', bgColor: 'bg-violet-50 dark:bg-violet-950/30 border-violet-200 dark:border-violet-800/50' },
+  { color: 'text-rose-600 dark:text-rose-400', bgColor: 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/50' },
+  { color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800/50' },
+  { color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-50 dark:bg-cyan-950/30 border-cyan-200 dark:border-cyan-800/50' },
+  { color: 'text-lime-600 dark:text-lime-400', bgColor: 'bg-lime-50 dark:bg-lime-950/30 border-lime-200 dark:border-lime-800/50' },
+  { color: 'text-pink-600 dark:text-pink-400', bgColor: 'bg-pink-50 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800/50' },
 ]
+
+// Deterministic color from icon name (same icon always = same color)
+function getServiceColors(iconName: string) {
+  let hash = 0
+  for (let i = 0; i < iconName.length; i++) {
+    hash = ((hash << 5) - hash + iconName.charCodeAt(i)) | 0
+  }
+  return SERVICE_COLORS[Math.abs(hash) % SERVICE_COLORS.length]
+}
+
+function renderServiceIcon(iconName: string, size: 'sm' | 'md' = 'md') {
+  const cls = size === 'sm' ? 'h-4 w-4' : 'h-6 w-6'
+  const IconComponent = getCategoryIconByName(iconName)
+  if (IconComponent) {
+    return <IconComponent className={cls} />
+  }
+  // Fallback
+  return <Star className={cls} />
+}
 
 const UNIT_OPTIONS = [
   { value: 'servicio', label: 'Servicio' },
@@ -563,14 +557,14 @@ export function ServicesView() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {services.map((s) => {
-                const colors = COLOR_MAP[s.icon] || COLOR_MAP.Star
+                const colors = getServiceColors(s.icon)
                 return (
                   <Card key={s.id} className={`relative border ${colors.bgColor} ${!s.isActive ? 'opacity-60' : ''}`}>
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
                           <div className={colors.color}>
-                            {ICON_MAP[s.icon] || ICON_MAP.Star}
+                            {renderServiceIcon(s.icon)}
                           </div>
                           <div>
                             <CardTitle className="text-sm font-semibold">{s.name}</CardTitle>
@@ -675,8 +669,8 @@ export function ServicesView() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <div className={COLOR_MAP[tx.service?.icon]?.color || ''}>
-                                {ICON_SMALL[tx.service?.icon] || ICON_SMALL.Star}
+                              <div className={getServiceColors(tx.service?.icon || 'Star').color}>
+                                {renderServiceIcon(tx.service?.icon || 'Star', 'sm')}
                               </div>
                               <span className="text-sm font-medium">{tx.service?.name || 'N/A'}</span>
                             </div>
@@ -727,8 +721,8 @@ export function ServicesView() {
                       <div key={tx.id} className="p-4 space-y-2">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2">
-                            <div className={COLOR_MAP[tx.service?.icon]?.color || ''}>
-                              {ICON_SMALL[tx.service?.icon] || ICON_SMALL.Star}
+                            <div className={getServiceColors(tx.service?.icon || 'Star').color}>
+                              {renderServiceIcon(tx.service?.icon || 'Star', 'sm')}
                             </div>
                             <div>
                               <p className="text-sm font-medium">{tx.service?.name || 'N/A'}</p>
@@ -810,14 +804,7 @@ export function ServicesView() {
             </div>
             <div className="space-y-2">
               <Label>Ícono</Label>
-              <Select value={formIcon} onValueChange={setFormIcon}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ICON_OPTIONS.map(o => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CategoryIconPicker value={formIcon} onChange={setFormIcon} />
             </div>
           </div>
           <DialogFooter>
@@ -923,14 +910,7 @@ export function ServicesView() {
             </div>
             <div className="space-y-2">
               <Label>Ícono</Label>
-              <Select value={editIcon} onValueChange={setEditIcon}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ICON_OPTIONS.map(o => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CategoryIconPicker value={editIcon} onChange={setEditIcon} />
             </div>
           </div>
           <DialogFooter>
