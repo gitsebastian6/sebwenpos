@@ -1111,3 +1111,56 @@ Stage Summary:
 - All 97 products have stock = 0 (agotados)
 - No mobile visibility issues found - all information already visible on all screen sizes
 
+
+---
+Task ID: 2-b
+Agent: dian-pdf-email-index
+Task: Create PDF generator, email sender, and main DIAN orchestrator
+
+Work Log:
+- Read existing invoice-utils.ts, prisma schema, package.json, and all 6 existing DIAN modules for context
+- Created src/lib/dian/pdf-generator.ts — Professional PDF invoice layout using PDFKit + QRCode
+  - InvoicePDFData interface with all DIAN-required fields
+  - generateInvoicePDF() returns Buffer with full layout: header, title, invoice number, date/time, resolution info, customer section, items table with alternating rows, totals section with tax breakdown, payment method, QR code, CUFE, footer
+  - formatCOP helper for "$50.000" Colombian currency formatting
+  - Test mode warning in red ("DOCUMENTO DE PRUEBA - SIN VALOR COMERCIAL")
+  - generateInvoicePDFBase64() wrapper for base64 output
+- Created src/lib/dian/email-sender.ts — Email delivery using nodemailer
+  - EmailConfig and InvoiceEmailData interfaces
+  - sendInvoiceEmail() with SMTP transport, HTML email body, XML+PDF attachments
+  - Professional HTML template with summary table, verification link, attachment notices
+  - createTestTransport() helper for development using Ethereal Email
+- Created src/lib/dian/index.ts — Main orchestrator tying all DIAN modules together
+  - Re-exports all types and functions from consecutive-counter, cufe-generator, xml-generator, certificate, pdf-generator, email-sender
+  - processInvoice() complete flow: load order → getNextConsecutive → calculateInvoiceFromOrder → generateCUFE → generateQRCodeURL → generateUBL21XML → generateInvoicePDF → regenerate XML with PDF base64 → create invoice DB record → optional DIAN send
+  - emailInvoice() convenience wrapper for post-generation email delivery
+  - Dynamic import for soap-client module (graceful fallback when module not yet created)
+  - Colombia timezone handling for issue timestamps (UTC-5)
+
+Stage Summary:
+- PDF generates professional invoice layout with all DIAN-required elements (store info, resolution, customer, items table, tax breakdown, totals, QR code, CUFE, footer)
+- Email supports SMTP configuration with XML+PDF attachments and professional HTML template
+- processInvoice() orchestrates the complete flow: consecutive → CUFE → XML → PDF → DB → DIAN
+- All 3 files are server-side only (Node.js APIs: PDFKit, QRCode, nodemailer)
+- Lint passed (0 new errors; only pre-existing in infrastructure files)
+
+---
+Task ID: 1
+Agent: main
+Task: Implement complete DIAN electronic invoicing modules
+
+Work Log:
+- Installed dependencies: xmlbuilder2, fast-xml-parser, pdfkit, qrcode, nodemailer, @types/qrcode, @types/pdfkit
+- Created src/lib/dian/consecutive-counter.ts - Atomic counter with Prisma transactions, resolution validation, 90% usage warning
+- Created src/lib/dian/cufe-generator.ts - CUFE/CUDFE SHA-384 following DIAN v2.1 strict format (16 fields, proper padding)
+- Created src/lib/dian/xml-generator.ts - Complete XML UBL 2.1 generator with DIAN extensions (InvoiceControl, CUFE, SoftwareProvider, PDF representation)
+- Created src/lib/dian/soap-client.ts - SOAP client for SendBillAsync, GetStatus, GetStatusByDocument, pollDIANStatus with gzip+base64
+- Created src/lib/dian/certificate.ts - PKCS12 certificate loading, placeholder XAdES-BES signing, verification
+- Created src/lib/dian/pdf-generator.ts - Professional PDF layout with PDFKit, QR codes, all DIAN-required elements
+- Created src/lib/dian/email-sender.ts - Nodemailer email delivery with XML+PDF attachments, HTML template
+- Created src/lib/dian/index.ts - Main orchestrator (processInvoice, emailInvoice) with full re-exports
+
+Stage Summary:
+- 8 modules created in src/lib/dian/ (all server-side compatible)
+- processInvoice() orchestrates: consecutive → CUFE → XML → PDF → XML+PDF → DB → optional DIAN send
+- 0 lint errors across all modules
