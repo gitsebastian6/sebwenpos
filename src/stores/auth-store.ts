@@ -34,33 +34,31 @@ interface AuthState {
   token: string | null
   isAuthenticated: boolean
   isLoading: boolean
-  _hasHydrated: boolean
   login: (user: AuthUser, store: StoreInfo, token: string) => void
   logout: () => void
   setLoading: (loading: boolean) => void
   updateStore: (store: StoreInfo) => void
   updateUser: (user: Partial<AuthUser>) => void
-  setHydrated: () => void
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       user: null,
       store: null,
       token: null,
       isAuthenticated: false,
-      isLoading: true,
-      _hasHydrated: false,
-      login: (user, store, token) => set({ user, store, token, isAuthenticated: true, isLoading: false, _hasHydrated: true }),
-      logout: () => set({ user: null, store: null, token: null, isAuthenticated: false, isLoading: false }),
+      isLoading: false,
+      login: (user, store, token) =>
+        set({ user, store, token, isAuthenticated: true, isLoading: false }),
+      logout: () =>
+        set({ user: null, store: null, token: null, isAuthenticated: false, isLoading: false }),
       setLoading: (loading) => set({ isLoading: loading }),
       updateStore: (store) => set({ store }),
       updateUser: (userData) =>
         set((state) => ({
           user: state.user ? { ...state.user, ...userData } : null,
         })),
-      setHydrated: () => set({ _hasHydrated: true }),
     }),
     {
       name: 'pos-auth',
@@ -70,20 +68,6 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
-      onRehydrateStorage: () => {
-        return (_state, error) => {
-          if (error) {
-            console.error('Auth store rehydration error:', error)
-          }
-          // After hydration finishes, clear loading and mark hydrated
-          // Use setTimeout to avoid accessing store during creation
-          setTimeout(() => {
-            const store = useAuthStore.getState()
-            store.setLoading(false)
-            store.setHydrated()
-          }, 0)
-        }
-      },
     }
   )
 )
