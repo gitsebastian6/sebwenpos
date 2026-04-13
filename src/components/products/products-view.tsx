@@ -81,15 +81,30 @@ import {
   Calculator,
   Loader2,
   TrendingUp,
+  Percent,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+interface TaxRate {
+  id: number
+  name: string
+  code: string
+  rate: number
+  rateType: string
+  applyTo: string
+  category: string
+  isActive: boolean
+  isDefault: boolean
+  _count?: { products: number }
+}
 
 interface Product {
   id: number
   storeId: number
   categoryId: number | null
   providerId: number | null
+  taxRateId: number | null
   sku: string | null
   name: string
   description: string | null
@@ -102,6 +117,7 @@ interface Product {
   isActive: boolean
   category?: { id: number; name: string } | null
   provider?: { id: number; name: string } | null
+  taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
   _count?: { orderItems: number }
 }
 
@@ -124,6 +140,7 @@ interface ProductFormData {
   sku: string
   categoryId: string
   providerId: string
+  taxRateId: string
   description: string
   imgUrl: string
   costPrice: string
@@ -138,6 +155,7 @@ const emptyProductForm: ProductFormData = {
   sku: '',
   categoryId: 'none',
   providerId: 'none',
+  taxRateId: 'none',
   description: '',
   imgUrl: '',
   costPrice: '',
@@ -175,6 +193,7 @@ export function ProductsView() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [providers, setProviders] = useState<Provider[]>([])
+  const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [categoriesLoading, setCategoriesLoading] = useState(true)
 
@@ -277,6 +296,18 @@ export function ProductsView() {
     }
   }, [store?.id])
 
+  const fetchTaxRates = useCallback(async () => {
+    if (!store?.id) return
+    try {
+      const res = await fetch(`/api/taxes?storeId=${store.id}&isActive=true`)
+      if (!res.ok) throw new Error('Error cargando impuestos')
+      const data = await res.json()
+      setTaxRates(data)
+    } catch {
+      // Silent fail - tax rates are optional
+    }
+  }, [store?.id])
+
   const fetchProducts = useCallback(async () => {
     if (!store?.id) return
     setProductsLoading(true)
@@ -300,7 +331,8 @@ export function ProductsView() {
   useEffect(() => {
     fetchCategories()
     fetchProviders()
-  }, [fetchCategories, fetchProviders])
+    fetchTaxRates()
+  }, [fetchCategories, fetchProviders, fetchTaxRates])
 
   useEffect(() => {
     fetchProducts()
@@ -321,6 +353,7 @@ export function ProductsView() {
       sku: product.sku || '',
       categoryId: product.categoryId ? String(product.categoryId) : 'none',
       providerId: product.providerId ? String(product.providerId) : 'none',
+      taxRateId: product.taxRateId ? String(product.taxRateId) : 'none',
       description: product.description || '',
       imgUrl: product.imgUrl || '',
       costPrice: product.costPrice ? String(product.costPrice) : '',
@@ -351,6 +384,7 @@ export function ProductsView() {
         sku: productForm.sku.trim() || undefined,
         categoryId: productForm.categoryId !== 'none' ? Number(productForm.categoryId) : undefined,
         providerId: productForm.providerId !== 'none' ? Number(productForm.providerId) : undefined,
+        taxRateId: productForm.taxRateId !== 'none' ? Number(productForm.taxRateId) : undefined,
         description: productForm.description.trim() || undefined,
         imgUrl: productForm.imgUrl.trim() || undefined,
         costPrice: productForm.costPrice ? Math.round(Number(productForm.costPrice)) : 0,
@@ -815,6 +849,7 @@ export function ProductsView() {
                       <TableHead className="hidden lg:table-cell min-w-[100px]">Categoría</TableHead>
                       <TableHead className="text-right min-w-[100px]">P. Compra</TableHead>
                       <TableHead className="text-right min-w-[100px]">P. Venta</TableHead>
+                      <TableHead className="hidden lg:table-cell min-w-[100px]">IVA</TableHead>
                       <TableHead className="hidden xl:table-cell text-right min-w-[80px]">Comisión</TableHead>
                       <TableHead className="text-right min-w-[70px]">Stock</TableHead>
                       <TableHead className="hidden sm:table-cell min-w-[80px]">Estado</TableHead>
@@ -886,6 +921,25 @@ export function ProductsView() {
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             {formatCurrency(product.salePrice, store?.currencyCode)}
+                          </TableCell>
+                          <TableCell className="hidden lg:table-cell">
+                            {product.taxRate ? (
+                              <Badge
+                                variant="outline"
+                                className={
+                                  product.taxRate.rate === 0
+                                    ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+                                    : product.taxRate.code === '05'
+                                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800'
+                                      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                                }
+                              >
+                                <Percent className="h-3 w-3 mr-1" />
+                                {product.taxRate.name}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">Sin impuesto</span>
+                            )}
                           </TableCell>
                           <TableCell className="hidden xl:table-cell text-right">
                             {product.commission > 0 ? (
@@ -1110,8 +1164,8 @@ export function ProductsView() {
               </div>
             </div>
 
-            {/* Row: Category + Provider */}
-            <div className="grid gap-4 sm:grid-cols-2">
+            {/* Row: Category + Provider + Tax Rate */}
+            <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="prod-category">Categoría</Label>
                 <Select
@@ -1149,6 +1203,50 @@ export function ProductsView() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="prod-tax">
+                  <span className="flex items-center gap-1.5">
+                    <Percent className="h-3.5 w-3.5" />
+                    Impuesto (IVA)
+                  </span>
+                </Label>
+                <Select
+                  value={productForm.taxRateId}
+                  onValueChange={(val) => setProductForm({ ...productForm, taxRateId: val })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Sin impuesto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin impuesto</SelectItem>
+                    {taxRates.map((tax) => (
+                      <SelectItem key={tax.id} value={String(tax.id)}>
+                        <span className="flex items-center gap-2">
+                          {tax.name}
+                          <span className="text-muted-foreground text-xs">
+                            ({tax.rateType === 'PERCENTAGE' ? `${tax.rate}%` : `$${tax.rate}`})
+                          </span>
+                          {tax.isDefault && (
+                            <span className="text-xs text-amber-600">⭐</span>
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {productForm.taxRateId !== 'none'
+                    ? (() => {
+                        const tax = taxRates.find(t => String(t.id) === productForm.taxRateId)
+                        return tax
+                          ? tax.rate === 0
+                            ? 'Exento / Excluido de IVA'
+                            : `IVA ${tax.rate}% incluido en el precio de venta`
+                          : ''
+                      })()
+                    : 'Precio de venta sin impuesto'}
+                </p>
               </div>
             </div>
 
