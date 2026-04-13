@@ -45,7 +45,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       store: null,
       token: null,
@@ -71,15 +71,17 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => {
-        return (state, error) => {
+        return (_state, error) => {
           if (error) {
             console.error('Auth store rehydration error:', error)
           }
-          // Once hydration is complete, mark it and set loading false
-          if (state) {
-            useAuthStore.getState().setLoading(false)
-            useAuthStore.getState().setHydrated()
-          }
+          // After hydration finishes, clear loading and mark hydrated
+          // Use setTimeout to avoid accessing store during creation
+          setTimeout(() => {
+            const store = useAuthStore.getState()
+            store.setLoading(false)
+            store.setHydrated()
+          }, 0)
         }
       },
     }
