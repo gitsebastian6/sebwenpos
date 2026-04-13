@@ -436,6 +436,9 @@ export function AccountingView() {
   const [isSavingShift, setIsSavingShift] = useState(false)
   const [lastClosedShift, setLastClosedShift] = useState<{ shift: CashShift; summary: CashShiftSummary } | null>(null)
   const [deleteShiftId, setDeleteShiftId] = useState<number | null>(null)
+  const [showResetDialog, setShowResetDialog] = useState(false)
+  const [resetNote, setResetNote] = useState('')
+  const [isResetting, setIsResetting] = useState(false)
   const [historyFrom, setHistoryFrom] = useState('')
   const [historyTo, setHistoryTo] = useState('')
 
@@ -918,6 +921,34 @@ export function AccountingView() {
       }
     } catch {
       toast.error('Error de conexión')
+    }
+  }
+
+  // ─── Reset de Saldos ──────────────────────────────────────────────────
+  async function handleResetDebts() {
+    if (!store?.id) return
+    setIsResetting(true)
+    try {
+      const res = await fetch('/api/customers/reset-debts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: store.id, note: resetNote.trim() || undefined }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(data.message)
+        setShowResetDialog(false)
+        setResetNote('')
+        fetchReports()
+        fetchAccounts()
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Error' }))
+        toast.error(err.error || 'No se pudo resetear saldos')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setIsResetting(false)
     }
   }
 
@@ -1947,13 +1978,26 @@ export function AccountingView() {
                 {/* ─── Cuentas por Cobrar ─────────────────────────────────── */}
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center gap-2">
-                      <HandCoins className="h-5 w-5 text-muted-foreground" />
-                      <CardTitle className="text-base">Cuentas por Cobrar</CardTitle>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <HandCoins className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                          <CardTitle className="text-base">Cuentas por Cobrar</CardTitle>
+                          <CardDescription className="text-xs">
+                            {reportData.customerDebts.length} cliente{reportData.customerDebts.length !== 1 ? 's' : ''} con deuda
+                          </CardDescription>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/50"
+                        onClick={() => setShowResetDialog(true)}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                        Resetear Saldos
+                      </Button>
                     </div>
-                    <CardDescription>
-                      {reportData.customerDebts.length} cliente{reportData.customerDebts.length !== 1 ? 's' : ''} con deuda
-                    </CardDescription>
                   </CardHeader>
                   <CardContent className="p-0">
                     {reportData.customerDebts.length === 0 ? (
@@ -3709,6 +3753,67 @@ export function AccountingView() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        {/* ─── Dialog: Resetear Saldos ─────────────────────────────────── */}
+        <Dialog open={showResetDialog} onOpenChange={(open) => { if (!open) { setShowResetDialog(false); setResetNote('') } }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <RotateCcw className="h-5 w-5 text-destructive" />
+                Resetear Saldos
+              </DialogTitle>
+              <DialogDescription>
+                Condona todas las deudas pendientes de los clientes. Las órdenes fiadas quedarán marcadas como saldadas.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/30 p-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                    Esta acción registra las deudas como <strong>condonaciones</strong> en contabilidad (cuenta Concesiones y Castigos). No se puede deshacer.
+                  </p>
+                </div>
+              </div>
+              {reportData.customerDebts.length > 0 && (
+                <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+                  <p className="text-xs text-muted-foreground font-medium">Deudas actuales:</p>
+                  {reportData.customerDebts.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between text-xs">
+                      <span>{c.name}</span>
+                      <span className="font-semibold">{formatCurrency(c.totalDebt, currencyCode)}</span>
+                    </div>
+                  ))}
+                  <Separator className="my-1" />
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span>Total a condonar</span>
+                    <span className="text-destructive">
+                      {formatCurrency(reportData.customerDebts.reduce((s, c) => s + c.totalDebt, 0), currencyCode)}
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label className="text-xs">Nota (opcional)</Label>
+                <Input
+                  value={resetNote}
+                  onChange={(e) => setResetNote(e.target.value)}
+                  placeholder="Ej: Condonación inicio de mes"
+                />
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => { setShowResetDialog(false); setResetNote('') }}>Cancelar</Button>
+              <Button
+                variant="destructive"
+                onClick={handleResetDebts}
+                disabled={isResetting || reportData.customerDebts.length === 0}
+              >
+                {isResetting && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+                Resetear Todo
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {/* ─── Dialog: Create/Edit Expense ────────────────────────────────── */}
         <Dialog open={showExpenseDialog} onOpenChange={(open) => { if (!open) setShowExpenseDialog(false) }}>
           <DialogContent className="max-w-md">
