@@ -3774,7 +3774,7 @@ export function AccountingView() {
                   </p>
                 </div>
               </div>
-              {reportData.customerDebts.length > 0 && (
+              {reportData?.customerDebts?.length > 0 && (
                 <div className="rounded-lg bg-muted/50 p-3 space-y-1">
                   <p className="text-xs text-muted-foreground font-medium">Deudas actuales:</p>
                   {reportData.customerDebts.map((c) => (
@@ -3787,7 +3787,7 @@ export function AccountingView() {
                   <div className="flex items-center justify-between text-xs font-bold">
                     <span>Total a condonar</span>
                     <span className="text-destructive">
-                      {formatCurrency(reportData.customerDebts.reduce((s, c) => s + c.totalDebt, 0), currencyCode)}
+                      {formatCurrency(reportData?.customerDebts?.reduce((s, c) => s + c.totalDebt, 0) || 0, currencyCode)}
                     </span>
                   </div>
                 </div>
@@ -3806,7 +3806,7 @@ export function AccountingView() {
               <Button
                 variant="destructive"
                 onClick={handleResetDebts}
-                disabled={isResetting || reportData.customerDebts.length === 0}
+                disabled={isResetting || !reportData?.customerDebts?.length}
               >
                 {isResetting && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
                 Resetear Todo
