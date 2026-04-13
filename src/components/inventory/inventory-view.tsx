@@ -147,6 +147,11 @@ export function InventoryView() {
   const [lossReason, setLossReason] = useState('VENCIDO')
   const [lossNotes, setLossNotes] = useState('')
 
+  // Reset stock state
+  const [showResetDialog, setShowResetDialog] = useState(false)
+  const [resetNote, setResetNote] = useState('')
+  const [isResetting, setIsResetting] = useState(false)
+
   // ─── Computed: filtered products for list ──────────────────────
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return products
@@ -245,6 +250,34 @@ export function InventoryView() {
     fetchLowStock()
     fetchMovements()
     fetchProducts()
+  }
+
+  // ─── Reset Stock ────────────────────────────────────────
+
+  async function handleResetStock() {
+    if (!storeId) return
+    setIsResetting(true)
+    try {
+      const res = await fetch('/api/inventory/reset-stock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId, note: resetNote.trim() || undefined }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(data.message)
+        setShowResetDialog(false)
+        setResetNote('')
+        refreshAll()
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Error' }))
+        toast.error(err.error || 'No se pudo resetear inventario')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setIsResetting(false)
+    }
   }
 
   // ─── Open Action Dialog ─────────────────────────────────
@@ -615,11 +648,22 @@ export function InventoryView() {
               <CardTitle className="text-base">Inventario de Productos</CardTitle>
               <CardDescription>Lista completa con stock actual</CardDescription>
             </div>
-            {!isLoadingProducts && (
-              <span className="text-sm text-muted-foreground">
-                {filteredProducts.length} de {products.length} producto{products.length !== 1 ? 's' : ''}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/50"
+                onClick={() => setShowResetDialog(true)}
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                Resetear Stock
+              </Button>
+              {!isLoadingProducts && (
+                <span className="text-sm text-muted-foreground">
+                  {filteredProducts.length} de {products.length} producto{products.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1109,6 +1153,46 @@ export function InventoryView() {
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Dialog: Resetear Stock ──────────────────────────── */}
+      <Dialog open={showResetDialog} onOpenChange={(open) => { if (!open) { setShowResetDialog(false); setResetNote('') } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-destructive" />
+              Resetear Stock a 0
+            </DialogTitle>
+            <DialogDescription>
+              Pone el stock de TODOS los productos a 0 y registra el movimiento.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-950/30 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  Esta acción no se puede deshacer. Todos los productos quedarán en stock 0.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Nota (opcional)</Label>
+              <Input
+                value={resetNote}
+                onChange={(e) => setResetNote(e.target.value)}
+                placeholder="Ej: Inicio de inventario"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { setShowResetDialog(false); setResetNote('') }}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleResetStock} disabled={isResetting}>
+              {isResetting && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              Resetear Todo a 0
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
