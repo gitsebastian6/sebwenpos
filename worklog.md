@@ -675,3 +675,89 @@ Stage Summary:
 - Products can be created with taxRateId
 - Invoice calculation correctly handles Colombian tax-inclusive pricing
 - No double-counting: customer pays $15,500, IVA of $718 is embedded in price
+
+## IVA-RECEIPT — Add tax/IVA breakdown support to ticket receipt
+
+**Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+**File**: `src/lib/print-ticket.ts`
+
+### Changes made:
+
+1. **Updated `TicketData` interface** — added three new optional fields after `total`:
+   - `discountAmount?: number` — for displaying discount rows
+   - `taxAmount?: number` — for displaying IVA total
+   - `taxBreakdown?: Array<{ name, code, rate, base, amount }>` — for detailed IVA breakdown rows
+
+2. **Added CSS styles** after `.tip-row`:
+   - `.tax-row` — green, bold, for "IVA Incluido" line
+   - `.tax-detail-row` — gray, smaller, indented, for per-tax breakdown details
+   - `.discount-row` — red, bold, for "Descuento" line
+
+3. **Updated totals section HTML** in `printTicket()`:
+   - Subtotal → Discount (conditional) → IVA total + breakdown (conditional) → Tip → Total
+   - Discount row only renders when `discountAmount > 0`
+   - IVA section only renders when `taxAmount > 0`
+   - Detailed tax breakdown only renders when `taxBreakdown` has items
+
+All other functions (`printCashRegisterClose`, `printDailySummary`, `printProductCatalog`, `printKardex`) remain unchanged.
+
+## IVA-POS: Add IVA (tax) breakdown display to POS view
+
+**Date:** $(date -u +"%Y-%m-%d %H:%M UTC")
+
+### Changes Made
+
+1. **IVA breakdown in charge confirmation dialog** (`pos-view.tsx` ~line 1692-1709)
+   - Added an IVA breakdown section between the discount section and the tip section in the "Confirmar venta" dialog
+   - Shows total tax with a styled card (`bg-emerald-50 dark:bg-emerald-950/20`)
+   - Lists each tax code with name, rate, base, and amount
+   - Uses existing `Percent` icon from lucide-react and `taxEstimate` useMemo
+
+2. **printTicket() calls — added tax/discount fields**
+   - **Main view last-order print** (~line 968-970): Added `taxAmount`, `taxBreakdown`, and `discountAmount` from `lastOrderData`
+   - **Cart sheet last-order print** (~line 1618-1620): Added `taxAmount`, `taxBreakdown`, and `discountAmount` from `lastOrderData`
+   - Both calls use order data (not cart estimate) since they print past orders
+
+### Verification
+- ESLint: No new errors in modified file (all 16 errors are pre-existing in non-project files)
+- Dev server: Compiles and runs successfully
+
+## IVA-ORDERS — IVA (Tax) Breakdown Display in Orders View
+
+**Date:** $(date -u '+%Y-%m-%d %H:%M UTC')
+
+### Changes Made
+
+#### File 1: `src/app/api/orders/[id]/route.ts`
+- Added `taxAmount`, `taxBreakdown`, and `discountAmount` to the GET response object
+- `taxBreakdown` is parsed from JSON string via `JSON.parse()`
+- Added `taxCode`, `taxRate`, `taxAmount`, `taxBase` to each orderItem in the response map
+
+#### File 2: `src/components/orders/orders-view.tsx`
+- **2a:** Added `taxAmount`, `taxBreakdown`, `discountAmount` to `OrderDetail` interface
+- **2a:** Added `taxCode`, `taxRate`, `taxAmount`, `taxBase` to `orderItems` type within `OrderDetail`
+- **2b:** Added `Percent` icon import from lucide-react
+- **2b:** Added IVA breakdown display section in the order detail dialog totals (between subtotal and tip), showing total IVA with a Percent icon and per-tax breakdown rows with name, rate, base, and amount
+- **2c:** Updated the single `printTicket()` call to pass `taxAmount`, `taxBreakdown`, and `discountAmount`
+
+### Verification
+- Only 1 `printTicket(` call found and updated
+- ESLint passes (no new errors introduced; 16 pre-existing errors in infrastructure JS files)
+
+## IVA-TABLES — Add IVA (tax) breakdown display to Tables (Mesas) view
+
+### Files modified:
+1. **`src/app/api/tables/sessions/[id]/pay/route.ts`** — Added tax computation to table session payment API:
+   - Added `taxRate` relation to product fetch (id, name, code, rate, rateType)
+   - Added `calcTax()` helper matching orders API logic (Colombian tax-inclusive pricing)
+   - Added per-item tax fields (taxCode, taxRate, taxAmount, taxBase) to order items
+   - Added `taxBreakdownMap` accumulator grouped by tax code
+   - Added `taxAmount` and `taxBreakdown` (JSON) to Order.create data
+   - Added `taxAmount` and `taxBreakdown` (parsed) to response
+
+2. **`src/components/tables/tables-view.tsx`** — Added IVA display in payment dialog:
+   - Added `useMemo` import
+   - Added `taxRate` field to Product interface
+   - Added `taxEstimate` useMemo that computes tax breakdown from selected comanda items by looking up product taxRate
+   - Added IVA breakdown panel in payment dialog (between discount and total) with emerald styling
+   - Passed `discountAmount`, `taxAmount`, and `taxBreakdown` to the `printTicket()` call

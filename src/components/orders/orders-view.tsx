@@ -48,6 +48,7 @@ import {
   X as XIcon,
   ShoppingBag,
   UtensilsCrossed,
+  Percent,
 } from 'lucide-react'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
 import { toast } from 'sonner'
@@ -77,6 +78,9 @@ interface OrderDetail {
   subtotal: number
   tipAmount: number
   total: number
+  taxAmount?: number
+  taxBreakdown?: Array<{ name: string; code: string; rate: number; base: number; amount: number }> | null
+  discountAmount?: number
   notes: string | null
   createdAt: string
   tableName?: string | null
@@ -95,6 +99,10 @@ interface OrderDetail {
     unitPrice: number
     totalRow: number
     isService?: boolean
+    taxCode?: string
+    taxRate?: number
+    taxAmount?: number
+    taxBase?: number
   }[]
 }
 
@@ -186,6 +194,9 @@ export function OrdersView() {
       items, subtotal: detail.subtotal, tipAmount: detail.tipAmount,
       total: detail.total, paymentMethod: detail.paymentMethod,
       currencyCode: store.currencyCode, notes: detail.notes ?? undefined,
+      taxAmount: detail.taxAmount || 0,
+      taxBreakdown: detail.taxBreakdown || undefined,
+      discountAmount: detail.discountAmount || 0,
     })
   }
 
@@ -553,6 +564,25 @@ export function OrdersView() {
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>Subtotal</span><span>{formatCurrency(orderDetail.subtotal, store?.currencyCode)}</span>
                 </div>
+                {orderDetail.taxAmount && orderDetail.taxAmount > 0 && (
+                  <div className="flex items-center justify-between text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                    <span className="flex items-center gap-1.5">
+                      <Percent className="h-3.5 w-3.5" />
+                      IVA Incluido
+                    </span>
+                    <span>{formatCurrency(orderDetail.taxAmount, store?.currencyCode || 'COP')}</span>
+                  </div>
+                )}
+                {orderDetail.taxBreakdown && orderDetail.taxBreakdown.length > 0 && (
+                  <div className="space-y-0.5 pl-6">
+                    {orderDetail.taxBreakdown.map((tax, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{tax.name} ({tax.rate}%) — Base: {formatCurrency(tax.base, store?.currencyCode || 'COP')}</span>
+                        <span>{formatCurrency(tax.amount, store?.currencyCode || 'COP')}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {orderDetail.tipAmount > 0 && (
                   <div className="flex justify-between text-sm text-pink-600 dark:text-pink-400">
                     <span>Propina</span><span>{formatCurrency(orderDetail.tipAmount, store?.currencyCode)}</span>

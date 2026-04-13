@@ -67,6 +67,9 @@ export async function GET(
       subtotal: Number(order.subtotal),
       tipAmount: Number(order.tipAmount ?? 0),
       total: Number(order.total),
+      taxAmount: Number(order.taxAmount ?? 0),
+      taxBreakdown: order.taxBreakdown ? JSON.parse(order.taxBreakdown as string) : null,
+      discountAmount: Number(order.discountAmount ?? 0),
       notes: order.notes,
       createdAt: order.createdAt.toISOString(),
       customer: order.customer,
@@ -80,6 +83,10 @@ export async function GET(
         unitPrice: Number(item.unitPrice),
         totalRow: Number(item.totalRow),
         isService: !!item.serviceId,
+        taxCode: item.taxCode ?? undefined,
+        taxRate: item.taxRate ?? 0,
+        taxAmount: Number(item.taxAmount ?? 0),
+        taxBase: Number(item.taxBase ?? 0),
       })),
     }
 

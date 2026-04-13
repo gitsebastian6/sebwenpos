@@ -965,6 +965,9 @@ export function POSView() {
                     subtotal: lastOrderData.subtotal,
                     tipAmount: lastOrderData.tipAmount || 0,
                     total: lastOrderData.total,
+                    taxAmount: lastOrderData.taxAmount || 0,
+                    taxBreakdown: lastOrderData.taxBreakdown || undefined,
+                    discountAmount: lastOrderData.discountAmount || 0,
                     paymentMethod: lastOrderData.paymentMethod,
                     currencyCode: currencyCode,
                     notes: notes || undefined,
@@ -1612,6 +1615,9 @@ export function POSView() {
                                 subtotal: lastOrderData.subtotal,
                                 tipAmount: lastOrderData.tipAmount || 0,
                                 total: lastOrderData.total,
+                                taxAmount: lastOrderData.taxAmount || 0,
+                                taxBreakdown: lastOrderData.taxBreakdown || undefined,
+                                discountAmount: lastOrderData.discountAmount || 0,
                                 paymentMethod: lastOrderData.paymentMethod,
                                 currencyCode: currencyCode,
                                 notes: notes || undefined,
@@ -1687,6 +1693,24 @@ export function POSView() {
                       <span className="font-medium text-amber-600 dark:text-amber-400">
                         -{formatCurrency(discountAmount, currencyCode)}
                       </span>
+                    </div>
+                  )}
+                  {/* IVA Breakdown */}
+                  {taxEstimate.breakdown.length > 0 && (
+                    <div className="space-y-1 rounded-md bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-3">
+                      <div className="flex items-center justify-between text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                        <span className="flex items-center gap-1.5">
+                          <Percent className="h-3.5 w-3.5" />
+                          IVA Incluido
+                        </span>
+                        <span>{formatCurrency(taxEstimate.totalTax, currencyCode)}</span>
+                      </div>
+                      {taxEstimate.breakdown.map((tax) => (
+                        <div key={tax.code} className="flex items-center justify-between text-xs text-muted-foreground pl-6">
+                          <span>{tax.name} ({tax.rate}%) — Base: {formatCurrency(tax.base, currencyCode)}</span>
+                          <span>{formatCurrency(tax.amount, currencyCode)}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                   {tipAmount > 0 && (

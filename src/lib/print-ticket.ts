@@ -23,6 +23,9 @@ export interface TicketData {
   subtotal: number
   tipAmount: number
   total: number
+  discountAmount?: number
+  taxAmount?: number
+  taxBreakdown?: Array<{ name: string; code: string; rate: number; base: number; amount: number }>
   paymentMethod: string
   currencyCode: string
   notes?: string
@@ -259,6 +262,30 @@ export function printTicket(data: TicketData) {
     color: #be185d;
     font-weight: 600;
   }
+  .tax-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    font-size: 11px;
+    color: #15803d;
+    font-weight: 600;
+  }
+  .tax-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5px 0;
+    font-size: 9px;
+    color: #888;
+    padding-left: 8px;
+  }
+  .discount-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-size: 11px;
+    color: #dc2626;
+    font-weight: 600;
+  }
   .items-count {
     font-size: 9px;
     color: #888;
@@ -359,6 +386,22 @@ export function printTicket(data: TicketData) {
       <span>Subtotal</span>
       <span>${fmt(data.subtotal, data.currencyCode)}</span>
     </div>
+    ${data.discountAmount && data.discountAmount > 0 ? `<div class="discount-row">
+      <span>Descuento</span>
+      <span>- ${fmt(data.discountAmount, data.currencyCode)}</span>
+    </div>` : ''}
+    ${data.taxAmount && data.taxAmount > 0 ? `
+      <div class="tax-row">
+        <span>IVA Incluido</span>
+        <span>+ ${fmt(data.taxAmount, data.currencyCode)}</span>
+      </div>
+      ${data.taxBreakdown && data.taxBreakdown.length > 0 ? data.taxBreakdown.map(tax => `
+        <div class="tax-detail-row">
+          <span>${tax.name} (${tax.rate}%) — Base: ${fmt(tax.base, data.currencyCode)}</span>
+          <span>${fmt(tax.amount, data.currencyCode)}</span>
+        </div>
+      `).join('') : ''}
+    ` : ''}
     ${hasTip ? `<div class="tip-row">
       <span>Propina</span>
       <span>+ ${fmt(data.tipAmount, data.currencyCode)}</span>

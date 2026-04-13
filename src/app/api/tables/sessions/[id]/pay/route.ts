@@ -71,6 +71,7 @@ export async function POST(
             salePrice: true,
             costPrice: true,
             currentStock: true,
+            taxRate: { select: { id: true, name: true, code: true, rate: true, rateType: true } },
           },
         },
         service: {
@@ -135,14 +136,60 @@ export async function POST(
     const productComandaItems = comandaItems.filter((i) => i.productId)
     const serviceComandaItems = comandaItems.filter((i) => i.serviceId)
 
-    // Build order item data
-    const orderItemsData = comandaItems.map((item) => ({
-      productId: item.productId ?? null,
-      serviceId: item.serviceId ?? null,
-      quantity: item.quantity,
-      unitPrice: Number(item.unitPrice),
-      totalRow: Number(item.total),
-    }))
+    // ── Tax computation (Colombian tax-inclusive pricing) ──
+    const taxBreakdownMap: Record<string, { code: string; name: string; base: number; rate: number; amount: number }> = {}
+    let orderTaxAmount = 0
+
+    const calcTax = (totalRow: number, taxRateInfo: { code: string; rate: number; rateType: string } | null) => {
+      if (!taxRateInfo) {
+        return { taxCode: null, taxRate: 0, taxAmount: 0, taxBase: totalRow }
+      }
+      if (taxRateInfo.code === '03' || taxRateInfo.code === '04') {
+        return { taxCode: taxRateInfo.code, taxRate: 0, taxAmount: 0, taxBase: totalRow }
+      }
+      if (taxRateInfo.rateType === 'PERCENTAGE' && taxRateInfo.rate > 0) {
+        const taxBase = Math.round(totalRow / (1 + taxRateInfo.rate / 100))
+        const taxAmount = totalRow - taxBase
+        return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount, taxBase }
+      }
+      return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount: 0, taxBase: totalRow }
+    }
+
+    // Build order item data with per-item tax info
+    const orderItemsData = comandaItems.map((item) => {
+      const totalRow = Number(item.total)
+      const tr = item.product?.taxRate
+        ? { code: item.product.taxRate.code, rate: item.product.taxRate.rate, rateType: item.product.taxRate.rateType }
+        : null
+      const tax = calcTax(totalRow, tr)
+
+      // Accumulate into breakdown
+      if (tax.taxCode) {
+        const key = tax.taxCode
+        if (!taxBreakdownMap[key]) {
+          taxBreakdownMap[key] = { code: key, name: item.product?.taxRate?.name || key, base: 0, rate: tax.taxRate, amount: 0 }
+        }
+        taxBreakdownMap[key].base += tax.taxBase
+        taxBreakdownMap[key].amount += tax.taxAmount
+      }
+      orderTaxAmount += tax.taxAmount
+
+      return {
+        productId: item.productId ?? null,
+        serviceId: item.serviceId ?? null,
+        quantity: item.quantity,
+        unitPrice: Number(item.unitPrice),
+        totalRow,
+        taxCode: tax.taxCode,
+        taxRate: tax.taxRate,
+        taxAmount: tax.taxAmount,
+        taxBase: tax.taxBase,
+      }
+    })
+
+    const taxBreakdownJson = Object.keys(taxBreakdownMap).length > 0
+      ? JSON.stringify(Object.values(taxBreakdownMap))
+      : null
 
     const orderNumber = generateOrderNumber()
     const tableLabel = session.barTable.name || `Mesa ${session.barTable.number}`
@@ -173,6 +220,8 @@ export async function POST(
           cashRegisterId: targetCashRegisterId,
           orderNumber,
           subtotal: subtotal,
+          taxAmount: orderTaxAmount,
+          taxBreakdown: taxBreakdownJson,
           tipAmount,
           discountAmount,
           discountType: data.discountType,
@@ -359,6 +408,8 @@ export async function POST(
         status: order.status,
         paymentMethod: order.paymentMethod,
         subtotal: Number(order.subtotal),
+        taxAmount: Number(order.taxAmount ?? 0),
+        taxBreakdown: order.taxBreakdown ? JSON.parse(order.taxBreakdown) : null,
         tipAmount: Number(order.tipAmount),
         discountAmount: Number(order.discountAmount ?? 0),
         discountType: order.discountType,
@@ -375,6 +426,10 @@ export async function POST(
           quantity: item.quantity,
           unitPrice: Number(item.unitPrice),
           totalRow: Number(item.totalRow),
+          taxCode: item.taxCode,
+          taxRate: item.taxRate,
+          taxAmount: Number(item.taxAmount),
+          taxBase: Number(item.taxBase),
           isService: !!item.serviceId,
         })),
         profitability,

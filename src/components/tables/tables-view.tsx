@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
 import { playAlert, playSaleSuccess, playError } from '@/lib/pos-sounds'
@@ -148,6 +148,7 @@ interface Product {
   name: string
   salePrice: number
   category?: { id: number; name: string } | null
+  taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
 }
 
 interface Service {
@@ -997,6 +998,46 @@ export function TablesView() {
   const canServe = selectedPendingItems.length > 0
   const canPay = selectedItemIds.length > 0 && (selectedPendingItems.length > 0 || selectedServedItems.length > 0)
 
+  // ── Tax estimate for selected items (Colombian tax-inclusive pricing) ──
+  const taxEstimate = useMemo(() => {
+    const breakdownMap = new Map<string, { name: string; code: string; rate: number; base: number; amount: number }>()
+    let totalTax = 0
+
+    const tableItems = session?.comandaItems
+      ?.filter((item) => selectedItemIds.includes(item.id)) ?? []
+
+    tableItems.forEach(item => {
+      if (!item.productId) return
+      const product = products.find(p => p.id === item.productId)
+      const tr = product?.taxRate
+      if (!tr) return
+
+      const totalRow = item.total
+      let base = totalRow
+      let tax = 0
+
+      // EXEMPT (03) or EXCLUDED (04)
+      if (tr.code === '03' || tr.code === '04') {
+        base = totalRow
+        tax = 0
+      } else if (tr.rateType === 'PERCENTAGE' && tr.rate > 0) {
+        base = Math.round(totalRow / (1 + tr.rate / 100))
+        tax = totalRow - base
+      }
+
+      totalTax += tax
+      const existing = breakdownMap.get(tr.code)
+      if (existing) {
+        existing.base += base
+        existing.amount += tax
+      } else {
+        breakdownMap.set(tr.code, { name: tr.name, code: tr.code, rate: tr.rate, base, amount: tax })
+      }
+    })
+
+    return { breakdown: Array.from(breakdownMap.values()), totalTax }
+  }, [session?.comandaItems, selectedItemIds, products])
+
   // Force re-render with tick (used in time display)
   const _tick = tick
 
@@ -1484,6 +1525,23 @@ export function TablesView() {
                   <span className="font-medium text-amber-600 dark:text-amber-400">
                     -{formatCurrency(computedDiscount, store?.currencyCode)}
                   </span>
+                </div>
+              )}
+              {taxEstimate.breakdown.length > 0 && (
+                <div className="space-y-1 rounded-md bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-3">
+                  <div className="flex items-center justify-between text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                    <span className="flex items-center gap-1.5">
+                      <Percent className="h-3.5 w-3.5" />
+                      IVA Incluido
+                    </span>
+                    <span>{formatCurrency(taxEstimate.totalTax, store?.currencyCode)}</span>
+                  </div>
+                  {taxEstimate.breakdown.map((tax) => (
+                    <div key={tax.code} className="flex items-center justify-between text-xs text-muted-foreground pl-6">
+                      <span>{tax.name} ({tax.rate}%) — Base: {formatCurrency(tax.base, store?.currencyCode)}</span>
+                      <span>{formatCurrency(tax.amount, store?.currencyCode)}</span>
+                    </div>
+                  ))}
                 </div>
               )}
               <Separator />
@@ -2061,6 +2119,9 @@ export function TablesView() {
                                 subtotal: lastPaymentData.subtotal,
                                 tipAmount: lastPaymentData.tipAmount || 0,
                                 total: lastPaymentData.total,
+                                discountAmount: lastPaymentData.discountAmount || 0,
+                                taxAmount: lastPaymentData.taxAmount || 0,
+                                taxBreakdown: lastPaymentData.taxBreakdown || undefined,
                                 paymentMethod: lastPaymentData.paymentMethod,
                                 currencyCode: store?.currencyCode || 'COP',
                               })
