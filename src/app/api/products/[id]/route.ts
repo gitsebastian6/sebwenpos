@@ -9,6 +9,7 @@ const updateProductSchema = z.object({
   sku: z.string().max(100).nullable().optional(),
   categoryId: z.number().int().positive().nullable().optional(),
   providerId: z.number().int().positive().nullable().optional(),
+  taxRateId: z.number().int().positive().nullable().optional(),
   description: z.string().max(1000).nullable().optional(),
   imgUrl: z.string().max(500).nullable().optional(),
   costPrice: z.number().int().min(0).optional(),
@@ -65,6 +66,7 @@ export async function PUT(
         ...(data.isActive !== undefined && { isActive: data.isActive }),
         ...(data.currentStock !== undefined && { currentStock: data.currentStock }),
         ...(data.commission !== undefined && { commission: data.commission }),
+        ...(data.taxRateId !== undefined && { taxRateId: data.taxRateId }),
       },
       include: {
         category: {
@@ -72,6 +74,9 @@ export async function PUT(
         },
         provider: {
           select: { id: true, name: true },
+        },
+        taxRate: {
+          select: { id: true, name: true, code: true, rate: true, rateType: true },
         },
       },
     })
