@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { AuthPage } from '@/components/auth/auth-page'
 import { AppShell } from '@/components/layout/app-shell'
@@ -17,36 +17,41 @@ function LoadingScreen() {
   )
 }
 
+// Detect client-side hydration using React's recommended API.
+// Returns `false` during SSR and initial hydration (matching server HTML),
+// then `true` on all subsequent client renders.
+const emptySubscribe = () => () => {}
+function useIsClient() {
+  return useSyncExternalStore(emptySubscribe, () => true, () => false)
+}
+
 export default function Home() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const store = useAuthStore((s) => s.store)
-  const initialized = useRef(false)
+  const isClient = useIsClient()
 
-  // Clear loading on mount — Zustand persist handles rehydration synchronously in v5
+  // If authenticated but no store after client mount, the session data is
+  // corrupted. Logout in an effect (NOT during render) to avoid the React
+  // anti-pattern that was causing the hydration race bug.
   useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true
-      // Small delay ensures persist has rehydrated from localStorage
-      const timer = setTimeout(() => {
-        const state = useAuthStore.getState()
-        if (state.isLoading) {
-          state.setLoading(false)
-        }
-      }, 200)
-      return () => clearTimeout(timer)
+    if (isClient && isAuthenticated && !store) {
+      useAuthStore.getState().logout()
     }
-  }, [])
+  }, [isClient, isAuthenticated, store])
 
-  if (!isAuthenticated) {
-    return <AuthPage />
-  }
+  // Before client mount (SSR / first hydration tick), always show loading.
+  // This prevents hydration mismatches and the store hydration race condition.
+  if (!isClient) return <LoadingScreen />
 
-  if (!store) {
-    // Session exists but no store — force logout to show login
-    useAuthStore.getState().logout()
-    return <AuthPage />
-  }
+  // After mount, if not authenticated, show login.
+  if (!isAuthenticated) return <AuthPage />
 
+  // If authenticated but store is null, show loading briefly.
+  // This covers the window between mount and persist rehydration.
+  // If persist never delivers a store, the useEffect above will logout.
+  if (!store) return <LoadingScreen />
+
+  // store is guaranteed non-null here
   return (
     <QueryProvider>
       <AppShell />
