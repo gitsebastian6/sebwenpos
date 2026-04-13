@@ -851,3 +851,41 @@ Stage Summary:
 - Auto-recovery mechanism: if store is null but user is authenticated, app automatically fetches store info from API and restores session
 - Recovery API: GET /api/stores?userId=X returns stores for session restoration
 - No more blank screens — user sees either loading, recovery, or login screen with clear messaging
+---
+Task ID: AUTH-FIX
+Agent: main-orchestrator
+Task: Fix login and data display issues — diagnose and repair auth system
+
+Work Log:
+- User reported login not working and all data showing as 0
+- Diagnosed issues:
+  1. Port 3000 was occupied by a zombie process (next-server v16.1.3)
+  2. Dev server was managed by .zscripts/dev.sh with keepalive mechanism
+  3. Database was intact: User id=3, Store id=3 "Bar La Terraza", 97 products, 7 categories, 5 providers
+  4. Login API worked correctly via curl (returns user + store + token)
+  5. All data APIs worked correctly when called with storeId=3
+  6. Auth store had no corruption recovery mechanism
+  7. page.tsx hydration handling could leave user stuck on loading screen
+- Fixed auth-store.ts:
+  - Added isValidAuthState() validator function
+  - Added checkAndRepairAuth() utility that reads localStorage, validates, and clears corrupted data
+  - Removed risky onRehydrateStorage callback (caused circular reference in previous attempt)
+  - Clean persist configuration with partialize
+- Fixed page.tsx:
+  - Added checkAndRepairAuth() on first client mount to clear corrupted localStorage
+  - Added 500ms timeout before logging out for missing store (gives Zustand persist time to hydrate)
+  - Used useRef to prevent double-repair
+  - Preserved useIsClient() hydration-safe pattern
+- Verified all APIs working:
+  - Login: phone=3001234567, password=123456 → returns user + store (id=3) + token
+  - Products: 97 items
+  - Categories: 7 items
+  - Providers: 5 items
+  - Dashboard: Full KPI data
+  - Customers: 3 items
+
+Stage Summary:
+- Root cause: Corrupted localStorage auth data caused by previous session interruptions
+- Solution: Proactive validation and auto-repair of auth state on app mount
+- All backend APIs confirmed working with storeId=3
+- Login flow: 3001234567 / 123456 → Carlos Bar Manager → Bar La Terraza (id=3)
