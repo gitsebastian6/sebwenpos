@@ -761,3 +761,63 @@ All other functions (`printCashRegisterClose`, `printDailySummary`, `printProduc
    - Added `taxEstimate` useMemo that computes tax breakdown from selected comanda items by looking up product taxRate
    - Added IVA breakdown panel in payment dialog (between discount and total) with emerald styling
    - Passed `discountAmount`, `taxAmount`, and `taxBreakdown` to the `printTicket()` call
+
+---
+
+## [DIAN-TRIBUTARY] Add DIAN-required "mensaje tributario" to receipt
+
+**Date:** $(date -u '+%Y-%m-%d %H:%M UTC')
+**File:** `src/lib/print-ticket.ts`
+**Scope:** `printTicket` function only — no other functions modified.
+
+### Changes
+
+1. **TicketData interface** — Added 3 optional DIAN fields after `storeNIT`:
+   - `storeRegime?: string` — Tax regime (RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO)
+   - `invoiceResolution?: string` — DIAN resolution number
+   - `invoicePrefix?: string` — Invoice prefix (FE, POS)
+
+2. **CSS styles** — Added `.tax-info` and `.tributary-msg` classes after `.footer-brand` for tributary information formatting.
+
+3. **Regime labels helper** — Added `REGIME_LABELS` map and `regimeLabel` computed value at the top of `printTicket` (next to `paymentLabel`).
+
+4. **Tributary info block** — Inserted new HTML section before the totals (`<!-- ═══ TRIBUTARY INFO ═══ -->`) displaying:
+   - Tax regime label (conditional)
+   - DIAN resolution + prefix (conditional)
+   - "Responsable del IVA" legal message (conditional on `storeNIT`)
+
+5. **Footer update** — Added consumer rights messages:
+   - "NIT del adquirente: 222.222.222-222 (consumidor final)"
+   - "Venta sujeta al régimen de facturación electrónica"
+
+### Notes
+- All changes are backward-compatible (new fields are optional).
+- No modifications to `printCashRegisterClose`, `printDailySummary`, `printProductCatalog`, or `printKardex`.
+
+---
+Task ID: INFORMES-IVA
+Agent: main-orchestrator
+Task: Add IVA collected from sales to Reports (Informes) view and improve Comisiones tab
+
+Work Log:
+- Read prisma schema to verify Order (taxAmount, taxBreakdown), OrderItem (taxCode, taxRate, taxAmount, taxBase via product relation) fields
+- Updated backend API /api/reports/informes/route.ts:
+  - Added query #18: fetches COMPLETED/CREDIT orders with tax fields (orderNumber, taxAmount, taxBreakdown, subtotal, total, customer name/nit, orderItems with product name and tax fields)
+  - Added IVA processing logic: filters orders with taxAmount > 0, parses taxBreakdown JSON, computes totals (totalIva, totalBase), groups by tax code into ivaByCode map
+  - Added ivaCollected object to response: { total, totalBase, count, byCode[], orders[] }
+- Updated frontend reports-view.tsx Impuestos tab:
+  - Added "IVA Recaudado por Ventas" Card at top with 4 stat boxes (Total IVA, Base Gravable, Órdenes con IVA, IVA Promedio/Orden)
+  - Added "Desglose por Tipo de Impuesto" section showing each tax code with name, rate, base, and amount
+  - Added "Últimas Órdenes con IVA" table showing date, order number, customer, base, IVA, total
+  - Added empty state for no IVA orders in period
+  - Kept existing "Gastos de Impuestos" section below with updated title/description (Receipt icon, amber color, "Impuestos pagados por el negocio (outflow)")
+- Updated frontend Comisiones tab:
+  - Changed title from "Detalle de Servicios" to "Ingresos por Servicios del Bar"
+  - Added CardDescription: "Transacciones de servicios (billar, mesa de juegos, etc.)"
+
+Stage Summary:
+- Reports Impuestos tab now shows BOTH IVA collected from sales (inflow) and tax expenses (outflow)
+- IVA breakdown grouped by DIAN tax code (IVA 19%, IVA 5%, Exento, etc.)
+- Comisiones tab clarified as "Ingresos por Servicios del Bar"
+- Backward compatible: ivaCollected is optional in API response (defaults to 0)
+- ESLint: 0 errors in modified files

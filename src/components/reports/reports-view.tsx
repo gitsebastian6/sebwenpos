@@ -632,7 +632,7 @@ export function ReportsView() {
             <Stat label="Ingreso por Servicios" value={formatCurrency(d.commissions.total, cc)} icon={DollarSign} color="text-emerald-600" />
             <Stat label="Transacciones" value={d.commissions.count} icon={Percent} />
           </div>
-          <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Detalle de Servicios</CardTitle></CardHeader><CardContent>
+          <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Ingresos por Servicios del Bar</CardTitle><CardDescription>Transacciones de servicios (billar, mesa de juegos, etc.)</CardDescription></CardHeader><CardContent>
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Servicio</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs text-right">Unitario</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader><TableBody>
                 {d.commissions.items.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={Percent} title="Sin servicios en el período" /></TableCell></TableRow> :
@@ -676,20 +676,129 @@ export function ReportsView() {
         {/* ── 12. IMPUESTOS ── */}
         {/* ═══════════════════════════════════════════════ */}
         <TabsContent value="impuestos" className="space-y-4 mt-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Stat label="Total Impuestos" value={formatCurrency(d.taxes.total, cc)} icon={Receipt} color="text-red-600" />
-            <Stat label="Registros" value={d.taxes.count} icon={Receipt} />
-          </div>
-          <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Detalle de Impuestos</CardTitle></CardHeader><CardContent>
-            <div className="max-h-96 overflow-y-auto">
-              <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Descripción</TableHead><TableHead className="text-xs text-right">Monto</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
-                {d.taxes.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={Receipt} title="Sin impuestos registrados" desc="Registra gastos con categoría 'Impuestos' desde Contabilidad > Gastos" /></TableCell></TableRow> :
-                d.taxes.items.map((t: any) => (
-                  <TableRow key={t.id}><TableCell className="text-xs">{fdate(t.date)}</TableCell><TableCell className="text-xs">{t.description}</TableCell><TableCell className="text-right text-sm font-medium text-red-600">-{formatCurrency(t.amount, cc)}</TableCell><TableCell className="text-xs text-muted-foreground">{t.notes || '—'}</TableCell></TableRow>
-                ))}
-              </TableBody></Table>
-            </div>
-          </CardContent></Card>
+          {/* IVA Recaudado por Ventas */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Percent className="h-5 w-5 text-emerald-600" />
+                IVA Recaudado por Ventas
+              </CardTitle>
+              <CardDescription>Impuestos IVA cobrados a clientes en ventas completadas</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Summary stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="rounded-lg border p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Total IVA</p>
+                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                    {formatCurrency(d.ivaCollected?.total || 0, cc)}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Base Gravable</p>
+                  <p className="text-lg font-bold">
+                    {formatCurrency(d.ivaCollected?.totalBase || 0, cc)}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Órdenes con IVA</p>
+                  <p className="text-lg font-bold">{d.ivaCollected?.count || 0}</p>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <p className="text-xs text-muted-foreground">IVA Promedio / Orden</p>
+                  <p className="text-lg font-bold">
+                    {formatCurrency(
+                      (d.ivaCollected?.count || 0) > 0 ? Math.round((d.ivaCollected?.total || 0) / (d.ivaCollected?.count || 1)) : 0,
+                      cc
+                    )}
+                  </p>
+                </div>
+              </div>
+              {/* Breakdown by tax code */}
+              {d.ivaCollected?.byCode && d.ivaCollected.byCode.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold">Desglose por Tipo de Impuesto</h4>
+                  <div className="grid gap-2">
+                    {d.ivaCollected.byCode.map((tax: any) => (
+                      <div key={tax.code} className="flex items-center justify-between rounded-md border p-3">
+                        <div>
+                          <p className="font-medium text-sm">{tax.name}</p>
+                          <p className="text-xs text-muted-foreground">Tasa: {tax.rate}% · Base: {formatCurrency(tax.base, cc)}</p>
+                        </div>
+                        <p className="font-bold text-emerald-700 dark:text-emerald-400">
+                          {formatCurrency(tax.amount, cc)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Recent orders with IVA */}
+              {d.ivaCollected?.orders && d.ivaCollected.orders.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold">Últimas Órdenes con IVA</h4>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Orden</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Base</TableHead>
+                          <TableHead className="text-right">IVA</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {d.ivaCollected.orders.slice(0, 20).map((order: any) => (
+                          <TableRow key={order.id}>
+                            <TableCell className="text-sm">{new Date(order.createdAt).toLocaleDateString('es-CO')}</TableCell>
+                            <TableCell className="font-mono text-sm">#{order.orderNumber}</TableCell>
+                            <TableCell className="text-sm">{order.customer?.name || 'General'}</TableCell>
+                            <TableCell className="text-sm">{formatCurrency(order.subtotal, cc)}</TableCell>
+                            <TableCell className="text-right text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                              {formatCurrency(order.taxAmount, cc)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm font-medium">{formatCurrency(order.total, cc)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+              {(!d.ivaCollected?.count || d.ivaCollected.count === 0) && (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Sin ventas con IVA en el período seleccionado
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Gastos de Impuestos (existing section) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="h-5 w-5 text-amber-600" />
+                Gastos de Impuestos
+              </CardTitle>
+              <CardDescription>Impuestos pagados por el negocio (outflow)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <Stat label="Total Gastos Impuestos" value={formatCurrency(d.taxes.total, cc)} icon={Receipt} color="text-red-600" />
+                <Stat label="Registros" value={d.taxes.count} icon={Receipt} />
+              </div>
+              <div className="max-h-96 overflow-y-auto">
+                <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Descripción</TableHead><TableHead className="text-xs text-right">Monto</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
+                  {d.taxes.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={Receipt} title="Sin impuestos registrados" desc="Registra gastos con categoría 'Impuestos' desde Contabilidad > Gastos" /></TableCell></TableRow> :
+                  d.taxes.items.map((t: any) => (
+                    <TableRow key={t.id}><TableCell className="text-xs">{fdate(t.date)}</TableCell><TableCell className="text-xs">{t.description}</TableCell><TableCell className="text-right text-sm font-medium text-red-600">-{formatCurrency(t.amount, cc)}</TableCell><TableCell className="text-xs text-muted-foreground">{t.notes || '—'}</TableCell></TableRow>
+                  ))}
+                </TableBody></Table>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ═══════════════════════════════════════════════ */}

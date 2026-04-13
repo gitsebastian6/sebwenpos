@@ -6,7 +6,8 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('🌱 Iniciando siembra de datos...')
 
-  // Limpieza total
+  // Limpieza total (orden respetando FK)
+  await prisma.invoice.deleteMany()
   await prisma.purchaseItem.deleteMany()
   await prisma.purchase.deleteMany()
   await prisma.expense.deleteMany()
@@ -25,6 +26,7 @@ async function main() {
   await prisma.product.deleteMany()
   await prisma.category.deleteMany()
   await prisma.cashRegister.deleteMany()
+  await prisma.taxRate.deleteMany()
   await prisma.store.deleteMany()
   await prisma.user.deleteMany()
 

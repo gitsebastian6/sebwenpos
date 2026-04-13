@@ -15,6 +15,9 @@ export interface TicketData {
   storeAddress?: string
   storePhone?: string
   storeNIT?: string
+  storeRegime?: string // Régimen fiscal: RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO
+  invoiceResolution?: string // Número de resolución DIAN
+  invoicePrefix?: string // Prefijo (FE, POS)
   orderNumber: string
   date: string // ISO string
   customer?: string
@@ -80,6 +83,13 @@ export function printTicket(data: TicketData) {
   const paymentLabel = PAYMENT_LABELS[data.paymentMethod] || data.paymentMethod
   const hasTip = data.tipAmount > 0
   const now = new Date()
+
+  const REGIME_LABELS: Record<string, string> = {
+    RESPONSABLE: 'Régimen Común',
+    NO_RESPONSABLE: 'No Responsable',
+    SIMPLIFICADO: 'Régimen Simplificado',
+  }
+  const regimeLabel = data.storeRegime ? (REGIME_LABELS[data.storeRegime] || data.storeRegime) : ''
 
   // Build items
   const itemsRows = data.items
@@ -338,6 +348,23 @@ export function printTicket(data: TicketData) {
     margin-top: 4px;
     letter-spacing: 0.5px;
   }
+  .tax-info {
+    font-size: 8px;
+    color: #888;
+    text-align: center;
+    margin: 3px 0;
+    letter-spacing: 0.3px;
+  }
+  .tributary-msg {
+    font-size: 8px;
+    color: #555;
+    text-align: center;
+    font-weight: 600;
+    margin: 4px 0 2px 0;
+    padding: 3px 0;
+    border-top: 1px dotted #bbb;
+    border-bottom: 1px dotted #bbb;
+  }
 
   /* ── Print helpers ── */
   .dashed { border: none; border-top: 1px dashed #999; margin: 4px 0; }
@@ -379,6 +406,11 @@ export function printTicket(data: TicketData) {
     </tbody>
   </table>
   <div class="items-count">${totalItems} artículo${totalItems !== 1 ? 's' : ''}</div>
+
+  <!-- ═══ TRIBUTARY INFO ═══ -->
+  ${regimeLabel ? `<div class="tax-info">${regimeLabel}</div>` : ''}
+  ${data.invoiceResolution ? `<div class="tax-info">Resolución DIAN ${data.invoiceResolution}${data.invoicePrefix ? ` · Prefijo: ${data.invoicePrefix}` : ''}</div>` : ''}
+  ${data.storeNIT ? `<div class="tributary-msg">Responsable del IVA — Factura de venta de bienes y/o servicios</div>` : ''}
 
   <!-- ═══ TOTALS ═══ -->
   <div class="totals-section">
@@ -431,6 +463,9 @@ export function printTicket(data: TicketData) {
 
   <!-- ═══ FOOTER ═══ -->
   <div class="footer">
+    <hr class="dashed">
+    <div class="tax-info">NIT del adquirente: 222.222.222-222 (consumidor final)</div>
+    <div class="tax-info">Venta sujeta al régimen de facturación electrónica</div>
     <hr class="dashed">
     <div class="footer-msg">Gracias por su compra</div>
     <div class="footer-msg">¡Vuelva pronto!</div>

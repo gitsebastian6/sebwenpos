@@ -205,6 +205,38 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' },
         take: 50
       })),
+
+      // 18. IVA RECAUDADO — Tax collected from sales
+      safe('iva-orders', () => db.order.findMany({
+        where: {
+          storeId,
+          status: { in: ['COMPLETED', 'CREDIT'] },
+          ...(dateFilter ? { createdAt: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } })
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          createdAt: true,
+          taxAmount: true,
+          taxBreakdown: true,
+          total: true,
+          subtotal: true,
+          customer: { select: { name: true, nit: true } },
+          orderItems: {
+            select: {
+              product: { select: { name: true } },
+              taxCode: true,
+              taxRate: true,
+              taxAmount: true,
+              taxBase: true,
+              totalRow: true,
+              quantity: true,
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      })),
     ])
 
     const N = (v: bigint | number | null | undefined) => Number(v ?? 0)
@@ -331,6 +363,43 @@ export async function GET(request: NextRequest) {
     const traceability = Array.isArray(results[19]) ? results[19] : []
     const debts = Array.isArray(results[20]) ? results[20] : []
     const quotes = Array.isArray(results[21]) ? results[21] : []
+    const ivaOrdersRaw = Array.isArray(results[22]) ? results[22] : []
+
+    // ── 18. IVA RECAUDADO ──
+    const ivaOrders = ivaOrdersRaw
+      .filter((o: any) => o.taxAmount > 0)
+      .map((o: any) => ({
+        ...o,
+        createdAt: o.createdAt.toISOString(),
+        taxBreakdown: o.taxBreakdown ? JSON.parse(o.taxBreakdown) : [],
+      }))
+
+    const totalIva = ivaOrders.reduce((sum: number, o: any) => sum + o.taxAmount, 0)
+    const totalBase = ivaOrders.reduce((sum: number, o: any) => sum + (o.subtotal || 0), 0)
+
+    // Group by tax code for summary
+    const ivaByCodeMap = new Map<string, { name: string; code: string; rate: number; base: number; amount: number }>()
+    ivaOrders.forEach((o: any) => {
+      const breakdown = o.taxBreakdown || []
+      breakdown.forEach((t: any) => {
+        const existing = ivaByCodeMap.get(t.code)
+        if (existing) {
+          existing.base += t.base
+          existing.amount += t.amount
+        } else {
+          ivaByCodeMap.set(t.code, { name: t.name, code: t.code, rate: t.rate, base: t.base, amount: t.amount })
+        }
+      })
+    })
+    const ivaByCode = Array.from(ivaByCodeMap.values())
+
+    const ivaCollected = {
+      total: totalIva,
+      totalBase: totalBase,
+      count: ivaOrders.length,
+      byCode: ivaByCode,
+      orders: ivaOrders.slice(0, 50),
+    }
 
     // Expense summary
     const expensesByCategory: Record<string, { count: number; total: number }> = {}
@@ -383,6 +452,7 @@ export async function GET(request: NextRequest) {
       traceability,
       debts,
       quotes,
+      ivaCollected,
     })
   } catch (error) {
     console.error('GET /api/reports/informes error:', error)
