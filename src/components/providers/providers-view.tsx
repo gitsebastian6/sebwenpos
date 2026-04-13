@@ -284,7 +284,7 @@ export function ProvidersView() {
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative flex-1 min-w-[160px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Buscar por nombre, NIT, contacto..."
@@ -340,12 +340,12 @@ export function ProvidersView() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead className="hidden md:table-cell">Contacto</TableHead>
-                    <TableHead className="hidden lg:table-cell">Teléfono</TableHead>
-                    <TableHead className="hidden xl:table-cell">Email</TableHead>
-                    <TableHead className="hidden lg:table-cell">Ciudad</TableHead>
-                    <TableHead className="hidden md:table-cell">NIT</TableHead>
+                    <TableHead className="whitespace-nowrap">Nombre</TableHead>
+                    <TableHead className="whitespace-nowrap">Contacto</TableHead>
+                    <TableHead className="whitespace-nowrap">Teléfono</TableHead>
+                    <TableHead className="whitespace-nowrap">Email</TableHead>
+                    <TableHead className="whitespace-nowrap">Ciudad</TableHead>
+                    <TableHead className="whitespace-nowrap">NIT</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
@@ -357,61 +357,50 @@ export function ProvidersView() {
                       className={!provider.isActive ? 'opacity-60' : ''}
                     >
                       <TableCell className="font-medium">
-                        <div className="flex flex-col">
-                          <span>{provider.name}</span>
-                          {/* Mobile: show contact and phone inline */}
-                          {provider.contactName && (
-                            <span className="md:hidden text-xs text-muted-foreground">
-                              {provider.contactName}
-                            </span>
-                          )}
-                          {provider.phone && (
-                            <span className="md:hidden text-xs text-muted-foreground">
-                              {provider.phone}
-                            </span>
-                          )}
-                        </div>
+                        <span className="truncate max-w-[120px] block" title={provider.name}>{provider.name}</span>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell text-sm">
-                        {provider.contactName || (
-                          <span className="text-muted-foreground">—</span>
-                        )}
+                      <TableCell className="text-xs">
+                        <span className="truncate max-w-[100px] block" title={provider.contactName || ''}>
+                          {provider.contactName || (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </span>
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell">
+                      <TableCell className="text-xs whitespace-nowrap">
                         {provider.phone ? (
-                          <span className="inline-flex items-center gap-1 text-sm">
+                          <span className="inline-flex items-center gap-1">
                             <Phone className="h-3.5 w-3.5 text-muted-foreground" />
                             {provider.phone}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="hidden xl:table-cell">
+                      <TableCell className="text-xs">
                         {provider.email ? (
-                          <span className="inline-flex items-center gap-1 text-sm">
-                            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="truncate max-w-[140px] inline-flex items-center gap-1" title={provider.email}>
+                            <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             {provider.email}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell">
+                      <TableCell className="text-xs whitespace-nowrap">
                         {provider.city ? (
-                          <span className="inline-flex items-center gap-1 text-sm">
+                          <span className="inline-flex items-center gap-1">
                             <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                             {provider.city}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="hidden md:table-cell">
+                      <TableCell className="text-xs whitespace-nowrap">
                         {provider.nit ? (
-                          <span className="text-sm font-mono">{provider.nit}</span>
+                          <span className="truncate max-w-[100px] block font-mono" title={provider.nit}>{provider.nit}</span>
                         ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell>

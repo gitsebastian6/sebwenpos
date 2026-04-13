@@ -424,24 +424,20 @@ export function SettingsView() {
       <Tabs defaultValue="business" className="space-y-6">
         <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
           <TabsTrigger value="business" className="gap-2">
-            <Building2 className="h-4 w-4 hidden sm:inline-block" />
-            <span className="hidden sm:inline">Negocio</span>
-            <span className="sm:hidden text-xs">Negocio</span>
+            <Building2 className="h-4 w-4" />
+            <span className="text-xs">Negocio</span>
           </TabsTrigger>
           <TabsTrigger value="personal" className="gap-2">
-            <User className="h-4 w-4 hidden sm:inline-block" />
-            <span className="hidden sm:inline">Personal</span>
-            <span className="sm:hidden text-xs">Personal</span>
+            <User className="h-4 w-4" />
+            <span className="text-xs">Personal</span>
           </TabsTrigger>
           <TabsTrigger value="invoice" className="gap-2">
-            <Receipt className="h-4 w-4 hidden sm:inline-block" />
-            <span className="hidden sm:inline">Facturación</span>
-            <span className="sm:hidden text-xs">Factura</span>
+            <Receipt className="h-4 w-4" />
+            <span className="text-xs">Facturación</span>
           </TabsTrigger>
           <TabsTrigger value="taxes" className="gap-2">
-            <Percent className="h-4 w-4 hidden sm:inline-block" />
-            <span className="hidden sm:inline">Impuestos</span>
-            <span className="sm:hidden text-xs">IVA</span>
+            <Percent className="h-4 w-4" />
+            <span className="text-xs">IVA</span>
           </TabsTrigger>
         </TabsList>
 

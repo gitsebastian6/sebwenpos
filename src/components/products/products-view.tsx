@@ -704,15 +704,15 @@ export function ProductsView() {
         <TabsList>
           <TabsTrigger value="products" className="gap-2">
             <Package className="h-4 w-4" />
-            <span className="hidden sm:inline">Productos</span>
+            <span>Productos</span>
           </TabsTrigger>
           <TabsTrigger value="categories" className="gap-2">
             <Tags className="h-4 w-4" />
-            <span className="hidden sm:inline">Categorías</span>
+            <span>Categorías</span>
           </TabsTrigger>
           <TabsTrigger value="purchases" className="gap-2">
             <ShoppingCart className="h-4 w-4" />
-            <span className="hidden sm:inline">Compras</span>
+            <span>Compras</span>
           </TabsTrigger>
         </TabsList>
 
@@ -792,7 +792,7 @@ export function ProductsView() {
                   onClick={() => { setView('inventory'); toast.info('Ve a Inventario para registrar pérdidas, devoluciones y ajustes') }}
                 >
                   <AlertTriangle className="h-3.5 w-3.5" />
-                  <span className="hidden md:inline">Pérdida</span>
+                  <span>Pérdida</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -801,7 +801,7 @@ export function ProductsView() {
                   onClick={() => { setView('inventory'); toast.info('Ve a Inventario para registrar devoluciones y ajustes') }}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  <span className="hidden md:inline">Devolución</span>
+                  <span>Devolución</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -810,7 +810,7 @@ export function ProductsView() {
                   onClick={() => { setView('inventory'); toast.info('Ve a Inventario para registrar ajustes de stock') }}
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
-                  <span className="hidden md:inline">Ajuste</span>
+                  <span>Ajuste</span>
                 </Button>
               </div>
               {/* Spacer */}
@@ -826,7 +826,7 @@ export function ProductsView() {
                       className="gap-1.5"
                     >
                       <Printer className="h-4 w-4" />
-                      <span className="hidden lg:inline">Imprimir</span>
+                      <span>Imprimir</span>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -842,7 +842,7 @@ export function ProductsView() {
                 </DropdownMenu>
                 <Button onClick={openNewProductDialog} size="sm" className="gap-1.5">
                   <Plus className="h-4 w-4" />
-                  <span className="hidden sm:inline">Nuevo Producto</span>
+                  <span>Nuevo Producto</span>
                 </Button>
               </div>
             </div>
@@ -855,17 +855,17 @@ export function ProductsView() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[160px]">Nombre</TableHead>
-                      <TableHead className="hidden md:table-cell min-w-[90px]">SKU</TableHead>
-                      <TableHead className="hidden xl:table-cell min-w-[120px]">INVIMA</TableHead>
-                      <TableHead className="hidden lg:table-cell min-w-[100px]">Proveedor</TableHead>
-                      <TableHead className="hidden lg:table-cell min-w-[100px]">Categoría</TableHead>
-                      <TableHead className="text-right min-w-[100px]">P. Compra</TableHead>
-                      <TableHead className="text-right min-w-[100px]">P. Venta</TableHead>
-                      <TableHead className="hidden lg:table-cell min-w-[100px]">IVA</TableHead>
-                      <TableHead className="hidden xl:table-cell text-right min-w-[80px]">Comisión</TableHead>
-                      <TableHead className="text-right min-w-[70px]">Stock</TableHead>
-                      <TableHead className="hidden sm:table-cell min-w-[80px]">Estado</TableHead>
+                      <TableHead className="min-w-[140px]">Nombre</TableHead>
+                      <TableHead className="min-w-[80px]">SKU</TableHead>
+                      <TableHead className="min-w-[100px]">INVIMA</TableHead>
+                      <TableHead className="min-w-[80px]">Proveedor</TableHead>
+                      <TableHead className="min-w-[80px]">Categoría</TableHead>
+                      <TableHead className="text-right min-w-[80px]">P. Compra</TableHead>
+                      <TableHead className="text-right min-w-[80px]">P. Venta</TableHead>
+                      <TableHead className="min-w-[60px]">IVA</TableHead>
+                      <TableHead className="text-right min-w-[60px]">Comisión</TableHead>
+                      <TableHead className="text-right min-w-[50px]">Stock</TableHead>
+                      <TableHead className="min-w-[60px]">Estado</TableHead>
                       <TableHead className="text-center w-[50px] sticky right-0 bg-background z-10">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -910,32 +910,32 @@ export function ProductsView() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="hidden md:table-cell text-muted-foreground text-sm font-mono">
+                          <TableCell className="text-muted-foreground text-xs font-mono">
                             {product.sku || '—'}
                           </TableCell>
-                          <TableCell className="hidden xl:table-cell text-muted-foreground text-sm font-mono">
+                          <TableCell className="text-muted-foreground text-xs font-mono">
                             {product.invima ? (
                               <span className="flex items-center gap-1">
                                 <Shield className="h-3 w-3 shrink-0" />
-                                {product.invima}
+                                <span className="truncate max-w-[90px]" title={product.invima}>{product.invima}</span>
                               </span>
                             ) : '—'}
                           </TableCell>
-                          <TableCell className="hidden lg:table-cell">
+                          <TableCell>
                             {product.provider ? (
-                              <div className="flex items-center gap-1.5">
-                                <Truck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                <span className="text-sm truncate max-w-[140px]">{product.provider.name}</span>
+                              <div className="flex items-center gap-1">
+                                <Truck className="h-3 w-3 text-muted-foreground shrink-0" />
+                                <span className="text-xs truncate max-w-[100px]" title={product.provider.name}>{product.provider.name}</span>
                               </div>
                             ) : (
-                              <span className="text-muted-foreground text-sm">—</span>
+                              <span className="text-muted-foreground text-xs">—</span>
                             )}
                           </TableCell>
-                          <TableCell className="hidden lg:table-cell">
+                          <TableCell>
                             {product.category ? (
-                              <Badge variant="secondary">{product.category.name}</Badge>
+                              <Badge variant="secondary" className="text-xs">{product.category.name}</Badge>
                             ) : (
-                              <span className="text-muted-foreground text-sm">—</span>
+                              <span className="text-muted-foreground text-xs">—</span>
                             )}
                           </TableCell>
                           <TableCell className="text-right text-muted-foreground">
@@ -944,26 +944,26 @@ export function ProductsView() {
                           <TableCell className="text-right font-medium">
                             {formatCurrency(product.salePrice, store?.currencyCode)}
                           </TableCell>
-                          <TableCell className="hidden lg:table-cell">
+                          <TableCell>
                             {product.taxRate ? (
                               <Badge
                                 variant="outline"
                                 className={
                                   product.taxRate.rate === 0
-                                    ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+                                    ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700 text-xs'
                                     : product.taxRate.code === '05'
-                                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800'
-                                      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800 text-xs'
+                                      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 text-xs'
                                 }
                               >
-                                <Percent className="h-3 w-3 mr-1" />
+                                <Percent className="h-2.5 w-2.5 mr-0.5" />
                                 {product.taxRate.name}
                               </Badge>
                             ) : (
-                              <span className="text-muted-foreground text-sm">Sin impuesto</span>
+                              <span className="text-muted-foreground text-xs">Sin imp.</span>
                             )}
                           </TableCell>
-                          <TableCell className="hidden xl:table-cell text-right">
+                          <TableCell className="text-right">
                             {product.commission > 0 ? (
                               <span className="text-xs">{product.commission}%</span>
                             ) : (
@@ -987,7 +987,7 @@ export function ProductsView() {
                               <AlertTriangle className="inline-block h-3.5 w-3.5 ml-1 text-red-500" />
                             )}
                           </TableCell>
-                          <TableCell className="hidden sm:table-cell">
+                          <TableCell>
                             <Badge
                               className={
                                 product.isActive

@@ -656,7 +656,7 @@ export function ServicesView() {
                         <TableHead className="text-center">Cantidad</TableHead>
                         <TableHead className="text-right">Precio Unit.</TableHead>
                         <TableHead className="text-right">Total</TableHead>
-                        <TableHead className="hidden lg:table-cell">Notas</TableHead>
+                        <TableHead>Notas</TableHead>
                         <TableHead className="text-center">Estado</TableHead>
                         <TableHead className="w-[80px]">Acciones</TableHead>
                       </TableRow>
@@ -684,7 +684,7 @@ export function ServicesView() {
                           <TableCell className="text-right text-sm font-semibold">
                             {formatCurrency(tx.totalAmount, currencyCode)}
                           </TableCell>
-                          <TableCell className="hidden lg:table-cell text-sm text-muted-foreground truncate max-w-[200px]">
+                          <TableCell className="text-sm text-muted-foreground truncate max-w-[200px]">
                             {tx.notes || '—'}
                           </TableCell>
                           <TableCell className="text-center">

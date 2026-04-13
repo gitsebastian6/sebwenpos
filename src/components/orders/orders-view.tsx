@@ -297,38 +297,38 @@ export function OrdersView() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>N° Orden</TableHead>
-                    <TableHead className="hidden md:table-cell">Cliente</TableHead>
-                    <TableHead className="hidden sm:table-cell">Mesa</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="hidden lg:table-cell">Método</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="hidden sm:table-cell">Fecha</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">N° Orden</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">Cliente</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">Mesa</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">Estado</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">Método</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs text-right">Total</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">Fecha</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {orderList.map((order) => (
                     <TableRow key={order.id} className="cursor-pointer" onClick={() => openOrderDetail(order.id)}>
-                      <TableCell className="font-mono text-sm font-medium">{order.orderNumber}</TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <div className="flex items-center gap-1.5">
+                      <TableCell className="font-mono text-xs font-medium truncate max-w-[70px]" title={order.orderNumber}>{order.orderNumber}</TableCell>
+                      <TableCell className="text-xs">
+                        <div className="flex items-center gap-1.5 truncate max-w-[80px]" title={order.customerName || undefined}>
                           {order.customerName ? (
-                            <><User className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-sm">{order.customerName}</span></>
+                            <><User className="h-3 w-3 text-muted-foreground shrink-0" /><span className="truncate">{order.customerName}</span></>
                           ) : (
-                            <span className="text-muted-foreground text-sm">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell text-sm">
+                      <TableCell className="text-xs truncate max-w-[60px]" title={order.tableName || undefined}>
                         {order.tableName || <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell><StatusBadge status={order.status} /></TableCell>
-                      <TableCell className="hidden lg:table-cell text-sm">{paymentMethodLabel(order.paymentMethod)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(order.total, store?.currencyCode)}</TableCell>
-                      <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                      <TableCell className="text-xs truncate max-w-[80px]" title={paymentMethodLabel(order.paymentMethod)}>{paymentMethodLabel(order.paymentMethod)}</TableCell>
+                      <TableCell className="text-right font-medium text-xs truncate max-w-[70px]" title={formatCurrency(order.total, store?.currencyCode)}>{formatCurrency(order.total, store?.currencyCode)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground truncate max-w-[90px]" title={format(new Date(order.createdAt), 'dd MMM HH:mm', { locale: es })}>
                         <span className="inline-flex items-center gap-1">
-                          <CalendarDays className="h-3.5 w-3.5" />
+                          <CalendarDays className="h-3 w-3 shrink-0" />
                           {format(new Date(order.createdAt), 'dd MMM HH:mm', { locale: es })}
                         </span>
                       </TableCell>
@@ -528,7 +528,7 @@ export function OrdersView() {
                       <TableRow className="bg-muted/50">
                         <TableHead>Producto</TableHead>
                         <TableHead className="text-center">Cant.</TableHead>
-                        <TableHead className="hidden sm:table-cell text-right">P. Unit.</TableHead>
+                        <TableHead className="whitespace-nowrap text-xs text-right">P. Unit.</TableHead>
                         <TableHead className="text-right">Total</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -544,7 +544,7 @@ export function OrdersView() {
                             )}
                           </TableCell>
                           <TableCell className="text-center text-sm">{item.quantity}</TableCell>
-                          <TableCell className="hidden sm:table-cell text-right text-sm text-muted-foreground">
+                          <TableCell className="text-right text-xs text-muted-foreground">
                             {formatCurrency(item.unitPrice, store?.currencyCode)}
                           </TableCell>
                           <TableCell className="text-right font-medium text-sm">

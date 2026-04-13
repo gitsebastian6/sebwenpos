@@ -929,7 +929,7 @@ export function POSView() {
         >
           <ShoppingCart className="h-5 w-5" />
           <span className="text-sm">{cartItemCount}</span>
-          <span className="hidden sm:inline text-sm">— {formatCurrency(total, currencyCode)}</span>
+          <span className="text-sm">— {formatCurrency(total, currencyCode)}</span>
         </button>
       )}
 
@@ -975,7 +975,7 @@ export function POSView() {
                 }}
               >
                 <Printer className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Imprimir</span>
+                <span>Imprimir</span>
               </Button>
               <Button
                 variant="outline"
@@ -984,7 +984,7 @@ export function POSView() {
                 onClick={() => openReturnDialog(lastOrderData.id)}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Devolver</span>
+                <span>Devolver</span>
               </Button>
             </>
           )}

@@ -1040,3 +1040,31 @@ Stage Summary:
 - Shown as column in product table (desktop only, xl breakpoint)
 - INVIMA displays with Shield icon when present
 - Files: prisma/schema.prisma, src/app/api/products/route.ts, src/app/api/products/[id]/route.ts, src/components/products/products-view.tsx
+
+---
+Task ID: 8
+Agent: main
+Task: Remove all hidden table columns - make everything visible on mobile
+
+Work Log:
+- Found 55 hidden table columns across 5 main view files + 12 hidden button labels across 4 files
+- Products view: removed hidden from SKU, INVIMA, Proveedor, Categoría, IVA, Comisión, Estado columns
+- Orders view: removed hidden from Cliente, Mesa, Método, Fecha, P. Unit. columns
+- Inventory view: removed hidden from Categoría, P. Venta, Notas columns
+- Customers view: removed hidden from Teléfono, Email, Registro, Método, Fecha columns
+- Providers view: removed hidden from Contacto, Teléfono, Email, Ciudad, NIT columns
+- Services view: removed hidden from Notas column in history
+- Accounting view: removed hidden from Descripción, Referencia, Teléfono, Categoría, Mín., Cliente, Productos, Método columns across 6 sub-tables
+- Purchases view: removed hidden from Imprimir, Excel, Importar XML button labels
+- POS view: removed hidden from total display, Imprimir, Devolver button labels
+- Settings view: removed hidden from tab labels (Negocio, Personal, Facturación, IVA)
+- Reduced font sizes (text-sm → text-xs) throughout for mobile fit
+- Added whitespace-nowrap, truncate with max-width, and title attributes on long text cells
+- Added overflow-x-auto wrapper to tables for horizontal scroll on mobile
+
+Stage Summary:
+- ZERO hidden table columns remain in the entire application
+- ALL information is now visible on mobile devices
+- Tables scroll horizontally when needed
+- Font sizes reduced to text-xs in table cells for better mobile fit
+- Files modified: products-view, orders-view, inventory-view, customers-view, providers-view, services-view, accounting-view, purchases-view, pos-view, settings-view

@@ -1380,8 +1380,8 @@ export function AccountingView() {
                           <TableHead>Cuenta</TableHead>
                           <TableHead className="w-[100px]">Tipo</TableHead>
                           <TableHead className="text-right w-[130px]">Monto</TableHead>
-                          <TableHead className="hidden md:table-cell">Descripción</TableHead>
-                          <TableHead className="hidden lg:table-cell w-[120px]">Referencia</TableHead>
+                          <TableHead className="whitespace-nowrap text-xs">Descripción</TableHead>
+                          <TableHead className="whitespace-nowrap text-xs w-[80px]">Referencia</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1430,12 +1430,12 @@ export function AccountingView() {
                                 {formatCurrency(entry.amount, currencyCode)}
                               </span>
                             </TableCell>
-                            <TableCell className="hidden md:table-cell">
-                              <span className="text-sm text-muted-foreground truncate max-w-[200px] block">
+                            <TableCell>
+                              <span className="text-xs text-muted-foreground truncate max-w-[120px] block" title={entry.description || ''}>
                                 {entry.description || '—'}
                               </span>
                             </TableCell>
-                            <TableCell className="hidden lg:table-cell">
+                            <TableCell>
                               {entry.referenceType ? (
                                 <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
                                   {REFERENCE_TYPE_LABELS[entry.referenceType] || entry.referenceType}
@@ -2011,7 +2011,7 @@ export function AccountingView() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>Cliente</TableHead>
-                              <TableHead className="hidden sm:table-cell">Teléfono</TableHead>
+                              <TableHead className="whitespace-nowrap text-xs">Teléfono</TableHead>
                               <TableHead className="text-right w-32">Deuda</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -2019,7 +2019,7 @@ export function AccountingView() {
                             {reportData.customerDebts.map((c) => (
                               <TableRow key={c.id}>
                                 <TableCell className="font-medium">{c.name}</TableCell>
-                                <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                                <TableCell className="text-xs text-muted-foreground">
                                   {c.phone || '—'}
                                 </TableCell>
                                 <TableCell className="text-right">
@@ -2062,9 +2062,9 @@ export function AccountingView() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>Producto</TableHead>
-                              <TableHead className="hidden sm:table-cell">Categoría</TableHead>
+                              <TableHead className="whitespace-nowrap text-xs">Categoría</TableHead>
                               <TableHead className="text-center w-20">Stock</TableHead>
-                              <TableHead className="hidden md:table-cell text-center w-20">Mín.</TableHead>
+                              <TableHead className="text-center w-16 text-xs">Mín.</TableHead>
                               <TableHead className="text-right w-28">Precio</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -2072,7 +2072,7 @@ export function AccountingView() {
                             {reportData.lowStockProducts.map((p) => (
                               <TableRow key={p.id}>
                                 <TableCell className="font-medium">{p.name}</TableCell>
-                                <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                                <TableCell className="text-xs text-muted-foreground">
                                   {p.category?.name || '—'}
                                 </TableCell>
                                 <TableCell className="text-center">
@@ -2094,7 +2094,7 @@ export function AccountingView() {
                                     )}
                                   </Badge>
                                 </TableCell>
-                                <TableCell className="hidden md:table-cell text-center text-sm text-muted-foreground">
+                                <TableCell className="text-center text-xs text-muted-foreground">
                                   {p.minStock}
                                 </TableCell>
                                 <TableCell className="text-right text-sm tabular-nums">
@@ -2319,10 +2319,10 @@ export function AccountingView() {
                               <TableHead className="w-[120px]">Fecha</TableHead>
                               <TableHead className="w-[90px]">Orden</TableHead>
                               <TableHead className="w-[100px]">Origen</TableHead>
-                              <TableHead className="hidden sm:table-cell">Cliente</TableHead>
+                              <TableHead className="whitespace-nowrap text-xs">Cliente</TableHead>
                               <TableHead>Método</TableHead>
                               <TableHead className="text-right w-[110px]">Total</TableHead>
-                              <TableHead className="hidden lg:table-cell text-left">Productos</TableHead>
+                              <TableHead className="text-left whitespace-nowrap text-xs">Productos</TableHead>
                               <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                           </TableHeader>
@@ -2361,8 +2361,8 @@ export function AccountingView() {
                                     </Badge>
                                   )}
                                 </TableCell>
-                                <TableCell className="hidden sm:table-cell text-sm">
-                                  {order.customer}
+                                <TableCell className="text-xs">
+                                  <span className="truncate max-w-[80px] block" title={order.customer}>{order.customer}</span>
                                 </TableCell>
                                 <TableCell>
                                   <Badge
@@ -2390,7 +2390,7 @@ export function AccountingView() {
                                     )}
                                   </div>
                                 </TableCell>
-                                <TableCell className="hidden lg:table-cell">
+                                <TableCell>
                                   <div className="max-w-[200px]">
                                     {order.items.slice(0, 3).map((item, idx) => (
                                       <div key={idx} className="text-xs text-muted-foreground truncate">
@@ -2504,7 +2504,7 @@ export function AccountingView() {
                           </Badge>
                           <Button variant="outline" size="sm" onClick={fetchCurrentShift} className="gap-1 h-8">
                             <Loader2 className="h-3 w-3" />
-                            <span className="hidden sm:inline">Actualizar</span>
+                            <span className="">Actualizar</span>
                           </Button>
                         </div>
                       </div>
@@ -2622,7 +2622,7 @@ export function AccountingView() {
                               <TableRow>
                                 <TableHead className="w-[100px]">Hora</TableHead>
                                 <TableHead>Orden</TableHead>
-                                <TableHead className="hidden sm:table-cell">Método</TableHead>
+                                <TableHead className="whitespace-nowrap text-xs">Método</TableHead>
                                 <TableHead className="text-right w-[110px]">Total</TableHead>
                               </TableRow>
                             </TableHeader>
@@ -2635,7 +2635,7 @@ export function AccountingView() {
                                   <TableCell>
                                     <span className="text-xs font-medium">{order.orderNumber}</span>
                                   </TableCell>
-                                  <TableCell className="hidden sm:table-cell">
+                                  <TableCell>
                                     <div className="flex items-center gap-1.5">
                                       <div className={`h-2 w-2 rounded-full ${PAYMENT_METHOD_COLORS[order.paymentMethod] || 'bg-gray-400'}`} />
                                       <span className="text-xs">{PAYMENT_METHOD_LABELS[order.paymentMethod] || order.paymentMethod}</span>
@@ -3106,22 +3106,21 @@ export function AccountingView() {
             ) : (
               <Card>
                 <CardContent className="p-0">
-                  {/* Desktop table */}
-                  <div className="hidden md:block">
+                  {/* Expenses table - responsive */}
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[100px]">Fecha</TableHead>
-                          <TableHead className="w-[130px]">Categoría</TableHead>
-                          <TableHead>Descripción</TableHead>
-                          <TableHead className="text-right w-[130px]">Monto</TableHead>
-                          <TableHead className="w-[100px] text-center">Acciones</TableHead>
+                          <TableHead className="w-[80px] text-xs whitespace-nowrap">Fecha</TableHead>
+                          <TableHead className="w-[100px] text-xs whitespace-nowrap">Categoría</TableHead>
+                          <TableHead className="text-xs whitespace-nowrap">Descripción</TableHead>
+                          <TableHead className="text-right w-[110px] text-xs whitespace-nowrap">Monto</TableHead>
+                          <TableHead className="w-[80px] text-center text-xs">Acciones</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {expenses.map((expense) => (
                           <TableRow key={expense.id}>
-                            <TableCell className="text-sm tabular-nums">
+                            <TableCell className="text-xs tabular-nums whitespace-nowrap">
                               {formatDate(expense.date)}
                             </TableCell>
                             <TableCell>
@@ -3134,13 +3133,13 @@ export function AccountingView() {
                             </TableCell>
                             <TableCell>
                               <div>
-                                <p className="text-sm font-medium">{expense.description}</p>
+                                <p className="text-xs font-medium truncate max-w-[140px]" title={expense.description}>{expense.description}</p>
                                 {expense.notes && (
-                                  <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[200px]">{expense.notes}</p>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-[140px]" title={expense.notes}>{expense.notes}</p>
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell className="text-right text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
+                            <TableCell className="text-right text-xs font-bold tabular-nums text-red-600 dark:text-red-400 whitespace-nowrap">
                               -{formatCurrency(expense.amount, currencyCode)}
                             </TableCell>
                             <TableCell>
@@ -3167,42 +3166,6 @@ export function AccountingView() {
                         ))}
                       </TableBody>
                     </Table>
-                  </div>
-                  {/* Mobile cards */}
-                  <div className="md:hidden divide-y">
-                    {expenses.map((expense) => (
-                      <div key={expense.id} className="p-4 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Badge
-                                variant="outline"
-                                className={`text-[10px] ${EXPENSE_CATEGORY_COLORS[expense.category] || 'bg-secondary text-secondary-foreground border-border'}`}
-                              >
-                                {EXPENSE_CATEGORY_LABELS[expense.category] || expense.category}
-                              </Badge>
-                              <span className="text-xs text-muted-foreground tabular-nums">{formatDate(expense.date)}</span>
-                            </div>
-                            <p className="text-sm font-medium truncate">{expense.description}</p>
-                            {expense.notes && (
-                              <p className="text-xs text-muted-foreground truncate">{expense.notes}</p>
-                            )}
-                          </div>
-                          <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400 whitespace-nowrap">
-                            -{formatCurrency(expense.amount, currencyCode)}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => openEditExpenseDialog(expense)}>
-                            <Pencil className="h-3 w-3" /> Editar
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-red-500" onClick={() => setDeleteExpenseId(expense.id)}>
-                            <Trash2 className="h-3 w-3" /> Eliminar
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
                 </CardContent>
               </Card>
             )}
@@ -3574,7 +3537,7 @@ export function AccountingView() {
                             <TableRow>
                               <TableHead className="w-[40px] text-center text-[10px]">#</TableHead>
                               <TableHead className="text-[11px]">Producto/Servicio</TableHead>
-                              <TableHead className="hidden sm:table-cell text-[11px] w-[100px]">Categoría</TableHead>
+                              <TableHead className="text-[11px] whitespace-nowrap w-[80px]">Categoría</TableHead>
                               <TableHead className="text-[11px] text-center w-[60px]">Cant.</TableHead>
                               <TableHead className="text-[11px] text-right w-[100px]">Unitario</TableHead>
                               <TableHead className="text-[11px] text-right w-[110px]">Total</TableHead>
@@ -3599,7 +3562,7 @@ export function AccountingView() {
                                     )}
                                   </div>
                                 </TableCell>
-                                <TableCell className="hidden sm:table-cell">
+                                <TableCell>
                                   {product.category ? (
                                     <Badge variant="outline" className="text-[9px]">{product.category}</Badge>
                                   ) : (

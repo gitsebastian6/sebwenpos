@@ -706,27 +706,27 @@ export function InventoryView() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Producto</TableHead>
-                    <TableHead className="hidden sm:table-cell">Categoría</TableHead>
+                    <TableHead className="whitespace-nowrap">Categoría</TableHead>
                     <TableHead className="text-right">Stock</TableHead>
-                    <TableHead className="text-right hidden md:table-cell">P. Venta</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">P. Venta</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredProducts.map((product) => (
                     <TableRow key={product.id}>
-                      <TableCell className="font-medium text-sm">
-                        <div>
+                      <TableCell className="font-medium text-xs">
+                        <div className="truncate max-w-[120px]" title={product.name}>
                           <span className="truncate">{product.name}</span>
                           {product.sku && (
-                            <p className="text-xs text-muted-foreground font-mono">{product.sku}</p>
+                            <p className="text-[10px] text-muted-foreground font-mono">{product.sku}</p>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell">
+                      <TableCell className="max-w-[80px] truncate">
                         {product.category ? (
                           <Badge variant="secondary" className="text-xs">{product.category.name}</Badge>
                         ) : (
-                          <span className="text-muted-foreground text-sm">&mdash;</span>
+                          <span className="text-muted-foreground text-xs">&mdash;</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
@@ -740,7 +740,7 @@ export function InventoryView() {
                           <AlertTriangle className="inline-block h-3 w-3 ml-1 text-red-500" />
                         )}
                       </TableCell>
-                      <TableCell className="text-right hidden md:table-cell text-sm">
+                      <TableCell className="text-right text-xs">
                         {formatCurrency(product.salePrice, store?.currencyCode)}
                       </TableCell>
                     </TableRow>
@@ -773,7 +773,7 @@ export function InventoryView() {
               className="gap-2"
             >
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Excel</span>
+              <span className="text-xs">Excel</span>
             </Button>
           </div>
         </div>
@@ -841,21 +841,21 @@ export function InventoryView() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[180px]">Fecha</TableHead>
+                      <TableHead className="w-[120px] whitespace-nowrap">Fecha</TableHead>
                       <TableHead>Producto</TableHead>
-                      <TableHead className="w-[140px]">Tipo</TableHead>
-                      <TableHead className="w-[100px] text-right">Cantidad</TableHead>
-                      <TableHead className="hidden md:table-cell">Notas</TableHead>
+                      <TableHead className="w-[80px] whitespace-nowrap">Tipo</TableHead>
+                      <TableHead className="w-[70px] text-right whitespace-nowrap">Cantidad</TableHead>
+                      <TableHead className="whitespace-nowrap">Notas</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {movements.map((m) => (
                       <TableRow key={m.id}>
-                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                           {formatDate(m.createdAt)}
                         </TableCell>
-                        <TableCell className="font-medium text-sm">
-                          {m.productName}
+                        <TableCell className="font-medium text-xs">
+                          <span className="truncate max-w-[120px] block" title={m.productName}>{m.productName}</span>
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="gap-1.5 text-xs capitalize">
@@ -864,11 +864,11 @@ export function InventoryView() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <span className={`text-sm font-semibold ${m.quantity > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                          <span className={`text-xs font-semibold ${m.quantity > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                             {m.quantity > 0 ? '+' : ''}{m.quantity}
                           </span>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-[200px] truncate">
+                        <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate" title={m.notes || ''}>
                           {m.notes || '\u2014'}
                         </TableCell>
                       </TableRow>

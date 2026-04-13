@@ -813,7 +813,7 @@ export function PurchasesView() {
                 className="gap-1.5"
               >
                 <Printer className="h-4 w-4" />
-                <span className="hidden lg:inline">Imprimir</span>
+                <span className="text-xs">Imprimir</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -835,7 +835,7 @@ export function PurchasesView() {
             className="gap-1.5"
           >
             <Download className="h-4 w-4" />
-            <span className="hidden lg:inline">Excel</span>
+            <span className="text-xs">Excel</span>
           </Button>
           <Button
             variant="outline"
@@ -845,7 +845,7 @@ export function PurchasesView() {
             className="gap-1.5"
           >
             <Upload className="h-4 w-4" />
-            <span className="hidden lg:inline">Importar XML</span>
+            <span className="text-xs">Importar XML</span>
           </Button>
           <input
             ref={xmlInputRef}

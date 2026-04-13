@@ -292,46 +292,38 @@ export function CustomersView() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead className="hidden md:table-cell">Teléfono</TableHead>
-                    <TableHead className="hidden lg:table-cell">Email</TableHead>
-                    <TableHead className="text-right">Deuda Total</TableHead>
-                    <TableHead className="hidden sm:table-cell">Registro</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHead className="whitespace-nowrap">Nombre</TableHead>
+                    <TableHead className="whitespace-nowrap">Teléfono</TableHead>
+                    <TableHead className="whitespace-nowrap">Email</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Deuda Total</TableHead>
+                    <TableHead className="whitespace-nowrap">Registro</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {customers.map((customer) => (
                     <TableRow key={customer.id}>
                       <TableCell className="font-medium">
-                        <div className="flex flex-col">
-                          <span>{customer.name}</span>
-                          {/* Mobile: show phone inline */}
-                          {customer.phone && (
-                            <span className="md:hidden text-xs text-muted-foreground">
-                              {customer.phone}
-                            </span>
-                          )}
-                        </div>
+                        <span className="truncate max-w-[120px] block" title={customer.name}>{customer.name}</span>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell">
+                      <TableCell>
                         {customer.phone ? (
-                          <span className="inline-flex items-center gap-1 text-sm">
-                            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="inline-flex items-center gap-1 text-xs truncate max-w-[110px]" title={customer.phone}>
+                            <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             {customer.phone}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
+                          <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell">
+                      <TableCell>
                         {customer.email ? (
-                          <span className="inline-flex items-center gap-1 text-sm">
-                            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="inline-flex items-center gap-1 text-xs truncate max-w-[130px]" title={customer.email}>
+                            <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             {customer.email}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
+                          <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
@@ -344,7 +336,7 @@ export function CustomersView() {
                           <span className="text-muted-foreground text-sm">$0.00</span>
                         )}
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         <span className="inline-flex items-center gap-1">
                           <CalendarDays className="h-3.5 w-3.5" />
                           {format(new Date(customer.createdAt), 'dd MMM yyyy', { locale: es })}
@@ -361,7 +353,7 @@ export function CustomersView() {
                               onClick={() => openPayDialog(customer)}
                             >
                               <Banknote className="h-3.5 w-3.5" />
-                              <span className="hidden sm:inline">Abonar</span>
+                              <span>Abonar</span>
                             </Button>
                           )}
                           <Button
@@ -586,29 +578,29 @@ export function CustomersView() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>N° Orden</TableHead>
+                    <TableHead className="whitespace-nowrap">N° Orden</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead className="hidden sm:table-cell">Método</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="hidden sm:table-cell text-right">Fecha</TableHead>
+                    <TableHead className="whitespace-nowrap">Método</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Total</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Fecha</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {historyOrders.map((order: any) => (
                     <TableRow key={order.id}>
-                      <TableCell className="font-mono text-sm font-medium">
+                      <TableCell className="font-mono text-xs font-medium whitespace-nowrap">
                         {order.orderNumber}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={order.status} />
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell text-sm">
+                      <TableCell className="text-xs">
                         {paymentMethodLabel(order.paymentMethod)}
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         {formatCurrency(order.total, store?.currencyCode)}
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell text-right text-sm text-muted-foreground">
+                      <TableCell className="text-right text-xs text-muted-foreground whitespace-nowrap">
                         {format(new Date(order.createdAt), 'dd MMM yyyy HH:mm', {
                           locale: es,
                         })}
