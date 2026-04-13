@@ -63,6 +63,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
+import { KPIBar } from '@/components/shared/kpi-bar'
 import { es } from 'date-fns/locale'
 
 // ─── Types ───────────────────────────────────────────────────
@@ -485,6 +486,8 @@ export function ServicesView() {
 
   return (
     <div className="space-y-6">
+      <KPIBar context="services" />
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card>
@@ -532,7 +535,7 @@ export function ServicesView() {
 
         {/* ═══ SERVICIOS TAB ═══ */}
         <TabsContent value="servicios" className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Servicios del Bar</h2>
               <p className="text-sm text-muted-foreground">Administra los servicios que ofreces</p>
@@ -621,7 +624,7 @@ export function ServicesView() {
 
         {/* ═══ HISTORIAL TAB ═══ */}
         <TabsContent value="historial" className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Historial de Servicios</h2>
               <p className="text-sm text-muted-foreground">Registro de servicios prestados</p>

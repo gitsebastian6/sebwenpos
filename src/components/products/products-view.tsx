@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useAppStore } from '@/stores/app-store'
 import { formatCurrency } from '@/lib/auth'
 import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -41,6 +42,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import {
   AlertDialog,
@@ -54,8 +56,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ProductImage } from '@/components/ui/product-image'
 import { printReport, printThermal80mm } from '@/lib/print-report'
+import { KPIBar } from '@/components/shared/kpi-bar'
 import dynamic from 'next/dynamic'
-import { useRef } from 'react'
 
 const PurchasesView = dynamic(() => import('@/components/purchases/purchases-view').then(m => ({ default: m.PurchasesView })), { ssr: false })
 
@@ -72,10 +74,13 @@ import {
   ShoppingCart,
   Truck,
   Printer,
-  Upload,
   FileSpreadsheet,
-  CheckCircle,
-  Info,
+  SlidersHorizontal,
+  RotateCcw,
+  Route,
+  Calculator,
+  Loader2,
+  TrendingUp,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -91,6 +96,7 @@ interface Product {
   imgUrl: string | null
   costPrice: number
   salePrice: number
+  commission: number
   currentStock: number
   minStock: number
   isActive: boolean
@@ -122,6 +128,7 @@ interface ProductFormData {
   imgUrl: string
   costPrice: string
   salePrice: string
+  commission: string
   minStock: string
   isActive: boolean
 }
@@ -135,14 +142,35 @@ const emptyProductForm: ProductFormData = {
   imgUrl: '',
   costPrice: '',
   salePrice: '',
+  commission: '0',
   minStock: '5',
   isActive: true,
+}
+
+// ─── Loss Reason Labels ────────────────────────────────────────────────────
+
+const LOSS_REASONS = [
+  { value: 'EXPIRED', label: 'Vencido' },
+  { value: 'DAMAGED', label: 'Dañado' },
+  { value: 'THEFT', label: 'Robo' },
+  { value: 'SPILL', label: 'Derrame' },
+  { value: 'COUNT_DIFF', label: 'Diferencia de inventario' },
+  { value: 'OTHER', label: 'Otro' },
+]
+
+const MOV_TYPE_LABELS: Record<string, string> = {
+  PURCHASE: 'Compra',
+  SALE: 'Venta',
+  ADJUSTMENT: 'Ajuste',
+  RETURN: 'Devolución',
+  LOSS: 'Pérdida',
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function ProductsView() {
   const { store } = useAuthStore()
+  const { setView } = useAppStore()
 
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -154,6 +182,7 @@ export function ProductsView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [activeFilter, setActiveFilter] = useState<string>('all')
+  const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'za'>('default')
 
   // Product dialog
   const [productDialogOpen, setProductDialogOpen] = useState(false)
@@ -170,6 +199,55 @@ export function ProductsView() {
   // Delete dialog
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'product' | 'category'; item: Product | Category } | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Quick action dialogs
+  const [adjustDialogOpen, setAdjustDialogOpen] = useState(false)
+  const [lossDialogOpen, setLossDialogOpen] = useState(false)
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false)
+  const [traceDialogOpen, setTraceDialogOpen] = useState(false)
+  const [actionSubmitting, setActionSubmitting] = useState(false)
+
+  // Adjust form
+  const [adjustProductId, setAdjustProductId] = useState<number | null>(null)
+  const [adjustProductName, setAdjustProductName] = useState('')
+  const [adjustCurrentStock, setAdjustCurrentStock] = useState(0)
+  const [adjustNewStock, setAdjustNewStock] = useState('')
+  const [adjustNotes, setAdjustNotes] = useState('')
+
+  // Loss form
+  const [lossProductId, setLossProductId] = useState<number | null>(null)
+  const [lossProductName, setLossProductName] = useState('')
+  const [lossQuantity, setLossQuantity] = useState('')
+  const [lossReason, setLossReason] = useState('EXPIRED')
+  const [lossNotes, setLossNotes] = useState('')
+
+  // Return form
+  const [returnProductId, setReturnProductId] = useState<number | null>(null)
+  const [returnProductName, setReturnProductName] = useState('')
+  const [returnQuantity, setReturnQuantity] = useState('')
+  const [returnNotes, setReturnNotes] = useState('')
+
+  // Trace data
+  const [traceProductId, setTraceProductId] = useState<number | null>(null)
+  const [traceProductName, setTraceProductName] = useState('')
+  const [traceMovements, setTraceMovements] = useState<any[]>([])
+  const [traceLoading, setTraceLoading] = useState(false)
+
+  // ─── Commission Auto-Calculation ─────────────────────────────────────────
+
+  const suggestedPrice = useMemo(() => {
+    const cost = Number(productForm.costPrice)
+    const commission = Number(productForm.commission || 0)
+    if (!cost || cost <= 0 || commission <= 0) return null
+    return Math.round(cost * (1 + commission / 100))
+  }, [productForm.costPrice, productForm.commission])
+
+  const profitMargin = useMemo(() => {
+    const cost = Number(productForm.costPrice)
+    const sale = Number(productForm.salePrice)
+    if (!cost || cost <= 0 || !sale || sale <= 0) return null
+    return ((sale - cost) / sale) * 100
+  }, [productForm.costPrice, productForm.salePrice])
 
   // ─── Data Fetching ──────────────────────────────────────────────────────
 
@@ -247,6 +325,7 @@ export function ProductsView() {
       imgUrl: product.imgUrl || '',
       costPrice: product.costPrice ? String(product.costPrice) : '',
       salePrice: String(product.salePrice),
+      commission: String(product.commission ?? 0),
       minStock: String(product.minStock),
       isActive: product.isActive,
     })
@@ -276,6 +355,7 @@ export function ProductsView() {
         imgUrl: productForm.imgUrl.trim() || undefined,
         costPrice: productForm.costPrice ? Math.round(Number(productForm.costPrice)) : 0,
         salePrice: Math.round(Number(productForm.salePrice)),
+        commission: Math.max(0, Math.min(100, Math.round(Number(productForm.commission || 0)))),
         minStock: productForm.minStock ? Number(productForm.minStock) : 5,
         isActive: productForm.isActive,
       }
@@ -403,6 +483,106 @@ export function ProductsView() {
     }
   }
 
+  // ─── Quick Action Handlers ────────────────────────────────────────────
+
+  function openAdjustStockDialog(productId: number, name: string, currentStock: number) {
+    setAdjustProductId(productId)
+    setAdjustProductName(name)
+    setAdjustCurrentStock(currentStock)
+    setAdjustNewStock(String(currentStock))
+    setAdjustNotes('')
+    setAdjustDialogOpen(true)
+  }
+
+  function openLossDialog(productId: number, name: string) {
+    setLossProductId(productId)
+    setLossProductName(name)
+    setLossQuantity('')
+    setLossReason('EXPIRED')
+    setLossNotes('')
+    setLossDialogOpen(true)
+  }
+
+  function openReturnDialog(productId: number, name: string) {
+    setReturnProductId(productId)
+    setReturnProductName(name)
+    setReturnQuantity('')
+    setReturnNotes('')
+    setReturnDialogOpen(true)
+  }
+
+  async function openTraceDialog(productId: number, name: string) {
+    setTraceProductId(productId)
+    setTraceProductName(name)
+    setTraceMovements([])
+    setTraceLoading(true)
+    setTraceDialogOpen(true)
+    try {
+      const res = await fetch(`/api/inventory/kardex?productId=${productId}&storeId=${store?.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setTraceMovements(data.movements || [])
+      }
+    } catch { /* ignore */ }
+    finally { setTraceLoading(false) }
+  }
+
+  async function handleAdjustStock() {
+    if (!store?.id || !adjustProductId) return
+    const newStock = parseInt(adjustNewStock, 10)
+    if (isNaN(newStock) || newStock < 0) { toast.error('Cantidad inválida'); return }
+    const diff = newStock - adjustCurrentStock
+    if (diff === 0) { toast.info('Sin cambios'); return }
+    setActionSubmitting(true)
+    try {
+      const res = await fetch('/api/inventory/adjustments', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: store.id, productId: adjustProductId, quantity: diff, notes: adjustNotes || undefined })
+      })
+      if (!res.ok) throw new Error()
+      toast.success('Stock ajustado')
+      setAdjustDialogOpen(false)
+      fetchProducts()
+    } catch { toast.error('Error al ajustar stock') }
+    finally { setActionSubmitting(false) }
+  }
+
+  async function handleLoss() {
+    if (!store?.id || !lossProductId) return
+    const qty = parseInt(lossQuantity, 10)
+    if (isNaN(qty) || qty <= 0) { toast.error('Cantidad inválida'); return }
+    setActionSubmitting(true)
+    try {
+      const res = await fetch('/api/inventory/losses', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: store.id, productId: lossProductId, quantity: qty, reason: lossReason, notes: lossNotes || undefined })
+      })
+      if (!res.ok) throw new Error()
+      toast.success('Pérdida registrada')
+      setLossDialogOpen(false)
+      fetchProducts()
+    } catch { toast.error('Error al registrar pérdida') }
+    finally { setActionSubmitting(false) }
+  }
+
+  async function handleReturn() {
+    if (!store?.id || !returnProductId) return
+    const qty = parseInt(returnQuantity, 10)
+    if (isNaN(qty) || qty <= 0) { toast.error('Cantidad inválida'); return }
+    setActionSubmitting(true)
+    try {
+      const res = await fetch('/api/inventory/returns', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: store.id, productId: returnProductId, quantity: qty, notes: returnNotes || undefined })
+      })
+      if (!res.ok) throw new Error()
+      toast.success('Devolución registrada')
+      setReturnDialogOpen(false)
+      fetchProducts()
+    } catch { toast.error('Error al registrar devolución') }
+    finally { setActionSubmitting(false) }
+  }
+
   // ─── Print Products ──────────────────────────────────────────────────
 
   function handlePrintProducts(thermal = false) {
@@ -456,212 +636,24 @@ export function ProductsView() {
     }
   }
 
-  // ─── XML Invoice Upload ─────────────────────────────────────────────
+  // ─── Filtered & Sorted Products ──────────────────────────────────────────
 
-  const xmlInputRef = useRef<HTMLInputElement>(null)
-  const [xmlUploading, setXmlUploading] = useState(false)
-  const [xmlPreview, setXmlPreview] = useState<{ fileName: string; items: { name: string; quantity: number; unitCost: number }[] } | null>(null)
-
-  // Parse XML file and extract items generically
-  function parseXmlItems(xmlDoc: Document): { name: string; quantity: number; unitCost: number }[] {
-    const xmlItems: { name: string; quantity: number; unitCost: number }[] = []
-
-    // Helper: try multiple selectors and return first match
-    const getText = (el: Element | null, selectors: string[]): string => {
-      if (!el) return ''
-      for (const sel of selectors) {
-        const found = el.querySelector(sel)
-        if (found?.textContent?.trim()) return found.textContent.trim()
-      }
-      return ''
+  const filteredProducts = (() => {
+    let result = products
+    if (sortOrder === 'az') {
+      result = [...result].sort((a, b) => a.name.localeCompare(b.name, 'es-CO'))
+    } else if (sortOrder === 'za') {
+      result = [...result].sort((a, b) => b.name.localeCompare(a.name, 'es-CO'))
     }
-    const getNum = (el: Element | null, selectors: string[]): number => {
-      const txt = getText(el, selectors)
-      return parseFloat(txt) || 0
-    }
-
-    // Strategy 1: UBL 2.1 standard (Colombian DIAN / CFDI)
-    const invoiceLines = xmlDoc.querySelectorAll('InvoiceLine')
-    if (invoiceLines.length > 0) {
-      invoiceLines.forEach(line => {
-        const name = getText(line, ['Item Name', 'Item cbc\:Name', 'cbc\:Name'])
-        const qty = getNum(line, ['InvoicedQuantity', 'cbc\:InvoicedQuantity', 'cbc\:Quantity'])
-        const price = getNum(line, ['PriceAmount', 'Price cbc\:PriceAmount', 'cbc\:PriceAmount', 'cbc\:Amount'])
-        if (name && qty > 0) {
-          xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
-        }
-      })
-    }
-
-    // Strategy 2: FeCo Colombian format
-    if (xmlItems.length === 0) {
-      const feItems = xmlDoc.querySelectorAll('item')
-      if (feItems.length > 0) {
-        feItems.forEach(item => {
-          const name = getText(item, ['descripcion', 'nombre', 'name', 'descripcionPro'])
-          const qty = getNum(item, ['cantidad', 'quantity', 'cant'])
-          const price = getNum(item, ['precioUnitario', 'unitPrice', 'valor', 'precio', 'precioTotal'])
-          if (name && qty > 0) {
-            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
-          }
-        })
-      }
-    }
-
-    // Strategy 3: generic producto/product
-    if (xmlItems.length === 0) {
-      const genericItems = xmlDoc.querySelectorAll('producto, product')
-      if (genericItems.length > 0) {
-        genericItems.forEach(item => {
-          const name = getText(item, ['nombre', 'name', 'descripcion', 'description'])
-          const qty = getNum(item, ['cantidad', 'quantity', 'cant'])
-          const price = getNum(item, ['precio', 'price', 'precioUnitario', 'unitPrice', 'valor', 'costo'])
-          if (name && qty > 0) {
-            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
-          }
-        })
-      }
-    }
-
-    // Strategy 4: Try to find ANY repeating element that could be a line item
-    if (xmlItems.length === 0) {
-      // Get all child elements of the root
-      const root = xmlDoc.documentElement
-      const children = Array.from(root.children)
-      // Find groups of elements that repeat (potential line items)
-      const tagNameCounts = new Map<string, number>()
-      children.forEach(child => {
-        const tag = child.tagName.replace(/.*:/, '') // remove namespace
-        tagNameCounts.set(tag, (tagNameCounts.get(tag) || 0) + 1)
-      })
-      // Find the most common tag (likely line items)
-      let bestTag = ''
-      let bestCount = 1
-      tagNameCounts.forEach((count, tag) => {
-        if (count > bestCount && count >= 2) {
-          bestCount = count
-          bestTag = tag
-        }
-      })
-      if (bestTag) {
-        const lineItems = xmlDoc.querySelectorAll(bestTag)
-        lineItems.forEach(item => {
-          // Try to find name and quantity in any child elements
-          const itemChildren = Array.from(item.children)
-          let name = ''
-          let qty = 0
-          let price = 0
-          itemChildren.forEach(child => {
-            const tag = child.tagName.replace(/.*:/, '').toLowerCase()
-            const val = child.textContent?.trim() || ''
-            if (!name && val && !name) {
-              // First non-empty text that's not a number could be a name
-              const numVal = parseFloat(val)
-              if (isNaN(numVal) || val.length > 5) {
-                name = val
-              }
-            }
-            if (/cant|qty|quantity|cantidad/.test(tag)) {
-              qty = parseFloat(val) || 0
-            }
-            if (/prec|price|cost|valor|unit|amount|total|importe/.test(tag)) {
-              const parsed = parseFloat(val) || 0
-              if (price === 0 || parsed < price) price = parsed // prefer unit price over total
-            }
-          })
-          if (name && qty > 0) {
-            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
-          }
-        })
-      }
-    }
-
-    return xmlItems
-  }
-
-  async function handleXmlUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!store?.id) return
-
-    if (!file.name.endsWith('.xml')) {
-      toast.error('Solo se permiten archivos XML')
-      return
-    }
-
-    setXmlUploading(true)
-    try {
-      const text = await file.text()
-      const parser = new DOMParser()
-      const xmlDoc = parser.parseFromString(text, 'text/xml')
-      const parseError = xmlDoc.querySelector('parsererror')
-      if (parseError) {
-        toast.error('Error al leer el archivo XML')
-        return
-      }
-
-      const xmlItems = parseXmlItems(xmlDoc)
-
-      if (xmlItems.length === 0) {
-        toast.error('No se pudieron extraer productos del XML. Verifica el formato del archivo.')
-        return
-      }
-
-      // Show preview dialog instead of importing directly
-      setXmlPreview({ fileName: file.name, items: xmlItems })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al procesar XML')
-    } finally {
-      setXmlUploading(false)
-      if (xmlInputRef.current) xmlInputRef.current.value = ''
-    }
-  }
-
-  async function confirmXmlImport() {
-    if (!xmlPreview || !store?.id) return
-    setXmlUploading(true)
-    try {
-      const body = {
-        storeId: store.id,
-        notes: `Importado desde XML: ${xmlPreview.fileName}`,
-        items: xmlPreview.items.map(item => ({
-          productId: 0,
-          quantity: item.quantity,
-          unitCost: item.unitCost,
-          name: item.name,
-        })),
-      }
-
-      const res = await fetch('/api/purchases/xml-import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Error al importar factura XML')
-      }
-
-      const result = await res.json()
-      toast.success(`Factura XML importada: ${result.itemsCreated} producto${result.itemsCreated !== 1 ? 's' : ''} procesados`)
-      setXmlPreview(null)
-      fetchProducts()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al importar XML')
-    } finally {
-      setXmlUploading(false)
-    }
-  }
-
-  // ─── Filtered Products ─────────────────────────────────────────────────
-
-  const filteredProducts = products
+    return result
+  })()
 
   // ─── Render ────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
+      <KPIBar context="products" />
+
       <Tabs defaultValue="products" className="w-full">
         <TabsList>
           <TabsTrigger value="products" className="gap-2">
@@ -681,21 +673,21 @@ export function ProductsView() {
         {/* ─── PRODUCTS TAB ──────────────────────────────────────────── */}
         <TabsContent value="products" className="mt-4 space-y-4">
           {/* Toolbar */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               {/* Search */}
-              <div className="relative">
+              <div className="relative flex-1 min-w-[200px] sm:min-w-0 sm:flex-none sm:w-56">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar producto..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-full sm:w-64"
+                  className="pl-9 w-full"
                 />
               </div>
               {/* Category filter */}
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-full sm:w-48">
+                <SelectTrigger className="w-full sm:w-auto sm:min-w-[160px]">
                   <SelectValue placeholder="Todas las categorías" />
                 </SelectTrigger>
                 <SelectContent>
@@ -709,7 +701,7 @@ export function ProductsView() {
               </Select>
               {/* Active filter */}
               <Select value={activeFilter} onValueChange={setActiveFilter}>
-                <SelectTrigger className="w-full sm:w-40">
+                <SelectTrigger className="w-full sm:w-auto sm:min-w-[120px]">
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent>
@@ -718,50 +710,95 @@ export function ProductsView() {
                   <SelectItem value="false">Inactivos</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    disabled={productsLoading || filteredProducts.length === 0}
-                    className="gap-2"
-                  >
-                    <Printer className="h-4 w-4" />
-                    <span className="hidden sm:inline">Imprimir</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handlePrintProducts(false)}>
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Impresora Normal
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handlePrintProducts(true)}>
-                    <Printer className="h-4 w-4 mr-2" />
-                    Térmica 80mm
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button
-                variant="outline"
-                onClick={() => xmlInputRef.current?.click()}
-                disabled={xmlUploading}
-                className="gap-2"
-              >
-                <Upload className="h-4 w-4" />
-                <span className="hidden sm:inline">XML</span>
-                <input
-                  ref={xmlInputRef}
-                  type="file"
-                  accept=".xml"
-                  className="hidden"
-                  onChange={handleXmlUpload}
-                />
-              </Button>
-              <Button onClick={openNewProductDialog} className="gap-2">
-                <Plus className="h-4 w-4" />
-                Nuevo Producto
-              </Button>
+              {/* Sort toggle */}
+              <div className="flex items-center gap-1">
+                <Button
+                  variant={sortOrder === 'default' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-9 px-2.5 text-xs"
+                  onClick={() => setSortOrder('default')}
+                >
+                  Recientes
+                </Button>
+                <Button
+                  variant={sortOrder === 'az' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-9 px-2.5 text-xs"
+                  onClick={() => setSortOrder('az')}
+                >
+                  A→Z
+                </Button>
+                <Button
+                  variant={sortOrder === 'za' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-9 px-2.5 text-xs"
+                  onClick={() => setSortOrder('za')}
+                >
+                  Z→A
+                </Button>
+              </div>
+              {/* Quick inventory actions */}
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:hover:bg-red-950/40"
+                  onClick={() => { setView('inventory'); toast.info('Ve a Inventario para registrar pérdidas, devoluciones y ajustes') }}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span className="hidden md:inline">Pérdida</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-sky-600 border-sky-200 hover:bg-sky-50 hover:text-sky-700 dark:border-sky-800 dark:hover:bg-sky-950/40"
+                  onClick={() => { setView('inventory'); toast.info('Ve a Inventario para registrar devoluciones y ajustes') }}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span className="hidden md:inline">Devolución</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-amber-600 border-amber-200 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-800 dark:hover:bg-amber-950/40"
+                  onClick={() => { setView('inventory'); toast.info('Ve a Inventario para registrar ajustes de stock') }}
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  <span className="hidden md:inline">Ajuste</span>
+                </Button>
+              </div>
+              {/* Spacer */}
+              <div className="hidden sm:block flex-1" />
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={productsLoading || filteredProducts.length === 0}
+                      className="gap-1.5"
+                    >
+                      <Printer className="h-4 w-4" />
+                      <span className="hidden lg:inline">Imprimir</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handlePrintProducts(false)}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Impresora Normal
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handlePrintProducts(true)}>
+                      <Printer className="h-4 w-4 mr-2" />
+                      Térmica 80mm
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button onClick={openNewProductDialog} size="sm" className="gap-1.5">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Nuevo Producto</span>
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -778,6 +815,7 @@ export function ProductsView() {
                       <TableHead className="hidden lg:table-cell min-w-[100px]">Categoría</TableHead>
                       <TableHead className="text-right min-w-[100px]">P. Compra</TableHead>
                       <TableHead className="text-right min-w-[100px]">P. Venta</TableHead>
+                      <TableHead className="hidden xl:table-cell text-right min-w-[80px]">Comisión</TableHead>
                       <TableHead className="text-right min-w-[70px]">Stock</TableHead>
                       <TableHead className="hidden sm:table-cell min-w-[80px]">Estado</TableHead>
                       <TableHead className="text-center w-[50px] sticky right-0 bg-background z-10">Acciones</TableHead>
@@ -849,6 +887,13 @@ export function ProductsView() {
                           <TableCell className="text-right font-medium">
                             {formatCurrency(product.salePrice, store?.currencyCode)}
                           </TableCell>
+                          <TableCell className="hidden xl:table-cell text-right">
+                            {product.commission > 0 ? (
+                              <span className="text-xs">{product.commission}%</span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <span
                               className={
@@ -895,6 +940,24 @@ export function ProductsView() {
                                   <Power className="h-4 w-4 mr-2" />
                                   {product.isActive ? 'Desactivar' : 'Activar'}
                                 </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => openAdjustStockDialog(product.id, product.name, product.currentStock)}>
+                                  <SlidersHorizontal className="h-4 w-4 mr-2" />
+                                  Ajustar Stock
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openLossDialog(product.id, product.name)}>
+                                  <AlertTriangle className="h-4 w-4 mr-2" />
+                                  Registrar Pérdida
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openReturnDialog(product.id, product.name)}>
+                                  <RotateCcw className="h-4 w-4 mr-2" />
+                                  Registrar Devolución
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openTraceDialog(product.id, product.name)}>
+                                  <Route className="h-4 w-4 mr-2" />
+                                  Ver Trazabilidad
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   variant="destructive"
                                   onClick={() => setDeleteTarget({ type: 'product', item: product })}
@@ -1181,6 +1244,94 @@ export function ProductsView() {
               </div>
             </div>
 
+            {/* Commission + Commission Calculator */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="prod-commission">Comisión %</Label>
+                <Input
+                  id="prod-commission"
+                  type="number"
+                  min="0"
+                  max="100"
+                  placeholder="0"
+                  value={productForm.commission}
+                  onChange={(e) => setProductForm({ ...productForm, commission: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Porcentaje de comisión del producto (ej: 10)
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <Calculator className="h-3.5 w-3.5" />
+                  Cálculo Automático
+                </Label>
+                {suggestedPrice !== null ? (
+                  <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Precio sugerido:</span>
+                      <span className="font-semibold">
+                        {formatCurrency(suggestedPrice, store?.currencyCode)}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs h-8"
+                      onClick={() => setProductForm({ ...productForm, salePrice: String(suggestedPrice) })}
+                    >
+                      Aplicar precio sugerido
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-[68px] rounded-md border border-dashed text-xs text-muted-foreground">
+                    Ingresa precio de compra y comisión para calcular
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Profit Margin Indicator */}
+            {profitMargin !== null && (
+              <div className="rounded-md border bg-muted/30 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm">
+                    <TrendingUp className={`h-4 w-4 ${
+                      profitMargin > 40
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : profitMargin > 20
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-red-600 dark:text-red-400'
+                    }`} />
+                    <span className="text-muted-foreground">Margen de ganancia:</span>
+                  </div>
+                  <span className={`text-sm font-bold ${
+                    profitMargin > 40
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : profitMargin > 20
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {profitMargin.toFixed(1)}%
+                  </span>
+                </div>
+                <p className={`text-xs mt-1 ${
+                  profitMargin > 40
+                    ? 'text-emerald-600/70 dark:text-emerald-400/70'
+                    : profitMargin > 20
+                      ? 'text-amber-600/70 dark:text-amber-400/70'
+                      : 'text-red-600/70 dark:text-red-400/70'
+                }`}>
+                  {profitMargin > 40
+                    ? '✓ Margen saludable'
+                    : profitMargin > 20
+                      ? '⚠ Margen aceptable'
+                      : '✗ Margen bajo — revisa tus precios'}
+                </p>
+              </div>
+            )}
+
             {/* Row: Min Stock */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -1197,17 +1348,19 @@ export function ProductsView() {
                   Alerta cuando el stock esté por debajo de este valor
                 </p>
               </div>
-              {editingProduct && (
-                <div className="space-y-2">
-                  <Label>Stock Actual</Label>
-                  <div className="flex items-center h-9 px-3 rounded-md border bg-muted text-sm font-medium">
-                    <span className={editingProduct.currentStock <= editingProduct.minStock ? 'text-red-600 dark:text-red-400' : ''}>
-                      {editingProduct.currentStock} unidades
-                    </span>
-                  </div>
-                </div>
-              )}
             </div>
+
+            {/* Row: Stock Actual (edit only) */}
+            {editingProduct && (
+              <div className="space-y-2">
+                <Label>Stock Actual</Label>
+                <div className="flex items-center h-9 px-3 rounded-md border bg-muted text-sm font-medium w-fit">
+                  <span className={editingProduct.currentStock <= editingProduct.minStock ? 'text-red-600 dark:text-red-400' : ''}>
+                    {editingProduct.currentStock} unidades
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -1300,94 +1453,275 @@ export function ProductsView() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ─── XML PREVIEW DIALOG ──────────────────────────────────── */}
-      <Dialog open={!!xmlPreview} onOpenChange={(open) => !open && setXmlPreview(null)}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+      {/* ─── ADJUST STOCK DIALOG ─────────────────────────────────────── */}
+      <Dialog open={adjustDialogOpen} onOpenChange={(open) => {
+        if (!open) setAdjustDialogOpen(false)
+      }}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5" />
-              Vista previa de XML
-            </DialogTitle>
+            <DialogTitle>Ajustar Stock</DialogTitle>
             <DialogDescription>
-              Se encontraron <strong>{xmlPreview?.items.length || 0}</strong> producto{xmlPreview && xmlPreview.items.length !== 1 ? 's' : ''} en el archivo.
-              Revisa los datos antes de importar.
+              Modifica el stock actual de <span className="font-semibold">{adjustProductName}</span>
             </DialogDescription>
           </DialogHeader>
-
-          {xmlPreview && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
-                <Info className="h-4 w-4 shrink-0" />
-                <span className="truncate">{xmlPreview.fileName}</span>
-              </div>
-
-              <div className="max-h-[300px] overflow-y-auto rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[8px]">#</TableHead>
-                      <TableHead>Producto</TableHead>
-                      <TableHead className="text-right w-[70px]">Cant.</TableHead>
-                      <TableHead className="text-right w-[100px]">Costo Unit.</TableHead>
-                      <TableHead className="text-right w-[100px]">Subtotal</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {xmlPreview.items.map((item, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
-                        <TableCell className="font-medium text-sm">{item.name}</TableCell>
-                        <TableCell className="text-right text-sm">{item.quantity}</TableCell>
-                        <TableCell className="text-right text-sm">${formatCurrency(item.unitCost, store?.currencyCode || 'COP')}</TableCell>
-                        <TableCell className="text-right text-sm font-medium">${formatCurrency(item.unitCost * item.quantity, store?.currencyCode || 'COP')}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 text-sm">
-                <span className="font-medium">Total estimado:</span>
-                <span className="font-bold">
-                  {formatCurrency(xmlPreview.items.reduce((s, i) => s + i.unitCost * i.quantity, 0), store?.currencyCode || 'COP')}
-                </span>
-              </div>
-
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                <p>Los productos que no existan se crearán automáticamente. Los existentes se actualizarán con el stock y costo.</p>
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <Label>Stock Actual</Label>
+              <div className="flex items-center h-9 px-3 rounded-md border bg-muted text-sm font-medium">
+                {adjustCurrentStock} unidades
               </div>
             </div>
-          )}
-
+            <div className="space-y-2">
+              <Label htmlFor="adjust-new-stock">
+                Nuevo Stock <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="adjust-new-stock"
+                type="number"
+                min="0"
+                placeholder="0"
+                value={adjustNewStock}
+                onChange={(e) => setAdjustNewStock(e.target.value)}
+                autoFocus
+              />
+              {adjustNewStock && !isNaN(Number(adjustNewStock)) && Number(adjustNewStock) !== adjustCurrentStock && (
+                <p className={`text-xs ${
+                  Number(adjustNewStock) > adjustCurrentStock
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-red-600 dark:text-red-400'
+                }`}>
+                  {Number(adjustNewStock) > adjustCurrentStock ? '+' : ''}
+                  {Number(adjustNewStock) - adjustCurrentStock} unidades
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="adjust-notes">Notas</Label>
+              <Textarea
+                id="adjust-notes"
+                placeholder="Motivo del ajuste (opcional)"
+                value={adjustNotes}
+                onChange={(e) => setAdjustNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setXmlPreview(null)}
-              disabled={xmlUploading}
-            >
+            <Button variant="outline" onClick={() => setAdjustDialogOpen(false)} disabled={actionSubmitting}>
               Cancelar
             </Button>
-            <Button
-              onClick={confirmXmlImport}
-              disabled={xmlUploading}
-              className="gap-2"
-            >
-              {xmlUploading ? (
-                <>
-                  <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  Importando...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="h-4 w-4" />
-                  Importar Compra
-                </>
-              )}
+            <Button onClick={handleAdjustStock} disabled={actionSubmitting}>
+              {actionSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Guardar Ajuste
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ─── LOSS DIALOG ─────────────────────────────────────────────── */}
+      <Dialog open={lossDialogOpen} onOpenChange={(open) => {
+        if (!open) setLossDialogOpen(false)
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar Pérdida</DialogTitle>
+            <DialogDescription>
+              Registra una pérdida de <span className="font-semibold">{lossProductName}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="loss-quantity">
+                Cantidad <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="loss-quantity"
+                type="number"
+                min="1"
+                placeholder="0"
+                value={lossQuantity}
+                onChange={(e) => setLossQuantity(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="loss-reason">Motivo</Label>
+              <Select value={lossReason} onValueChange={setLossReason}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOSS_REASONS.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="loss-notes">Notas</Label>
+              <Textarea
+                id="loss-notes"
+                placeholder="Detalles adicionales (opcional)"
+                value={lossNotes}
+                onChange={(e) => setLossNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLossDialogOpen(false)} disabled={actionSubmitting}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleLoss} disabled={actionSubmitting}>
+              {actionSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Registrar Pérdida
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── RETURN DIALOG ───────────────────────────────────────────── */}
+      <Dialog open={returnDialogOpen} onOpenChange={(open) => {
+        if (!open) setReturnDialogOpen(false)
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar Devolución</DialogTitle>
+            <DialogDescription>
+              Registra la devolución de <span className="font-semibold">{returnProductName}</span> al inventario
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="return-quantity">
+                Cantidad <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="return-quantity"
+                type="number"
+                min="1"
+                placeholder="0"
+                value={returnQuantity}
+                onChange={(e) => setReturnQuantity(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="return-notes">Notas</Label>
+              <Textarea
+                id="return-notes"
+                placeholder="Motivo de la devolución (opcional)"
+                value={returnNotes}
+                onChange={(e) => setReturnNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReturnDialogOpen(false)} disabled={actionSubmitting}>
+              Cancelar
+            </Button>
+            <Button onClick={handleReturn} disabled={actionSubmitting}>
+              {actionSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Registrar Devolución
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── TRACEABILITY DIALOG ─────────────────────────────────────── */}
+      <Dialog open={traceDialogOpen} onOpenChange={(open) => {
+        if (!open) setTraceDialogOpen(false)
+      }}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Trazabilidad</DialogTitle>
+            <DialogDescription>
+              Historial de movimientos de <span className="font-semibold">{traceProductName}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          {traceLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">Cargando movimientos...</span>
+            </div>
+          ) : traceMovements.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <Route className="h-10 w-10 mb-3 opacity-50" />
+              <p className="text-sm">No hay movimientos registrados</p>
+            </div>
+          ) : (
+            <div className="max-h-[50vh] overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[140px]">Fecha</TableHead>
+                    <TableHead className="min-w-[100px]">Tipo</TableHead>
+                    <TableHead className="text-right min-w-[80px]">Cantidad</TableHead>
+                    <TableHead className="min-w-[200px]">Notas</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {traceMovements.map((mov: any, idx: number) => (
+                    <TableRow key={idx}>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {mov.date
+                          ? new Date(mov.date).toLocaleString('es-CO', {
+                              day: '2-digit', month: '2-digit', year: 'numeric',
+                              hour: '2-digit', minute: '2-digit',
+                            })
+                          : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={
+                            mov.type === 'SALE'
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                              : mov.type === 'PURCHASE'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                : mov.type === 'RETURN'
+                                  ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
+                                  : mov.type === 'LOSS'
+                                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                          }
+                        >
+                          {MOV_TYPE_LABELS[mov.type] || mov.type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-sm font-medium">
+                        <span className={
+                          mov.quantity > 0
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
+                        }>
+                          {mov.quantity > 0 ? '+' : ''}{mov.quantity}
+                        </span>
+                        {mov.balance !== undefined && (
+                          <span className="text-[10px] text-muted-foreground ml-1.5">
+                            → {mov.balance}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground truncate max-w-[250px]">
+                        {mov.notes || '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <p className="text-xs text-muted-foreground mt-2">
+                {traceMovements.length} movimiento{traceMovements.length !== 1 ? 's' : ''} encontrado{traceMovements.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }

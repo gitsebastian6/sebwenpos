@@ -9,6 +9,7 @@ async function main() {
   // Limpieza total
   await prisma.purchaseItem.deleteMany()
   await prisma.purchase.deleteMany()
+  await prisma.expense.deleteMany()
   await prisma.comandaItem.deleteMany()
   await prisma.orderItem.deleteMany()
   await prisma.inventoryMovement.deleteMany()
@@ -23,6 +24,7 @@ async function main() {
   await prisma.provider.deleteMany()
   await prisma.product.deleteMany()
   await prisma.category.deleteMany()
+  await prisma.cashRegister.deleteMany()
   await prisma.store.deleteMany()
   await prisma.user.deleteMany()
 
@@ -283,6 +285,7 @@ async function main() {
     await prisma.ledgerAccount.create({ data: { storeId, name: 'Ventas', type: 'INCOME', isDefault: false } }),
     await prisma.ledgerAccount.create({ data: { storeId, name: 'Costo de Ventas', type: 'EXPENSE', isDefault: false } }),
     await prisma.ledgerAccount.create({ data: { storeId, name: 'Propina', type: 'INCOME', isDefault: false } }),
+    await prisma.ledgerAccount.create({ data: { storeId, name: 'Gastos Operacionales', type: 'EXPENSE', isDefault: false } }),
   ]
   const Caja = accounts[0].id
   const Daviplata = accounts[1].id

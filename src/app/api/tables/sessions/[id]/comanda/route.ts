@@ -10,6 +10,7 @@ const comandaItemSchema = z.object({
   productId: z.number().int().positive().optional(),
   serviceId: z.number().int().positive().optional(),
   quantity: z.number().int().min(1),
+  notes: z.string().max(200).optional(),
 }).refine((d) => d.productId || d.serviceId, {
   message: 'Debe especificar productId o serviceId',
 }).refine((d) => !(d.productId && d.serviceId), {
@@ -184,6 +185,7 @@ export async function POST(
           quantity: item.quantity,
           unitPrice: product.salePrice,
           total: product.salePrice * item.quantity,
+          notes: item.notes || null,
           status: 'PENDING',
         }
       } else {
@@ -197,6 +199,7 @@ export async function POST(
           quantity: item.quantity,
           unitPrice: service.price,
           total: service.price * item.quantity,
+          notes: item.notes || null,
           status: 'PENDING',
         }
       }

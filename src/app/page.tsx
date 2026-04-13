@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { AuthPage } from '@/components/auth/auth-page'
 import { AppShell } from '@/components/layout/app-shell'
+import { QueryProvider } from '@/providers/query-provider'
 
 function LoadingScreen() {
   return (
@@ -39,5 +40,9 @@ export default function Home() {
     return <AuthPage />
   }
 
-  return <AppShell />
+  return (
+    <QueryProvider>
+      <AppShell />
+    </QueryProvider>
+  )
 }

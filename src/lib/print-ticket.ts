@@ -544,20 +544,46 @@ export interface CashRegisterCloseData {
   difference: number
   totalTips: number
   paymentBreakdown: Array<{ method: string; count: number; total: number }>
+  countBreakdown?: Record<string, number>
   currencyCode: string
 }
 
 export function printCashRegisterClose(data: CashRegisterCloseData) {
   const f = (n: number) => fmt(n, data.currencyCode)
   const payLabel = (m: string) => PAYMENT_LABELS[m] || m
+  const totalSales = data.totalCashSales + data.totalOtherSales
 
-  const payRows = data.paymentBreakdown.map(p => `
-    <div class="row"><span>${payLabel(p.method)}</span><span>${f(p.total)}</span></div>
-    <div class="row" style="padding-left:8px;font-size:9px;color:#888;"><span>${p.count} órdenes</span><span></span></div>
+  // Sort payment methods alphabetically (AZ)
+  const sortedPayments = [...data.paymentBreakdown].sort((a, b) => payLabel(a.method).localeCompare(payLabel(b.method), 'es'))
+
+  const payRows = sortedPayments.map(p => `
+    <div class="table-row"><span>${payLabel(p.method)}</span><span>${p.count}</span><span>${f(p.total)}</span></div>
   `).join('')
 
   const diffColor = data.difference >= 0 ? '#16a34a' : '#dc2626'
   const diffSign = data.difference >= 0 ? '+' : ''
+  const diffLabel = data.difference === 0 ? '✓ CUADRA' : (data.difference > 0 ? 'SOBRANTE' : 'FALTANTE')
+
+  // Detailed count breakdown (physical count reported by user)
+  let countRows = ''
+  let countTotal = 0
+  if (data.countBreakdown && Object.keys(data.countBreakdown).length > 0) {
+    const sortedCount = Object.entries(data.countBreakdown)
+      .filter(([, v]) => v > 0)
+      .sort(([a], [b]) => payLabel(a).localeCompare(payLabel(b), 'es'))
+    sortedCount.forEach(([, v]) => { countTotal += v })
+    const countLines = sortedCount.map(([method, amount]) => `
+      <div class="table-row"><span>${payLabel(method)}</span><span></span><span>${f(amount)}</span></div>
+    `).join('')
+    countRows = `
+      <hr class="dashed">
+      <div class="section-title">CONTEO FÍSICO REPORTADO</div>
+      <div class="table-row table-header"><span>Método</span><span></span><span>Total</span></div>
+      ${countLines}
+      <div class="table-row" style="font-weight:bold;"><span>TOTAL CONTEO</span><span></span><span>${f(countTotal)}</span></div>
+      <hr class="dashed">
+    `
+  }
 
   const body = `
     <div class="header">
@@ -566,39 +592,45 @@ export function printCashRegisterClose(data: CashRegisterCloseData) {
       ${data.storeAddress ? `<div class="store-detail">${data.storeAddress}</div>` : ''}
     </div>
 
-    <div class="title">CIERRE DE CAJA</div>
+    <div class="title">INFORME DE CIERRE DE CAJA</div>
 
     <hr class="dashed">
-    <div class="row"><span>Apertura</span><span>${fmtDate(data.openedAt)}</span></div>
-    <div class="row"><span>Cierre</span><span>${fmtDate(data.closedAt)}</span></div>
+    <div class="row"><span>Hora Apertura</span><span>${fmtDate(data.openedAt)}</span></div>
+    <div class="row"><span>Hora Cierre</span><span>${fmtDate(data.closedAt)}</span></div>
     <div class="row"><span>Responsable</span><span>${data.responsibleName}</span></div>
     <hr class="dashed">
 
-    <div class="section-title">CAJA</div>
-    <div class="row"><span>Saldo Inicial</span><span>${f(data.openingBalance)}</span></div>
-    <div class="row"><span>Ventas Efectivo</span><span>${f(data.totalCashSales)}</span></div>
+    <div class="section-title">SALDOS DE CAJA</div>
+    <div class="row"><span>Con cuánto se inició</span><span>${f(data.openingBalance)}</span></div>
+    <div class="row"><span>Ventas en Efectivo</span><span>${f(data.totalCashSales)}</span></div>
     <div class="row"><span>Otras Ventas</span><span>${f(data.totalOtherSales)}</span></div>
+    <div class="row" style="font-weight:bold;"><span>Total Ventas</span><span>${f(totalSales)}</span></div>
     <hr class="dashed">
 
+    <div class="section-title">CONSOLIDADO DE EFECTIVO</div>
     <div class="row" style="font-weight:bold;font-size:12px;"><span>Efectivo Esperado</span><span>${f(data.expectedCash)}</span></div>
-    <div class="row" style="font-weight:bold;font-size:12px;"><span>Efectivo Real</span><span>${f(data.actualCash)}</span></div>
-    <div class="row" style="font-weight:bold;font-size:12px;color:${diffColor};"><span>Diferencia</span><span>${diffSign}${f(Math.abs(data.difference))}</span></div>
+    <div class="row" style="font-weight:bold;font-size:12px;"><span>Efectivo Real (Con cuánto terminó)</span><span>${f(data.actualCash)}</span></div>
+    <div class="row" style="font-weight:bold;font-size:13px;color:${diffColor};"><span>${diffLabel}</span><span>${diffSign}${f(Math.abs(data.difference))}</span></div>
+    ${countRows}
     <hr class="solid">
 
-    <div class="section-title">VENTAS POR MÉTODO DE PAGO</div>
+    <div class="section-title">VENTAS POR MÉTODO DE PAGO (A-Z)</div>
+    <div class="table-row table-header"><span>Método</span><span>Ordenes</span><span>Total</span></div>
     ${payRows}
-    <hr class="dashed">
-
-    <div class="row" style="font-weight:bold;"><span>Total Propinas</span><span>${f(data.totalTips)}</span></div>
+    ${data.totalTips > 0 ? `
+      <hr class="dashed">
+      <div class="row" style="font-weight:bold;"><span>Total Propinas</span><span>${f(data.totalTips)}</span></div>
+    ` : ''}
     <hr class="solid">
 
     <div class="footer">
+      <div class="footer-msg">Este informe se generó automáticamente al cerrar la caja</div>
       <hr class="dashed">
       <div class="footer-brand">VENTIFY POS</div>
     </div>
   `
 
-  openPrintWindow('Cierre de Caja', body)
+  openPrintWindow('Cierre de Caja - Informe AZ', body)
 }
 
 // ─── Print Daily Summary (Corte Z) ────────────────────────────────────────────

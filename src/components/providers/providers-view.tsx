@@ -49,6 +49,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
+import { KPIBar } from '@/components/shared/kpi-bar'
 import { es } from 'date-fns/locale'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -256,6 +257,8 @@ export function ProvidersView() {
 
   return (
     <div className="space-y-6">
+      <KPIBar context="default" />
+
       {/* ── Header + Search ─────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -280,8 +283,8 @@ export function ProvidersView() {
       {/* ── Search + Filter Bar ─────────────────────────────────── */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Buscar por nombre, NIT, contacto..."

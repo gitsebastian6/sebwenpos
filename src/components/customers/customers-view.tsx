@@ -40,6 +40,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
+import { KPIBar } from '@/components/shared/kpi-bar'
 import { es } from 'date-fns/locale'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -233,8 +234,10 @@ export function CustomersView() {
 
   return (
     <div className="space-y-6">
+      <KPIBar context="customers" />
+
       {/* ── Header + Search ─────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center gap-4 sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
             <Users className="h-5 w-5 text-primary" />

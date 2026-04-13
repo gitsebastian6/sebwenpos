@@ -58,6 +58,7 @@ model Store {
   providers           Provider[]
   purchases           Purchase[]
   cashRegisters       CashRegister[]
+  expenses            Expense[]
 
   @@map("stores")
 }
@@ -91,6 +92,7 @@ model Product {
   imgUrl        String?  @map("img_url")
   costPrice     Int      @default(0) @map("cost_price")       // en pesos colombianos
   salePrice     Int                                         // en pesos colombianos
+  commission    Int      @default(0) @map("commission")   // porcentaje de comisión (0-100)
   currentStock  Int      @default(0) @map("current_stock")
   minStock      Int      @default(5) @map("min_stock")
   isActive      Boolean  @default(true) @map("is_active")
@@ -114,7 +116,7 @@ model InventoryMovement {
   storeId      Int      @map("store_id")
   productId    Int      @map("product_id")
   quantity     Int      // positivo=entrada, negativo=salida
-  movementType String   @map("movement_type") // PURCHASE, SALE, ADJUSTMENT, RETURN
+  movementType String   @map("movement_type") // PURCHASE, SALE, ADJUSTMENT, RETURN, LOSS
   referenceId  Int?     @map("reference_id")
   notes        String?  
   createdAt    DateTime @default(now()) @map("created_at")
@@ -146,12 +148,13 @@ model Purchase {
 }
 
 model PurchaseItem {
-  id         Int @id @default(autoincrement())
-  purchaseId Int @map("purchase_id")
-  productId  Int @map("product_id")
-  quantity   Int
-  unitCost   Int @map("unit_cost") // costo unitario en pesos
-  total      Int // quantity * unitCost
+  id               Int @id @default(autoincrement())
+  purchaseId       Int @map("purchase_id")
+  productId        Int @map("product_id")
+  quantity         Int
+  returnedQuantity Int @default(0) @map("returned_quantity") // cantidad ya devuelta
+  unitCost         Int @map("unit_cost") // costo unitario en pesos
+  total            Int // quantity * unitCost
 
   purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product  Product  @relation(fields: [productId], references: [id])
@@ -208,10 +211,14 @@ model Order {
   storeId        Int            @map("store_id")
   customerId     Int?           @map("customer_id")
   tableSessionId Int?           @map("table_session_id")
+  cashRegisterId Int?           @map("cash_register_id")
   orderNumber    String         @map("order_number")
   subtotal       Int            // pesos (solo productos/servicios)
   tipAmount      Int            @default(0) @map("tip_amount") // propina en pesos
-  total          Int            // pesos (subtotal + tipAmount)
+  discountAmount Int            @default(0) @map("discount_amount") // descuento en pesos
+  discountType   String         @default("NONE") @map("discount_type") // NONE, PERCENTAGE, FIXED
+  discountReason String?        @map("discount_reason") // razón del descuento
+  total          Int            // pesos (subtotal - discountAmount + tipAmount)
   status         String         @default("COMPLETED") // COMPLETED, PENDING, CANCELLED, CREDIT
   paymentMethod  String         @default("CASH") @map("payment_method") // CASH, CARD, TRANSFER, MIXED
   notes          String?  
@@ -221,6 +228,7 @@ model Order {
   store              Store               @relation(fields: [storeId], references: [id])
   customer           Customer?           @relation(fields: [customerId], references: [id])
   tableSession       TableSession?       @relation(fields: [tableSessionId], references: [id])
+  cashRegister       CashRegister?       @relation(fields: [cashRegisterId], references: [id])
   orderItems         OrderItem[]
   inventoryMovements InventoryMovement[] @relation("OrderMovements")
 
@@ -228,13 +236,15 @@ model Order {
 }
 
 model OrderItem {
-  id         Int      @id @default(autoincrement())
-  orderId    Int      @map("order_id")
-  productId  Int?     @map("product_id")
-  serviceId  Int?     @map("service_id")
-  quantity   Int
-  unitPrice  Int      @map("unit_price") // precio al momento de la venta
-  totalRow   Int      @map("total_row")  // quantity * unitPrice
+  id               Int      @id @default(autoincrement())
+  orderId          Int      @map("order_id")
+  productId        Int?     @map("product_id")
+  serviceId        Int?     @map("service_id")
+  quantity         Int
+  returnedQuantity Int      @default(0) @map("returned_quantity") // cantidad ya devuelta
+  unitPrice        Int      @map("unit_price") // precio al momento de la venta
+  totalRow         Int      @map("total_row")  // quantity * unitPrice
+  notes            String?  // notas del item (ej: "sin hielo", "doble")
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product? @relation(fields: [productId], references: [id])
@@ -295,6 +305,7 @@ model ComandaItem {
   quantity       Int
   unitPrice      Int      @map("unit_price") // precio al momento de pedir (pesos)
   total          Int      // quantity * unitPrice (pesos)
+  notes          String?  // notas del item (ej: "sin hielo", "extra limón")
   status         String   @default("PENDING") // PENDING, SERVED, PAID, CANCELLED
   createdAt      DateTime @default(now()) @map("created_at")
 
@@ -400,10 +411,32 @@ model CashRegister {
   expectedCash    Int?      @map("expected_cash") // calculado: apertura + ventas efectivo - pagos fiado
   difference      Int?      @map("difference") // cierre - esperado
   status          String    @default("OPEN") // OPEN, CLOSED
+  countBreakdown  String?   @map("count_breakdown") // JSON: { CASH: 500000, DAVIPLATA: 200000, ... }
   notes           String?
 
   store Store @relation(fields: [storeId], references: [id])
   user  User  @relation(fields: [userId], references: [id])
+  orders Order[]
 
   @@map("cash_registers")
+}
+
+// ----------------------------------------------
+// CONTEXTO: GASTOS OPERACIONALES
+// ----------------------------------------------
+
+model Expense {
+  id          Int      @id @default(autoincrement())
+  storeId     Int      @map("store_id")
+  category    String   // ARRIENDO, SERVICIOS, NOMINA, INSUMOS, LICENCIAS, IMPUESTOS, TRANSPORTE, MANTENIMIENTO, OTRO
+  description String   // descripción del gasto
+  amount      Int      // monto en pesos
+  date        DateTime @default(now())
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@map("expenses")
 }

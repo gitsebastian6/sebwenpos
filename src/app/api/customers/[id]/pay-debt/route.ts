@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 
+export const dynamic = 'force-dynamic'
+
 const payDebtSchema = z.object({
   storeId: z.number().positive(),
   amount: z.number().positive('El monto debe ser mayor a 0'),

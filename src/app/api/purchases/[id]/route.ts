@@ -55,6 +55,7 @@ export async function GET(
         productId: item.productId,
         product: { id: item.product.id, name: item.product.name },
         quantity: item.quantity,
+        returnedQuantity: item.returnedQuantity ?? 0,
         unitCost: item.unitCost,
         total: item.total,
       })),

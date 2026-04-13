@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
+import { playAlert, playSaleSuccess, playError } from '@/lib/pos-sounds'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,6 +48,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
   Plus,
   Users,
   Clock,
@@ -71,7 +77,15 @@ import {
   Star,
   Heart,
   Printer,
+  AlertTriangle,
+  Wallet,
+  Percent,
+  Tag,
+  MessageSquare,
+  Pencil,
+  X,
 } from 'lucide-react'
+import { KPIBar } from '@/components/shared/kpi-bar'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -118,6 +132,7 @@ interface ComandaItem {
   total: number
   status: string
   createdAt: string
+  notes?: string | null
 }
 
 interface SessionOrder {
@@ -293,6 +308,11 @@ export function TablesView() {
   const [lastPaymentData, setLastPaymentData] = useState<any>(null)
   const [transferRef, setTransferRef] = useState('')
 
+  // ── Discount state ──
+  const [discountType, setDiscountType] = useState<'NONE' | 'PERCENTAGE' | 'FIXED'>('NONE')
+  const [discountValue, setDiscountValue] = useState<number>(0)
+  const [discountReason, setDiscountReason] = useState<string>('')
+
   // ── Close session confirm ──
   const [closeSessionOpen, setCloseSessionOpen] = useState(false)
   const [closeSessionSaving, setCloseSessionSaving] = useState(false)
@@ -305,6 +325,12 @@ export function TablesView() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [categories, setCategories] = useState<Category[]>([])
   const [addingItem, setAddingItem] = useState<number | null>(null)
+  const [pendingItemNotes, setPendingItemNotes] = useState<string>('')
+
+  // ── Comanda notes editing ──
+  const [notesPopoverItemId, setNotesPopoverItemId] = useState<number | null>(null)
+  const [notesEditText, setNotesEditText] = useState<string>('')
+  const [savingNotes, setSavingNotes] = useState(false)
 
   // ── Comanda actions ──
   const [servingItemIds, setServingItemIds] = useState<number[]>([])
@@ -423,6 +449,26 @@ export function TablesView() {
     }
   }, [store?.id])
 
+  // ── Open cash registers (cajas) ──
+  const [openCashRegisters, setOpenCashRegisters] = useState<Array<{ id: number; user: { fullName: string | null }; openingBalance: number }>>([])
+  const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('auto')
+
+  const fetchOpenCashRegisters = useCallback(async () => {
+    if (!store?.id) return
+    try {
+      const res = await fetch(`/api/cash-register/current?storeId=${store.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        const shifts = data.shifts || []
+        setOpenCashRegisters(shifts.map((s: any) => ({
+          id: s.shift.id,
+          user: s.shift.user,
+          openingBalance: s.shift.openingBalance,
+        })))
+      }
+    } catch { /* silent */ }
+  }, [store?.id])
+
   useEffect(() => {
     fetchTables()
   }, [fetchTables])
@@ -430,6 +476,10 @@ export function TablesView() {
   useEffect(() => {
     fetchCategories()
   }, [fetchCategories])
+
+  useEffect(() => {
+    fetchOpenCashRegisters()
+  }, [fetchOpenCashRegisters])
 
   // ─── Auto-load products when sheet opens with an active session ──
   useEffect(() => {
@@ -450,6 +500,7 @@ export function TablesView() {
       setSheetOpen(true)
       setProductSearch('')
       setCategoryFilter('all')
+      setPendingItemNotes('')
       await fetchSession(table.activeSession.id)
       // Also fetch products, categories and services so the comanda panel is populated
       fetchProducts()
@@ -494,6 +545,7 @@ export function TablesView() {
       setDeletingTableId(null)
       fetchTables()
     } catch (err) {
+      playError()
       toast.error(err instanceof Error ? err.message : 'Error al eliminar mesa')
     } finally {
       setDeleteTableSaving(false)
@@ -522,6 +574,7 @@ export function TablesView() {
       toast.success(table.isActive ? 'Mesa desactivada' : 'Mesa activada')
       fetchTables()
     } catch (err) {
+      playError()
       toast.error(err instanceof Error ? err.message : 'Error al actualizar mesa')
     } finally {
       setTogglingTableId(null)
@@ -567,6 +620,7 @@ export function TablesView() {
       setOpenSessionOpen(false)
       fetchTables()
     } catch (err) {
+      playError()
       toast.error(err instanceof Error ? err.message : 'Error al abrir mesa')
     } finally {
       setOpenSessionSaving(false)
@@ -608,6 +662,7 @@ export function TablesView() {
       setSelectedTable(null)
       fetchTables()
     } catch (err) {
+      playError()
       toast.error(err instanceof Error ? err.message : 'Error al cerrar mesa')
     } finally {
       setCloseSessionSaving(false)
@@ -634,12 +689,20 @@ export function TablesView() {
     const itemId = productId ?? serviceId
     setAddingItem(itemId)
     try {
+      const itemPayload: Record<string, unknown> = {
+        ...(productId ? { productId } : { serviceId }),
+        quantity: 1,
+      }
+      if (pendingItemNotes.trim()) {
+        itemPayload.notes = pendingItemNotes.trim()
+      }
+
       const res = await fetch(`/api/tables/sessions/${session.id}/comanda`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storeId: store.id,
-          items: [{ ...(productId ? { productId } : { serviceId }), quantity: 1 }],
+          items: [itemPayload],
         }),
       })
 
@@ -648,14 +711,43 @@ export function TablesView() {
         throw new Error(data.error || 'Error al agregar item')
       }
 
+      playAlert()
       toast.success('Item agregado a la comanda')
+      setPendingItemNotes('')
       await fetchSession(session.id)
       // Refresh tables to update total
       fetchTables()
     } catch (err) {
+      playError()
       toast.error(err instanceof Error ? err.message : 'Error al agregar item')
     } finally {
       setAddingItem(null)
+    }
+  }
+
+  // ─── Update Item Notes ────────────────────────────────────────────────
+
+  async function handleUpdateItemNotes(itemId: number, notes: string) {
+    if (!session) return
+    setSavingNotes(true)
+    try {
+      const res = await fetch(`/api/tables/sessions/${session.id}/comanda`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemIds: [itemId], notes }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Error al actualizar nota')
+      }
+      toast.success('Nota actualizada')
+      setNotesPopoverItemId(null)
+      await fetchSession(session.id)
+    } catch (err) {
+      playError()
+      toast.error(err instanceof Error ? err.message : 'Error al actualizar nota')
+    } finally {
+      setSavingNotes(false)
     }
   }
 
@@ -680,6 +772,7 @@ export function TablesView() {
       setSelectedItemIds([])
       await fetchSession(session.id)
     } catch (err) {
+      playError()
       toast.error(err instanceof Error ? err.message : 'Error al marcar como servido')
     } finally {
       setServingItemIds([])
@@ -705,6 +798,7 @@ export function TablesView() {
       setSelectedItemIds((prev) => prev.filter((id) => !itemIds.includes(id)))
       await fetchSession(session.id)
     } catch (err) {
+      playError()
       toast.error(err instanceof Error ? err.message : 'Error al cancelar item')
     } finally {
       setServingItemIds([])
@@ -721,10 +815,26 @@ export function TablesView() {
     setPaymentMethod('CASH')
     setPaymentOpen(true)
     setTransferRef('')
+    setDiscountType('NONE')
+    setDiscountValue(0)
+    setDiscountReason('')
   }
 
   async function handleConfirmPayment() {
     if (!session || !store?.id || selectedItemIds.length === 0) return
+
+    // Compute discount
+    const subtotal = selectedItemsTotal
+    const calcDiscount = discountType === 'PERCENTAGE'
+      ? Math.round(subtotal * discountValue / 100)
+      : discountType === 'FIXED'
+        ? Math.min(discountValue, subtotal)
+        : 0
+
+    // Warn if no cajas are open (but still allow payment)
+    if (openCashRegisters.length === 0) {
+      toast.warning('⚠️ No hay cajas abiertas. El pago se procesará sin caja asociada.')
+    }
 
     // Fiado/CREDIT requires a customer
     if ((paymentMethod === 'FIADO' || paymentMethod === 'CREDIT') && !session.customerId) {
@@ -748,7 +858,11 @@ export function TablesView() {
           storeId: store.id,
           itemIds: selectedItemIds,
           paymentMethod,
+          cashRegisterId: selectedCashRegisterId !== 'auto' ? Number(selectedCashRegisterId) : undefined,
           tipAmount: (paymentMethod !== 'CREDIT' && paymentMethod !== 'FIADO') ? tipAmount : 0,
+          discountType,
+          discountAmount: calcDiscount,
+          discountReason: discountReason.trim() || undefined,
         }),
       })
 
@@ -757,17 +871,31 @@ export function TablesView() {
         throw new Error(data.error || 'Error al procesar pago')
       }
 
+      playSaleSuccess()
       const paymentData = await res.json()
       setLastPaymentData(paymentData)
       toast.success(`Pago exitoso - ${paymentMethodLabel(paymentMethod)}`)
+
+      // Show warning from payment response if present
+      if (paymentData.warning) {
+        toast.warning(paymentData.warning)
+      }
+
       setPaymentOpen(false)
       setSelectedItemIds([])
       setTipAmount(0)
       setShowTipInput(false)
       setTransferRef('')
+      setSelectedCashRegisterId('auto')
+      setDiscountType('NONE')
+      setDiscountValue(0)
+      setDiscountReason('')
       await fetchSession(session.id)
       fetchTables()
+      // Refresh open cash registers after successful payment
+      fetchOpenCashRegisters()
     } catch (err) {
+      playError()
       toast.error(err instanceof Error ? err.message : 'Error al procesar pago')
     } finally {
       setPaymentSaving(false)
@@ -820,6 +948,7 @@ export function TablesView() {
       setNewTableZone('PRINCIPAL')
       fetchTables()
     } catch (err) {
+      playError()
       toast.error(err instanceof Error ? err.message : 'Error al crear mesa')
     } finally {
       setAddTableSaving(false)
@@ -850,6 +979,12 @@ export function TablesView() {
     ?.filter((item) => selectedItemIds.includes(item.id))
     .reduce((sum, item) => sum + item.total, 0) ?? 0
 
+  const computedDiscount = discountType === 'PERCENTAGE'
+    ? Math.round(selectedItemsTotal * discountValue / 100)
+    : discountType === 'FIXED'
+      ? Math.min(discountValue, selectedItemsTotal)
+      : 0
+
   const hasUnpaidItems = session?.comandaItems?.some(
     (item) => item.status === 'PENDING' || item.status === 'SERVED'
   ) ?? false
@@ -869,8 +1004,10 @@ export function TablesView() {
 
   return (
     <div className="space-y-6">
+      <KPIBar context="tables" />
+
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center gap-4 sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
             <Users className="h-5 w-5 text-primary" />
@@ -1251,13 +1388,139 @@ export function TablesView() {
                   </span>
                 </div>
               )}
+              {/* Discount */}
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-full"
+                onClick={() => {
+                  if (discountType === 'NONE') {
+                    setDiscountType('PERCENTAGE')
+                    setDiscountValue(0)
+                  } else {
+                    setDiscountType('NONE')
+                    setDiscountValue(0)
+                    setDiscountReason('')
+                  }
+                }}
+              >
+                <Tag className="h-3.5 w-3.5" />
+                <span>Descuento</span>
+                {computedDiscount > 0 && (
+                  <span className="ml-auto font-medium text-amber-600 dark:text-amber-400">
+                    -{formatCurrency(computedDiscount, store?.currencyCode)}
+                  </span>
+                )}
+                {discountType !== 'NONE' ? null : (
+                  <span className="ml-auto text-xs opacity-60">agregar</span>
+                )}
+              </button>
+              {discountType !== 'NONE' && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={discountType}
+                      onValueChange={(val: 'PERCENTAGE' | 'FIXED') => {
+                        setDiscountType(val)
+                        setDiscountValue(0)
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-sm w-auto min-w-[110px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PERCENTAGE">
+                          <span className="flex items-center gap-1.5">
+                            <Percent className="h-3 w-3" />
+                            Porcentaje %
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="FIXED">
+                          <span className="flex items-center gap-1.5">
+                            <DollarSign className="h-3 w-3" />
+                            Valor fijo $
+                          </span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      min="0"
+                      max={discountType === 'PERCENTAGE' ? 100 : undefined}
+                      value={discountValue || ''}
+                      onChange={(e) => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                      placeholder="0"
+                      className="h-8 text-sm tabular-nums flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30 shrink-0"
+                      onClick={() => {
+                        setDiscountType('NONE')
+                        setDiscountValue(0)
+                        setDiscountReason('')
+                      }}
+                      title="Quitar descuento"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <Input
+                    value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)}
+                    placeholder="Motivo del descuento (opcional)"
+                    className="h-8 text-sm"
+                  />
+                </div>
+              )}
+              {computedDiscount > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <Tag className="h-3 w-3" />
+                    Descuento
+                    {discountType === 'PERCENTAGE' && <span className="text-xs opacity-70">({discountValue}%)</span>}
+                  </span>
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    -{formatCurrency(computedDiscount, store?.currencyCode)}
+                  </span>
+                </div>
+              )}
               <Separator />
               <div className="flex items-center justify-between font-semibold">
                 <span>Total</span>
                 <span className="text-lg text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(selectedItemsTotal + tipAmount, store?.currencyCode)}
+                  {formatCurrency(selectedItemsTotal - computedDiscount + tipAmount, store?.currencyCode)}
                 </span>
               </div>
+            </div>
+
+            {/* Caja selector */}
+            <div className="space-y-2">
+              <Label className="text-xs flex items-center gap-1.5">
+                <Wallet className="h-3.5 w-3.5" />
+                Caja
+              </Label>
+              {openCashRegisters.length === 0 ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 text-xs">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  No hay cajas abiertas
+                </div>
+              ) : (
+                <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Automática</SelectItem>
+                    {openCashRegisters.map((cr) => (
+                      <SelectItem key={cr.id} value={String(cr.id)}>
+                        Caja #{cr.id} — {cr.user.fullName || 'Usuario'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Payment method */}
@@ -1401,6 +1664,7 @@ export function TablesView() {
           setProducts([])
           setProductSearch('')
           setCategoryFilter('all')
+          setPendingItemNotes('')
         }
       }}>
         <SheetContent
@@ -1563,6 +1827,12 @@ export function TablesView() {
                                     >
                                       {statusStyle.label}
                                     </Badge>
+                                    {item.notes && (
+                                      <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800 shrink-0 max-w-[140px] truncate" title={item.notes}>
+                                        <MessageSquare className="h-2.5 w-2.5 shrink-0" />
+                                        {item.notes}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-xs text-muted-foreground mt-0.5">
                                     {formatCurrency(item.unitPrice, store?.currencyCode)} c/u
@@ -1576,6 +1846,78 @@ export function TablesView() {
                                     )}
                                   </div>
                                 </div>
+                                {/* Notes edit button */}
+                                {(item.status === 'PENDING' || item.status === 'SERVED') && (
+                                  <Popover
+                                    open={notesPopoverItemId === item.id}
+                                    onOpenChange={(open) => {
+                                      if (!open) setNotesPopoverItemId(null)
+                                    }}
+                                  >
+                                    <PopoverTrigger asChild>
+                                      <span
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setNotesPopoverItemId(item.id)
+                                          setNotesEditText(item.notes || '')
+                                        }}
+                                      >
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted"
+                                          title={item.notes ? 'Editar nota' : 'Agregar nota'}
+                                        >
+                                          {item.notes ? (
+                                            <MessageSquare className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                                          ) : (
+                                            <Pencil className="h-3 w-3" />
+                                          )}
+                                        </Button>
+                                      </span>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-72 p-3" align="end" side="left">
+                                      <div className="space-y-2">
+                                        <Label className="text-xs font-medium">
+                                          Notas para: {item.productName}
+                                        </Label>
+                                        <Textarea
+                                          value={notesEditText}
+                                          onChange={(e) => setNotesEditText(e.target.value)}
+                                          placeholder="Ej: sin hielo, extra picante..."
+                                          rows={2}
+                                          className="text-sm resize-none"
+                                          autoFocus
+                                        />
+                                        <div className="flex items-center justify-end gap-2">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-xs"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              setNotesPopoverItemId(null)
+                                            }}
+                                          >
+                                            Cancelar
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            className="h-7 text-xs gap-1"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              handleUpdateItemNotes(item.id, notesEditText)
+                                            }}
+                                            disabled={savingNotes}
+                                          >
+                                            {savingNotes && <Loader2 className="h-3 w-3 animate-spin" />}
+                                            Guardar
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+                                )}
                                 {item.status === 'PENDING' && (
                                   <Button
                                     variant="ghost"
@@ -1748,6 +2090,31 @@ export function TablesView() {
                         <Plus className="h-4 w-4" />
                         Agregar a la Comanda
                       </h3>
+
+                      {/* Pending item notes input */}
+                      <div className="mb-3">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                          <Label className="text-xs text-muted-foreground">Notas para el próximo item (opcional)</Label>
+                          {pendingItemNotes && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground ml-auto"
+                              onClick={() => setPendingItemNotes('')}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                        <Input
+                          value={pendingItemNotes}
+                          onChange={(e) => setPendingItemNotes(e.target.value)}
+                          placeholder="Ej: sin hielo, extra picante..."
+                          className="h-8 text-sm"
+                        />
+                      </div>
 
                       {/* Category filter */}
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center mb-3">

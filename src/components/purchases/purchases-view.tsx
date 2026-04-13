@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
@@ -57,6 +57,8 @@ import {
   Printer,
   Download,
   FileSpreadsheet,
+  Upload,
+  RotateCcw,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
@@ -98,6 +100,7 @@ interface PurchaseItemData {
   productId: number
   product: { id: number; name: string }
   quantity: number
+  returnedQuantity: number
   unitCost: number // in centavos
   total: number
 }
@@ -155,6 +158,23 @@ export function PurchasesView() {
   // Cancel dialog state
   const [cancelPurchase, setCancelPurchase] = useState<Purchase | null>(null)
   const [cancelling, setCancelling] = useState(false)
+
+  // Return dialog state
+  const [showReturnDialog, setShowReturnDialog] = useState(false)
+  const [returnReason, setReturnReason] = useState('')
+  const [returning, setReturning] = useState(false)
+  const [returnItems, setReturnItems] = useState<Map<number, number>>(new Map()) // purchaseItemId -> qty to return
+
+  // XML import state
+  const xmlInputRef = useRef<HTMLInputElement>(null)
+  const [xmlUploading, setXmlUploading] = useState(false)
+  const [xmlPreview, setXmlPreview] = useState<{
+    fileName: string
+    items: { name: string; quantity: number; unitCost: number }[]
+  } | null>(null)
+  const [xmlNotes, setXmlNotes] = useState('')
+  const [xmlProviderId, setXmlProviderId] = useState<string>('none')
+  const [xmlProviders, setXmlProviders] = useState<ProviderOption[]>([])
 
   // ─── Fetch purchases ──────────────────────────────────────────────────
 
@@ -327,6 +347,93 @@ export function PurchasesView() {
     }
   }
 
+  // ─── Return purchase ──────────────────────────────────────────────
+
+  function openReturnDialog() {
+    if (!detailPurchase) return
+    const items = new Map<number, number>()
+    for (const item of detailPurchase.purchaseItems) {
+      const available = item.quantity - (item.returnedQuantity ?? 0)
+      if (available > 0) {
+        items.set(item.id, available)
+      }
+    }
+    setReturnItems(items)
+    setReturnReason('')
+    setShowReturnDialog(true)
+  }
+
+  function toggleReturnItem(itemId: number, maxQty: number) {
+    setReturnItems(prev => {
+      const next = new Map(prev)
+      if (next.has(itemId)) {
+        next.delete(itemId)
+      } else {
+        next.set(itemId, maxQty)
+      }
+      return next
+    })
+  }
+
+  function setReturnItemQty(itemId: number, qty: number, maxQty: number) {
+    setReturnItems(prev => {
+      const next = new Map(prev)
+      const clamped = Math.max(1, Math.min(qty, maxQty))
+      next.set(itemId, clamped)
+      return next
+    })
+  }
+
+  function selectAllReturnItems() {
+    if (!detailPurchase) return
+    const items = new Map<number, number>()
+    for (const item of detailPurchase.purchaseItems) {
+      const available = item.quantity - (item.returnedQuantity ?? 0)
+      if (available > 0) {
+        items.set(item.id, available)
+      }
+    }
+    setReturnItems(items)
+  }
+
+  function deselectAllReturnItems() {
+    setReturnItems(new Map())
+  }
+
+  async function handleReturnPurchase() {
+    if (!detailPurchase) return
+    if (returnItems.size === 0) {
+      toast.error('Selecciona al menos un producto para devolver')
+      return
+    }
+    setReturning(true)
+    try {
+      const items = Array.from(returnItems.entries()).map(([purchaseItemId, quantity]) => ({
+        purchaseItemId,
+        quantity,
+      }))
+      const res = await fetch(`/api/purchases/${detailPurchase.id}/return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, reason: returnReason.trim() || undefined })
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Error al procesar devolución')
+      }
+      const data = await res.json()
+      toast.success(data.message)
+      setShowReturnDialog(false)
+      setReturnItems(new Map())
+      setDetailPurchase(null)
+      fetchPurchases()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al procesar devolución')
+    } finally {
+      setReturning(false)
+    }
+  }
+
   // ─── Cancel purchase ───────────────────────────────────────────────
 
   async function handleCancel() {
@@ -348,6 +455,206 @@ export function PurchasesView() {
       toast.error(message)
     } finally {
       setCancelling(false)
+    }
+  }
+
+  // ─── XML Invoice Import ─────────────────────────────────────────
+
+  function parseXmlItems(xmlDoc: Document): { name: string; quantity: number; unitCost: number }[] {
+    const xmlItems: { name: string; quantity: number; unitCost: number }[] = []
+
+    const getText = (el: Element | null, selectors: string[]): string => {
+      if (!el) return ''
+      for (const sel of selectors) {
+        const found = el.querySelector(sel)
+        if (found?.textContent?.trim()) return found.textContent.trim()
+      }
+      return ''
+    }
+    const getNum = (el: Element | null, selectors: string[]): number => {
+      const txt = getText(el, selectors)
+      return parseFloat(txt) || 0
+    }
+
+    // Strategy 1: UBL 2.1 standard (Colombian DIAN)
+    const invoiceLines = xmlDoc.querySelectorAll('InvoiceLine')
+    if (invoiceLines.length > 0) {
+      invoiceLines.forEach(line => {
+        const name = getText(line, ['Item Name', 'Item cbc\\:Name', 'cbc\\:Name'])
+        const qty = getNum(line, ['InvoicedQuantity', 'cbc\\:InvoicedQuantity', 'cbc\\:Quantity'])
+        const price = getNum(line, ['PriceAmount', 'Price cbc\\:PriceAmount', 'cbc\\:PriceAmount', 'cbc\\:Amount'])
+        if (name && qty > 0) {
+          xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+        }
+      })
+    }
+
+    // Strategy 2: FeCo Colombian format
+    if (xmlItems.length === 0) {
+      const feItems = xmlDoc.querySelectorAll('item')
+      if (feItems.length > 0) {
+        feItems.forEach(item => {
+          const name = getText(item, ['descripcion', 'nombre', 'name', 'descripcionPro'])
+          const qty = getNum(item, ['cantidad', 'quantity', 'cant'])
+          const price = getNum(item, ['precioUnitario', 'unitPrice', 'valor', 'precio', 'precioTotal'])
+          if (name && qty > 0) {
+            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+          }
+        })
+      }
+    }
+
+    // Strategy 3: generic producto/product
+    if (xmlItems.length === 0) {
+      const genericItems = xmlDoc.querySelectorAll('producto, product')
+      if (genericItems.length > 0) {
+        genericItems.forEach(item => {
+          const name = getText(item, ['nombre', 'name', 'descripcion', 'description'])
+          const qty = getNum(item, ['cantidad', 'quantity', 'cant'])
+          const price = getNum(item, ['precio', 'price', 'precioUnitario', 'unitPrice', 'valor', 'costo'])
+          if (name && qty > 0) {
+            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+          }
+        })
+      }
+    }
+
+    // Strategy 4: Try to find ANY repeating element that could be a line item
+    if (xmlItems.length === 0) {
+      const root = xmlDoc.documentElement
+      const children = Array.from(root.children)
+      const tagNameCounts = new Map<string, number>()
+      children.forEach(child => {
+        const tag = child.tagName.replace(/.*:/, '')
+        tagNameCounts.set(tag, (tagNameCounts.get(tag) || 0) + 1)
+      })
+      let bestTag = ''
+      let bestCount = 1
+      tagNameCounts.forEach((count, tag) => {
+        if (count > bestCount && count >= 2) {
+          bestCount = count
+          bestTag = tag
+        }
+      })
+      if (bestTag) {
+        const lineItems = xmlDoc.querySelectorAll(bestTag)
+        lineItems.forEach(item => {
+          const itemChildren = Array.from(item.children)
+          let name = ''
+          let qty = 0
+          let price = 0
+          itemChildren.forEach(child => {
+            const tag = child.tagName.replace(/.*:/, '').toLowerCase()
+            const val = child.textContent?.trim() || ''
+            if (!name && val) {
+              const numVal = parseFloat(val)
+              if (isNaN(numVal) || val.length > 5) {
+                name = val
+              }
+            }
+            if (/cant|qty|quantity|cantidad/.test(tag)) {
+              qty = parseFloat(val) || 0
+            }
+            if (/prec|price|cost|valor|unit|amount|total|importe/.test(tag)) {
+              const parsed = parseFloat(val) || 0
+              if (price === 0 || parsed < price) price = parsed
+            }
+          })
+          if (name && qty > 0) {
+            xmlItems.push({ name, quantity: qty, unitCost: Math.round(price) })
+          }
+        })
+      }
+    }
+
+    return xmlItems
+  }
+
+  async function handleXmlUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!store?.id) return
+
+    if (!file.name.endsWith('.xml')) {
+      toast.error('Solo se permiten archivos XML')
+      return
+    }
+
+    setXmlUploading(true)
+    try {
+      const text = await file.text()
+      const parser = new DOMParser()
+      const xmlDoc = parser.parseFromString(text, 'text/xml')
+      const parseError = xmlDoc.querySelector('parsererror')
+      if (parseError) {
+        toast.error('Error al leer el archivo XML')
+        return
+      }
+
+      const xmlItems = parseXmlItems(xmlDoc)
+
+      if (xmlItems.length === 0) {
+        toast.error('No se pudieron extraer productos del XML. Verifica el formato del archivo.')
+        return
+      }
+
+      // Fetch providers for the preview dialog
+      try {
+        const res = await fetch(`/api/providers?storeId=${store.id}&active=true`)
+        if (res.ok) {
+          const data = await res.json()
+          setXmlProviders(data)
+        }
+      } catch {
+        // Silently fail
+      }
+
+      setXmlNotes(`Importado desde XML: ${file.name}`)
+      setXmlProviderId('none')
+      setXmlPreview({ fileName: file.name, items: xmlItems })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al procesar XML')
+    } finally {
+      setXmlUploading(false)
+      if (xmlInputRef.current) xmlInputRef.current.value = ''
+    }
+  }
+
+  async function confirmXmlImport() {
+    if (!xmlPreview || !store?.id) return
+    setXmlUploading(true)
+    try {
+      const body = {
+        storeId: store.id,
+        providerId: xmlProviderId !== 'none' ? Number(xmlProviderId) : undefined,
+        notes: xmlNotes.trim() || undefined,
+        items: xmlPreview.items.map(item => ({
+          productId: 0,
+          quantity: item.quantity,
+          unitCost: item.unitCost,
+          name: item.name,
+        })),
+      }
+
+      const res = await fetch('/api/purchases/xml-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Error al importar factura XML')
+      }
+
+      const result = await res.json()
+      toast.success(`Factura XML importada: ${result.itemsCreated} producto${result.itemsCreated !== 1 ? 's' : ''} procesados`)
+      setXmlPreview(null)
+      fetchPurchases()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al importar XML')
+    } finally {
+      setXmlUploading(false)
     }
   }
 
@@ -480,7 +787,7 @@ export function PurchasesView() {
   return (
     <div className="space-y-6">
       {/* ── Header + Action ───────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
             <ShoppingCart className="h-5 w-5 text-primary" />
@@ -494,7 +801,8 @@ export function PurchasesView() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="hidden sm:block flex-1" />
+        <div className="flex flex-wrap items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -502,10 +810,10 @@ export function PurchasesView() {
                 size="sm"
                 onClick={() => handlePrintPurchases(false)}
                 disabled={loading || purchases.length === 0}
-                className="gap-2"
+                className="gap-1.5"
               >
                 <Printer className="h-4 w-4" />
-                <span className="hidden sm:inline">Imprimir</span>
+                <span className="hidden lg:inline">Imprimir</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -524,11 +832,28 @@ export function PurchasesView() {
             size="sm"
             onClick={handleExportExcel}
             disabled={loading || purchases.length === 0}
-            className="gap-2"
+            className="gap-1.5"
           >
             <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Excel</span>
+            <span className="hidden lg:inline">Excel</span>
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => xmlInputRef.current?.click()}
+            disabled={xmlUploading}
+            className="gap-1.5"
+          >
+            <Upload className="h-4 w-4" />
+            <span className="hidden lg:inline">Importar XML</span>
+          </Button>
+          <input
+            ref={xmlInputRef}
+            type="file"
+            accept=".xml"
+            className="hidden"
+            onChange={handleXmlUpload}
+          />
           <Button onClick={openCreateDialog} size="sm">
             <Plus className="h-4 w-4" />
             Nueva Compra
@@ -539,8 +864,8 @@ export function PurchasesView() {
       {/* ── Search + Filter Bar ────────────────────────────────────── */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Buscar por notas o proveedor..."
@@ -1038,6 +1363,19 @@ export function PurchasesView() {
                   {formatCurrency(detailPurchase.total, currencyCode)}
                 </span>
               </div>
+
+              {/* Return Purchase Button */}
+              {detailPurchase.status === 'COMPLETED' && detailPurchase.purchaseItems.some(i => i.quantity > (i.returnedQuantity ?? 0)) && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={openReturnDialog}
+                  className="w-full"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                  Devolver Compra
+                </Button>
+              )}
             </div>
           )}
         </DialogContent>
@@ -1083,6 +1421,268 @@ export function PurchasesView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* RETURN PURCHASE DIALOG (PARTIAL SELECTION)                       */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      <Dialog open={showReturnDialog} onOpenChange={(open) => { if (!open) { setShowReturnDialog(false); setReturnItems(new Map()) } }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-destructive" />
+              Devolver Compra {detailPurchase?.invoiceNumber ? `#${detailPurchase.invoiceNumber}` : `#${detailPurchase?.id}`}
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona los productos y cantidades que deseas devolver al proveedor. El stock se reducirá.
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailPurchase && (
+            <div className="space-y-4">
+              {/* Select All / Deselect All */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  {returnItems.size} de {detailPurchase.purchaseItems.filter(i => i.quantity > (i.returnedQuantity ?? 0)).length} producto(s) seleccionado(s)
+                </span>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={selectAllReturnItems}>
+                    Seleccionar todos
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={deselectAllReturnItems}>
+                    Quitar todos
+                  </Button>
+                </div>
+              </div>
+
+              {/* Items list */}
+              <div className="border rounded-lg divide-y max-h-72 overflow-y-auto">
+                {detailPurchase.purchaseItems.filter(i => i.quantity > (i.returnedQuantity ?? 0)).length === 0 ? (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    No hay productos devolvibles en esta compra.
+                  </div>
+                ) : (
+                  detailPurchase.purchaseItems.map((item) => {
+                    const returned = item.returnedQuantity ?? 0
+                    const available = item.quantity - returned
+                    if (available <= 0) return null
+                    const isSelected = returnItems.has(item.id)
+                    const returnQty = returnItems.get(item.id) || 0
+
+                    return (
+                      <div key={item.id} className={`flex items-center gap-3 p-3 ${isSelected ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleReturnItem(item.id, available)}
+                          className="h-4 w-4 rounded border-gray-300 text-destructive focus:ring-destructive"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.product.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Comprado: {item.quantity}{returned > 0 ? ` · Devuelto: ${returned}` : ''} · Disponible: {available}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setReturnItemQty(item.id, returnQty - 1, available)}
+                              disabled={returnQty <= 1}
+                              className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50"
+                            >
+                              −
+                            </button>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={available}
+                              value={returnQty}
+                              onChange={(e) => setReturnItemQty(item.id, Number(e.target.value) || 1, available)}
+                              className="h-7 w-14 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setReturnItemQty(item.id, returnQty + 1, available)}
+                              disabled={returnQty >= available}
+                              className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50"
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+
+              {/* Reason */}
+              <div className="space-y-1.5">
+                <Label htmlFor="purchase-return-reason" className="text-xs font-medium">Motivo de la devolución (opcional)</Label>
+                <Textarea
+                  id="purchase-return-reason"
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="Ej: Producto defectuoso, error en la compra..."
+                  rows={2}
+                  className="text-xs min-h-[60px]"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => { setShowReturnDialog(false); setReturnItems(new Map()) }}
+                  disabled={returning}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleReturnPurchase}
+                  disabled={returning || returnItems.size === 0}
+                >
+                  {returning ? 'Procesando...' : `Devolver ${returnItems.size > 0 ? `(${returnItems.size} producto${returnItems.size > 1 ? 's' : ''})` : ''}`}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* XML IMPORT PREVIEW DIALOG                                    */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      <Dialog open={!!xmlPreview} onOpenChange={(open) => !open && setXmlPreview(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Importar Factura XML
+            </DialogTitle>
+            <DialogDescription>
+              Archivo: <span className="font-mono font-medium text-foreground">{xmlPreview?.fileName}</span>
+              {' · '}
+              {xmlPreview?.items.length} producto{xmlPreview && xmlPreview.items.length !== 1 ? 's' : ''} encontrado{xmlPreview && xmlPreview.items.length !== 1 ? 's' : ''}
+            </DialogDescription>
+          </DialogHeader>
+
+          {xmlPreview && (
+            <div className="space-y-4">
+              {/* Provider + Notes */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Proveedor</Label>
+                  <Select value={xmlProviderId} onValueChange={setXmlProviderId}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Seleccionar proveedor (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin proveedor</SelectItem>
+                      {xmlProviders.map((provider) => (
+                        <SelectItem key={provider.id} value={String(provider.id)}>
+                          {provider.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notas</Label>
+                  <Textarea
+                    value={xmlNotes}
+                    onChange={(e) => setXmlNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Notas adicionales..."
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Items preview table */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold">Productos extraídos</Label>
+                <div className="max-h-[300px] overflow-y-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8">#</TableHead>
+                        <TableHead>Nombre</TableHead>
+                        <TableHead className="text-center">Cantidad</TableHead>
+                        <TableHead className="text-right">Costo Unit.</TableHead>
+                        <TableHead className="text-right">Subtotal</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {xmlPreview.items.map((item, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
+                          <TableCell className="font-medium text-sm">{item.name}</TableCell>
+                          <TableCell className="text-center text-sm">{item.quantity}</TableCell>
+                          <TableCell className="text-right text-sm">
+                            {formatCurrency(item.unitCost, currencyCode)}
+                          </TableCell>
+                          <TableCell className="text-right text-sm font-medium">
+                            {formatCurrency(item.unitCost * item.quantity, currencyCode)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Total */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <span className="font-semibold">Total de la Factura</span>
+                <span className="text-xl font-bold">
+                  {formatCurrency(
+                    xmlPreview.items.reduce((sum, item) => sum + item.unitCost * item.quantity, 0),
+                    currencyCode,
+                  )}
+                </span>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Los productos se vincularán automáticamente por nombre o se crearán nuevos si no existen.
+                El stock se actualizará al confirmar la importación.
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setXmlPreview(null)}
+              disabled={xmlUploading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmXmlImport}
+              disabled={xmlUploading}
+            >
+              {xmlUploading ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                  Importando...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Confirmar Importación
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

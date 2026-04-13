@@ -12,7 +12,11 @@ const paySessionSchema = z.object({
   itemIds: z.array(z.number().int().positive()).min(1, 'Debe seleccionar al menos un item'),
   paymentMethod: z.enum(['CASH', 'DAVIPLATA', 'NEQUI', 'CARD', 'TRANSFER', 'MIXED', 'CREDIT', 'FIADO']),
  customerId: z.number().int().positive().nullable().optional(),
+ cashRegisterId: z.number().int().positive().optional(),
   tipAmount: z.number().int().min(0).default(0),
+  discountType: z.enum(['NONE', 'PERCENTAGE', 'FIXED']).default('NONE'),
+  discountAmount: z.number().int().min(0).default(0),
+  discountReason: z.string().max(200).optional(),
 })
 
 // ─── POST: Process payment for comanda items ──────────────────────
@@ -109,7 +113,15 @@ export async function POST(
     // Calculate totals
     const subtotal = comandaItems.reduce((sum, item) => sum + Number(item.total), 0)
     const tipAmount = data.tipAmount || 0
-    const total = subtotal + tipAmount
+
+    // Calculate discount
+    let discountAmount = 0
+    if (data.discountType === 'PERCENTAGE' && data.discountAmount > 0) {
+      discountAmount = Math.round(subtotal * (data.discountAmount / 100))
+    } else if (data.discountType === 'FIXED') {
+      discountAmount = Math.min(data.discountAmount, subtotal)
+    }
+    const total = subtotal - discountAmount + tipAmount
 
     // Tip is only allowed for non-credit orders
     if (tipAmount > 0 && (data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO')) {
@@ -135,6 +147,22 @@ export async function POST(
     const orderNumber = generateOrderNumber()
     const tableLabel = session.barTable.name || `Mesa ${session.barTable.number}`
 
+    // Find open cash register shift to link this order (use client-provided or fallback)
+    let targetCashRegisterId = data.cashRegisterId ?? null
+    if (!targetCashRegisterId) {
+      const openShift = await db.cashRegister.findFirst({
+        where: { storeId: data.storeId, status: 'OPEN' },
+        select: { id: true },
+      })
+      targetCashRegisterId = openShift?.id ?? null
+    } else {
+      const shiftExists = await db.cashRegister.findFirst({
+        where: { id: targetCashRegisterId, storeId: data.storeId, status: 'OPEN' },
+        select: { id: true },
+      })
+      if (!shiftExists) targetCashRegisterId = null
+    }
+
     const order = await db.$transaction(async (tx) => {
       // 1. Create the order linked to this table session
       const createdOrder = await tx.order.create({
@@ -142,9 +170,13 @@ export async function POST(
           storeId: data.storeId,
           customerId: data.customerId ?? session.customerId ?? null,
           tableSessionId: sid,
+          cashRegisterId: targetCashRegisterId,
           orderNumber,
           subtotal: subtotal,
           tipAmount,
+          discountAmount,
+          discountType: data.discountType,
+          discountReason: data.discountReason ?? null,
           total,
           status: (data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO') ? 'CREDIT' : 'COMPLETED',
           paymentMethod: data.paymentMethod,
@@ -328,9 +360,13 @@ export async function POST(
         paymentMethod: order.paymentMethod,
         subtotal: Number(order.subtotal),
         tipAmount: Number(order.tipAmount),
+        discountAmount: Number(order.discountAmount ?? 0),
+        discountType: order.discountType,
         total: Number(order.total),
         tableSessionId: sid,
         customer: order.customer,
+        cashRegisterId: targetCashRegisterId,
+        warning: !targetCashRegisterId ? 'No hay caja abierta. La venta no se registró en ningún turno de caja.' : undefined,
         orderItems: order.orderItems.map((item) => ({
           id: item.id,
           productId: item.productId ?? null,

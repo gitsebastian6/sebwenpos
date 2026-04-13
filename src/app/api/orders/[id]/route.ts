@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/orders/[id]?storeId=X
 export async function GET(
   request: NextRequest,
@@ -72,7 +74,9 @@ export async function GET(
       orderItems: order.orderItems.map((item: any) => ({
         id: item.id,
         productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
+        productId: item.productId,
         quantity: item.quantity,
+        returnedQuantity: item.returnedQuantity ?? 0,
         unitPrice: Number(item.unitPrice),
         totalRow: Number(item.totalRow),
         isService: !!item.serviceId,

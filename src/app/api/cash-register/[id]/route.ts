@@ -6,10 +6,11 @@ export const dynamic = 'force-dynamic'
 
 const closeShiftSchema = z.object({
   closingBalance: z.number().int().min(0),
+  countBreakdown: z.record(z.string(), z.number().int().min(0)).optional(),
   notes: z.string().max(500).optional(),
 })
 
-// GET: Get single shift with order totals
+// GET: Get single shift with order totals and items
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -33,26 +34,27 @@ export async function GET(
       return NextResponse.json({ error: 'Turno no encontrado' }, { status: 404 })
     }
 
-    // Calculate orders in the shift period
-    const ordersWhere: Record<string, unknown> = {
-      storeId: shift.storeId,
-      status: { in: ['COMPLETED', 'CREDIT'] },
-      createdAt: { gte: shift.openedAt },
-    }
-    if (shift.closedAt) {
-      ordersWhere.createdAt = { gte: shift.openedAt, lte: shift.closedAt }
-    }
+    // Check if detailed view is requested (include orders with items)
+    const { searchParams } = request.nextUrl
+    const includeOrders = searchParams.get('includeOrders') === 'true'
 
+    // Get all orders linked to this cash register shift
     const orders = await db.order.findMany({
-      where: ordersWhere,
-      select: {
-        id: true,
-        total: true,
-        subtotal: true,
-        tipAmount: true,
-        paymentMethod: true,
-        status: true,
+      where: {
+        cashRegisterId: shiftId,
+        status: { in: ['COMPLETED', 'CREDIT'] },
       },
+      include: {
+        orderItems: {
+          include: {
+            product: { select: { id: true, name: true, sku: true, category: { select: { name: true } } } },
+            service: { select: { id: true, name: true } },
+          },
+        },
+        customer: { select: { id: true, name: true, phone: true } },
+        tableSession: { select: { id: true, barTable: { select: { number: true, name: true } } } },
+      },
+      orderBy: { createdAt: 'asc' },
     })
 
     // Payment method breakdown
@@ -82,7 +84,46 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({
+    // Aggregate products by name (for detail view)
+    const productAggregation: Record<string, { productId: number | null; serviceId: number | null; name: string; category: string | null; sku: string | null; quantity: number; total: number; isService: boolean }> = {}
+    for (const order of orders) {
+      for (const item of order.orderItems) {
+        const itemName = item.product?.name || item.service?.name || 'Producto eliminado'
+        const key = `${item.productId || 's'}-${item.serviceId || 'p'}-${itemName}`
+        if (!productAggregation[key]) {
+          productAggregation[key] = {
+            productId: item.productId,
+            serviceId: item.serviceId,
+            name: itemName,
+            category: item.product?.category?.name || null,
+            sku: item.product?.sku || null,
+            quantity: 0,
+            total: 0,
+            isService: item.serviceId !== null,
+          }
+        }
+        productAggregation[key].quantity += item.quantity
+        productAggregation[key].total += item.totalRow
+      }
+    }
+
+    // Sort aggregated products alphabetically (A-Z)
+    const aggregatedProducts = Object.values(productAggregation).sort((a, b) =>
+      a.name.localeCompare(b.name, 'es-CO')
+    )
+
+    // Parse countBreakdown if it exists
+    let parsedCountBreakdown: Record<string, number> | null = null
+    if (shift.countBreakdown) {
+      try {
+        parsedCountBreakdown = JSON.parse(shift.countBreakdown)
+      } catch {
+        parsedCountBreakdown = null
+      }
+    }
+
+    // Build response
+    const response: Record<string, unknown> = {
       shift,
       orderSummary: {
         totalOrders,
@@ -92,14 +133,46 @@ export async function GET(
         otherSales,
         byPayment,
       },
-    })
+      countBreakdown: parsedCountBreakdown,
+      aggregatedProducts,
+    }
+
+    // Include full order details if requested
+    if (includeOrders) {
+      response.orders = orders.map((order) => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        total: order.total,
+        subtotal: order.subtotal,
+        tipAmount: order.tipAmount,
+        paymentMethod: order.paymentMethod,
+        status: order.status,
+        createdAt: order.createdAt,
+        customer: order.customer,
+        tableName: order.tableSession?.barTable?.name || order.tableSession?.barTable?.number
+          ? `Mesa ${order.tableSession.barTable.number}${order.tableSession.barTable.name ? ` (${order.tableSession.barTable.name})` : ''}`
+          : null,
+        items: order.orderItems.map((item) => ({
+          id: item.id,
+          name: item.product?.name || item.service?.name || 'Producto eliminado',
+          sku: item.product?.sku || null,
+          category: item.product?.category?.name || null,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalRow: item.totalRow,
+          isService: item.serviceId !== null,
+        })),
+      }))
+    }
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error('GET /api/cash-register/[id] error:', error)
     return NextResponse.json({ error: 'Error al obtener turno' }, { status: 500 })
   }
 }
 
-// PUT: Close shift
+// PUT: Close shift OR Reopen a closed shift
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -111,29 +184,53 @@ export async function PUT(
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
 
-    const body = await request.json()
-    const parsed = closeShiftSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json({ error: 'Datos inválidos', details: parsed.error.flatten() }, { status: 400 })
-    }
-
-    const { closingBalance, notes: closeNotes } = parsed.data
-
-    // Get shift
     const shift = await db.cashRegister.findUnique({ where: { id: shiftId } })
     if (!shift) {
       return NextResponse.json({ error: 'Turno no encontrado' }, { status: 404 })
     }
+
+    const body = await request.json()
+
+    // ── Reopen closed shift ────────────────────────────────────────────────
+    if (body.action === 'reopen' && shift.status === 'CLOSED') {
+      const updated = await db.cashRegister.update({
+        where: { id: shiftId },
+        data: {
+          status: 'OPEN',
+          closedAt: null,
+          closingBalance: null,
+          expectedCash: null,
+          difference: null,
+          countBreakdown: null,
+        },
+        include: {
+          user: { select: { id: true, fullName: true, phone: true } },
+        },
+      })
+      return NextResponse.json({ shift: updated, message: 'Turno reabierto' })
+    }
+
+    // ── Close open shift ───────────────────────────────────────────────────
+    const parsed = closeShiftSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({
+        error: 'Datos inválidos',
+        details: parsed.error.flatten(),
+        hint: 'Envía { closingBalance: number, countBreakdown?: Record<string,number>, notes?: string }'
+      }, { status: 400 })
+    }
+
+    const { closingBalance, countBreakdown, notes: closeNotes } = parsed.data
+
     if (shift.status === 'CLOSED') {
       return NextResponse.json({ error: 'El turno ya está cerrado' }, { status: 400 })
     }
 
-    // Calculate expected cash from CASH orders in the period
+    // Calculate expected cash from orders linked to this cash register shift
     const orders = await db.order.findMany({
       where: {
-        storeId: shift.storeId,
+        cashRegisterId: shiftId,
         status: { in: ['COMPLETED', 'CREDIT'] },
-        createdAt: { gte: shift.openedAt },
       },
       select: { total: true, paymentMethod: true, tipAmount: true },
     })
@@ -156,6 +253,7 @@ export async function PUT(
         closingBalance,
         expectedCash,
         difference,
+        countBreakdown: countBreakdown ? JSON.stringify(countBreakdown) : null,
         status: 'CLOSED',
         notes: closeNotes || shift.notes,
       },
@@ -167,6 +265,45 @@ export async function PUT(
     return NextResponse.json({ shift: updated, expectedCash, difference })
   } catch (error) {
     console.error('PUT /api/cash-register/[id] error:', error)
-    return NextResponse.json({ error: 'Error al cerrar caja' }, { status: 500 })
+    return NextResponse.json({ error: 'Error al procesar turno' }, { status: 500 })
+  }
+}
+
+// DELETE: Delete a shift (only if no linked orders, or force)
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const shiftId = parseInt(id)
+    if (isNaN(shiftId)) {
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+    }
+
+    const shift = await db.cashRegister.findUnique({
+      where: { id: shiftId },
+      include: {
+        _count: { select: { orders: true } },
+      },
+    })
+
+    if (!shift) {
+      return NextResponse.json({ error: 'Turno no encontrado' }, { status: 404 })
+    }
+
+    if (shift._count.orders > 0) {
+      return NextResponse.json({
+        error: 'No se puede eliminar un turno con ventas asociadas',
+        orderCount: shift._count.orders,
+      }, { status: 400 })
+    }
+
+    await db.cashRegister.delete({ where: { id: shiftId } })
+
+    return NextResponse.json({ message: 'Turno eliminado correctamente' })
+  } catch (error) {
+    console.error('DELETE /api/cash-register/[id] error:', error)
+    return NextResponse.json({ error: 'Error al eliminar turno' }, { status: 500 })
   }
 }

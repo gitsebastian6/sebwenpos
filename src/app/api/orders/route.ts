@@ -3,12 +3,15 @@ import { db } from '@/lib/db'
 import { generateOrderNumber } from '@/lib/auth'
 import { z } from 'zod'
 
+export const dynamic = 'force-dynamic'
+
 // ─── POST: Create order ─────────────────────────────────────────────
 
 const orderItemSchema = z.object({
   productId: z.number().int().positive().optional(),
   serviceId: z.number().int().positive().optional(),
   quantity: z.number().int().min(1),
+  notes: z.string().max(200).optional(),
 }).refine((d) => d.productId || d.serviceId, {
   message: 'Debe especificar productId o serviceId',
 }).refine((d) => !(d.productId && d.serviceId), {
@@ -18,8 +21,12 @@ const orderItemSchema = z.object({
 const createOrderSchema = z.object({
   storeId: z.number().int().positive(),
   customerId: z.number().int().positive().nullable().optional(),
+  cashRegisterId: z.number().int().positive().optional(),
   paymentMethod: z.enum(['CASH', 'DAVIPLATA', 'NEQUI', 'CARD', 'TRANSFER', 'MIXED', 'CREDIT', 'FIADO']),
   tipAmount: z.number().int().min(0).default(0),
+  discountType: z.enum(['NONE', 'PERCENTAGE', 'FIXED']).default('NONE'),
+  discountAmount: z.number().int().min(0).default(0),
+  discountReason: z.string().max(200).optional(),
   notes: z.string().max(500).optional(),
   items: z.array(orderItemSchema).min(1, 'La orden debe tener al menos un producto o servicio'),
 })
@@ -92,6 +99,7 @@ export async function POST(req: NextRequest) {
           quantity: item.quantity,
           unitPrice: product.salePrice,
           totalRow: product.salePrice * item.quantity,
+          notes: item.notes || null,
         }
       } else {
         const service = serviceMap.get(item.serviceId!)!
@@ -101,12 +109,21 @@ export async function POST(req: NextRequest) {
           quantity: item.quantity,
           unitPrice: service.price,
           totalRow: service.price * item.quantity,
+          notes: item.notes || null,
         }
       }
     })
     const subtotal = orderItemsData.reduce((sum, i) => sum + i.totalRow, 0)
     const tipAmount = data.tipAmount || 0
-    const total = subtotal + tipAmount
+
+    // Calculate discount
+    let discountAmount = 0
+    if (data.discountType === 'PERCENTAGE' && data.discountAmount > 0) {
+      discountAmount = Math.round(subtotal * (data.discountAmount / 100))
+    } else if (data.discountType === 'FIXED') {
+      discountAmount = Math.min(data.discountAmount, subtotal)
+    }
+    const total = subtotal - discountAmount + tipAmount
 
     // Tip is only allowed for non-credit orders
     if (tipAmount > 0 && (data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO')) {
@@ -118,6 +135,25 @@ export async function POST(req: NextRequest) {
 
     const orderNumber = generateOrderNumber()
 
+    // Use the cashRegisterId provided by the client, or find an open shift
+    let targetCashRegisterId = data.cashRegisterId ?? null
+    if (!targetCashRegisterId) {
+      const openShift = await db.cashRegister.findFirst({
+        where: { storeId: data.storeId, status: 'OPEN' },
+        select: { id: true },
+      })
+      targetCashRegisterId = openShift?.id ?? null
+    } else {
+      // Verify the specified cash register exists and is open
+      const shiftExists = await db.cashRegister.findFirst({
+        where: { id: targetCashRegisterId, storeId: data.storeId, status: 'OPEN' },
+        select: { id: true },
+      })
+      if (!shiftExists) {
+        targetCashRegisterId = null
+      }
+    }
+
     // Create order, inventory movements, and journal entries in a transaction
     const order = await db.$transaction(async (tx) => {
       // 1. Create the order
@@ -125,9 +161,13 @@ export async function POST(req: NextRequest) {
         data: {
           storeId: data.storeId,
           customerId: data.customerId ?? null,
+          cashRegisterId: targetCashRegisterId,
           orderNumber,
           subtotal,
           tipAmount,
+          discountAmount,
+          discountType: data.discountType,
+          discountReason: data.discountReason ?? null,
           total,
           status: (data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO') ? 'CREDIT' : 'COMPLETED',
           paymentMethod: data.paymentMethod,
@@ -136,7 +176,12 @@ export async function POST(req: NextRequest) {
         },
         include: {
           customer: { select: { id: true, name: true } },
-          orderItems: true,
+          orderItems: {
+            include: {
+              product: { select: { name: true } },
+              service: { select: { name: true } },
+            },
+          },
         },
       })
 
@@ -283,9 +328,13 @@ export async function POST(req: NextRequest) {
         status: order.status,
         subtotal: Number(order.subtotal),
         tipAmount: Number(order.tipAmount ?? 0),
+        discountAmount: Number(order.discountAmount ?? 0),
+        discountType: order.discountType,
         total: Number(order.total),
         paymentMethod: order.paymentMethod,
         customer: order.customer,
+        cashRegisterId: targetCashRegisterId,
+        warning: !targetCashRegisterId ? 'No hay caja abierta. La venta no se registró en ningún turno de caja.' : undefined,
         createdAt: order.createdAt.toISOString(),
         orderItems: order.orderItems.map((item: any) => ({
           id: item.id,
@@ -319,6 +368,7 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get('to')
     const q = searchParams.get('q')?.trim()
     const customerId = searchParams.get('customerId')
+    const expand = searchParams.get('expand')
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
@@ -351,6 +401,8 @@ export async function GET(request: NextRequest) {
       where.orderNumber = { contains: q }
     }
 
+    const includeItems = expand === 'items'
+
     const orders = await db.order.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -361,15 +413,33 @@ export async function GET(request: NextRequest) {
         paymentMethod: true,
         total: true,
         createdAt: true,
+        tableSessionId: true,
         customer: {
           select: {
             name: true,
           },
         },
+        tableSession: {
+          select: {
+            barTable: {
+              select: { number: true, name: true },
+            },
+          },
+        },
+        ...(includeItems ? {
+          orderItems: {
+            select: {
+              quantity: true,
+              totalRow: true,
+              product: { select: { name: true } },
+              service: { select: { name: true } },
+            },
+          },
+        } : {}),
       },
     })
 
-    const result = orders.map((order) => ({
+    const result = orders.map((order: any) => ({
       id: order.id,
       orderNumber: order.orderNumber,
       customerName: order.customer?.name ?? null,
@@ -377,6 +447,15 @@ export async function GET(request: NextRequest) {
       paymentMethod: order.paymentMethod,
       total: Number(order.total),
       createdAt: order.createdAt.toISOString(),
+      tableSessionId: order.tableSessionId ?? null,
+      tableName: order.tableSession?.barTable ? `Mesa ${order.tableSession.barTable.number}` : null,
+      ...(includeItems ? {
+        orderItems: (order.orderItems || []).map((item: any) => ({
+          productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
+          quantity: item.quantity,
+          totalRow: Number(item.totalRow),
+        })),
+      } : {}),
     }))
 
     return NextResponse.json(result)

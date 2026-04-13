@@ -17,13 +17,27 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const storeId = parseInt(searchParams.get('storeId') || '0')
     const status = searchParams.get('status') // OPEN, CLOSED
-    const limit = parseInt(searchParams.get('limit') || '20')
+    const limit = parseInt(searchParams.get('limit') || '50')
+    const from = searchParams.get('from') // YYYY-MM-DD
+    const to = searchParams.get('to') // YYYY-MM-DD
 
     if (!storeId) return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
 
     const where: Record<string, unknown> = { storeId }
     if (status && ['OPEN', 'CLOSED'].includes(status)) {
       where.status = status
+    }
+
+    // Date filters on openedAt (DateTime field)
+    const dateFilter: Record<string, unknown> = {}
+    if (from) {
+      dateFilter.gte = new Date(from + 'T00:00:00')
+    }
+    if (to) {
+      dateFilter.lte = new Date(to + 'T23:59:59')
+    }
+    if (Object.keys(dateFilter).length > 0) {
+      where.openedAt = dateFilter
     }
 
     const shifts = await db.cashRegister.findMany({
@@ -52,14 +66,6 @@ export async function POST(request: NextRequest) {
     }
 
     const { storeId, userId, openingBalance, notes } = parsed.data
-
-    // Check no OPEN shift exists for store
-    const existing = await db.cashRegister.findFirst({
-      where: { storeId, status: 'OPEN' },
-    })
-    if (existing) {
-      return NextResponse.json({ error: 'Ya existe un turno abierto para esta tienda' }, { status: 409 })
-    }
 
     const shift = await db.cashRegister.create({
       data: {

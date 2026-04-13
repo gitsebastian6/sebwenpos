@@ -11,6 +11,7 @@ export type AppView =
   | 'inventory'
   | 'accounting'
   | 'services'
+  | 'reports'
   | 'settings'
 
 interface AppState {

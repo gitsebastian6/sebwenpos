@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 
+export const dynamic = 'force-dynamic'
+
 const updateProductSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   sku: z.string().max(100).nullable().optional(),
@@ -14,6 +16,7 @@ const updateProductSchema = z.object({
   minStock: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
   currentStock: z.number().int().min(0).optional(),
+  commission: z.number().int().min(0).max(100).optional(),
 })
 
 // PUT /api/products/[id]
@@ -61,6 +64,7 @@ export async function PUT(
         ...(data.minStock !== undefined && { minStock: data.minStock }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
         ...(data.currentStock !== undefined && { currentStock: data.currentStock }),
+        ...(data.commission !== undefined && { commission: data.commission }),
       },
       include: {
         category: {

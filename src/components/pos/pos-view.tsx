@@ -22,15 +22,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Sheet,
   SheetContent,
@@ -39,6 +37,11 @@ import {
   SheetDescription,
   SheetFooter,
 } from '@/components/ui/sheet'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Search,
@@ -57,8 +60,22 @@ import {
   Star,
   Heart,
   Printer,
+  AlertTriangle,
+  Wallet,
+  Loader2,
+  Percent,
+  Tag,
+  MessageSquare,
+  Pencil,
+  RotateCcw,
+  Clock,
 } from 'lucide-react'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
+import { KPIBar } from '@/components/shared/kpi-bar'
+import { useAppStore } from '@/stores/app-store'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
+import { playCartAdd, playSaleSuccess, playError } from '@/lib/pos-sounds'
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -101,9 +118,11 @@ interface CartItem {
   quantity: number
   maxStock: number
   isService: boolean
+  notes?: string
 }
 
 type PaymentMethod = 'CASH' | 'DAVIPLATA' | 'NEQUI' | 'CARD' | 'TRANSFER' | 'FIADO'
+type DiscountType = 'NONE' | 'PERCENTAGE' | 'FIXED'
 
 // ─── Payment method labels ──────────────────────────────
 
@@ -131,6 +150,8 @@ export function POSView() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(true)
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [openCashRegisters, setOpenCashRegisters] = useState<Array<{ id: number; user: { fullName: string | null }; openedAt: string; openingBalance: number }>>([])
+  const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('auto')
 
   // ─── UI states ───────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
@@ -145,11 +166,60 @@ export function POSView() {
   const [showTipInput, setShowTipInput] = useState(false)
   const [transferRef, setTransferRef] = useState('')
 
+  // ─── Discount states ─────────────────────────────────
+  const [discountType, setDiscountType] = useState<DiscountType>('NONE')
+  const [discountValue, setDiscountValue] = useState<number>(0)
+  const [discountReason, setDiscountReason] = useState('')
+  const [showDiscountInput, setShowDiscountInput] = useState(false)
+
   // ─── Cart Sheet state ────────────────────────────────
   const [cartSheetOpen, setCartSheetOpen] = useState(false)
 
+  // ─── Return states ──────────────────────────────────
+  const [showReturnDialog, setShowReturnDialog] = useState(false)
+  const [returnReason, setReturnReason] = useState('')
+  const [returning, setReturning] = useState(false)
+  const [returningOrderId, setReturningOrderId] = useState<number | null>(null)
+  const [returnOrderDetail, setReturnOrderDetail] = useState<any>(null)
+  const [returnItems, setReturnItems] = useState<Map<number, number>>(new Map())
+  const [loadingReturnDetail, setLoadingReturnDetail] = useState(false)
+
+  // ─── Recent sales dialog state ──────────────────────
+  const [showRecentSales, setShowRecentSales] = useState(false)
+  const [recentOrders, setRecentOrders] = useState<Array<{
+    id: number
+    orderNumber: string
+    customerName: string | null
+    status: string
+    total: number
+    createdAt: string
+    orderItems: Array<{ productName: string; quantity: number; totalRow: number }>
+  }>>([])
+  const [loadingRecentSales, setLoadingRecentSales] = useState(false)
+  const [recentSalesSearch, setRecentSalesSearch] = useState('')
+
   // ─── Cart state ──────────────────────────────────────
   const [cart, setCart] = useState<CartItem[]>([])
+
+  // ─── Fetch open cash registers ──────────────────
+  const fetchOpenCashRegisters = useCallback(async () => {
+    if (!storeId) return
+    try {
+      const res = await fetch(`/api/cash-register/current?storeId=${storeId}`)
+      if (res.ok) {
+        const data = await res.json()
+        const shifts = data.shifts || []
+        setOpenCashRegisters(shifts.map((s: any) => ({
+          id: s.shift.id,
+          user: s.shift.user,
+          openedAt: s.shift.openedAt,
+          openingBalance: s.shift.openingBalance,
+        })))
+      }
+    } catch {
+      // Silent fail - non-critical check
+    }
+  }, [storeId])
 
   // ─── Fetch products ──────────────────────────────────
   const fetchProducts = useCallback(async () => {
@@ -162,6 +232,7 @@ export function POSView() {
       setProducts(data)
     } catch {
       toast.error('Error al cargar productos')
+      playError()
     } finally {
       setIsLoadingProducts(false)
     }
@@ -214,7 +285,8 @@ export function POSView() {
     fetchServices()
     fetchCategories()
     fetchCustomers()
-  }, [fetchProducts, fetchServices, fetchCategories, fetchCustomers])
+    fetchOpenCashRegisters()
+  }, [fetchProducts, fetchServices, fetchCategories, fetchCustomers, fetchOpenCashRegisters])
 
   // ─── Filtered products ───────────────────────────────
   const filteredProducts = useMemo(() => {
@@ -251,6 +323,7 @@ export function POSView() {
   const addToCart = useCallback(
     (product: Product) => {
       const wasEmpty = cart.length === 0
+      let didAdd = false
       setCart((prev) => {
         const existing = prev.find((item) => item.productId === product.id)
         if (existing) {
@@ -258,6 +331,7 @@ export function POSView() {
             toast.warning(`Stock insuficiente para "${product.name}"`)
             return prev
           }
+          didAdd = true
           return prev.map((item) =>
             item.productId === product.id
               ? { ...item, quantity: item.quantity + 1 }
@@ -268,6 +342,7 @@ export function POSView() {
           toast.warning(`Sin stock para "${product.name}"`)
           return prev
         }
+        didAdd = true
         return [
           ...prev,
           {
@@ -281,6 +356,9 @@ export function POSView() {
           },
         ]
       })
+      if (didAdd) {
+        playCartAdd()
+      }
       // Auto-open cart sheet when first product is added
       if (wasEmpty) {
         setCartSheetOpen(true)
@@ -292,15 +370,18 @@ export function POSView() {
   const addServiceToCart = useCallback(
     (service: Service) => {
       const wasEmpty = cart.length === 0
+      let didAdd = false
       setCart((prev) => {
         const existing = prev.find((item) => item.serviceId === service.id)
         if (existing) {
+          didAdd = true
           return prev.map((item) =>
             item.serviceId === service.id
               ? { ...item, quantity: item.quantity + 1 }
               : item
           )
         }
+        didAdd = true
         return [
           ...prev,
           {
@@ -314,6 +395,9 @@ export function POSView() {
           },
         ]
       })
+      if (didAdd) {
+        playCartAdd()
+      }
       if (wasEmpty) {
         setCartSheetOpen(true)
       }
@@ -350,6 +434,17 @@ export function POSView() {
     )
   }, [])
 
+  // ─── Update per-item notes ───────────────────────────
+  const updateItemNotes = useCallback((itemId: number, isService: boolean, itemNotes: string) => {
+    setCart((prev) =>
+      prev.map((item) => {
+        const match = isService ? item.serviceId === itemId : item.productId === itemId
+        if (!match) return item
+        return { ...item, notes: itemNotes.trim() || undefined }
+      })
+    )
+  }, [])
+
   const clearCart = useCallback(() => {
     setCart([])
     setNotes('')
@@ -359,13 +454,141 @@ export function POSView() {
     setTipAmount(0)
     setShowTipInput(false)
     setTransferRef('')
+    setDiscountType('NONE')
+    setDiscountValue(0)
+    setDiscountReason('')
+    setShowDiscountInput(false)
     setCartSheetOpen(false)
   }, [])
+
+  // ─── Return last order ─────────────────────────────
+  async function openReturnDialog(orderId: number) {
+    if (!storeId) return
+    setReturningOrderId(orderId)
+    setReturnReason('')
+    setReturnItems(new Map())
+    setReturnOrderDetail(null)
+    setLoadingReturnDetail(true)
+    setShowReturnDialog(true)
+    try {
+      const res = await fetch(`/api/orders/${orderId}?storeId=${storeId}`)
+      if (!res.ok) throw new Error('Error')
+      const data = await res.json()
+      setReturnOrderDetail(data)
+      // Pre-select all returnable items
+      const items = new Map<number, number>()
+      for (const item of data.orderItems || []) {
+        if (item.productId && item.quantity > (item.returnedQuantity || 0)) {
+          items.set(item.id, item.quantity - (item.returnedQuantity || 0))
+        }
+      }
+      setReturnItems(items)
+    } catch {
+      toast.error('Error al cargar detalle de la venta')
+      setShowReturnDialog(false)
+    } finally {
+      setLoadingReturnDetail(false)
+    }
+  }
+
+  function toggleReturnItem(itemId: number, maxQty: number) {
+    setReturnItems(prev => {
+      const next = new Map(prev)
+      if (next.has(itemId)) {
+        next.delete(itemId)
+      } else {
+        next.set(itemId, maxQty)
+      }
+      return next
+    })
+  }
+
+  function setReturnItemQty(itemId: number, qty: number, maxQty: number) {
+    setReturnItems(prev => {
+      const next = new Map(prev)
+      const clamped = Math.max(1, Math.min(qty, maxQty))
+      next.set(itemId, clamped)
+      return next
+    })
+  }
+
+  async function handleReturnOrder() {
+    if (!returningOrderId || !storeId || returnItems.size === 0) {
+      toast.error('Selecciona al menos un producto para devolver')
+      return
+    }
+    setReturning(true)
+    try {
+      const items = Array.from(returnItems.entries()).map(([orderItemId, quantity]) => ({
+        orderItemId,
+        quantity,
+      }))
+      const res = await fetch(`/api/orders/${returningOrderId}/return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, reason: returnReason.trim() || undefined }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Error al procesar devolución')
+      }
+      const data = await res.json()
+      toast.success(data.message)
+      setShowReturnDialog(false)
+      setReturningOrderId(null)
+      setReturnOrderDetail(null)
+      setReturnItems(new Map())
+      setReturnReason('')
+      // Clear last order if it was the returned one
+      if (lastOrderData?.id === returningOrderId) {
+        setLastOrderNumber(null)
+        setLastOrderData(null)
+      }
+      // Refresh recent sales if open
+      if (showRecentSales) fetchRecentSales()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al procesar devolución')
+    } finally {
+      setReturning(false)
+    }
+  }
+
+  // ─── Fetch recent sales ──────────────────────────────
+  async function fetchRecentSales() {
+    if (!storeId) return
+    setLoadingRecentSales(true)
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const params = new URLSearchParams({
+        storeId: storeId.toString(),
+        status: 'COMPLETED',
+        from: today,
+        expand: 'items',
+      })
+      const res = await fetch(`/api/orders?${params}`)
+      if (!res.ok) throw new Error('Error')
+      const data = await res.json()
+      setRecentOrders(data.slice(0, 50)) // Last 50
+    } catch {
+      toast.error('Error al cargar ventas recientes')
+    } finally {
+      setLoadingRecentSales(false)
+    }
+  }
 
   // ─── Cart calculations ───────────────────────────────
   const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart])
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.salePrice * item.quantity, 0), [cart])
-  const total = useMemo(() => subtotal + tipAmount, [subtotal, tipAmount])
+  const discountAmount = useMemo(() => {
+    if (discountType === 'PERCENTAGE') {
+      return Math.round(subtotal * discountValue / 100)
+    }
+    if (discountType === 'FIXED') {
+      return Math.min(discountValue, subtotal)
+    }
+    return 0
+  }, [discountType, discountValue, subtotal])
+  const total = useMemo(() => subtotal - discountAmount + tipAmount, [subtotal, discountAmount, tipAmount])
 
   // ─── Submit order ────────────────────────────────────
   const handleSubmitOrder = async () => {
@@ -374,6 +597,7 @@ export function POSView() {
     // Fiado requires a customer
     if (paymentMethod === 'FIADO' && selectedCustomer === 'none') {
       toast.error('Para vender fiado debes seleccionar un cliente')
+      playError()
       setShowChargeDialog(false)
       return
     }
@@ -381,6 +605,7 @@ export function POSView() {
     // Transfer/Nequi/Daviplata require reference number
     if (['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && !transferRef.trim()) {
       toast.error(`Ingresa el número de ${paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod === 'NEQUI' ? 'Nequi' : 'Daviplata'}`)
+      playError()
       setShowChargeDialog(false)
       return
     }
@@ -395,8 +620,12 @@ export function POSView() {
       const payload = {
         storeId,
         customerId: selectedCustomer !== 'none' ? Number(selectedCustomer) : null,
+        cashRegisterId: selectedCashRegisterId !== 'auto' ? Number(selectedCashRegisterId) : undefined,
         paymentMethod,
         tipAmount: paymentMethod !== 'FIADO' ? tipAmount : 0,
+        discountType,
+        discountAmount,
+        discountReason: discountReason.trim() || undefined,
         notes: [
           notes.trim(),
           transferNote,
@@ -404,6 +633,7 @@ export function POSView() {
         items: cart.map((item) => ({
           ...(item.isService ? { serviceId: item.serviceId } : { productId: item.productId }),
           quantity: item.quantity,
+          notes: item.notes || undefined,
         })),
       }
 
@@ -419,9 +649,19 @@ export function POSView() {
       }
 
       const order = await res.json()
+      playSaleSuccess()
       toast.success('¡Venta registrada!', {
         description: `Orden ${order.orderNumber}`,
       })
+
+      // Show warning from API if present
+      if (order.warning) {
+        toast.warning(order.warning, { duration: 6000 })
+      }
+
+      // Refresh open cash registers after sale
+      fetchOpenCashRegisters()
+
       setLastOrderNumber(order.orderNumber)
       setLastOrderData(order)
       setCart([])
@@ -429,8 +669,13 @@ export function POSView() {
       setTipAmount(0)
       setShowTipInput(false)
       setTransferRef('')
+      setDiscountType('NONE')
+      setDiscountValue(0)
+      setDiscountReason('')
+      setShowDiscountInput(false)
       setCartSheetOpen(false)
     } catch (err) {
+      playError()
       toast.error(err instanceof Error ? err.message : 'Error al registrar la venta')
     } finally {
       setIsSubmitting(false)
@@ -442,7 +687,7 @@ export function POSView() {
   const cartItemKey = (item: CartItem) =>
     item.isService ? `svc-${item.serviceId}` : `prd-${item.productId}`
 
-  // ─── Render: Product Card ────────────────────────────
+  // ─── Render: Product Card (Vertical Layout) ──────────
   const renderProductCard = (product: Product) => {
     const isOutOfStock = product.currentStock <= 0
     const cartItem = cart.find((item) => item.productId === product.id)
@@ -452,56 +697,62 @@ export function POSView() {
       <Card
         key={product.id}
         className={`
-          cursor-pointer transition-all duration-150 select-none
-          hover:shadow-md active:scale-[0.98]
-          ${isOutOfStock ? 'opacity-50 cursor-not-allowed' : ''}
-          ${inCart ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-background' : ''}
+          cursor-pointer transition-all duration-150 select-none overflow-hidden
+          hover:shadow-lg active:scale-[0.97]
+          ${isOutOfStock ? 'opacity-50 grayscale cursor-not-allowed' : ''}
+          ${inCart ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-background shadow-emerald-100 dark:shadow-emerald-900/20' : ''}
         `}
         onClick={() => !isOutOfStock && addToCart(product)}
       >
-        <CardContent className="p-2 sm:p-2.5 flex items-center gap-2.5">
-          {/* Product icon — small square */}
-          <div className="w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-md bg-muted flex items-center justify-center overflow-hidden relative">
+        <CardContent className="p-0">
+          {/* Image area — 4:3 aspect ratio for better density */}
+          <div className="relative w-full aspect-[4/3] bg-muted">
             <ProductImage
               src={product.imgUrl}
               alt={product.name}
               categoryName={product.category?.name}
-              className="w-full h-full object-cover rounded-md"
-              fallbackClassName="w-full h-full rounded-md bg-muted flex items-center justify-center"
-              iconClassName="h-5 w-5 text-muted-foreground/40"
+              className="w-full h-full object-cover"
+              fallbackClassName="w-full h-full bg-muted flex items-center justify-center"
+              iconClassName="h-10 w-10 text-muted-foreground/30"
             />
+
+            {/* Cart quantity badge — top right */}
+            {inCart && !isOutOfStock && (
+              <div className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold shadow-md">
+                {cartItem!.quantity}
+              </div>
+            )}
+
+            {/* Stock badge — bottom right (only when low or out) */}
             {isOutOfStock && (
-              <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
-                <Badge variant="secondary" className="text-[9px] px-1 py-0">Agotado</Badge>
+              <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
+                <Badge variant="secondary" className="text-xs px-2 py-0.5 font-medium">Agotado</Badge>
+              </div>
+            )}
+            {!isOutOfStock && product.currentStock <= 5 && (
+              <div className="absolute bottom-1.5 right-1.5">
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 dark:bg-amber-900/70 dark:text-amber-300">
+                  {product.currentStock}
+                </Badge>
               </div>
             )}
           </div>
 
-          {/* Product info */}
-          <div className="flex-1 min-w-0">
-            <p className="text-xs sm:text-sm font-medium leading-tight truncate">{product.name}</p>
-            <div className="flex items-center justify-between gap-2 mt-0.5">
-              <p className="text-xs sm:text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                {formatCurrency(product.salePrice, currencyCode)}
-              </p>
-              <p className="text-[10px] sm:text-xs text-muted-foreground shrink-0">
-                {product.currentStock} disp.
-              </p>
-            </div>
+          {/* Product info — below image */}
+          <div className="p-2 sm:p-2.5 space-y-0.5">
+            <p className="text-xs sm:text-sm font-medium leading-snug line-clamp-2">
+              {product.name}
+            </p>
+            <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+              {formatCurrency(product.salePrice, currencyCode)}
+            </p>
           </div>
-
-          {/* Cart quantity badge */}
-          {inCart && !isOutOfStock && (
-            <div className="h-5 w-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-              {cartItem!.quantity}
-            </div>
-          )}
         </CardContent>
       </Card>
     )
   }
 
-  // ─── Render: Service Card ────────────────────────────
+  // ─── Render: Service Card (Vertical Layout) ──────────
   const renderServiceCard = (service: Service) => {
     const cartItem = cart.find((item) => item.serviceId === service.id)
     const inCart = !!cartItem
@@ -510,35 +761,40 @@ export function POSView() {
       <Card
         key={service.id}
         className={`
-          cursor-pointer transition-all duration-150 select-none
-          hover:shadow-md active:scale-[0.98]
-          ${inCart ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-background' : ''}
+          cursor-pointer transition-all duration-150 select-none overflow-hidden
+          hover:shadow-lg active:scale-[0.97]
+          ${inCart ? 'ring-2 ring-violet-500 ring-offset-1 dark:ring-offset-background shadow-violet-100 dark:shadow-violet-900/20' : ''}
         `}
         onClick={() => addServiceToCart(service)}
       >
-        <CardContent className="p-2 sm:p-2.5 flex items-center gap-2.5">
-          <div className="w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-md bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center relative">
-            <Star className="h-5 w-5 text-violet-400/50" />
-            <Badge variant="secondary" className="absolute -top-1 -left-1 text-[8px] px-1 py-0 bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300">
+        <CardContent className="p-0">
+          {/* Image area — violet themed icon */}
+          <div className="relative w-full aspect-[4/3] bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-950/40 dark:to-violet-950/20 flex items-center justify-center">
+            <Star className="h-10 w-10 text-violet-300 dark:text-violet-700" />
+
+            {/* Svc badge — top left */}
+            <Badge variant="secondary" className="absolute top-1.5 left-1.5 text-[10px] px-1.5 py-0 bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300">
               Svc
             </Badge>
+
+            {/* Cart quantity badge — top right */}
+            {inCart && (
+              <div className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-violet-500 text-white flex items-center justify-center text-xs font-bold shadow-md">
+                {cartItem!.quantity}
+              </div>
+            )}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs sm:text-sm font-medium leading-tight truncate">{service.name}</p>
-            <div className="flex items-center justify-between gap-2 mt-0.5">
-              <p className="text-xs sm:text-sm font-bold text-violet-600 dark:text-violet-400">
-                {formatCurrency(service.price, currencyCode)}
-              </p>
-              <p className="text-[10px] sm:text-xs text-muted-foreground shrink-0">
-                /{service.unit}
-              </p>
-            </div>
+
+          {/* Service info — below icon */}
+          <div className="p-2 sm:p-2.5 space-y-0.5">
+            <p className="text-xs sm:text-sm font-medium leading-snug line-clamp-2">
+              {service.name}
+            </p>
+            <p className="text-sm font-bold text-violet-600 dark:text-violet-400">
+              {formatCurrency(service.price, currencyCode)}
+              <span className="text-xs font-normal text-muted-foreground ml-0.5">/{service.unit}</span>
+            </p>
           </div>
-          {inCart && (
-            <div className="h-5 w-5 rounded-full bg-violet-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-              {cartItem!.quantity}
-            </div>
-          )}
         </CardContent>
       </Card>
     )
@@ -546,15 +802,15 @@ export function POSView() {
 
   // ─── Render: Product Grid (full width) ──────────────
   const renderProductGrid = () => (
-    <div className="flex-1 min-h-0">
+    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
       {isLoadingProducts ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
           {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-2.5 p-2">
-              <Skeleton className="w-10 h-10 rounded-md shrink-0" />
-              <div className="flex-1 space-y-1.5">
-                <Skeleton className="h-3.5 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
+            <div key={i} className="overflow-hidden rounded-xl">
+              <Skeleton className="w-full aspect-[4/3] rounded-none" />
+              <div className="p-2 sm:p-2.5 space-y-1.5">
+                <Skeleton className="h-3.5 w-3/4 rounded" />
+                <Skeleton className="h-3.5 w-1/2 rounded" />
               </div>
             </div>
           ))}
@@ -568,7 +824,7 @@ export function POSView() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
             {filteredServices.map(renderServiceCard)}
           </div>
         )
@@ -580,7 +836,7 @@ export function POSView() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
           {filteredProducts.map(renderProductCard)}
         </div>
       )}
@@ -588,7 +844,9 @@ export function POSView() {
   )
 
   return (
-    <div className="flex flex-col gap-4 relative">
+    <div className="flex flex-col gap-3 h-full relative min-w-0 overflow-x-hidden">
+      <KPIBar context="pos" />
+
       {/* ═══ HEADER: Search + Category Tabs ═══════════ */}
       {/* Search bar */}
       <div className="relative">
@@ -602,8 +860,8 @@ export function POSView() {
         />
       </div>
 
-      {/* Category tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+      {/* Category tabs - wrap so all categories are visible */}
+      <div className="flex items-center gap-2 flex-wrap">
         <Button
           variant={selectedCategory === 'all' ? 'default' : 'outline'}
           size="sm"
@@ -653,45 +911,74 @@ export function POSView() {
 
       {/* ═══ LAST ORDER INFO (when no cart) ═══════════ */}
       {cartItemCount === 0 && lastOrderNumber && (
-        <div className="flex items-center justify-center gap-3 pt-4">
+        <div className="flex items-center justify-center gap-2 pt-4">
           <p className="text-sm text-center text-muted-foreground">
             Última venta: <span className="font-semibold">{lastOrderNumber}</span>
           </p>
           {lastOrderData && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-3 text-xs gap-1"
-              onClick={() => {
-                const items: TicketItem[] = (lastOrderData.orderItems || []).map((item: any) => ({
-                  name: item.productName,
-                  quantity: item.quantity,
-                  unitPrice: item.unitPrice,
-                  total: item.totalRow,
-                  isService: item.isService,
-                }))
-                printTicket({
-                  storeName: store?.name || '',
-                  storeNIT: store?.nit || undefined,
-                  storeAddress: store?.address || undefined,
-                  storePhone: store?.phone || undefined,
-                  orderNumber: lastOrderData.orderNumber,
-                  date: lastOrderData.createdAt,
-                  customer: lastOrderData.customer?.name,
-                  items,
-                  subtotal: lastOrderData.subtotal,
-                  tipAmount: lastOrderData.tipAmount || 0,
-                  total: lastOrderData.total,
-                  paymentMethod: lastOrderData.paymentMethod,
-                  currencyCode: currencyCode,
-                  notes: notes || undefined,
-                })
-              }}
-            >
-              <Printer className="h-3.5 w-3.5" />
-              Imprimir
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-xs gap-1"
+                onClick={() => {
+                  const items: TicketItem[] = (lastOrderData.orderItems || []).map((item: any) => ({
+                    name: item.productName,
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    total: item.totalRow,
+                    isService: item.isService,
+                  }))
+                  printTicket({
+                    storeName: store?.name || '',
+                    storeNIT: store?.nit || undefined,
+                    storeAddress: store?.address || undefined,
+                    storePhone: store?.phone || undefined,
+                    orderNumber: lastOrderData.orderNumber,
+                    date: lastOrderData.createdAt,
+                    customer: lastOrderData.customer?.name,
+                    items,
+                    subtotal: lastOrderData.subtotal,
+                    tipAmount: lastOrderData.tipAmount || 0,
+                    total: lastOrderData.total,
+                    paymentMethod: lastOrderData.paymentMethod,
+                    currencyCode: currencyCode,
+                    notes: notes || undefined,
+                  })
+                }}
+              >
+                <Printer className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Imprimir</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-xs gap-1 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5"
+                onClick={() => openReturnDialog(lastOrderData.id)}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Devolver</span>
+              </Button>
+            </>
           )}
+        </div>
+      )}
+
+      {/* ═══ RECENT SALES + RETURN FAB (when no cart) ═══ */}
+      {cartItemCount === 0 && (
+        <div className="flex items-center justify-center pt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+            onClick={() => {
+              setShowRecentSales(true)
+              fetchRecentSales()
+            }}
+          >
+            <Clock className="h-3.5 w-3.5" />
+            Ventas recientes / Devoluciones
+          </Button>
         </div>
       )}
 
@@ -740,11 +1027,76 @@ export function POSView() {
                                 Svc
                               </Badge>
                             )}
+                            {/* Per-item notes indicator */}
+                            {item.notes && (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                                    title={item.notes}
+                                  >
+                                    <MessageSquare className="h-3.5 w-3.5" />
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-64 p-3" align="start">
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">Nota del artículo</p>
+                                  <Textarea
+                                    value={item.notes}
+                                    onChange={(e) => updateItemNotes(itemId, item.isService, e.target.value)}
+                                    placeholder="Ej: sin hielo, extra limón..."
+                                    className="min-h-[60px] resize-none text-sm"
+                                    rows={2}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="mt-1.5 h-7 px-2 text-xs text-destructive hover:text-destructive"
+                                    onClick={() => updateItemNotes(itemId, item.isService, '')}
+                                  >
+                                    <X className="h-3 w-3 mr-1" />
+                                    Quitar nota
+                                  </Button>
+                                </PopoverContent>
+                              </Popover>
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {formatCurrency(item.salePrice, currencyCode)} c/u
                           </p>
+                          {item.notes && (
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 truncate">{item.notes}</p>
+                          )}
                         </div>
+
+                        {/* Per-item notes button (when no notes yet) */}
+                        {!item.notes && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-amber-600 shrink-0"
+                                title="Agregar nota"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64 p-3" align="end">
+                              <p className="text-xs font-medium text-muted-foreground mb-1">Nota del artículo</p>
+                              <Textarea
+                                value={item.notes || ''}
+                                onChange={(e) => updateItemNotes(itemId, item.isService, e.target.value)}
+                                placeholder="Ej: sin hielo, extra limón..."
+                                className="min-h-[60px] resize-none text-sm"
+                                rows={2}
+                                autoFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
 
                         {/* Quantity controls */}
                         <div className="flex items-center gap-0.5 shrink-0">
@@ -803,6 +1155,146 @@ export function POSView() {
                         {formatCurrency(subtotal, currencyCode)}
                       </span>
                     </div>
+
+                    {/* Discount section */}
+                    <div className="space-y-1.5">
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-full"
+                        onClick={() => {
+                          setShowDiscountInput(!showDiscountInput)
+                          if (showDiscountInput) {
+                            // Reset discount when collapsing
+                            setDiscountType('NONE')
+                            setDiscountValue(0)
+                            setDiscountReason('')
+                          }
+                        }}
+                      >
+                        <Tag className="h-3.5 w-3.5" />
+                        <span>Descuento</span>
+                        {discountAmount > 0 && (
+                          <span className="ml-auto font-medium text-amber-600 dark:text-amber-400">
+                            -{formatCurrency(discountAmount, currencyCode)}
+                          </span>
+                        )}
+                        {!showDiscountInput && discountAmount === 0 && (
+                          <span className="ml-auto text-xs opacity-60">agregar</span>
+                        )}
+                      </button>
+                      {showDiscountInput && (
+                        <div className="space-y-2 pl-0.5">
+                          {/* Discount type selector */}
+                          <div className="flex items-center gap-1.5">
+                            <Select
+                              value={discountType}
+                              onValueChange={(v) => {
+                                setDiscountType(v as DiscountType)
+                                if (v === 'NONE') {
+                                  setDiscountValue(0)
+                                  setDiscountReason('')
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-xs flex-1">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="NONE">Sin descuento</SelectItem>
+                                <SelectItem value="PERCENTAGE">
+                                  <span className="flex items-center gap-1">
+                                    <Percent className="h-3 w-3" />
+                                    Porcentaje %
+                                  </span>
+                                </SelectItem>
+                                <SelectItem value="FIXED">
+                                  <span className="flex items-center gap-1">
+                                    <Tag className="h-3 w-3" />
+                                    Valor fijo $
+                                  </span>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Discount value input */}
+                          {discountType !== 'NONE' && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground shrink-0">
+                                {discountType === 'PERCENTAGE' ? '%' : '$'}
+                              </span>
+                              <Input
+                                type="number"
+                                min="0"
+                                max={discountType === 'PERCENTAGE' ? 100 : subtotal}
+                                value={discountValue || ''}
+                                onChange={(e) => {
+                                  const val = Math.max(0, parseFloat(e.target.value) || 0)
+                                  if (discountType === 'PERCENTAGE') {
+                                    setDiscountValue(Math.min(val, 100))
+                                  } else {
+                                    setDiscountValue(val)
+                                  }
+                                }}
+                                placeholder={discountType === 'PERCENTAGE' ? '0' : '0'}
+                                className="h-8 text-sm tabular-nums w-28"
+                              />
+                              {discountType === 'PERCENTAGE' && (
+                                <>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 px-2 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                                    onClick={() => setDiscountValue(10)}
+                                  >
+                                    10%
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 px-2 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                                    onClick={() => setDiscountValue(15)}
+                                  >
+                                    15%
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 px-2 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                                    onClick={() => setDiscountValue(20)}
+                                  >
+                                    20%
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Discount reason input */}
+                          {discountType !== 'NONE' && (
+                            <Input
+                              type="text"
+                              value={discountReason}
+                              onChange={(e) => setDiscountReason(e.target.value)}
+                              placeholder="Razón (opcional): Cliente frecuente, Promoción..."
+                              className="h-8 text-xs"
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {discountAmount > 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-amber-600 dark:text-amber-400">Descuento</span>
+                        <span className="tabular-nums text-amber-600 dark:text-amber-400">
+                          -{formatCurrency(discountAmount, currencyCode)}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Tip section */}
                     <div className="space-y-1.5">
@@ -909,6 +1401,39 @@ export function POSView() {
                     </Select>
                   </div>
 
+                  {/* Caja selector */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                      <Wallet className="h-3.5 w-3.5" />
+                      Caja
+                      {openCashRegisters.length === 0 && (
+                        <span className="text-destructive">*</span>
+                      )}
+                    </Label>
+                    {openCashRegisters.length === 0 ? (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 text-xs">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        No hay cajas abiertas. Abre una en Contabilidad → Caja.
+                      </div>
+                    ) : (
+                      <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">
+                            <span className="text-muted-foreground">Automática</span>
+                          </SelectItem>
+                          {openCashRegisters.map((cr) => (
+                            <SelectItem key={cr.id} value={String(cr.id)}>
+                              Caja #{cr.id} — {cr.user.fullName || 'Usuario'} (${cr.openingBalance.toLocaleString()})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+
                   {/* Payment method */}
                   <div className="space-y-2">
                     <Label className="text-xs text-muted-foreground font-medium">Método de pago</Label>
@@ -996,7 +1521,7 @@ export function POSView() {
                   <div className="flex flex-col gap-2 pt-1">
                     <Button
                       className="w-full h-12 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
-                      disabled={cart.length === 0 || isSubmitting}
+                      disabled={cart.length === 0 || isSubmitting || openCashRegisters.length === 0}
                       onClick={() => setShowChargeDialog(true)}
                     >
                       <CreditCard className="h-5 w-5 mr-2" />
@@ -1014,46 +1539,57 @@ export function POSView() {
                     </Button>
                   </div>
 
-                  {/* Last order print */}
+                  {/* Last order actions */}
                   {lastOrderNumber && (
-                    <div className="flex items-center justify-center gap-3 pt-1">
+                    <div className="flex items-center justify-center gap-2 pt-1">
                       <p className="text-xs text-center text-muted-foreground">
                         Última: <span className="font-semibold">{lastOrderNumber}</span>
                       </p>
                       {lastOrderData && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs text-primary hover:text-primary"
-                          onClick={() => {
-                            const items: TicketItem[] = (lastOrderData.orderItems || []).map((item: any) => ({
-                              name: item.productName,
-                              quantity: item.quantity,
-                              unitPrice: item.unitPrice,
-                              total: item.totalRow,
-                              isService: item.isService,
-                            }))
-                            printTicket({
-                              storeName: store?.name || '',
-                              storeNIT: store?.nit || undefined,
-                              storeAddress: store?.address || undefined,
-                              storePhone: store?.phone || undefined,
-                              orderNumber: lastOrderData.orderNumber,
-                              date: lastOrderData.createdAt,
-                              customer: lastOrderData.customer?.name,
-                              items,
-                              subtotal: lastOrderData.subtotal,
-                              tipAmount: lastOrderData.tipAmount || 0,
-                              total: lastOrderData.total,
-                              paymentMethod: lastOrderData.paymentMethod,
-                              currencyCode: currencyCode,
-                              notes: notes || undefined,
-                            })
-                          }}
-                        >
-                          <Printer className="h-3.5 w-3.5 mr-1" />
-                          Imprimir
-                        </Button>
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-primary hover:text-primary"
+                            onClick={() => {
+                              const items: TicketItem[] = (lastOrderData.orderItems || []).map((item: any) => ({
+                                name: item.productName,
+                                quantity: item.quantity,
+                                unitPrice: item.unitPrice,
+                                total: item.totalRow,
+                                isService: item.isService,
+                              }))
+                              printTicket({
+                                storeName: store?.name || '',
+                                storeNIT: store?.nit || undefined,
+                                storeAddress: store?.address || undefined,
+                                storePhone: store?.phone || undefined,
+                                orderNumber: lastOrderData.orderNumber,
+                                date: lastOrderData.createdAt,
+                                customer: lastOrderData.customer?.name,
+                                items,
+                                subtotal: lastOrderData.subtotal,
+                                tipAmount: lastOrderData.tipAmount || 0,
+                                total: lastOrderData.total,
+                                paymentMethod: lastOrderData.paymentMethod,
+                                currencyCode: currencyCode,
+                                notes: notes || undefined,
+                              })
+                            }}
+                          >
+                            <Printer className="h-3.5 w-3.5 mr-1" />
+                            Imprimir
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                            onClick={() => openReturnDialog(lastOrderData.id)}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                            Devolver
+                          </Button>
+                        </>
                       )}
                     </div>
                   )}
@@ -1065,11 +1601,13 @@ export function POSView() {
       </Sheet>
 
       {/* ═══ CHARGE CONFIRMATION DIALOG ═══════════════ */}
-      <AlertDialog open={showChargeDialog} onOpenChange={setShowChargeDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar venta</AlertDialogTitle>
-            <AlertDialogDescription asChild>
+      <Dialog open={showChargeDialog} onOpenChange={(open) => {
+        if (!open && !isSubmitting) setShowChargeDialog(false)
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar venta</DialogTitle>
+            <DialogDescription asChild>
               <div className="space-y-3">
                 <p>¿Estás seguro de que deseas registrar esta venta?</p>
 
@@ -1098,6 +1636,18 @@ export function POSView() {
                       {formatCurrency(subtotal, currencyCode)}
                     </span>
                   </div>
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-amber-600 dark:text-amber-400">
+                        Descuento
+                        {discountType === 'PERCENTAGE' && ` (${discountValue}%)`}
+                        {discountReason && ` — ${discountReason}`}
+                      </span>
+                      <span className="font-medium text-amber-600 dark:text-amber-400">
+                        -{formatCurrency(discountAmount, currencyCode)}
+                      </span>
+                    </div>
+                  )}
                   {tipAmount > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-pink-600 dark:text-pink-400">Propina</span>
@@ -1115,20 +1665,243 @@ export function POSView() {
                   </div>
                 </div>
               </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowChargeDialog(false)} disabled={isSubmitting}>Cancelar</Button>
+            <Button
               onClick={handleSubmitOrder}
               disabled={isSubmitting}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
             >
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               {isSubmitting ? 'Procesando...' : 'Confirmar Venta'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ RETURN DIALOG (PARTIAL SELECTION) ════════════ */}
+      <Dialog open={showReturnDialog} onOpenChange={(open) => { if (!open) { setShowReturnDialog(false); setReturnOrderDetail(null); setReturnItems(new Map()) } }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-destructive" />
+              Devolver Venta {returnOrderDetail?.orderNumber || ''}
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona los productos y cantidades que deseas devolver al inventario.
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingReturnDetail ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : returnOrderDetail ? (
+            <div className="space-y-4">
+              {/* Items list */}
+              <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
+                {returnOrderDetail.orderItems?.filter((i: any) => i.productId && i.quantity > (i.returnedQuantity || 0)).length === 0 ? (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    No hay productos devolvibles en esta venta.
+                  </div>
+                ) : (
+                  returnOrderDetail.orderItems?.map((item: any) => {
+                    if (!item.productId) return null
+                    const available = item.quantity - (item.returnedQuantity || 0)
+                    if (available <= 0) return null
+                    const isSelected = returnItems.has(item.id)
+                    const returnQty = returnItems.get(item.id) || 0
+
+                    return (
+                      <div key={item.id} className={`flex items-center gap-3 p-3 ${isSelected ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleReturnItem(item.id, available)}
+                          className="h-4 w-4 rounded border-gray-300 text-destructive focus:ring-destructive"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.productName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Vendido: {item.quantity}{item.returnedQuantity > 0 ? ` · Devuelto: ${item.returnedQuantity}` : ''} · Disponible: {available}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setReturnItemQty(item.id, returnQty - 1, available)}
+                              disabled={returnQty <= 1}
+                              className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50"
+                            >
+                              −
+                            </button>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={available}
+                              value={returnQty}
+                              onChange={(e) => setReturnItemQty(item.id, Number(e.target.value) || 1, available)}
+                              className="h-7 w-14 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setReturnItemQty(item.id, returnQty + 1, available)}
+                              disabled={returnQty >= available}
+                              className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50"
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+
+              {/* Services note */}
+              {returnOrderDetail.orderItems?.some((i: any) => !i.productId) && (
+                <p className="text-xs text-muted-foreground italic">
+                  Los servicios no se pueden devolver al inventario.
+                </p>
+              )}
+
+              {/* Reason */}
+              <div className="space-y-1.5">
+                <Label htmlFor="pos-return-reason" className="text-xs font-medium">Motivo de la devolución (opcional)</Label>
+                <Textarea
+                  id="pos-return-reason"
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="Ej: Error en el pedido, producto defectuoso..."
+                  rows={2}
+                  className="text-xs min-h-[60px]"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => { setShowReturnDialog(false); setReturnOrderDetail(null); setReturnItems(new Map()) }}
+                  disabled={returning}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleReturnOrder}
+                  disabled={returning || returnItems.size === 0}
+                >
+                  {returning ? 'Procesando...' : `Devolver ${returnItems.size > 0 ? `(${returnItems.size} producto${returnItems.size > 1 ? 's' : ''})` : ''}`}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ RECENT SALES DIALOG ════════════════════════ */}
+      <Dialog open={showRecentSales} onOpenChange={setShowRecentSales}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Ventas Recientes del Día
+            </DialogTitle>
+            <DialogDescription>
+              Busca y devuelve ventas realizadas hoy desde el Punto de Venta
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por número de orden, cliente o producto..."
+              className="pl-9"
+              value={recentSalesSearch}
+              onChange={(e) => setRecentSalesSearch(e.target.value)}
+            />
+          </div>
+
+          {loadingRecentSales ? (
+            <div className="space-y-3 py-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-md" />
+              ))}
+            </div>
+          ) : recentOrders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <ShoppingCart className="mb-3 h-10 w-10 text-muted-foreground/30" />
+              <p className="text-muted-foreground font-medium text-sm">
+                No hay ventas completadas hoy
+              </p>
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                Las ventas del día aparecerán aquí
+              </p>
+            </div>
+          ) : (
+            <div className="max-h-[50vh] overflow-y-auto space-y-2">
+              {recentOrders
+                .filter((order) => {
+                  if (!recentSalesSearch.trim()) return true
+                  const q = recentSalesSearch.toLowerCase().trim()
+                  return (
+                    order.orderNumber.toLowerCase().includes(q) ||
+                    (order.customerName || '').toLowerCase().includes(q) ||
+                    order.orderItems.some((item) =>
+                      item.productName.toLowerCase().includes(q)
+                    )
+                  )
+                })
+                .map((order) => (
+                  <div
+                    key={order.id}
+                    className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-semibold">
+                          {order.orderNumber}
+                        </span>
+                        {order.customerName && (
+                          <span className="text-xs text-muted-foreground truncate">
+                            — {order.customerName}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {format(new Date(order.createdAt), 'HH:mm', { locale: es })}
+                        {' · '}
+                        {order.orderItems.length} producto{order.orderItems.length !== 1 ? 's' : ''}
+                        {order.orderItems.length <= 3
+                          ? ` (${order.orderItems.map((i) => i.productName).join(', ')})`
+                          : ` (${order.orderItems.slice(0, 3).map((i) => i.productName).join(', ')}...)`}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-semibold text-sm">
+                        {formatCurrency(order.total, currencyCode)}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2 text-xs shrink-0 text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5"
+                      onClick={() => openReturnDialog(order.id)}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

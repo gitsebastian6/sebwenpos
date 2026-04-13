@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 
+export const dynamic = 'force-dynamic'
+
 const createProductSchema = z.object({
   storeId: z.number().int().positive(),
   name: z.string().min(1, 'El nombre es obligatorio').max(200),
