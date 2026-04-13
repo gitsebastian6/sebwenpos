@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic'
 
 const updateCategorySchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(100),
+  icon: z.string().max(100).nullable().optional(),
 })
 
 // PUT /api/categories/[id]
@@ -30,7 +31,10 @@ export async function PUT(
 
     const category = await db.category.update({
       where: { id: categoryId },
-      data: { name: data.name },
+      data: {
+        name: data.name,
+        ...(data.icon !== undefined && { icon: data.icon }),
+      },
       include: {
         _count: {
           select: { products: true },

@@ -70,7 +70,7 @@ export async function PUT(
       },
       include: {
         category: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, icon: true },
         },
         provider: {
           select: { id: true, name: true },

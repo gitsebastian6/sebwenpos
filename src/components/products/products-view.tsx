@@ -55,6 +55,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { ProductImage } from '@/components/ui/product-image'
+import { CategoryIconPicker } from '@/components/ui/category-icon-picker'
 import { printReport, printThermal80mm } from '@/lib/print-report'
 import { KPIBar } from '@/components/shared/kpi-bar'
 import dynamic from 'next/dynamic'
@@ -116,7 +117,7 @@ interface Product {
   currentStock: number
   minStock: number
   isActive: boolean
-  category?: { id: number; name: string } | null
+  category?: { id: number; name: string; icon: string | null } | null
   provider?: { id: number; name: string } | null
   taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
   _count?: { orderItems: number }
@@ -132,6 +133,7 @@ interface Category {
   id: number
   storeId: number
   name: string
+  icon: string | null
   createdAt: string
   _count?: { products: number }
 }
@@ -214,6 +216,7 @@ export function ProductsView() {
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [categoryName, setCategoryName] = useState('')
+  const [categoryIcon, setCategoryIcon] = useState('')
   const [categorySaving, setCategorySaving] = useState(false)
 
   // Delete dialog
@@ -441,12 +444,14 @@ export function ProductsView() {
   function openNewCategoryDialog() {
     setEditingCategory(null)
     setCategoryName('')
+    setCategoryIcon('')
     setCategoryDialogOpen(true)
   }
 
   function openEditCategoryDialog(category: Category) {
     setEditingCategory(category)
     setCategoryName(category.name)
+    setCategoryIcon(category.icon || '')
     setCategoryDialogOpen(true)
   }
 
@@ -463,8 +468,8 @@ export function ProductsView() {
       const url = isEditing ? `/api/categories/${editingCategory.id}` : '/api/categories'
       const method = isEditing ? 'PUT' : 'POST'
       const body = isEditing
-        ? { name: categoryName.trim() }
-        : { storeId: store.id, name: categoryName.trim() }
+        ? { name: categoryName.trim(), icon: categoryIcon || null }
+        : { storeId: store.id, name: categoryName.trim(), icon: categoryIcon || null }
 
       const res = await fetch(url, {
         method,
@@ -886,6 +891,7 @@ export function ProductsView() {
                                 src={product.imgUrl}
                                 alt={product.name}
                                 categoryName={product.category?.name}
+                                categoryIcon={product.category?.icon}
                               />
                               <div className="min-w-0">
                                 <p className="truncate">{product.name}</p>
@@ -1310,6 +1316,11 @@ export function ProductsView() {
                         ? categories.find((c) => String(c.id) === productForm.categoryId)?.name
                         : undefined
                     }
+                    categoryIcon={
+                      productForm.categoryId !== 'none'
+                        ? categories.find((c) => String(c.id) === productForm.categoryId)?.icon
+                        : undefined
+                    }
                     className="h-12 w-12 rounded object-cover"
                     fallbackClassName="h-12 w-12 rounded bg-muted flex items-center justify-center shrink-0"
                     iconClassName="h-6 w-6 text-muted-foreground"
@@ -1320,6 +1331,7 @@ export function ProductsView() {
                 <div className="flex items-center gap-3 p-2 rounded-md bg-muted/50 border">
                   <ProductImage
                     categoryName={categories.find((c) => String(c.id) === productForm.categoryId)?.name}
+                    categoryIcon={categories.find((c) => String(c.id) === productForm.categoryId)?.icon}
                     alt={productForm.name || 'Producto'}
                     className="h-12 w-12 rounded object-cover"
                     fallbackClassName="h-12 w-12 rounded bg-muted flex items-center justify-center shrink-0"
@@ -1525,8 +1537,8 @@ export function ProductsView() {
             </DialogTitle>
             <DialogDescription>
               {editingCategory
-                ? 'Modifica el nombre de la categoría.'
-                : 'Ingresa el nombre para la nueva categoría.'}
+                ? 'Modifica el nombre e ícono de la categoría.'
+                : 'Ingresa el nombre y escoge un ícono para la nueva categoría.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1546,6 +1558,7 @@ export function ProductsView() {
                 autoFocus
               />
             </div>
+            <CategoryIconPicker value={categoryIcon} onChange={setCategoryIcon} />
           </div>
 
           <DialogFooter>

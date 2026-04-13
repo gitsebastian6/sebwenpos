@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         category: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, icon: true },
         },
         provider: {
           select: { id: true, name: true },
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
       },
       include: {
         category: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, icon: true },
         },
         provider: {
           select: { id: true, name: true },

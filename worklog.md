@@ -973,3 +973,25 @@ Stage Summary:
 - Products can now have their images removed (button X in the form, or clearing the URL)
 - Product form shows a preview of the category icon when no image is assigned
 - Files modified: src/components/products/products-view.tsx, src/app/api/products/route.ts
+
+---
+Task ID: 5
+Agent: main
+Task: Add icon picker to category creation/edit dialog
+
+Work Log:
+- Added `icon` field (String?, nullable) to Category model in Prisma schema
+- Ran `bun run db:push` to sync DB
+- Created `CategoryIconPicker` component (`src/components/ui/category-icon-picker.tsx`) with 90+ Lucide icons in a scrollable grid
+- Updated POST/PUT category APIs to accept `icon` field
+- Updated `products-view.tsx`: Category interface now includes `icon`, category dialog now includes `CategoryIconPicker`
+- Updated `ProductImage` component to accept `categoryIcon` prop and use stored icon with priority over keyword matching
+- Updated all product APIs (GET/POST/PUT) to include `icon` in category select
+- Fixed missing `ShotGlass` icon (not available in lucide-react) → using `GlassWater` instead
+- Updated all `ProductImage` usages in products-view.tsx to pass `categoryIcon`
+
+Stage Summary:
+- Categories now support custom icons selected from a visual grid picker
+- When creating or editing a category, user can pick from 90+ icons
+- If a category has a saved icon, it's used with priority; otherwise falls back to keyword name matching
+- Files: prisma/schema.prisma, src/app/api/categories/route.ts, src/app/api/categories/[id]/route.ts, src/app/api/products/route.ts, src/app/api/products/[id]/route.ts, src/components/ui/category-icon-picker.tsx, src/components/ui/product-image.tsx, src/components/products/products-view.tsx

@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic'
 const createCategorySchema = z.object({
   storeId: z.number().int().positive(),
   name: z.string().min(1, 'El nombre es obligatorio').max(100),
+  icon: z.string().max(100).nullable().optional(),
 })
 
 // GET /api/categories?storeId=X
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
       data: {
         storeId: data.storeId,
         name: data.name,
+        icon: data.icon || null,
       },
       include: {
         _count: {
