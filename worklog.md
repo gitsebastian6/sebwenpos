@@ -955,3 +955,21 @@ Stage Summary:
 - Services were missing — 6 typical bar services now created
 - Products correctly show categories in frontend (category.name field)
 - System is ready for operational testing (ventas, gastos, compras)
+
+---
+Task ID: 4
+Agent: main
+Task: Fix product image removal + add category icon preview in product form
+
+Work Log:
+- Identified bug: imgUrl sent as `undefined` when cleared, which gets omitted from JSON body, so server never receives instruction to set imgUrl to null
+- Fixed client-side: Changed `imgUrl: productForm.imgUrl.trim() || undefined` to `imgUrl: productForm.imgUrl.trim() || null` in handleSaveProduct()
+- Fixed server-side: Updated POST schema to accept `nullable().optional()` for imgUrl
+- Added "X" button next to image URL input to easily remove images
+- Added category icon preview when no image URL is set — shows the auto-assigned icon based on selected category
+- Added informational text explaining that the category icon is used automatically when no image is assigned
+
+Stage Summary:
+- Products can now have their images removed (button X in the form, or clearing the URL)
+- Product form shows a preview of the category icon when no image is assigned
+- Files modified: src/components/products/products-view.tsx, src/app/api/products/route.ts

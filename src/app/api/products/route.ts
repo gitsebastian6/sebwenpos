@@ -12,7 +12,7 @@ const createProductSchema = z.object({
   providerId: z.number().int().positive().optional(),
   taxRateId: z.number().int().positive().optional(),
   description: z.string().max(1000).optional(),
-  imgUrl: z.string().max(500).optional(),
+  imgUrl: z.string().max(500).nullable().optional(),
   costPrice: z.number().int().min(0).default(0),
   salePrice: z.number().int().min(1, 'El precio de venta debe ser mayor a 0'),
   minStock: z.number().int().min(0).default(5),

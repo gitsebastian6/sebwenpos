@@ -82,6 +82,7 @@ import {
   Loader2,
   TrendingUp,
   Percent,
+  X,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -386,7 +387,7 @@ export function ProductsView() {
         providerId: productForm.providerId !== 'none' ? Number(productForm.providerId) : undefined,
         taxRateId: productForm.taxRateId !== 'none' ? Number(productForm.taxRateId) : undefined,
         description: productForm.description.trim() || undefined,
-        imgUrl: productForm.imgUrl.trim() || undefined,
+        imgUrl: productForm.imgUrl.trim() || null,
         costPrice: productForm.costPrice ? Math.round(Number(productForm.costPrice)) : 0,
         salePrice: Math.round(Number(productForm.salePrice)),
         commission: Math.max(0, Math.min(100, Math.round(Number(productForm.commission || 0)))),
@@ -1277,13 +1278,29 @@ export function ProductsView() {
             {/* Image URL */}
             <div className="space-y-2">
               <Label htmlFor="prod-img">URL de Imagen</Label>
-              <Input
-                id="prod-img"
-                placeholder="https://ejemplo.com/imagen.jpg"
-                value={productForm.imgUrl}
-                onChange={(e) => setProductForm({ ...productForm, imgUrl: e.target.value })}
-              />
-              {productForm.imgUrl && (
+              <div className="flex gap-2">
+                <Input
+                  id="prod-img"
+                  placeholder="https://ejemplo.com/imagen.jpg"
+                  value={productForm.imgUrl}
+                  onChange={(e) => setProductForm({ ...productForm, imgUrl: e.target.value })}
+                  className="flex-1"
+                />
+                {productForm.imgUrl && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0 text-destructive hover:text-destructive"
+                    onClick={() => setProductForm({ ...productForm, imgUrl: '' })}
+                    title="Quitar imagen"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              {/* Preview */}
+              {productForm.imgUrl ? (
                 <div className="flex items-center gap-3 p-2 rounded-md bg-muted/50 border">
                   <ProductImage
                     src={productForm.imgUrl}
@@ -1297,9 +1314,30 @@ export function ProductsView() {
                     fallbackClassName="h-12 w-12 rounded bg-muted flex items-center justify-center shrink-0"
                     iconClassName="h-6 w-6 text-muted-foreground"
                   />
-                  <p className="text-xs text-muted-foreground truncate">Vista previa</p>
+                  <p className="text-xs text-muted-foreground truncate">Vista previa de imagen</p>
                 </div>
-              )}
+              ) : productForm.categoryId !== 'none' ? (
+                <div className="flex items-center gap-3 p-2 rounded-md bg-muted/50 border">
+                  <ProductImage
+                    categoryName={categories.find((c) => String(c.id) === productForm.categoryId)?.name}
+                    alt={productForm.name || 'Producto'}
+                    className="h-12 w-12 rounded object-cover"
+                    fallbackClassName="h-12 w-12 rounded bg-muted flex items-center justify-center shrink-0"
+                    iconClassName="h-6 w-6 text-muted-foreground"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground truncate">
+                      Ícono por categoría:{' '}
+                      <span className="font-medium text-foreground">
+                        {categories.find((c) => String(c.id) === productForm.categoryId)?.name}
+                      </span>
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Si no asignas una imagen, se usará este ícono automáticamente.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {/* Row: Prices */}
