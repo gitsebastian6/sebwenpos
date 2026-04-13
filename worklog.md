@@ -1164,3 +1164,49 @@ Stage Summary:
 - 8 modules created in src/lib/dian/ (all server-side compatible)
 - processInvoice() orchestrates: consecutive → CUFE → XML → PDF → XML+PDF → DB → optional DIAN send
 - 0 lint errors across all modules
+---
+Task ID: 7-DIAN
+Agent: main-orchestrator
+Task: Implement 7 DIAN electronic invoicing components
+
+Work Log:
+- Analyzed existing project: schema, invoice-utils.ts, API routes, documentation
+- Confirmed all npm packages available: xmlbuilder2, pdfkit, qrcode, nodemailer, fast-xml-parser
+- Created 7 backend modules in src/lib/invoicing/:
+  1. consecutive-counter.ts — Atomic consecutive counter with resolution range validation, getNextConsecutive(), validateResolution(), getInvoiceStats()
+  2. cufe-calculator.ts — DIAN v2.1 CUFE/CUDFE SHA-384 hash with 22 fields, cleanNIT(), padLeft(), validateCUFE()
+  3. xml-generator.ts — Full UBL 2.1 XML generation using xmlbuilder2, generateUBL21XML(), getCustomerSchemeID(), getRegimeName()
+  4. certificate.ts — .p12/.p12 digital certificate handling, signXML(), getCertificateInfo(), signXMLForDIAN() env-based wrapper
+  5. soap-client.ts — DIAN SOAP client, sendBillAsync(), getStatus(), queryByDocumentNumber(), pollForStatus(), parseDIANStatusMessage()
+  6. pdf-generator.ts — PDF with all 12 mandatory DIAN elements using pdfkit + qrcode, generateInvoicePDF(), formatCOP()
+  7. email-sender.ts — Email sending with XML+PDF attachments via nodemailer, sendInvoiceEmail(), getSmtpConfig(), buildEmailHTML()
+- Removed 'use server' directives from lib files (not needed for API route imports)
+- Enhanced POST /api/invoices: atomic consecutive counter, store prefix, resolution fields, XML generation
+- Created 4 new API routes:
+  - POST /api/invoices/[id]/send — Send XML to DIAN (SendBillAsync + poll for status)
+  - GET /api/invoices/[id]/status — Query DIAN for invoice validation status
+  - GET /api/invoices/[id]/pdf — Generate and download PDF representation
+  - POST /api/invoices/[id]/email — Send invoice by email with XML+PDF attachments
+- Added 'invoices' to AppView type in app-store.ts
+- Added "Facturación" menu item with FileText icon to sidebar in app-shell.tsx
+- Created invoices-view.tsx (~1234 lines) with:
+  - KPI cards (total, validated, pending)
+  - Status/date/search filters
+  - Invoices table with color-coded status badges
+  - Actions per row (detail, PDF, send DIAN, check status, email)
+  - 2-step create invoice dialog (select order → customer info)
+  - Full invoice detail dialog (emisor, receptor, items, taxes, totals, CUFE, resolution)
+  - Resolution status section with progress bar
+- Lint: 0 new errors (only 16 pre-existing in infrastructure files)
+- Server: Compiles and responds 200 OK
+
+Stage Summary:
+- Complete DIAN electronic invoicing system implemented (7 backend modules + 4 API routes + frontend UI)
+- XML UBL 2.1 generation with all DIAN namespaces and extensions
+- CUFE/CUDFE calculation following DIAN v2.1 specification (22 fields, SHA-384)
+- SOAP client for SendBillAsync/GetStatus with gzip compression and polling
+- Digital certificate signing with PEM/P12 support
+- PDF generation with all 12 mandatory DIAN elements + QR code
+- Email sending with HTML template + XML/PDF attachments
+- Atomic consecutive counter with resolution range validation and 80% warning
+- Frontend: Full invoice management view integrated into POS navigation

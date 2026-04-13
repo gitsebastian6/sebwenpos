@@ -94,6 +94,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^3.0.0",
+    "@types/nodemailer": "^8.0.0",
     "@types/pdfkit": "^0.17.5",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",

@@ -8,6 +8,7 @@ export type AppView =
   | 'customers'
   | 'providers'
   | 'orders'
+  | 'invoices'
   | 'inventory'
   | 'accounting'
   | 'services'

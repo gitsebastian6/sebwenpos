@@ -23,6 +23,7 @@ import {
   Armchair,
   Truck,
   FileBarChart,
+  FileText,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -40,6 +41,7 @@ const TablesView = dynamic(() => import('@/components/tables/tables-view').then(
 const ProvidersView = dynamic(() => import('@/components/providers/providers-view').then(m => ({ default: m.ProvidersView })), { ssr: false })
 const SettingsView = dynamic(() => import('@/components/settings/settings-view').then(m => ({ default: m.SettingsView })), { ssr: false })
 const ReportsView = dynamic(() => import('@/components/reports/reports-view').then(m => ({ default: m.ReportsView })), { ssr: false })
+const InvoicesView = dynamic(() => import('@/components/invoices/invoices-view').then(m => ({ default: m.InvoicesView })), { ssr: false })
 
 const menuItems: { view: AppView; label: string; icon: React.ReactNode }[] = [
   { view: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -49,6 +51,7 @@ const menuItems: { view: AppView; label: string; icon: React.ReactNode }[] = [
   { view: 'customers', label: 'Clientes', icon: <Users className="h-4 w-4" /> },
   { view: 'providers', label: 'Proveedores', icon: <Truck className="h-4 w-4" /> },
   { view: 'orders', label: 'Órdenes', icon: <ClipboardList className="h-4 w-4" /> },
+  { view: 'invoices', label: 'Facturación', icon: <FileText className="h-4 w-4" /> },
   { view: 'inventory', label: 'Inventario', icon: <Warehouse className="h-4 w-4" /> },
   { view: 'accounting', label: 'Contabilidad', icon: <Calculator className="h-4 w-4" /> },
   { view: 'services', label: 'Servicios', icon: <Zap className="h-4 w-4" /> },
@@ -148,6 +151,7 @@ export function AppShell() {
              currentView === 'services' ? 'Servicios' :
              currentView === 'providers' ? 'Proveedores' :
              currentView === 'reports' ? 'Informes' :
+             currentView === 'invoices' ? 'Facturación Electrónica' :
              currentView === 'settings' ? 'Configuración' :
              menuItems.find(m => m.view === currentView)?.label || 'Dashboard'}
           </h1>
@@ -169,6 +173,7 @@ function ViewRouter({ currentView }: { currentView: AppView }) {
     case 'customers': return <CustomersView />
     case 'providers': return <ProvidersView />
     case 'orders': return <OrdersView />
+    case 'invoices': return <InvoicesView />
     case 'inventory': return <InventoryView />
     case 'accounting': return <AccountingView />
     case 'services': return <ServicesView />

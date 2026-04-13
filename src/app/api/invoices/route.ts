@@ -8,6 +8,8 @@ import {
   formatInvoiceNumber,
   calculateInvoiceFromOrder,
 } from '@/lib/invoice-utils'
+import { getNextConsecutive } from '@/lib/invoicing/consecutive-counter'
+import { generateUBL21XML } from '@/lib/invoicing/xml-generator'
 
 export const dynamic = 'force-dynamic'
 
@@ -145,7 +147,27 @@ export async function POST(req: NextRequest) {
           },
         },
         customer: { select: { name: true, nit: true, address: true, phone: true, email: true, regime: true, documentType: true } },
-        store: { select: { id: true, name: true, legalName: true, nit: true, address: true, currencyCode: true } },
+        store: {
+          select: {
+            id: true,
+            name: true,
+            legalName: true,
+            nit: true,
+            address: true,
+            phone: true,
+            email: true,
+            currencyCode: true,
+            countryCode: true,
+            invoicePrefix: true,
+            resolutionNumber: true,
+            resolutionStartDate: true,
+            resolutionEndDate: true,
+            resolutionStartNumber: true,
+            resolutionEndNumber: true,
+            invoiceTestMode: true,
+            user: { select: { email: true } },
+          },
+        },
       },
     })
 
@@ -177,14 +199,19 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 4. Calcular consecutivo (ultimo consecutivo de la tienda + 1)
-    const lastInvoice = await db.invoice.findFirst({
-      where: { storeId: store.id },
-      orderBy: { consecutive: 'desc' },
-      select: { consecutive: true },
-    })
-    const nextConsecutive = (lastInvoice?.consecutive ?? 0) + 1
-    const prefix = 'FE'
+    // 4. Obtener consecutivo y datos de resolucion de forma atomica
+    let consecutiveResult
+    try {
+      consecutiveResult = await getNextConsecutive(store.id)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error desconocido'
+      return NextResponse.json({ error: message }, { status: 400 })
+    }
+    const nextConsecutive = consecutiveResult.consecutive
+    const prefix = consecutiveResult.prefix
+    if (consecutiveResult.warning) {
+      console.warn(`[Invoice] ${consecutiveResult.warning}`)
+    }
 
     // 5. Calcular campos tributarios desde la orden
     const calculation = calculateInvoiceFromOrder(order, order.orderItems)
@@ -225,16 +252,23 @@ export async function POST(req: NextRequest) {
       cufe,
     })
 
-    // 9. Determinar estado
-    const status = data.testMode ? 'DRAFT' : 'PENDING_VALIDATE'
+    // 9. Determinar estado (usar testMode de la tienda si no se especifico)
+    const testMode = data.testMode !== undefined ? data.testMode : (store.invoiceTestMode ?? true)
+    const status = testMode ? 'DRAFT' : 'PENDING_VALIDATE'
 
-    // 10. Crear la factura
+    // 10. Crear la factura con datos de resolucion DIAN
     const invoice = await db.invoice.create({
       data: {
         storeId: store.id,
         orderId: data.orderId,
         prefix,
         consecutive: nextConsecutive,
+        resolutionNumber: consecutiveResult.resolutionNumber || null,
+        resolutionDate: consecutiveResult.resolutionDate ? new Date(consecutiveResult.resolutionDate) : null,
+        startDate: consecutiveResult.startDate || null,
+        endDate: consecutiveResult.endDate || null,
+        startNumber: consecutiveResult.startNumber,
+        endNumber: consecutiveResult.endNumber,
         customerNit: customerNit,
         customerName: data.customerName || order.customer?.name || 'Consumidor Final',
         customerAddress: data.customerAddress || order.customer?.address || null,
@@ -255,9 +289,91 @@ export async function POST(req: NextRequest) {
         qrCode,
         notes: data.notes || null,
         status,
-        testMode: data.testMode,
+        testMode,
       },
     })
+
+    // 11. Generar XML UBL 2.1 y almacenar
+    try {
+      const taxBreakdownForXml = JSON.parse(invoice.taxBreakdown || '[]')
+      const xmlItems = (order.orderItems || []).map((item: any, idx: number) => ({
+        lineNumber: idx + 1,
+        description: item.product?.name ?? item.service?.name ?? 'Eliminado',
+        quantity: item.quantity,
+        unitPrice: item.taxBase > 0 && item.quantity > 0
+          ? Math.round(item.taxBase / item.quantity)
+          : (Number(item.unitPrice) - (item.taxAmount > 0 ? Math.round(item.taxAmount / Math.max(item.quantity, 1)) : 0)),
+        lineExtensionAmount: Number(item.totalRow) - Number(item.taxAmount),
+        taxCode: item.taxCode || '01',
+        taxRate: item.taxRate || 0,
+        taxableAmount: Number(item.taxBase),
+        taxAmount: Number(item.taxAmount),
+        notes: item.notes || undefined,
+      }))
+
+      const softwareProviderNIT = process.env.DIAN_SOFTWARE_PROVIDER_NIT || '900987654'
+      const softwareName = process.env.DIAN_SOFTWARE_NAME || 'Facturacion Electronica'
+      const softwarePIN = process.env.DIAN_SOFTWARE_PIN || ''
+
+      const paymentMethodNames: Record<string, string> = {
+        '1': 'Efectivo', '2': 'Tarjeta', '10': 'Transferencia', '42': 'Daviplata/Nequi', '99': 'Otro/Mixto',
+      }
+
+      const xmlContent = generateUBL21XML({
+        invoiceNumber: formatInvoiceNumber(prefix, nextConsecutive),
+        prefix,
+        consecutive: nextConsecutive,
+        issueDate: now.toISOString().slice(0, 10),
+        issueTime: `${hours}:${minutes}:${seconds}-05:00`,
+        invoiceTypeCode: '01',
+        resolutionNumber: consecutiveResult.resolutionNumber || '',
+        resolutionStartDate: consecutiveResult.resolutionDate?.slice(0, 10) || '',
+        resolutionEndDate: consecutiveResult.endDate?.toISOString().slice(0, 10) || '',
+        startNumber: consecutiveResult.startNumber,
+        endNumber: consecutiveResult.endNumber,
+        currencyCode: store.currencyCode || 'COP',
+        supplierNit: store.nit || '',
+        supplierName: store.name || '',
+        supplierLegalName: store.legalName || store.name || '',
+        supplierAddress: store.address || '',
+        supplierCityCode: '11001',
+        supplierCityName: store.address || 'Bogota',
+        supplierPhone: store.phone || '',
+        supplierEmail: store.email || store.user?.email || '',
+        supplierTaxRegime: '01',
+        supplierMunicipality: store.address || '',
+        customerNit,
+        customerName: data.customerName || order.customer?.name || 'Consumidor Final',
+        customerAddress: data.customerAddress || order.customer?.address || undefined,
+        customerPhone: data.customerPhone || order.customer?.phone || undefined,
+        customerEmail: (data.customerEmail && data.customerEmail !== '') ? data.customerEmail : (order.customer?.email || undefined),
+        customerRegime: data.customerRegime || order.customer?.regime || undefined,
+        customerType: data.customerType || (order.customer?.documentType as any) || undefined,
+        lineExtensionAmount: calculation.subtotalBase,
+        taxExclusiveAmount: calculation.subtotalBase,
+        taxInclusiveAmount: calculation.totalWithTax,
+        payableAmount: calculation.grandTotal,
+        discountAmount: calculation.discountAmount,
+        cufe,
+        softwareProviderNIT,
+        softwareName,
+        softwarePIN,
+        items: xmlItems,
+        taxTotals: taxBreakdownForXml.map((t: any) => ({
+          taxCode: t.code, taxableAmount: t.base, taxAmount: t.amount, taxRate: t.rate, taxName: t.name,
+        })),
+        paymentMethodCode: paymentMethodCode,
+        paymentMethodName: paymentMethodNames[paymentMethodCode] || 'Otro',
+        notes: data.notes || undefined,
+      })
+
+      await db.invoice.update({
+        where: { id: invoice.id },
+        data: { xmlContent },
+      })
+    } catch (xmlError) {
+      console.warn('[Invoice] Error generando XML UBL 2.1, factura creada sin XML:', xmlError instanceof Error ? xmlError.message : 'Desconocido')
+    }
 
     return NextResponse.json(
       {
@@ -287,6 +403,9 @@ export async function POST(req: NextRequest) {
         status: invoice.status,
         testMode: invoice.testMode,
         orderId: invoice.orderId,
+        resolutionNumber: invoice.resolutionNumber,
+        startDate: invoice.startDate?.toISOString() ?? null,
+        endDate: invoice.endDate?.toISOString() ?? null,
         createdAt: invoice.createdAt.toISOString(),
       },
       { status: 201 },
