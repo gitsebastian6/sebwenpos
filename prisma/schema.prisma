@@ -186,6 +186,7 @@ model Product {
   name          String
   description   String?
   imgUrl        String?  @map("img_url")
+  invima        String?                                      // Registro INVIMA (opcional, Colombia)
   costPrice     Int      @default(0) @map("cost_price")       // en pesos colombianos
   salePrice     Int                                         // en pesos colombianos (incluye IVA si aplica)
   commission    Int      @default(0) @map("commission")   // porcentaje de comision (0-100)

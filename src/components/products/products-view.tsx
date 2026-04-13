@@ -84,6 +84,7 @@ import {
   TrendingUp,
   Percent,
   X,
+  Shield,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -111,6 +112,7 @@ interface Product {
   name: string
   description: string | null
   imgUrl: string | null
+  invima: string | null
   costPrice: number
   salePrice: number
   commission: number
@@ -146,6 +148,7 @@ interface ProductFormData {
   taxRateId: string
   description: string
   imgUrl: string
+  invima: string
   costPrice: string
   salePrice: string
   commission: string
@@ -161,6 +164,7 @@ const emptyProductForm: ProductFormData = {
   taxRateId: 'none',
   description: '',
   imgUrl: '',
+  invima: '',
   costPrice: '',
   salePrice: '',
   commission: '0',
@@ -360,6 +364,7 @@ export function ProductsView() {
       taxRateId: product.taxRateId ? String(product.taxRateId) : 'none',
       description: product.description || '',
       imgUrl: product.imgUrl || '',
+      invima: product.invima || '',
       costPrice: product.costPrice ? String(product.costPrice) : '',
       salePrice: String(product.salePrice),
       commission: String(product.commission ?? 0),
@@ -391,6 +396,7 @@ export function ProductsView() {
         taxRateId: productForm.taxRateId !== 'none' ? Number(productForm.taxRateId) : undefined,
         description: productForm.description.trim() || undefined,
         imgUrl: productForm.imgUrl.trim() || null,
+        invima: productForm.invima.trim() || null,
         costPrice: productForm.costPrice ? Math.round(Number(productForm.costPrice)) : 0,
         salePrice: Math.round(Number(productForm.salePrice)),
         commission: Math.max(0, Math.min(100, Math.round(Number(productForm.commission || 0)))),
@@ -851,6 +857,7 @@ export function ProductsView() {
                     <TableRow>
                       <TableHead className="min-w-[160px]">Nombre</TableHead>
                       <TableHead className="hidden md:table-cell min-w-[90px]">SKU</TableHead>
+                      <TableHead className="hidden xl:table-cell min-w-[120px]">INVIMA</TableHead>
                       <TableHead className="hidden lg:table-cell min-w-[100px]">Proveedor</TableHead>
                       <TableHead className="hidden lg:table-cell min-w-[100px]">Categoría</TableHead>
                       <TableHead className="text-right min-w-[100px]">P. Compra</TableHead>
@@ -905,6 +912,14 @@ export function ProductsView() {
                           </TableCell>
                           <TableCell className="hidden md:table-cell text-muted-foreground text-sm font-mono">
                             {product.sku || '—'}
+                          </TableCell>
+                          <TableCell className="hidden xl:table-cell text-muted-foreground text-sm font-mono">
+                            {product.invima ? (
+                              <span className="flex items-center gap-1">
+                                <Shield className="h-3 w-3 shrink-0" />
+                                {product.invima}
+                              </span>
+                            ) : '—'}
                           </TableCell>
                           <TableCell className="hidden lg:table-cell">
                             {product.provider ? (
@@ -1279,6 +1294,27 @@ export function ProductsView() {
                 onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
                 rows={3}
               />
+            </div>
+
+            {/* INVIMA */}
+            <div className="space-y-2">
+              <Label htmlFor="prod-invima">
+                <span className="flex items-center gap-1.5">
+                  <Shield className="h-3.5 w-3.5" />
+                  Registro INVIMA
+                </span>
+              </Label>
+              <Input
+                id="prod-invima"
+                placeholder="Ej: RSA-000123-2024 (opcional)"
+                value={productForm.invima}
+                onChange={(e) => setProductForm({ ...productForm, invima: e.target.value })}
+                className="uppercase"
+                maxLength={100}
+              />
+              <p className="text-xs text-muted-foreground">
+                Registro sanitario del INVIMA (solo si aplica). Ej: RSA, NSO, RNE, etc.
+              </p>
             </div>
 
             {/* Image URL */}

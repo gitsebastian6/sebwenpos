@@ -1015,3 +1015,28 @@ Stage Summary:
 - Colors are auto-assigned deterministically (10 color themes cycling by icon name hash)
 - Existing services (Bath, CircleDot, ShieldCheck, etc.) continue to render correctly
 - Files: src/components/services/services-view.tsx
+
+---
+Task ID: 7
+Agent: main
+Task: Add optional INVIMA registration field to products
+
+Work Log:
+- Added `invima` field (String?, nullable) to Product model in Prisma schema
+- Ran `bun run db:push` to sync DB and regenerate Prisma client
+- Updated POST /api/products schema to accept `invima` (max 100 chars, nullable)
+- Updated PUT /api/products/[id] schema to accept `invima` (nullable)
+- Updated ProductFormData interface to include `invima: string`
+- Updated emptyProductForm with `invima: ''`
+- Updated openEditProductDialog to load invima from product
+- Updated handleSaveProduct to send invima in body
+- Added INVIMA input field in product dialog (with Shield icon, uppercase class, placeholder)
+- Added INVIMA column in products table (hidden on mobile/tablet, visible on xl)
+- Added Shield icon import
+
+Stage Summary:
+- Products now have an optional INVIMA registration field
+- Visible in product creation/edit dialog with explanatory text
+- Shown as column in product table (desktop only, xl breakpoint)
+- INVIMA displays with Shield icon when present
+- Files: prisma/schema.prisma, src/app/api/products/route.ts, src/app/api/products/[id]/route.ts, src/components/products/products-view.tsx
