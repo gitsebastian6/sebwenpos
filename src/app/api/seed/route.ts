@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
 import { z } from 'zod'
@@ -10,10 +10,12 @@ export const dynamic = 'force-dynamic'
 export async function DELETE() {
   try {
     const deleteOrder = [
-      'comanda_items', 'order_items', 'inventory_movements',
-      'journal_entries', 'table_sessions', 'orders',
-      'service_transactions', 'customers', 'products',
-      'ledger_accounts', 'bar_tables', 'categories', 'stores', 'users',
+      'invoices', 'comanda_items', 'order_items', 'purchase_items',
+      'inventory_movements', 'service_transactions', 'journal_entries',
+      'table_sessions', 'orders', 'purchases',
+      'expenses', 'cash_registers', 'customers', 'providers', 'services',
+      'products', 'tax_rates', 'ledger_accounts',
+      'bar_tables', 'categories', 'stores', 'users',
     ] as const
 
     for (const table of deleteOrder) {
@@ -54,10 +56,12 @@ export async function POST(req: NextRequest) {
 
     if (forceReset) {
       const deleteOrder = [
-        'comanda_items', 'order_items', 'inventory_movements',
-        'journal_entries', 'table_sessions', 'orders',
-        'service_transactions', 'customers', 'products',
-        'ledger_accounts', 'bar_tables', 'categories', 'stores', 'users',
+        'invoices', 'comanda_items', 'order_items', 'purchase_items',
+        'inventory_movements', 'service_transactions', 'journal_entries',
+        'table_sessions', 'orders', 'purchases',
+        'expenses', 'cash_registers', 'customers', 'providers', 'services',
+        'products', 'tax_rates', 'ledger_accounts',
+        'bar_tables', 'categories', 'stores', 'users',
       ] as const
       for (const table of deleteOrder) {
         await db.$executeRawUnsafe(`DELETE FROM ${table}`)
@@ -98,6 +102,71 @@ export async function POST(req: NextRequest) {
       catMap[name] = cat.id
     }
     const cat = (name: string) => catMap[name]
+
+    // ─── Tax Rates (DIAN) ─────────────────────────────────────
+    const taxRates = await Promise.all([
+      db.taxRate.create({ data: {
+        storeId,
+        name: 'IVA 19%',
+        code: '01',
+        rateType: 'PERCENTAGE',
+        rate: 19,
+        applyTo: 'PRODUCT',
+        category: 'SALES_TAX',
+        isActive: true,
+        isDefault: true,
+        description: 'Impuesto al Valor Agregado - Tarifa general (bebidas alcohólicas, preparaciones)',
+      }}),
+      db.taxRate.create({ data: {
+        storeId,
+        name: 'IVA 5%',
+        code: '02',
+        rateType: 'PERCENTAGE',
+        rate: 5,
+        applyTo: 'PRODUCT',
+        category: 'SALES_TAX',
+        isActive: true,
+        isDefault: false,
+        description: 'IVA tarifa reducida (algunos alimentos básicos)',
+      }}),
+      db.taxRate.create({ data: {
+        storeId,
+        name: 'IVA Exento',
+        code: '03',
+        rateType: 'PERCENTAGE',
+        rate: 0,
+        applyTo: 'BOTH',
+        category: 'SALES_TAX',
+        isActive: true,
+        isDefault: false,
+        description: 'Productos exentos de IVA (pan, agua, servicios exentos)',
+      }}),
+      db.taxRate.create({ data: {
+        storeId,
+        name: 'IVA Excluido',
+        code: '04',
+        rateType: 'PERCENTAGE',
+        rate: 0,
+        applyTo: 'BOTH',
+        category: 'SALES_TAX',
+        isActive: true,
+        isDefault: false,
+        description: 'Productos excluidos del IVA',
+      }}),
+      db.taxRate.create({ data: {
+        storeId,
+        name: 'Impoconsumo 8%',
+        code: '05',
+        rateType: 'PERCENTAGE',
+        rate: 8,
+        applyTo: 'PRODUCT',
+        category: 'CONSUMPTION_TAX',
+        isActive: true,
+        isDefault: false,
+        description: 'Impuesto al consumo (aplica sobre licores y tabaco)',
+      }}),
+    ])
+    const defaultTaxRate = taxRates[0] // IVA 19% as default
 
     // ─── Products ─────────────────────────────────────────────
     const allProducts: Array<{ name: string; salePrice: number; costPrice: number; stock: number }> = [
@@ -231,6 +300,34 @@ export async function POST(req: NextRequest) {
           isActive: true,
         },
       }))
+    }
+
+    // ─── Assign Tax Rates to Products ─────────────────────────
+    // Assign default IVA 19% to all products (bar/restaurant default)
+    await db.product.updateMany({
+      where: { storeId },
+      data: { taxRateId: defaultTaxRate.id },
+    })
+
+    // Override: Agua and natural juices are tax exempt
+    const exemptProducts = await db.product.findMany({
+      where: { storeId, name: { contains: 'Agua' } },
+      select: { id: true },
+    })
+    const juiceProducts = await db.product.findMany({
+      where: { storeId, OR: [
+        { name: { contains: 'Jugo' } },
+        { name: { contains: 'Limonada' } },
+      ]},
+      select: { id: true },
+    })
+    const exemptTaxRate = taxRates[2] // IVA Exento
+    const exemptIds = [...exemptProducts.map(p => p.id), ...juiceProducts.map(p => p.id)]
+    if (exemptIds.length > 0) {
+      await db.product.updateMany({
+        where: { id: { in: exemptIds } },
+        data: { taxRateId: exemptTaxRate.id },
+      })
     }
 
     // ─── Tables ────────────────────────────────────────────────

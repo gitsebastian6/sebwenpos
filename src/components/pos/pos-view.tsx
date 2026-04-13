@@ -88,6 +88,7 @@ interface Product {
   imgUrl: string | null
   sku: string | null
   category?: { id: number; name: string } | null
+  taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
 }
 
 interface Service {
@@ -119,6 +120,7 @@ interface CartItem {
   maxStock: number
   isService: boolean
   notes?: string
+  taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
 }
 
 type PaymentMethod = 'CASH' | 'DAVIPLATA' | 'NEQUI' | 'CARD' | 'TRANSFER' | 'FIADO'
@@ -353,6 +355,7 @@ export function POSView() {
             quantity: 1,
             maxStock: product.currentStock,
             isService: false,
+            taxRate: product.taxRate || undefined,
           },
         ]
       })
@@ -579,6 +582,27 @@ export function POSView() {
   // ─── Cart calculations ───────────────────────────────
   const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart])
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.salePrice * item.quantity, 0), [cart])
+
+  // Estimated tax breakdown (prices in Colombia are tax-inclusive)
+  const taxEstimate = useMemo(() => {
+    const breakdown: Record<string, { name: string; code: string; base: number; rate: number; amount: number }> = {}
+    let totalTax = 0
+    for (const item of cart) {
+      const tr = item.taxRate
+      if (!tr || tr.rate === 0 || tr.rateType !== 'PERCENTAGE') continue
+      const totalRow = item.salePrice * item.quantity
+      const base = Math.round(totalRow / (1 + tr.rate / 100))
+      const tax = totalRow - base
+      if (breakdown[tr.code]) {
+        breakdown[tr.code].base += base
+        breakdown[tr.code].amount += tax
+      } else {
+        breakdown[tr.code] = { name: tr.name, code: tr.code, base, rate: tr.rate, amount: tax }
+      }
+      totalTax += tax
+    }
+    return { breakdown: Object.values(breakdown), totalTax }
+  }, [cart])
   const discountAmount = useMemo(() => {
     if (discountType === 'PERCENTAGE') {
       return Math.round(subtotal * discountValue / 100)
@@ -1155,6 +1179,23 @@ export function POSView() {
                         {formatCurrency(subtotal, currencyCode)}
                       </span>
                     </div>
+
+                    {/* Tax breakdown */}
+                    {taxEstimate.breakdown.length > 0 && (
+                      <div className="space-y-1 pl-2 border-l-2 border-muted">
+                        {taxEstimate.breakdown.map((tax) => (
+                          <div key={tax.code} className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              <Percent className="h-3 w-3" />
+                              {tax.name} ({tax.rate}%)
+                            </span>
+                            <span className="tabular-nums text-muted-foreground">
+                              {formatCurrency(tax.amount, currencyCode)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Discount section */}
                     <div className="space-y-1.5">

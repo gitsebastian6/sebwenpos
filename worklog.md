@@ -465,3 +465,213 @@ Work Log:
 Stage Summary:
 - All 13 API routes now have force-dynamic to prevent Next.js caching
 - Expenses date filtering now uses Date objects instead of timestamps for proper Prisma comparison
+
+---
+Task ID: 4
+Agent: api-taxes-agent
+Task: Create Tax Rates API for managing Colombian tax configurations (DIAN compliance)
+
+Work Log:
+- Read worklog.md and existing API patterns (products/route.ts, expenses/route.ts, products/[id]/route.ts)
+- Created /src/app/api/taxes/route.ts — GET + POST endpoints:
+  - GET /api/taxes?storeId=X&category=Y&isActive=true — List tax rates for a store
+    - storeId required, category and isActive optional filters
+    - Sorted: isDefault desc → rate desc → name asc
+    - Includes product count per tax rate
+  - POST /api/taxes — Create new tax rate
+    - Zod validation: storeId, name, code (DIAN 01-09), rateType (PERCENTAGE/FIXED_AMOUNT), rate, applyTo (PRODUCT/SERVICE/BOTH), category (SALES_TAX/CONSUMPTION_TAX/WITHHOLDING/MUNICIPAL), isActive, isDefault, description
+    - Validates store exists
+    - If isDefault=true, unsets other defaults of same category+store via transaction
+    - Returns 409 if code already exists globally
+- Created /src/app/api/taxes/[id]/route.ts — GET + PUT + DELETE endpoints:
+  - GET /api/taxes/[id] — Get single tax rate with product count
+  - PUT /api/taxes/[id] — Update tax rate
+    - Partial update support (all fields optional)
+    - Handles isDefault logic (unsets other defaults in same category+store)
+    - Returns 409 if code conflict
+  - DELETE /api/taxes/[id] — Delete tax rate
+    - Only deletes if no products are linked (returns 409 with product count otherwise)
+- All endpoints: force-dynamic, NextRequest/NextResponse, Zod validation, db.$transaction, Spanish error messages
+- Lint passed (0 errors in taxes files; only pre-existing errors in infrastructure files)
+
+Stage Summary:
+- 2 new API route files: /api/taxes (GET+POST) and /api/taxes/[id] (GET+PUT+DELETE)
+- Full DIAN compliance: 9 Colombian tax codes (01-09), 4 rate types, 4 categories
+- isDefault logic ensures only one default per category per store
+- Delete protection prevents removing tax rates assigned to products
+- Sorted results: defaults first, then by rate descending
+
+---
+Task ID: 6
+Agent: invoice-api-agent
+Task: Create Invoice API for DIAN electronic invoicing
+
+Work Log:
+- Read prisma/schema.prisma (Invoice model), orders/[id]/route.ts, and orders/route.ts for patterns
+- Created /src/lib/invoice-utils.ts — Utility functions for DIAN invoicing:
+  - padField(value, length) — Left-pad with zeros
+  - formatInvoiceNumber(prefix, consecutive) — Format "FE-00000001"
+  - getDIANPaymentCode(paymentMethod) — Map POS methods to DIAN codes (CASH→1, CARD→2, DAVIPLATA/NEQUI→42, TRANSFER→10, MIXED→99)
+  - generateCUFE(params) — SHA-384 hash of 16 DIAN fields (NIT emisor, fecha, hora, prefijo, consecutivo, NIT receptor, bases, impuestos, descuento, total, moneda, tipo operacion, CUDE/cert placeholders, software provider NIT)
+  - generateQRCodeURL(params) — DIAN catalogo-vpfe-hab URL with CUFE lookup params
+  - calculateInvoiceFromOrder(order, items) — Computes subtotalBase, taxExemptAmount, totalTaxAmount, totalWithTax, discountAmount, tipAmount, grandTotal, taxBreakdown[], paymentMethod from order and its items' tax fields
+- Created /src/app/api/invoices/route.ts — GET + POST:
+  - GET /api/invoices?storeId=X&status=Y&from=DATE&to=DATE&q=CONSECUTIVE — List invoices with filters, includes order info (orderNumber, customer name), sorted by createdAt desc
+  - POST /api/invoices — Create invoice from existing order:
+    - Zod validation: orderId, customerNit (default "222222222222"), customerName, customerAddress, customerPhone, customerEmail, customerRegime, customerType, notes, testMode
+    - Validates order exists, not cancelled, and doesn't already have an invoice (409)
+    - Validates store has NIT configured
+    - Auto-generates consecutive number (last + 1 per store)
+    - Calculates all tax fields via calculateInvoiceFromOrder
+    - Maps payment method to DIAN code
+    - Generates CUFE via SHA-384 and QR code URL
+    - Status: DRAFT if testMode, PENDING_VALIDATE otherwise
+    - Returns full invoice with 201 status
+- Created /src/app/api/invoices/[id]/route.ts — GET + PUT + DELETE:
+  - GET /api/invoices/[id]?storeId=X — Full invoice with order details, items (including tax fields), and store info
+  - PUT /api/invoices/[id]?storeId=X — Update invoice (status, dianResponse, dianErrorCode, sentAt, validatedAt, emailedAt, notes)
+    - Validates status transitions (DRAFT→PENDING_VALIDATE/CANCELLED, PENDING_VALIDATE→VALIDATED/REJECTED/CANCELLED, etc.)
+    - Auto-sets sentAt on PENDING_VALIDATE, validatedAt on VALIDATED
+  - DELETE /api/invoices/[id]?storeId=X — Delete only if DRAFT status, otherwise returns 400 with explanation
+- Lint passed (0 errors in new files; only pre-existing errors in infrastructure files)
+
+Stage Summary:
+- 3 new files: invoice-utils.ts, /api/invoices/route.ts (GET+POST), /api/invoices/[id]/route.ts (GET+PUT+DELETE)
+- Full DIAN CUFE generation with SHA-384 hashing
+- QR code URL generation for DIAN invoice lookup
+- Payment method mapping to DIAN codes (6 methods)
+- Status transition validation prevents invalid state changes
+- Invoice creation enforces: store has NIT, order not cancelled, order not already invoiced
+- Auto-consecutive numbering per store (FE-00000001, FE-00000002, etc.)
+
+---
+Task ID: 5
+Agent: tax-orders-api-agent
+Task: Update Orders API to automatically calculate taxes on each sale
+
+Work Log:
+- Read src/app/api/orders/route.ts (existing POST handler with product/service resolution, totals, discounts, journal entries)
+- Read prisma/schema.prisma to verify Order (taxAmount, taxBreakdown), OrderItem (taxCode, taxRate, taxAmount, taxBase), Product (taxRateId), TaxRate model fields
+- Updated product fetch to include taxRate relation (select: id, code, rate, rateType, applyTo)
+- Added store default tax rate fetch (isDefault=true, category=SALES_TAX, isActive=true)
+- Added service-specific default tax rate fetch (applyTo in ['SERVICE', 'BOTH'])
+- Created calcTax helper function for Colombian tax-inclusive pricing:
+  - No tax rate → taxCode=null, taxRate=0, taxAmount=0, taxBase=totalRow (backward compatible)
+  - EXEMPT (03) / EXCLUDED (04) → zero tax, base = full amount
+  - PERCENTAGE type (standard IVA 19%/5%) → taxBase = totalRow / (1 + rate/100), taxAmount = totalRow - taxBase
+  - FIXED_AMOUNT type → base = totalRow, amount = 0 (consumer prices include everything)
+- Added taxBreakdownMap accumulator grouped by tax code with base/rate/amount per tax type
+- For each product item: effective tax = product's own taxRate > store default > none
+- For each service item: effective tax = service-specific store default > general store default > none
+- Added tax rate name resolution (fetches TaxRate records to fill human-readable names in breakdown)
+- Updated orderItemsData to include taxCode, taxRate, taxAmount, taxBase per item
+- Updated Order.create to include taxAmount and taxBreakdown (JSON.stringify) fields
+- Updated POST response to include taxAmount, taxBreakdown (parsed JSON), and per-item tax fields
+- Total calculation: subtotal - discountAmount + tipAmount (tax already embedded in Colombian tax-inclusive prices)
+- Cleaned up dead code (no-op name resolution block in product tax accumulation)
+- ESLint passed (0 errors in modified file)
+
+Stage Summary:
+- Orders API now automatically calculates Colombian taxes on every sale (POST /api/orders)
+- Tax calculation follows DIAN rules: IVA-backout for percentage rates, zero tax for exempt/excluded
+- Tax breakdown stored as JSON on Order for invoice generation (e.g. [{code:"01",name:"IVA 19%",base:50000,rate:19,amount:9500}])
+- Each OrderItem stores taxCode, taxRate, taxAmount, taxBase as snapshots at time of sale
+- Products use their assigned tax rate, falling back to store default
+- Services use store's service-applicable default tax rate
+- Fully backward compatible: no taxes configured → taxAmount=0, taxCode=null for all items
+
+## Task 7: Update Seed API - Colombian Tax Rates (DIAN) & DELETE Coverage
+
+### Changes Made to `src/app/api/seed/route.ts`
+
+#### 1. Fixed Missing Import
+- Added `NextRequest` to the import from `next/server` (was used but not imported)
+
+#### 2. Updated DELETE Handler (both standalone and forceReset)
+- Added all missing tables to the deletion order, respecting FK constraints:
+  - `invoices` (new - depends on orders)
+  - `purchase_items` (new - depends on purchases)
+  - `purchases` (new - depends on providers)
+  - `expenses` (new - depends on stores)
+  - `cash_registers` (new - depends on stores, users)
+  - `providers` (new - depends on stores)
+  - `services` (new - depends on stores)
+  - `tax_rates` (new - depends on stores)
+- Full deletion order: invoices → comanda_items → order_items → purchase_items → inventory_movements → service_transactions → journal_entries → table_sessions → orders → purchases → expenses → cash_registers → customers → providers → services → products → tax_rates → ledger_accounts → bar_tables → categories → stores → users
+- All 22 Prisma models are now covered
+
+#### 3. Added Default Colombian Tax Rates (DIAN)
+- **IVA 19%** (code "01") - General rate, set as default for bar products
+- **IVA 5%** (code "02") - Reduced rate for basic foods
+- **IVA Exento** (code "03") - 0% for exempt products (water, etc.)
+- **IVA Excluido** (code "04") - 0% for excluded products
+- **Impoconsumo 8%** (code "05") - Consumption tax on liquor/tobacco
+
+#### 4. Product Tax Rate Assignments
+- All products get IVA 19% by default (bar/restaurant standard)
+- Products containing "Agua" (water) → IVA Exento
+- Products containing "Jugo" (juice) or "Limonada" (lemonade) → IVA Exento
+
+### Files Modified
+- `src/app/api/seed/route.ts`
+
+---
+Task ID: 8
+Agent: settings-tax-agent
+Task: Update Settings view with tax configuration (Impuestos) and DIAN electronic invoicing (Facturación Electrónica) tabs
+
+Work Log:
+- Updated prisma/schema.prisma: Added 7 DIAN fields to Store model (invoicePrefix, resolutionNumber, resolutionStartDate/EndDate, resolutionStartNumber/EndNumber, invoiceTestMode)
+- Pushed schema to database with bun run db:push
+- Updated src/app/api/stores/route.ts: Extended PUT handler Zod schema and data spread to accept all new DIAN resolution fields
+- Updated src/stores/auth-store.ts: Extended StoreInfo interface with DIAN fields (invoicePrefix?, resolutionNumber?, resolutionStartDate?, resolutionEndDate?, resolutionStartNumber?, resolutionEndNumber?, invoiceTestMode?)
+- Rewrote src/components/settings/settings-view.tsx (~1252 lines):
+  - Changed TabsList from 3 to 4 tabs: Negocio, Personal, Facturación, Impuestos
+  - Enhanced Facturación tab: Added "Resolución DIAN" section with resolution fields (prefix, number, dates, range) and test mode toggle with amber warning
+  - Added new Impuestos tab with full CRUD:
+    - Fetches tax rates via GET /api/taxes on mount
+    - Displays tax rate cards with DIAN code badges, rate %, category color coding (blue=SALES_TAX, amber=CONSUMPTION_TAX, purple=WITHHOLDING, teal=MUNICIPAL)
+    - Default indicator (star icon), active/inactive status, product count
+    - Create/Edit dialog with form fields: name, code (select dropdown with 9 DIAN codes), rateType, rate, applyTo, category, isDefault checkbox, isActive checkbox, description
+    - Delete with confirmation dialog
+    - Info box explaining Colombian tax system
+
+Stage Summary:
+- Settings view now has 4 tabs with complete tax and DIAN configuration
+- Store model supports DIAN resolution fields for electronic invoicing setup
+- Auth store updated to persist DIAN config across sessions
+
+---
+Task ID: 9
+Agent: main-orchestrator
+Task: Add tax breakdown display in POS cart + update product/tax APIs
+
+Work Log:
+- Updated Product interface in pos-view.tsx to include taxRate info (id, name, code, rate, rateType)
+- Updated CartItem interface to include taxRate
+- Updated addToCart to carry product.taxRate into cart item
+- Added taxEstimate useMemo: calculates Colombian tax-inclusive breakdown from cart items
+  - Groups taxes by DIAN code (e.g., "01" = IVA 19%)
+  - taxBase = totalRow / (1 + rate/100), taxAmount = totalRow - taxBase
+  - Returns { breakdown: [...], totalTax }
+- Added tax breakdown display in POS cart summary (between subtotal and discount)
+  - Shows as indented list with Percent icon
+  - Each line: "IVA 19% (19%) $X,XXX"
+- Updated src/app/api/products/route.ts:
+  - Added taxRate to product fetch (include taxRate relation)
+  - Added taxRateId to create product Zod schema
+  - Added taxRateId to product create data and include
+- Verified lint passes with 0 source errors
+- Verified tax calculation via API test: Order $13,200 → IVA 19% = $2,108, base = $11,092
+- Fixed invoice-utils.ts calculateInvoiceFromOrder: Colombia prices INCLUDE IVA
+  - Changed: grandTotal = order.subtotal (NOT subtotal + taxAmount which double-counts)
+  - subtotalBase = order.subtotal - totalTaxAmount (the pre-tax portion)
+  - totalWithTax = order.subtotal (same as subtotal since tax is already included)
+  - Verified: $15,500 order → base $14,782 + IVA $718 = $15,500 ✓
+
+Stage Summary:
+- POS cart shows live tax breakdown as indented list below subtotal
+- Products API returns tax rate info for each product
+- Products can be created with taxRateId
+- Invoice calculation correctly handles Colombian tax-inclusive pricing
+- No double-counting: customer pays $15,500, IVA of $718 is embedded in price

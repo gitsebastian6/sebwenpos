@@ -19,6 +19,13 @@ interface StoreInfo {
   phone: string | null
   currencyCode: string
   countryCode: string | null
+  invoicePrefix?: string | null
+  resolutionNumber?: string | null
+  resolutionStartDate?: string | null
+  resolutionEndDate?: string | null
+  resolutionStartNumber?: number | null
+  resolutionEndNumber?: number | null
+  invoiceTestMode?: boolean
 }
 
 interface AuthState {

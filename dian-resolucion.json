@@ -1,0 +1,21 @@
+{
+  "code": 200,
+  "data": {
+    "description": "",
+    "external": {},
+    "html": "<html><head>\n    <link rel=\"stylesheet\" href=\"chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/pdf_embedder.css\">\n  </head>\n  <body>\n    \n  \n\n</body></html>",
+    "metadata": {},
+    "publishedTime": "Wed, 22 Nov 2023 13:40:28 GMT",
+    "title": "",
+    "url": "https://www.dian.gov.co/normatividad/Normatividad/Resoluci%C3%B3n%20000165%20de%2001-11-2023.pdf",
+    "usage": {
+      "tokens": 55
+    }
+  },
+  "meta": {
+    "usage": {
+      "tokens": 55
+    }
+  },
+  "status": 20000
+}

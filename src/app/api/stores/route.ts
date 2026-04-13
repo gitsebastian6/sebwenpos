@@ -12,6 +12,14 @@ const storeUpdateSchema = z.object({
   phone: z.string().max(30).optional().nullable(),
   currencyCode: z.string().length(3).optional(),
   countryCode: z.string().max(10).optional().nullable(),
+  // DIAN Resolution fields
+  invoicePrefix: z.string().max(10).optional().nullable(),
+  resolutionNumber: z.string().max(50).optional().nullable(),
+  resolutionStartDate: z.string().optional().nullable(),
+  resolutionEndDate: z.string().optional().nullable(),
+  resolutionStartNumber: z.number().int().min(0).optional().nullable(),
+  resolutionEndNumber: z.number().int().min(0).optional().nullable(),
+  invoiceTestMode: z.boolean().optional(),
 })
 
 // GET /api/stores?storeId=1
@@ -76,6 +84,17 @@ export async function PUT(request: NextRequest) {
         nit: parsed.data.nit ?? undefined,
         address: parsed.data.address ?? undefined,
         phone: parsed.data.phone ?? undefined,
+        invoicePrefix: parsed.data.invoicePrefix ?? undefined,
+        resolutionNumber: parsed.data.resolutionNumber ?? undefined,
+        resolutionStartDate: parsed.data.resolutionStartDate
+          ? new Date(parsed.data.resolutionStartDate)
+          : parsed.data.resolutionStartDate === null ? null : undefined,
+        resolutionEndDate: parsed.data.resolutionEndDate
+          ? new Date(parsed.data.resolutionEndDate)
+          : parsed.data.resolutionEndDate === null ? null : undefined,
+        resolutionStartNumber: parsed.data.resolutionStartNumber ?? undefined,
+        resolutionEndNumber: parsed.data.resolutionEndNumber ?? undefined,
+        invoiceTestMode: parsed.data.invoiceTestMode ?? undefined,
       },
     })
 

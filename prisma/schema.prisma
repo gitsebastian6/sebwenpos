@@ -17,7 +17,7 @@ model User {
   email        String?
   passwordHash String
   fullName     String?  @map("full_name")
-  cedula       String?  // Número de identificación / cédula
+  cedula       String?  // Numero de identificacion / cedula
   role         String   @default("OWNER") // OWNER, EMPLOYEE
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt
@@ -33,12 +33,20 @@ model Store {
   id           Int      @id @default(autoincrement())
   userId       Int      @unique @map("user_id")
   name         String
-  legalName    String?  @map("legal_name") // Razón social / nombre legal
-  nit          String?  // Número de Identificación Tributaria
-  address      String?  // Dirección del negocio
-  phone        String?  // Teléfono del negocio
+  legalName    String?  @map("legal_name") // Razon social / nombre legal
+  nit          String?  // Numero de Identificacion Tributaria
+  address      String?  // Direccion del negocio
+  phone        String?  // Telefono del negocio
   currencyCode String   @default("COP") @map("currency_code")
   countryCode  String?  @map("country_code")
+  // DIAN Resolution (Facturación Electrónica)
+  invoicePrefix          String?  @map("invoice_prefix") // Prefijo: FE, POS
+  resolutionNumber       String?  @map("resolution_number") // Número de resolución DIAN: 18764
+  resolutionStartDate    DateTime? @map("resolution_start_date") // Fecha inicio rango numeración
+  resolutionEndDate      DateTime? @map("resolution_end_date") // Fecha fin rango numeración
+  resolutionStartNumber  Int?     @map("resolution_start_number") // Consecutivo inicial
+  resolutionEndNumber    Int?     @map("resolution_end_number") // Consecutivo final
+  invoiceTestMode        Boolean  @default(true) @map("invoice_test_mode") // true=habilitación, false=producción
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt
 
@@ -59,12 +67,98 @@ model Store {
   purchases           Purchase[]
   cashRegisters       CashRegister[]
   expenses            Expense[]
+  taxRates            TaxRate[]
+  invoices            Invoice[]
 
   @@map("stores")
 }
 
 // ----------------------------------------------
-// CONTEXTO: INVENTARIO Y CATÁLOGO
+// CONTEXTO: IMPUESTOS Y TRIBUTACION (DIAN)
+// ----------------------------------------------
+
+model TaxRate {
+  id          Int      @id @default(autoincrement())
+  storeId     Int      @map("store_id")
+  name        String   // Nombre descriptivo: "IVA 19%", "IVA 5%", "Impoconsumo 8%"
+  code        String   @unique // Codigo DIAN: "01"=IVA 19%, "02"=IVA 5%, "03"=IVA 0% Exento, "04"=IVA Excluido, "05"=Impoconsumo
+  rateType    String   @map("rate_type") // PERCENTAGE, FIXED_AMOUNT
+  rate        Int      // Tasa: 19 para 19%, 800 para $800 fijos
+  applyTo     String   @default("PRODUCT") // PRODUCT, SERVICE, BOTH
+  category    String   @default("SALES_TAX") // SALES_TAX, CONSUMPTION_TAX, WITHHOLDING, MUNICIPAL
+  isActive    Boolean  @default(true) @map("is_active")
+  isDefault   Boolean  @default(false) @map("is_default") // Tasa por defecto para nuevos productos
+  description String?  // Descripcion detallada o nota legal
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt
+
+  store     Store     @relation(fields: [storeId], references: [id])
+  products  Product[]
+
+  @@map("tax_rates")
+}
+
+// ----------------------------------------------
+// CONTEXTO: FACTURACION ELECTRONICA (DIAN)
+// ----------------------------------------------
+
+model Invoice {
+  id              Int      @id @default(autoincrement())
+  storeId         Int      @map("store_id")
+  orderId         Int      @unique @map("order_id")
+  // Numeracion DIAN
+  prefix          String   @default("FE") // Prefijo de la resolucion: FE, POS
+  consecutive     Int      // Numero consecutivo dentro del rango autorizado
+  resolutionNumber String? @map("resolution_number") // Numero de resolucion DIAN: 18764
+  resolutionDate  DateTime? @map("resolution_date") // Fecha de la resolucion
+  startDate       DateTime? @map("start_date") // Fecha inicio rango de numeracion
+  endDate         DateTime? @map("end_date") // Fecha fin rango de numeracion
+  startNumber     Int?     @map("start_number") // Consecutivo inicial autorizado
+  endNumber       Int?     @map("end_number") // Consecutivo final autorizado
+  // Informacion del cliente
+  customerNit     String?  @map("customer_nit") // NIT del cliente (DIAN requires 13 digits or 222222222222 for consumer)
+  customerName    String?  @map("customer_name") // Nombre / razon social del cliente
+  customerAddress String?  @map("customer_address") // Direccion del cliente
+  customerPhone   String?  @map("customer_phone") // Telefono del cliente
+  customerEmail   String?  @map("customer_email") // Email del cliente
+  customerRegime  String?  @map("customer_regime") // Regimen fiscal: RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO
+  customerType    String?  @map("customer_type") // Tipo de documento: CC, NIT, CE, TI, PP
+  // Desglose tributario
+  subtotalBase    Int      @map("subtotal_base") // Base gravable (antes de impuestos)
+  taxExemptAmount Int      @default(0) @map("tax_exempt_amount") // Monto exento de impuestos
+  taxBreakdown    String?  @map("tax_breakdown") // JSON: [{code:"01",name:"IVA 19%",base:50000,rate:19,amount:9500}]
+  totalTaxAmount  Int      @default(0) @map("total_tax_amount") // Suma total de impuestos
+  totalWithTax    Int      @map("total_with_tax") // Total con impuestos
+  discountAmount  Int      @default(0) @map("discount_amount") // Descuento total
+  tipAmount       Int      @default(0) @map("tip_amount") // Propina
+  grandTotal      Int      @map("grand_total") // Total final (totalWithTax - discount + tip)
+  paymentMethod   String?  @map("payment_method") // Metodo de pago DIAN: 1=EFECTIVO, 2=BANCO, etc.
+  paymentNotes    String?  @map("payment_notes") // Notas de pago
+  // DIAN Compliance
+  cufe            String?  // Codigo Unico de Factura Electronica (CUFE/CUDFE)
+  qrCode          String?  @map("qr_code") // URL del codigo QR con CUFE
+  xmlContent      String?  @map("xml_content") // XML UBL 2.1 generado
+  notes           String?  // Notas/observaciones
+  // Estado
+  status          String   @default("DRAFT") // DRAFT, PENDING_VALIDATE, VALIDATED, DELIVERED, REJECTED, CANCELLED
+  dianResponse    String?  @map("dian_response") // JSON: respuesta de la DIAN al validar
+  dianErrorCode   String?  @map("dian_error_code") // Codigo de error DIAN si fue rechazada
+  sentAt          DateTime? @map("sent_at") // Fecha/hora de envio a DIAN
+  validatedAt     DateTime? @map("validated_at") // Fecha/hora de validacion exitosa
+  emailedAt       DateTime? @map("emailed_at") // Fecha/hora de envio por email al cliente
+  // Ambiente
+  testMode        Boolean  @default(true) @map("test_mode") // true=habilitacion, false=produccion
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id])
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@map("invoices")
+}
+
+// ----------------------------------------------
+// CONTEXTO: INVENTARIO Y CATALOGO
 // ----------------------------------------------
 
 model Category {
@@ -86,13 +180,14 @@ model Product {
   storeId       Int      @map("store_id")
   categoryId    Int?     @map("category_id")
   providerId    Int?     @map("provider_id")
+  taxRateId     Int?     @map("tax_rate_id") // Clasificacion tributaria del producto
   sku           String?
   name          String
-  description   String?  
+  description   String?
   imgUrl        String?  @map("img_url")
   costPrice     Int      @default(0) @map("cost_price")       // en pesos colombianos
-  salePrice     Int                                         // en pesos colombianos
-  commission    Int      @default(0) @map("commission")   // porcentaje de comisión (0-100)
+  salePrice     Int                                         // en pesos colombianos (incluye IVA si aplica)
+  commission    Int      @default(0) @map("commission")   // porcentaje de comision (0-100)
   currentStock  Int      @default(0) @map("current_stock")
   minStock      Int      @default(5) @map("min_stock")
   isActive      Boolean  @default(true) @map("is_active")
@@ -102,6 +197,7 @@ model Product {
   store              Store                @relation(fields: [storeId], references: [id])
   category           Category?            @relation(fields: [categoryId], references: [id])
   provider           Provider?            @relation(fields: [providerId], references: [id])
+  taxRate            TaxRate?             @relation(fields: [taxRateId], references: [id])
   inventoryMovements InventoryMovement[]
   orderItems         OrderItem[]
   comandaItems       ComandaItem[]
@@ -118,7 +214,7 @@ model InventoryMovement {
   quantity     Int      // positivo=entrada, negativo=salida
   movementType String   @map("movement_type") // PURCHASE, SALE, ADJUSTMENT, RETURN, LOSS
   referenceId  Int?     @map("reference_id")
-  notes        String?  
+  notes        String?
   createdAt    DateTime @default(now()) @map("created_at")
 
   store   Store   @relation(fields: [storeId], references: [id])
@@ -132,7 +228,7 @@ model Purchase {
   id            Int      @id @default(autoincrement())
   storeId       Int      @map("store_id")
   providerId    Int?     @map("provider_id")
-  invoiceNumber String?  @map("invoice_number") // Número de factura del proveedor
+  invoiceNumber String?  @map("invoice_number") // Numero de factura del proveedor
   date          DateTime @default(now())
   notes         String?
   total         Int      @default(0) // total en pesos
@@ -171,7 +267,7 @@ model Provider {
   email       String?
   address     String?
   city        String?
-  nit         String?  // Número de Identificación Tributaria
+  nit         String?  // Numero de Identificacion Tributaria
   notes       String?
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -190,14 +286,18 @@ model Provider {
 // ----------------------------------------------
 
 model Customer {
-  id         Int      @id @default(autoincrement())
-  storeId    Int      @map("store_id")
-  name       String
-  phone      String?
-  email      String?
-  totalDebt  Int      @default(0) @map("total_debt") // en pesos
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  storeId         Int      @map("store_id")
+  name            String
+  phone           String?
+  email           String?
+  nit             String?  // NIT o numero de identificacion tributaria
+  documentType    String?  @map("document_type") // CC, NIT, CE, TI, PP
+  address         String?  // Direccion del cliente
+  regime          String?  // Regimen fiscal: RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO
+  totalDebt       Int      @default(0) @map("total_debt") // en pesos
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt
 
   store          Store          @relation(fields: [storeId], references: [id])
   orders         Order[]
@@ -213,15 +313,17 @@ model Order {
   tableSessionId Int?           @map("table_session_id")
   cashRegisterId Int?           @map("cash_register_id")
   orderNumber    String         @map("order_number")
-  subtotal       Int            // pesos (solo productos/servicios)
+  subtotal       Int            // pesos (solo productos/servicios, SIN impuestos)
+  taxAmount      Int            @default(0) @map("tax_amount") // total impuestos
+  taxBreakdown   String?        @map("tax_breakdown") // JSON desglose por tipo de impuesto
   tipAmount      Int            @default(0) @map("tip_amount") // propina en pesos
   discountAmount Int            @default(0) @map("discount_amount") // descuento en pesos
   discountType   String         @default("NONE") @map("discount_type") // NONE, PERCENTAGE, FIXED
-  discountReason String?        @map("discount_reason") // razón del descuento
-  total          Int            // pesos (subtotal - discountAmount + tipAmount)
+  discountReason String?        @map("discount_reason") // razon del descuento
+  total          Int            // pesos (subtotal + taxAmount - discountAmount + tipAmount)
   status         String         @default("COMPLETED") // COMPLETED, PENDING, CANCELLED, CREDIT
-  paymentMethod  String         @default("CASH") @map("payment_method") // CASH, CARD, TRANSFER, MIXED
-  notes          String?  
+  paymentMethod  String         @default("CASH") @map("payment_method") // CASH, DAVIPLATA, NEQUI, CARD, TRANSFER, MIXED, CREDIT
+  notes          String?
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt
 
@@ -231,6 +333,7 @@ model Order {
   cashRegister       CashRegister?       @relation(fields: [cashRegisterId], references: [id])
   orderItems         OrderItem[]
   inventoryMovements InventoryMovement[] @relation("OrderMovements")
+  invoice            Invoice?
 
   @@map("orders")
 }
@@ -244,6 +347,10 @@ model OrderItem {
   returnedQuantity Int      @default(0) @map("returned_quantity") // cantidad ya devuelta
   unitPrice        Int      @map("unit_price") // precio al momento de la venta
   totalRow         Int      @map("total_row")  // quantity * unitPrice
+  taxCode          String?  @map("tax_code") // Codigo del impuesto aplicado (snapshot): "01", "02", "03", "04", "05"
+  taxRate          Int      @default(0) @map("tax_rate") // Tasa del impuesto al momento de la venta (snapshot)
+  taxAmount        Int      @default(0) @map("tax_amount") // Monto del impuesto para esta linea
+  taxBase          Int      @default(0) @map("tax_base") // Base gravable para esta linea
   notes            String?  // notas del item (ej: "sin hielo", "doble")
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -260,7 +367,7 @@ model OrderItem {
 model BarTable {
   id        Int      @id @default(autoincrement())
   storeId   Int      @map("store_id")
-  number    Int      // número de mesa
+  number    Int      // numero de mesa
   name      String?  // nombre opcional (ej: "Terraza 1")
   capacity  Int      @default(4) // capacidad en personas
   zone      String   @default("PRINCIPAL") // PRINCIPAL, TERRAZA, VIP, BARRA, EXTERIOR
@@ -280,11 +387,11 @@ model TableSession {
   storeId      Int      @map("store_id")
   barTableId   Int      @map("bar_table_id")
   customerId   Int?     @map("customer_id")
-  guests       Int      @default(1) // número de personas en la mesa
+  guests       Int      @default(1) // numero de personas en la mesa
   startedAt    DateTime @default(now()) @map("started_at")
   closedAt     DateTime? @map("closed_at")
   status       String   @default("OPEN") // OPEN, CLOSED
-  notes        String?  
+  notes        String?
 
   store       Store        @relation(fields: [storeId], references: [id])
   barTable    BarTable     @relation(fields: [barTableId], references: [id])
@@ -305,7 +412,7 @@ model ComandaItem {
   quantity       Int
   unitPrice      Int      @map("unit_price") // precio al momento de pedir (pesos)
   total          Int      // quantity * unitPrice (pesos)
-  notes          String?  // notas del item (ej: "sin hielo", "extra limón")
+  notes          String?  // notas del item (ej: "sin hielo", "extra limon")
   status         String   @default("PENDING") // PENDING, SERVED, PAID, CANCELLED
   createdAt      DateTime @default(now()) @map("created_at")
 
@@ -383,7 +490,7 @@ model ServiceTransaction {
   storeId      Int      @map("store_id")
   serviceId    Int      @map("service_id")
   quantity     Int      @default(1)
-  unitPrice    Int      @map("unit_price") // precio al momento de la transacción (pesos)
+  unitPrice    Int      @map("unit_price") // precio al momento de la transaccion (pesos)
   totalAmount  Int      @map("total_amount") // quantity * unitPrice (pesos)
   notes        String?
   status       String   @default("COMPLETED") // COMPLETED, CANCELLED
@@ -429,7 +536,7 @@ model Expense {
   id          Int      @id @default(autoincrement())
   storeId     Int      @map("store_id")
   category    String   // ARRIENDO, SERVICIOS, NOMINA, INSUMOS, LICENCIAS, IMPUESTOS, TRANSPORTE, MANTENIMIENTO, OTRO
-  description String   // descripción del gasto
+  description String   // descripcion del gasto
   amount      Int      // monto en pesos
   date        DateTime @default(now())
   notes       String?

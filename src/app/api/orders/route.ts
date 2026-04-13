@@ -40,16 +40,26 @@ export async function POST(req: NextRequest) {
     const productItems = data.items.filter((i) => i.productId)
     const serviceItems = data.items.filter((i) => i.serviceId)
 
-    // Resolve product info
-    const productMap = new Map<number, { id: number; name: string; salePrice: number; currentStock: number }>()
+    // Resolve product info (including tax rate)
+    const productMap = new Map<number, { id: number; name: string; salePrice: number; currentStock: number; taxRate: { id: number; code: string; rate: number; rateType: string; applyTo: string } | null }>()
     if (productItems.length > 0) {
       const productIds = productItems.map((i) => i.productId!)
       const products = await db.product.findMany({
         where: { id: { in: productIds }, storeId: data.storeId, isActive: true },
-        select: { id: true, name: true, salePrice: true, currentStock: true },
+        select: { id: true, name: true, salePrice: true, currentStock: true, taxRate: { select: { id: true, code: true, rate: true, rateType: true, applyTo: true } } },
       })
       for (const p of products) productMap.set(p.id, p)
     }
+
+    // Fetch store's default tax rate (for products/services without an assigned rate)
+    const defaultTaxRate = await db.taxRate.findFirst({
+      where: { storeId: data.storeId, isDefault: true, category: 'SALES_TAX', isActive: true },
+    })
+    // Also find a default for services if different
+    const defaultServiceTaxRate = await db.taxRate.findFirst({
+      where: { storeId: data.storeId, isDefault: true, category: 'SALES_TAX', isActive: true, applyTo: { in: ['SERVICE', 'BOTH'] } },
+    })
+    const fallbackServiceTaxRate = defaultServiceTaxRate ?? defaultTaxRate
 
     // Resolve service info
     const serviceMap = new Map<number, { id: number; name: string; price: number }>()
@@ -89,32 +99,121 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Calculate totals and build order item data
+    // Helper: calculate tax for a line item ( Colombian tax-inclusive pricing )
+    const calcTax = (totalRow: number, taxRateInfo: { code: string; rate: number; rateType: string } | null) => {
+      // No tax rate → no tax
+      if (!taxRateInfo) {
+        return { taxCode: null, taxRate: 0, taxAmount: 0, taxBase: totalRow }
+      }
+      // EXEMPT (03) or EXCLUDED (04) → zero tax, base = full amount
+      if (taxRateInfo.code === '03' || taxRateInfo.code === '04') {
+        return { taxCode: taxRateInfo.code, taxRate: 0, taxAmount: 0, taxBase: totalRow }
+      }
+      // PERCENTAGE type (standard IVA): prices include tax
+      if (taxRateInfo.rateType === 'PERCENTAGE' && taxRateInfo.rate > 0) {
+        const taxBase = Math.round(totalRow / (1 + taxRateInfo.rate / 100))
+        const taxAmount = totalRow - taxBase
+        return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount, taxBase }
+      }
+      // FIXED_AMOUNT type (e.g. Impoconsumo): tax is added on top
+      // For now treat similarly — base = totalRow, amount = rate * qty
+      // but since prices in the POS are consumer-facing and include everything,
+      // we keep it simple: base = totalRow, amount = 0 unless explicitly handled
+      return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount: 0, taxBase: totalRow }
+    }
+
+    // Tax breakdown accumulator: grouped by tax code
+    const taxBreakdownMap: Record<string, { code: string; name: string; base: number; rate: number; amount: number }> = {}
+
+    // Calculate totals and build order item data (with tax info)
+    let orderTaxAmount = 0
     const orderItemsData = data.items.map((item) => {
       if (item.productId) {
         const product = productMap.get(item.productId)!
+        const totalRow = product.salePrice * item.quantity
+        // Determine tax rate: product's own rate > store default > none
+        const effectiveTax = product.taxRate
+          ? { code: product.taxRate.code, rate: product.taxRate.rate, rateType: product.taxRate.rateType }
+          : defaultTaxRate
+            ? { code: defaultTaxRate.code, rate: defaultTaxRate.rate, rateType: defaultTaxRate.rateType }
+            : null
+        const tax = calcTax(totalRow, effectiveTax)
+        // Accumulate into breakdown
+        if (tax.taxCode) {
+          const key = tax.taxCode
+          if (!taxBreakdownMap[key]) {
+            taxBreakdownMap[key] = { code: key, name: key, base: 0, rate: tax.taxRate, amount: 0 }
+          }
+          taxBreakdownMap[key].base += tax.taxBase
+          taxBreakdownMap[key].amount += tax.taxAmount
+        }
+        orderTaxAmount += tax.taxAmount
         return {
           productId: item.productId,
-          serviceId: null,
+          serviceId: null as number | null,
           quantity: item.quantity,
           unitPrice: product.salePrice,
-          totalRow: product.salePrice * item.quantity,
-          notes: item.notes || null,
+          totalRow,
+          taxCode: tax.taxCode,
+          taxRate: tax.taxRate,
+          taxAmount: tax.taxAmount,
+          taxBase: tax.taxBase,
+          notes: item.notes || null as string | null,
         }
       } else {
         const service = serviceMap.get(item.serviceId!)!
+        const totalRow = service.price * item.quantity
+        // Services use fallback service tax rate (store default for services)
+        const effectiveTax = fallbackServiceTaxRate
+          ? { code: fallbackServiceTaxRate.code, rate: fallbackServiceTaxRate.rate, rateType: fallbackServiceTaxRate.rateType }
+          : null
+        const tax = calcTax(totalRow, effectiveTax)
+        if (tax.taxCode) {
+          const key = tax.taxCode
+          if (!taxBreakdownMap[key]) {
+            taxBreakdownMap[key] = { code: key, name: key, base: 0, rate: tax.taxRate, amount: 0 }
+          }
+          taxBreakdownMap[key].base += tax.taxBase
+          taxBreakdownMap[key].amount += tax.taxAmount
+        }
+        orderTaxAmount += tax.taxAmount
         return {
-          productId: null,
+          productId: null as number | null,
           serviceId: item.serviceId,
           quantity: item.quantity,
           unitPrice: service.price,
-          totalRow: service.price * item.quantity,
-          notes: item.notes || null,
+          totalRow,
+          taxCode: tax.taxCode,
+          taxRate: tax.taxRate,
+          taxAmount: tax.taxAmount,
+          taxBase: tax.taxBase,
+          notes: item.notes || null as string | null,
         }
       }
     })
     const subtotal = orderItemsData.reduce((sum, i) => sum + i.totalRow, 0)
     const tipAmount = data.tipAmount || 0
+
+    // Resolve tax rate names for breakdown
+    const allTaxRateIds = new Set<string>()
+    for (const key of Object.keys(taxBreakdownMap)) {
+      allTaxRateIds.add(key)
+    }
+    if (allTaxRateIds.size > 0) {
+      const taxRateRecords = await db.taxRate.findMany({
+        where: { storeId: data.storeId, code: { in: Array.from(allTaxRateIds) } },
+        select: { code: true, name: true },
+      })
+      for (const tr of taxRateRecords) {
+        if (taxBreakdownMap[tr.code]) {
+          taxBreakdownMap[tr.code].name = tr.name
+        }
+      }
+    }
+
+    const taxBreakdownJson = Object.keys(taxBreakdownMap).length > 0
+      ? JSON.stringify(Object.values(taxBreakdownMap))
+      : null
 
     // Calculate discount
     let discountAmount = 0
@@ -123,6 +222,8 @@ export async function POST(req: NextRequest) {
     } else if (data.discountType === 'FIXED') {
       discountAmount = Math.min(data.discountAmount, subtotal)
     }
+    // In Colombia, prices are tax-inclusive so total = subtotal - discount + tip
+    // (tax is already embedded in subtotal/item prices)
     const total = subtotal - discountAmount + tipAmount
 
     // Tip is only allowed for non-credit orders
@@ -164,6 +265,8 @@ export async function POST(req: NextRequest) {
           cashRegisterId: targetCashRegisterId,
           orderNumber,
           subtotal,
+          taxAmount: orderTaxAmount,
+          taxBreakdown: taxBreakdownJson,
           tipAmount,
           discountAmount,
           discountType: data.discountType,
@@ -327,6 +430,8 @@ export async function POST(req: NextRequest) {
         orderNumber: order.orderNumber,
         status: order.status,
         subtotal: Number(order.subtotal),
+        taxAmount: Number(order.taxAmount ?? 0),
+        taxBreakdown: order.taxBreakdown ? JSON.parse(order.taxBreakdown) : null,
         tipAmount: Number(order.tipAmount ?? 0),
         discountAmount: Number(order.discountAmount ?? 0),
         discountType: order.discountType,
@@ -342,6 +447,10 @@ export async function POST(req: NextRequest) {
           quantity: item.quantity,
           unitPrice: Number(item.unitPrice),
           totalRow: Number(item.totalRow),
+          taxCode: item.taxCode,
+          taxRate: item.taxRate,
+          taxAmount: Number(item.taxAmount),
+          taxBase: Number(item.taxBase),
           isService: !!item.serviceId,
         })),
       },
