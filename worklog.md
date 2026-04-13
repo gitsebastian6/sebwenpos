@@ -889,3 +889,47 @@ Stage Summary:
 - Solution: Proactive validation and auto-repair of auth state on app mount
 - All backend APIs confirmed working with storeId=3
 - Login flow: 3001234567 / 123456 → Carlos Bar Manager → Bar La Terraza (id=3)
+---
+---
+Task ID: FULL-AUDIT
+Agent: main-orchestrator (Tech Lead + QA)
+Task: Full project audit — validate all APIs, fix data display bugs
+
+Work Log:
+- Tested ALL 13 API endpoints (dashboard, reports, products, categories, providers, customers, orders, services, tables, taxes, expenses, purchases, invoices)
+- Tested ALL 12 frontend views for API path correctness, storeId passing, state handling
+- Found 4 bugs:
+
+BUG 1 (CRITICAL): Reports API `sale_price` column doesn't exist in SQLite
+- Root cause: Prisma schema `salePrice` has NO `@map("sale_price")`, so DB column is `salePrice`
+- Reports API raw SQL used `sale_price` → query failed silently → inventory showed all 0s
+- Fix: Changed `sale_price` to `salePrice` in 2 locations in reports/informes/route.ts
+- Impact: Reports now correctly shows inventory (15.8M cost, 97 products, 3 low stock)
+
+BUG 2 (CRITICAL): Dashboard API same `sale_price` column bug
+- Root cause: Same as above, `outOfStock` query used non-existent `sale_price`
+- Fix: Changed `sale_price` to `salePrice` in dashboard/route.ts line 73
+- Impact: Out-of-stock detection now works correctly in dashboard
+
+BUG 3: Reports API expenses filtered by `createdAt` instead of `date`
+- Root cause: Default month filter used `createdAt` but user-set expense dates use `date` field
+- Fix: Changed `{ createdAt: { gte: monthStart, lte: todayEnd } }` to `{ date: { gte: monthStart, lte: todayEnd } }`
+- Impact: Monthly expense reports now use correct date field
+
+BUG 4 (MINOR): POS view print ticket uses wrong `notes` variable
+- Root cause: After order success, local `notes` state is cleared to '', but ticket print reads `notes`
+- Fix: Changed `notes: notes || undefined` to `notes: lastOrderData.notes ?? undefined` in 2 locations
+- Impact: Printed tickets now correctly include order notes
+
+BUG 5 (MINOR): Accounting view print catalog accesses wrong property
+- Root cause: `/api/products` returns array directly, but code accesses `data.products` (undefined)
+- Fix: Added `Array.isArray(data) ? data : (data.products || [])` check
+- Impact: Product catalog print now shows all products instead of empty catalog
+
+Stage Summary:
+- 5 bugs found and fixed across 4 files
+- All 13 API endpoints verified working
+- All 12 frontend views verified with correct API paths and storeId passing
+- Database confirmed: 97 products, 7 categories, 5 providers, 3 customers, 10 tables, 5 tax rates, 0 orders/services/expenses/purchases
+- Dashboard and Reports now show correct inventory data ($15.8M cost, $29M retail)
+- Login credentials: 3001234567 / 123456

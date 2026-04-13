@@ -1036,7 +1036,8 @@ export function AccountingView() {
       const res = await fetch(`/api/products?storeId=${store.id}&active=true&limit=500`)
       if (res.ok) {
         const data = await res.json()
-        const products = (data.products || []).map((p: { name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }) => ({
+        const rawProducts = Array.isArray(data) ? data : (data.products || [])
+        const products = rawProducts.map((p: { name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }) => ({
           name: p.name,
           category: p.category?.name || 'Sin Categoría',
           price: p.salePrice,

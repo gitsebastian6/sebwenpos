@@ -970,7 +970,7 @@ export function POSView() {
                     discountAmount: lastOrderData.discountAmount || 0,
                     paymentMethod: lastOrderData.paymentMethod,
                     currencyCode: currencyCode,
-                    notes: notes || undefined,
+                    notes: lastOrderData.notes ?? undefined,
                   })
                 }}
               >
@@ -1620,7 +1620,7 @@ export function POSView() {
                                 discountAmount: lastOrderData.discountAmount || 0,
                                 paymentMethod: lastOrderData.paymentMethod,
                                 currencyCode: currencyCode,
-                                notes: notes || undefined,
+                                notes: lastOrderData.notes ?? undefined,
                               })
                             }}
                           >

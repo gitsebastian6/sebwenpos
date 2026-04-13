@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
       // 2. INVENTARIO — Valuación y días
       safe('inv-valuation', () => db.$queryRawUnsafe(`
         SELECT COALESCE(SUM(cost_price * current_stock), 0) as "totalCost",
-               COALESCE(SUM(sale_price * current_stock), 0) as "totalRetail",
+               COALESCE(SUM(salePrice * current_stock), 0) as "totalRetail",
                COUNT(CASE WHEN current_stock = 0 THEN 1 END) as "outOfStock",
                COUNT(CASE WHEN current_stock <= min_stock THEN 1 END) as "lowStock",
                COUNT(*) as "totalProducts"
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
 
       // 6. VENTAS PERDIDAS
       safe('lost-sales', () => db.$queryRawUnsafe(`
-        SELECT p.id, p.name, p.sale_price as "salePrice",
+        SELECT p.id, p.name, p.salePrice as "salePrice",
                COALESCE(v.total_qty, 0) as "sold30d",
                CASE WHEN v.total_qty > 0 THEN ROUND(v.total_qty / 30.0, 1) ELSE 0 END as "avgDaily"
         FROM products p
@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
 
       // 13. GASTOS OPERACIONALES (Salidas de caja)
       safe('expenses', () => db.expense.findMany({
-        where: { storeId, ...(dateFilter ? { date: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }) },
+        where: { storeId, ...(dateFilter ? { date: dateFilter } : { date: { gte: monthStart, lte: todayEnd } }) },
         orderBy: { date: 'desc' }
       })),
 
