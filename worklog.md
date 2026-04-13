@@ -821,3 +821,33 @@ Stage Summary:
 - Comisiones tab clarified as "Ingresos por Servicios del Bar"
 - Backward compatible: ivaCollected is optional in API response (defaults to 0)
 - ESLint: 0 errors in modified files
+
+---
+Task ID: SESSION-RECOVERY
+Agent: main-orchestrator
+Task: Fix data not loading in any section — Zustand persist hydration issue
+
+Work Log:
+- User reported "no sale nada en ningun apartado de los datos que se tenian" (nothing shows in any section)
+- Investigated: All APIs work correctly when storeId=3 is passed (97 products, 5 providers, 7 categories, 5 taxes)
+- Root cause: Zustand persist hydration timing — `store` object is null during initial hydration from localStorage, causing all API calls to fail with "storeId es requerido"
+- Fixed src/stores/auth-store.ts:
+  - Added `_hasHydrated` flag and `setHydrated()` action to AuthState
+  - Added `onRehydrateStorage` callback that sets `isLoading=false` and `_hasHydrated=true` after rehydration completes
+  - This ensures the app waits for localStorage to load before deciding if store is available
+- Updated src/app/page.tsx:
+  - Added hydration-aware loading: shows LoadingScreen while `!_hasHydrated && isAuthenticated`
+  - Added StoreRecoveryScreen component that auto-recovers store info from API when store is null but user is authenticated
+  - Recovery calls GET /api/stores?userId=X and restores session with store data
+  - Increased fallback timeout from 100ms to 800ms for slower environments
+- Updated src/app/api/stores/route.ts:
+  - Added `userId` parameter support to GET endpoint
+  - GET /api/stores?userId=X returns array of stores for that user (needed for session recovery)
+- Verified: All APIs return correct data (products=97, providers=5, categories=7, taxes=5, dashboard=OK)
+- Lint: 0 errors in src/ directory
+
+Stage Summary:
+- Session hydration race condition fixed with onRehydrateStorage callback
+- Auto-recovery mechanism: if store is null but user is authenticated, app automatically fetches store info from API and restores session
+- Recovery API: GET /api/stores?userId=X returns stores for session restoration
+- No more blank screens — user sees either loading, recovery, or login screen with clear messaging

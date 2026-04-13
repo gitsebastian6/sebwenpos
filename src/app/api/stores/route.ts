@@ -22,18 +22,26 @@ const storeUpdateSchema = z.object({
   invoiceTestMode: z.boolean().optional(),
 })
 
-// GET /api/stores?storeId=1
+// GET /api/stores?storeId=1  OR  GET /api/stores?userId=1
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
     const storeId = searchParams.get('storeId')
+    const userId = searchParams.get('userId')
 
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId is required' }, { status: 400 })
+    if (!storeId && !userId) {
+      return NextResponse.json({ error: 'storeId or userId is required' }, { status: 400 })
+    }
+
+    if (userId) {
+      const stores = await db.store.findMany({
+        where: { userId: parseInt(userId) },
+      })
+      return NextResponse.json(stores)
     }
 
     const store = await db.store.findUnique({
-      where: { id: parseInt(storeId) },
+      where: { id: parseInt(storeId!) },
     })
 
     if (!store) {
