@@ -75,6 +75,7 @@ import {
   ListOrdered,
   Search,
   Pencil,
+  ShieldAlert,
 } from 'lucide-react'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
 import {
@@ -439,6 +440,7 @@ export function AccountingView() {
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [resetNote, setResetNote] = useState('')
   const [isResetting, setIsResetting] = useState(false)
+  const [showResetFinalConfirm, setShowResetFinalConfirm] = useState(false)
   const [historyFrom, setHistoryFrom] = useState('')
   const [historyTo, setHistoryTo] = useState('')
 
@@ -3768,7 +3770,7 @@ export function AccountingView() {
               <Button variant="outline" onClick={() => { setShowResetDialog(false); setResetNote('') }}>Cancelar</Button>
               <Button
                 variant="destructive"
-                onClick={handleResetDebts}
+                onClick={() => setShowResetFinalConfirm(true)}
                 disabled={isResetting || !reportData?.customerDebts?.length}
               >
                 {isResetting && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
@@ -3777,6 +3779,47 @@ export function AccountingView() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        {/* ─── Confirmación FINAL: Resetear Saldos ─────────────────────── */}
+        <AlertDialog open={showResetFinalConfirm} onOpenChange={(open) => { if (!open) setShowResetFinalConfirm(false) }}>
+          <AlertDialogContent className="max-w-sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                <ShieldAlert className="h-5 w-5" />
+                Última Confirmación
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-3 pt-2">
+                <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-950/30 p-3">
+                  <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+                    ¿Estás ABSOLUTAMENTE seguro?
+                  </p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                    Vas a condonar las deudas de <strong>{reportData?.customerDebts?.length || 0} cliente{(reportData?.customerDebts?.length || 0) !== 1 ? 's' : ''}</strong> por un total de:
+                  </p>
+                  <p className="text-lg font-bold text-red-700 dark:text-red-300 mt-1">
+                    {formatCurrency(reportData?.customerDebts?.reduce((s, c) => s + c.totalDebt, 0) || 0, currencyCode)}
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Esta acción <strong className="text-destructive">NO se puede deshacer</strong>. Se registrarán como condonaciones en la contabilidad y las órdenes fiadas quedarán saldadas.
+                </p>
+                {resetNote && (
+                  <p className="text-xs text-muted-foreground">
+                    Nota: <em>{resetNote}</em>
+                  </p>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="gap-2 sm:gap-0">
+              <AlertDialogCancel className="mt-0">Volver Atrás</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => { setShowResetFinalConfirm(false); handleResetDebts() }}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {isResetting ? 'Procesando...' : 'Sí, Resetear Todo'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         {/* ─── Dialog: Create/Edit Expense ────────────────────────────────── */}
         <Dialog open={showExpenseDialog} onOpenChange={(open) => { if (!open) setShowExpenseDialog(false) }}>
           <DialogContent className="max-w-md">
