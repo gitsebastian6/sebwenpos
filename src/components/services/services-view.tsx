@@ -578,6 +578,7 @@ export function ServicesView() {
                             size="icon"
                             className="h-7 w-7 active:scale-[0.98] transition-all"
                             onClick={() => openEditService(s)}
+                            aria-label="Editar servicio"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -585,6 +586,7 @@ export function ServicesView() {
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive active:scale-[0.98] transition-all"
                             onClick={() => setDeleteService(s)}
+                            aria-label="Eliminar servicio"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -700,10 +702,10 @@ export function ServicesView() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1 justify-end">
-                              <Button variant="ghost" size="icon" className="h-7 w-7 active:scale-[0.98] transition-all" onClick={() => openEditTx(tx)}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 active:scale-[0.98] transition-all" onClick={() => openEditTx(tx)} aria-label="Editar registro">
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive active:scale-[0.98] transition-all" onClick={() => setDeleteTx(tx)}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive active:scale-[0.98] transition-all" onClick={() => setDeleteTx(tx)} aria-label="Eliminar registro">
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
@@ -743,10 +745,10 @@ export function ServicesView() {
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>{tx.quantity} {tx.service?.unit || 'servicio'} × {formatCurrency(tx.unitPrice, currencyCode)}</span>
                           <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" className="h-6 w-6 active:scale-[0.98] transition-all" onClick={() => openEditTx(tx)}>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 active:scale-[0.98] transition-all" onClick={() => openEditTx(tx)} aria-label="Editar registro">
                               <Pencil className="h-3 w-3" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive active:scale-[0.98] transition-all" onClick={() => setDeleteTx(tx)}>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive active:scale-[0.98] transition-all" onClick={() => setDeleteTx(tx)} aria-label="Eliminar registro">
                               <Trash2 className="h-3 w-3" />
                             </Button>
                           </div>

@@ -656,7 +656,7 @@ export function QuotationsView() {
                       <TableCell><StatusBadge status={q.status} /></TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openDetail(q.id)}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openDetail(q.id)} aria-label="Ver detalles">
                             <Eye className="h-4 w-4" />
                           </Button>
                           {q.status === 'ACTIVE' && (
@@ -682,6 +682,7 @@ export function QuotationsView() {
                                     setLoadingDetail(false)
                                   }
                                 }}
+                                aria-label="Convertir a venta"
                               >
                                 <ArrowRightLeft className="h-4 w-4" />
                               </Button>
@@ -690,6 +691,7 @@ export function QuotationsView() {
                                 size="icon"
                                 className="h-8 w-8 text-destructive hover:text-destructive"
                                 onClick={() => handleCancel(q.id)}
+                                aria-label="Cancelar cotización"
                               >
                                 <XCircle className="h-4 w-4" />
                               </Button>
@@ -901,11 +903,11 @@ export function QuotationsView() {
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center justify-center gap-1">
-                                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateCartQty(item.productId, -1)}>
+                                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateCartQty(item.productId, -1)} aria-label="Reducir cantidad">
                                   <Minus className="h-3 w-3" />
                                 </Button>
                                 <span className="w-8 text-center font-mono text-sm font-medium">{item.quantity}</span>
-                                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateCartQty(item.productId, 1)}>
+                                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateCartQty(item.productId, 1)} aria-label="Aumentar cantidad">
                                   <Plus className="h-3 w-3" />
                                 </Button>
                               </div>
@@ -913,7 +915,7 @@ export function QuotationsView() {
                             <TableCell className="text-right text-sm">{cop(item.unitPrice)}</TableCell>
                             <TableCell className="text-right font-medium text-sm">{cop(item.unitPrice * item.quantity)}</TableCell>
                             <TableCell>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.productId)}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.productId)} aria-label="Quitar del carrito">
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </TableCell>

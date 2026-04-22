@@ -607,18 +607,18 @@ export function StaffView() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditEmployee(emp)} title="Editar">
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditEmployee(emp)} aria-label="Editar empleado" title="Editar">
                                 <Edit2 className="h-3.5 w-3.5" />
                               </Button>
                               {emp.role !== 'OWNER' && (
                                 <>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openResetPassword(emp)} title="Cambiar contraseña">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openResetPassword(emp)} aria-label="Cambiar contraseña" title="Cambiar contraseña">
                                     <KeyRound className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toggleEmployeeActive(emp)} title={emp.isActive ? 'Desactivar' : 'Activar'}>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toggleEmployeeActive(emp)} aria-label={emp.isActive ? 'Desactivar empleado' : 'Activar empleado'} title={emp.isActive ? 'Desactivar' : 'Activar'}>
                                     {emp.isActive ? <UserX className="h-3.5 w-3.5" /> : <UserCheck className="h-3.5 w-3.5" />}
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => deleteEmployee(emp)} title="Eliminar">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => deleteEmployee(emp)} aria-label="Eliminar empleado" title="Eliminar">
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </>
@@ -731,14 +731,14 @@ export function StaffView() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditRole(role)} title="Editar">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditRole(role)} aria-label="Editar rol" title="Editar">
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDuplicateRole(role)} title="Duplicar">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDuplicateRole(role)} aria-label="Duplicar rol" title="Duplicar">
                           <Copy className="h-3.5 w-3.5" />
                         </Button>
                         {role.userCount === 0 && (
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteRole(role)} title="Eliminar">
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => deleteRole(role)} aria-label="Eliminar rol" title="Eliminar">
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         )}

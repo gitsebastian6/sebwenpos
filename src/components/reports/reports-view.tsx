@@ -62,6 +62,77 @@ const LOSS_REASONS: Record<string, string> = {
   INVENTARIO: 'Conteo diferencial', OTRO: 'Otro',
 }
 
+// ── Report Types ──
+interface ReportProduct { id: string; name: string; sku: string | null; currentStock: number }
+interface SalesPaymentEntry { count: number; total: number }
+interface SalesCategoryEntry { qty: number; total: number }
+interface TopProduct { name: string; total: number; qty: number }
+interface PurchaseItem { id: number; date: string; provider?: { name: string } | null; invoiceNumber: string | null; total: number }
+interface LostSaleItem { id: number; name: string; salePrice: number; sold30d: number; avgDaily: number }
+interface DiscountItem { id: number; createdAt: string; customer?: { name: string } | null; discountType: string; discountReason: string | null; discountAmount: number; total: number }
+interface CashRegister { id: number; openedAt: string; closedAt: string | null; user: string; openingBalance: number; expectedCash: number | null; closingBalance: number | null; difference: number | null; status: string; notes?: string }
+interface CommissionItem { id: number; createdAt: string; service?: { name: string; price: number } | null; quantity: number; unitPrice: number; totalAmount: number }
+interface ExpenseItem { id: number; date: string; category: string; description: string; amount: number; notes?: string }
+interface ReturnItem { id: number; createdAt: string; product?: { name: string; salePrice: number } | null; quantity: number; notes: string | null }
+interface AdjustmentItem { id: number; createdAt: string; product?: { name: string; currentStock: number; salePrice: number } | null; quantity: number; notes: string | null }
+interface TraceabilityItem { id: number; createdAt: string; movementType: string; productId: number; quantity: number; notes: string | null; referenceId?: string; product?: { name: string; costPrice: number; salePrice: number; category?: { name: string } | null } | null }
+interface QuoteItem { id: number; createdAt: string; quotationNumber: string; customerName: string | null; customer?: { name: string } | null; total: number; items?: unknown[]; status: string }
+interface InvoiceItem { id: number; createdAt: string; invoiceNumber: string; customerName: string; grandTotal: number; status: string; testMode: boolean }
+interface CreditNoteItem { id: number; createdAt: string; noteNumber: string; noteType: string; customerName: string; totalAmount: number; status: string; invoiceNumber: string | null }
+interface DebtItem { id: number; name: string; phone: string | null; totalDebt: number }
+interface IvaByCode { name: string; code: string; rate: number; base: number; amount: number }
+interface IvaOrder { id: number; orderNumber: string; createdAt: string; taxAmount: number; subtotal: number; total: number; customer?: { name: string } | null }
+interface TaxItem { id: number; date: string; description: string; amount: number; notes?: string }
+interface ExpenseCategoryEntry { count: number; total: number }
+type PaymentInfoEntry = [string, SalesPaymentEntry]
+type CategoryInfoEntry = [string, SalesCategoryEntry]
+
+interface ReportsData {
+  localEnCifras: {
+    salesToday: number; ordersToday: number; salesMonth: number; ordersMonth: number;
+    lastMonthSales: number; monthVariance: number; tipsMonth: number;
+    openTables: number; totalDebt: number; debtCount: number;
+  }
+  sales: {
+    total: number; orderCount: number; avgTicket: number;
+    byPayment: Record<string, SalesPaymentEntry>; byCategory: Record<string, SalesCategoryEntry>;
+    bySource: Record<string, SalesPaymentEntry>; topProducts: TopProduct[];
+  }
+  purchases: { items: PurchaseItem[]; total: number; byProvider: Record<string, { count: number; total: number }> }
+  inventory: {
+    totalCostValue: number; totalRetailValue: number; totalProducts: number;
+    daysOfInventory: number; outOfStockCount: number; lowStockCount: number; avgDailyCOGS: number;
+  }
+  profitability: {
+    revenue: number; cogs: number; grossProfit: number; grossMargin: number;
+    netRevenue: number; netProfit: number; netMargin: number; discounts: number; tips: number;
+  }
+  breakEven: {
+    breakEvenPoint: number; distanceToBreakEven: number; achievedPercent: number;
+    fixedCosts: number; variableCostRatio: number; contributionMargin: number;
+  }
+  lostSales: LostSaleItem[]
+  returns: { items: ReturnItem[]; totalValue: number }
+  cashRegisters: CashRegister[]
+  commissions: { items: CommissionItem[]; total: number; count: number }
+  adjustments: { items: AdjustmentItem[]; count: number }
+  taxes: { items: TaxItem[]; total: number; count: number }
+  expenses: { items: ExpenseItem[]; total: number; byCategory: Record<string, ExpenseCategoryEntry> }
+  discounts: { items: DiscountItem[]; total: number; count: number }
+  traceability: TraceabilityItem[]
+  debts: DebtItem[]
+  quotes: QuoteItem[]
+  quotesSummary: { activeCount: number; activeTotal: number; convertedCount: number; totalCount: number } | null
+  invoices: InvoiceItem[]
+  invoicesSummary: { total: number; count: number; validated: number; pending: number; rejected: number }
+  creditNotes: CreditNoteItem[]
+  creditNotesSummary: { total: number; count: number; creditCount: number; debitCount: number }
+  ivaCollected: {
+    total: number; totalBase: number; count: number;
+    byCode: IvaByCode[]; orders: IvaOrder[];
+  }
+}
+
 function fdate(d: string) { return new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) }
 function fdatetime(d: string) { return new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' ' + new Date(d).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) }
 
@@ -107,10 +178,10 @@ function Stat({ label, value, icon: Icon, color }: { label: string; value: strin
 function ProductSearchSelect({
   products, value, onValueChange, placeholder = 'Buscar producto...',
 }: {
-  products: any[]; value: string; onValueChange: (v: string) => void; placeholder?: string;
+  products: ReportProduct[]; value: string; onValueChange: (v: string) => void; placeholder?: string;
 }) {
   const [search, setSearch] = useState('')
-  const filtered = products.filter((p: any) =>
+  const filtered = products.filter((p: ReportProduct) =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.sku?.toLowerCase().includes(search.toLowerCase())
   )
@@ -126,7 +197,7 @@ function ProductSearchSelect({
         {filtered.length === 0 ? (
           <div className="p-3 text-xs text-muted-foreground text-center">Sin resultados</div>
         ) : (
-          filtered.map((p: any) => (
+          filtered.map((p: ReportProduct) => (
             <button
               key={p.id}
               type="button"
@@ -156,7 +227,7 @@ export function ReportsView() {
   const [from, setFrom] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0])
   const [to, setTo] = useState(now.toISOString().split('T')[0])
   const [tab, setTab] = useState('cifras')
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<ReportsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -167,7 +238,7 @@ export function ReportsView() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Products for dialogs
-  const [products, setProducts] = useState<any[]>([])
+  const [products, setProducts] = useState<ReportProduct[]>([])
 
   // Return form
   const [returnForm, setReturnForm] = useState({ productId: '', quantity: '', notes: '' })
@@ -189,7 +260,7 @@ export function ReportsView() {
       const res = await fetch(`/api/reports/informes?storeId=${store.id}&from=${from}&to=${to}`)
       if (!res.ok) throw new Error('Error al cargar informes')
       setData(await res.json())
-    } catch (e: any) { setError(e.message) }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setLoading(false) }
   }, [store, from, to])
 
@@ -240,8 +311,8 @@ export function ReportsView() {
       toast.success('Devolución registrada correctamente')
       setShowReturnDialog(false)
       fetchReports()
-    } catch (e: any) {
-      toast.error(e.message || 'Error al registrar devolución')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al registrar devolución')
     } finally { setIsSubmitting(false) }
   }
 
@@ -256,7 +327,7 @@ export function ReportsView() {
     }
     setIsSubmitting(true)
     try {
-      const payload: any = { storeId: store!.id, productId: adjustForm.productId, quantity: Number(adjustForm.quantity), notes: adjustForm.notes }
+      const payload: Record<string, unknown> = { storeId: store!.id, productId: adjustForm.productId, quantity: Number(adjustForm.quantity), notes: adjustForm.notes }
       if (adjustForm.mode === 'set') {
         payload.mode = 'set'
       } else {
@@ -271,8 +342,8 @@ export function ReportsView() {
       toast.success('Ajuste registrado correctamente')
       setShowAdjustDialog(false)
       fetchReports()
-    } catch (e: any) {
-      toast.error(e.message || 'Error al registrar ajuste')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al registrar ajuste')
     } finally { setIsSubmitting(false) }
   }
 
@@ -292,13 +363,13 @@ export function ReportsView() {
       toast.success('Pérdida registrada correctamente')
       setShowLossDialog(false)
       fetchReports()
-    } catch (e: any) {
-      toast.error(e.message || 'Error al registrar pérdida')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al registrar pérdida')
     } finally { setIsSubmitting(false) }
   }
 
   // Get selected product for adjust dialog
-  const getSelectedProduct = (productId: string) => products.find((p: any) => p.id === productId)
+  const getSelectedProduct = (productId: string) => products.find((p: ReportProduct) => p.id === productId)
 
   // ── Export helpers ──
   const tabLabelMap: Record<string, string> = {
@@ -318,14 +389,14 @@ export function ReportsView() {
       case 'ventas': {
         const headers = ['Método Pago', 'Órdenes', 'Total']
         const rows = Object.entries(d.sales.byPayment)
-          .sort((a: any, b: any) => b[1].total - a[1].total)
-          .map(([method, info]: any) => [PM[method] || method, info.count, info.total])
+          .sort((a: PaymentInfoEntry, b: PaymentInfoEntry) => b[1].total - a[1].total)
+          .map(([method, info]: PaymentInfoEntry) => [PM[method] || method, info.count, info.total])
         if (rows.length === 0) return null
         return { headers, rows, columnAligns: ['left', 'center', 'right'] }
       }
       case 'compras': {
         const headers = ['Fecha', 'Proveedor', 'Factura', 'Total']
-        const rows = d.purchases.items.map((p: any) => [fdate(p.date), p.provider?.name || '—', p.invoiceNumber || '—', p.total])
+        const rows = d.purchases.items.map((p: PurchaseItem) => [fdate(p.date), p.provider?.name || '—', p.invoiceNumber || '—', p.total])
         if (rows.length === 0) return null
         return { headers, rows, columnAligns: ['left', 'left', 'left', 'right'] }
       }
@@ -344,7 +415,7 @@ export function ReportsView() {
       }
       case 'perdidas': {
         const headers = ['Fecha', 'Producto', 'Precio', 'Vendidos 30d', 'Prom/Día', 'Pérdida/Día']
-        const rows = d.lostSales.map((p: any) => [
+        const rows = d.lostSales.map((p: LostSaleItem) => [
           p.name, p.salePrice, p.sold30d, p.avgDaily,
           Math.round(p.avgDaily * p.salePrice),
         ])
@@ -353,7 +424,7 @@ export function ReportsView() {
       }
       case 'descuentos': {
         const headers = ['Fecha', 'Cliente', 'Tipo', 'Razón', 'Descuento', 'Total']
-        const rows = d.discounts.items.map((o: any) => [
+        const rows = d.discounts.items.map((o: DiscountItem) => [
           fdate(o.createdAt), o.customer?.name || 'General',
           o.discountType === 'PERCENTAGE' ? '%' : 'Fijo',
           o.discountReason || '—', o.discountAmount, o.total,
@@ -363,7 +434,7 @@ export function ReportsView() {
       }
       case 'cierres': {
         const headers = ['Apertura', 'Cierre', 'Responsable', 'Base', 'Esperado', 'Real', 'Diferencia', 'Estado']
-        const rows = d.cashRegisters.map((c: any) => [
+        const rows = d.cashRegisters.map((c: CashRegister) => [
           fdatetime(c.openedAt), c.closedAt ? fdatetime(c.closedAt) : '—', c.user,
           c.openingBalance, c.expectedCash ?? '—', c.closingBalance ?? '—',
           c.difference ?? '—', c.status === 'OPEN' ? 'Abierta' : 'Cerrada',
@@ -373,7 +444,7 @@ export function ReportsView() {
       }
       case 'comisiones': {
         const headers = ['Fecha', 'Servicio', 'Cantidad', 'Unitario', 'Total']
-        const rows = d.commissions.items.map((c: any) => [
+        const rows = d.commissions.items.map((c: CommissionItem) => [
           fdatetime(c.createdAt), c.service?.name || '—', c.quantity, c.unitPrice, c.totalAmount,
         ])
         if (rows.length === 0) return null
@@ -381,7 +452,7 @@ export function ReportsView() {
       }
       case 'gastos': {
         const headers = ['Fecha', 'Categoría', 'Descripción', 'Monto']
-        const rows = d.expenses.items.map((e: any) => [
+        const rows = d.expenses.items.map((e: ExpenseItem) => [
           fdate(e.date), EXP_CAT[e.category] || e.category, e.description, e.amount,
         ])
         if (rows.length === 0) return null
@@ -400,7 +471,7 @@ export function ReportsView() {
       }
       case 'devoluciones': {
         const headers = ['Fecha', 'Producto', 'Cantidad', 'Notas']
-        const rows = d.returns.items.map((r: any) => [
+        const rows = d.returns.items.map((r: ReturnItem) => [
           fdatetime(r.createdAt), r.product?.name || 'Eliminado', r.quantity, r.notes || '—',
         ])
         if (rows.length === 0) return null
@@ -408,7 +479,7 @@ export function ReportsView() {
       }
       case 'ajustes': {
         const headers = ['Fecha', 'Producto', 'Cantidad', 'Stock Actual', 'Notas']
-        const rows = d.adjustments.items.map((a: any) => [
+        const rows = d.adjustments.items.map((a: AdjustmentItem) => [
           fdatetime(a.createdAt), a.product?.name || '—', a.quantity,
           a.product?.currentStock ?? '—', a.notes || '—',
         ])
@@ -417,7 +488,7 @@ export function ReportsView() {
       }
       case 'trazabilidad': {
         const headers = ['Fecha', 'Tipo', 'Producto', 'Categoría', 'Cantidad', 'Notas']
-        const rows = filteredTraz.map((m: any) => [
+        const rows = filteredTraz.map((m: TraceabilityItem) => [
           fdatetime(m.createdAt), MOV_TYPE[m.movementType] || m.movementType,
           m.product?.name || `ID ${m.productId}`, m.product?.category?.name || '—',
           m.quantity, m.notes || '—',
@@ -427,7 +498,7 @@ export function ReportsView() {
       }
       case 'cotizaciones': {
         const headers = ['Fecha', 'Cotización', 'Cliente', 'Total', 'Items', 'Estado']
-        const rows = d.quotes.map((q: any) => [
+        const rows = d.quotes.map((q: QuoteItem) => [
           fdatetime(q.createdAt), q.quotationNumber, q.customerName || q.customer?.name || 'General',
           q.total, q.items?.length || 0,
           q.status === 'ACTIVE' ? 'Activa' : q.status === 'CONVERTED' ? 'Convertida' : q.status === 'CANCELLED' ? 'Cancelada' : 'Expirada',
@@ -437,7 +508,7 @@ export function ReportsView() {
       }
       case 'facturas': {
         const headers = ['Fecha', 'Factura', 'Cliente', 'Total', 'Estado', 'Ambiente']
-        const rows = d.invoices.map((inv: any) => [
+        const rows = d.invoices.map((inv: InvoiceItem) => [
           fdatetime(inv.createdAt), inv.invoiceNumber, inv.customerName, inv.grandTotal,
           inv.status === 'VALIDATED' ? 'Validada' : inv.status === 'DELIVERED' ? 'Entregada' : inv.status === 'REJECTED' ? 'Rechazada' : inv.status === 'DRAFT' ? 'Borrador' : 'Pendiente',
           inv.testMode ? 'Hab.' : 'Prod.',
@@ -447,7 +518,7 @@ export function ReportsView() {
       }
       case 'notas-credito': {
         const headers = ['Fecha', 'Nota', 'Tipo', 'Cliente', 'Monto', 'Estado', 'Factura Ref.']
-        const rows = d.creditNotes.map((cn: any) => [
+        const rows = d.creditNotes.map((cn: CreditNoteItem) => [
           fdatetime(cn.createdAt), cn.noteNumber, cn.noteType === 'CREDIT' ? 'NC' : 'ND',
           cn.customerName, cn.totalAmount, cn.status, cn.invoiceNumber || '—',
         ])
@@ -456,7 +527,7 @@ export function ReportsView() {
       }
       case 'cxc': {
         const headers = ['Cliente', 'Teléfono', 'Deuda']
-        const rows = d.debts.map((c: any) => [c.name, c.phone || '—', c.totalDebt])
+        const rows = d.debts.map((c: DebtItem) => [c.name, c.phone || '—', c.totalDebt])
         if (rows.length === 0) return null
         return { headers, rows, columnAligns: ['left', 'left', 'right'] }
       }
@@ -561,8 +632,8 @@ export function ReportsView() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       toast.success('Reporte exportado a PDF')
-    } catch (e: any) {
-      toast.error(e.message || 'Error al exportar PDF')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Error al exportar PDF')
     }
   }
 
@@ -580,13 +651,13 @@ export function ReportsView() {
 
   // ── Trazabilidad computed data ──
   const trazData = d.traceability || []
-  const filteredTraz = trazFilter === 'ALL' ? trazData : trazData.filter((m: any) => m.movementType === trazFilter)
+  const filteredTraz = trazFilter === 'ALL' ? trazData : trazData.filter((m: TraceabilityItem) => m.movementType === trazFilter)
   const trazCounts: Record<string, number> = { PURCHASE: 0, SALE: 0, ADJUSTMENT: 0, RETURN: 0, LOSS: 0 }
-  trazData.forEach((m: any) => { if (trazCounts[m.movementType] !== undefined) trazCounts[m.movementType]++ })
+  trazData.forEach((m: TraceabilityItem) => { if (trazCounts[m.movementType] !== undefined) trazCounts[m.movementType]++ })
 
   // ── Registered losses from traceability ──
-  const registeredLosses = trazData.filter((m: any) => m.movementType === 'LOSS')
-  const totalLossesValue = registeredLosses.reduce((s: number, m: any) => s + ((m.quantity || 0) * (m.product?.costPrice || m.product?.salePrice || 0)), 0)
+  const registeredLosses = trazData.filter((m: TraceabilityItem) => m.movementType === 'LOSS')
+  const totalLossesValue = registeredLosses.reduce((s: number, m: TraceabilityItem) => s + ((m.quantity || 0) * (m.product?.costPrice || m.product?.salePrice || 0)), 0)
 
   return (
     <div className="space-y-4">
@@ -617,7 +688,7 @@ export function ReportsView() {
             <Separator orientation="vertical" className="h-6 hidden sm:block" />
             <div className="flex flex-wrap gap-1.5">
               {[['today', 'Hoy'], ['week', 'Semana'], ['month', 'Mes']].map(([k, l]) => (
-                <Button key={k} variant="outline" size="sm" className="h-7 text-xs active:scale-[0.98] transition-all" onClick={() => quickRange(k as any)}>{l}</Button>
+                <Button key={k} variant="outline" size="sm" className="h-7 text-xs active:scale-[0.98] transition-all" onClick={() => quickRange(k as 'today' | 'week' | 'month')}>{l}</Button>
               ))}
             </div>
           </div>
@@ -682,7 +753,7 @@ export function ReportsView() {
             <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Por Método de Pago</CardTitle></CardHeader><CardContent>
               {Object.entries(d.sales.byPayment).length === 0 ? <EmptyState icon={Receipt} title="Sin ventas" /> : (
                 <div className="space-y-2">
-                  {Object.entries(d.sales.byPayment).sort((a, b) => b[1].total - a[1].total).map(([method, info]: any) => (
+                  {Object.entries(d.sales.byPayment).sort((a, b) => b[1].total - a[1].total).map(([method, info]: PaymentInfoEntry) => (
                     <div key={method} className="flex items-center justify-between p-2 rounded-lg border">
                       <div className="flex items-center gap-2"><Badge variant="outline" className="text-[10px]">{PM[method] || method}</Badge><span className="text-xs text-muted-foreground">{info.count} órdenes</span></div>
                       <span className="font-bold text-sm">{formatCurrency(info.total, cc)}</span>
@@ -693,7 +764,7 @@ export function ReportsView() {
             </CardContent></Card>
             <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Top Productos</CardTitle></CardHeader><CardContent>
               <div className="max-h-80 overflow-y-auto space-y-1.5">
-                {d.sales.topProducts.length === 0 ? <EmptyState icon={Package} title="Sin datos" /> : d.sales.topProducts.map((p: any, i: number) => (
+                {d.sales.topProducts.length === 0 ? <EmptyState icon={Package} title="Sin datos" /> : d.sales.topProducts.map((p: TopProduct, i: number) => (
                   <div key={p.name + i} className="flex items-center justify-between p-2 rounded-lg border text-sm">
                     <div className="flex items-center gap-2"><span className="h-5 w-5 rounded-full bg-muted text-[10px] flex items-center justify-center font-bold">{i + 1}</span><span className="truncate">{p.name}</span></div>
                     <div className="text-right shrink-0"><span className="font-bold">{formatCurrency(p.total, cc)}</span><span className="text-[10px] text-muted-foreground ml-1">{p.qty} uds</span></div>
@@ -705,7 +776,7 @@ export function ReportsView() {
           <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Ventas por Categoría</CardTitle></CardHeader><CardContent>
             {Object.entries(d.sales.byCategory).length === 0 ? <EmptyState icon={Package} title="Sin datos" /> : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {Object.entries(d.sales.byCategory).sort((a, b) => b[1].total - a[1].total).map(([cat, info]: any) => (
+                {Object.entries(d.sales.byCategory).sort((a, b) => b[1].total - a[1].total).map(([cat, info]: CategoryInfoEntry) => (
                   <div key={cat} className="flex items-center justify-between p-3 rounded-lg border">
                     <span className="text-sm font-medium truncate">{cat}</span>
                     <div className="text-right shrink-0"><span className="font-bold text-sm">{formatCurrency(info.total, cc)}</span><span className="text-[10px] text-muted-foreground ml-1">{info.qty} uds</span></div>
@@ -746,7 +817,7 @@ export function ReportsView() {
           {d.purchases.byProvider && Object.keys(d.purchases.byProvider).length > 0 && (
             <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Por Proveedor</CardTitle></CardHeader><CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {Object.entries(d.purchases.byProvider).sort((a: any, b: any) => b[1].total - a[1].total).map(([prov, info]: any) => (
+                {Object.entries(d.purchases.byProvider).sort((a: [string, { count: number; total: number }], b: [string, { count: number; total: number }]) => b[1].total - a[1].total).map(([prov, info]: [string, { count: number; total: number }]) => (
                   <div key={prov} className="flex items-center justify-between p-2.5 rounded-lg border"><span className="text-sm">{prov}</span><div className="text-right"><span className="font-bold text-sm">{formatCurrency(info.total, cc)}</span><span className="text-[10px] text-muted-foreground ml-1">({info.count})</span></div></div>
                 ))}
               </div>
@@ -756,7 +827,7 @@ export function ReportsView() {
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Proveedor</TableHead><TableHead className="text-xs">Factura</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader><TableBody>
                 {d.purchases.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={Truck} title="Sin compras en el período" /></TableCell></TableRow> :
-                d.purchases.items.map((p: any) => (
+                d.purchases.items.map((p: PurchaseItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={p.id}><TableCell className="text-xs">{fdate(p.date)}</TableCell><TableCell className="text-xs">{p.provider?.name || '—'}</TableCell><TableCell className="text-xs font-mono">{p.invoiceNumber || '—'}</TableCell><TableCell className="text-right text-sm font-medium">{formatCurrency(p.total, cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>

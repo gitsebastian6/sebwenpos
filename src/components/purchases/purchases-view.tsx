@@ -1136,7 +1136,7 @@ export function PurchasesView() {
             <Upload className="h-4 w-4" /><span className="text-xs hidden sm:inline">XML</span>
           </Button>
           <input ref={xmlInputRef} type="file" accept=".xml" className="hidden" onChange={handleXmlUpload} />
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="Ayuda XML" onClick={() => setShowXmlHelp(true)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" title="Ayuda XML" onClick={() => setShowXmlHelp(true)} aria-label="Ayuda XML">
             <Info className="h-4 w-4" />
           </Button>
           <Button onClick={openCreateDialog} size="sm"><Plus className="h-4 w-4" />Nueva Compra</Button>
@@ -1251,20 +1251,20 @@ export function PurchasesView() {
                           <TableCell className="text-center">{getStatusBadge(purchase.status)}</TableCell>
                           <TableCell className="text-center">
                             <div className="flex items-center justify-center gap-1">
-                              <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver detalle" onClick={() => openDetail(purchase)}><Eye className="h-3.5 w-3.5" /></Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver detalle" onClick={() => openDetail(purchase)} aria-label="Ver detalles"><Eye className="h-3.5 w-3.5" /></Button>
                               {(purchase.status === 'PENDING' || purchase.status === 'COMPLETED') && (
-                                <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" onClick={() => openEditDialog(purchase)}><Pencil className="h-3.5 w-3.5" /></Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" onClick={() => openEditDialog(purchase)} aria-label="Editar compra"><Pencil className="h-3.5 w-3.5" /></Button>
                               )}
                               {purchase.paymentStatus !== 'PAID' && purchase.status !== 'CANCELLED' && (
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" title="Pagar" onClick={() => openDetail(purchase)}><DollarSign className="h-3.5 w-3.5" /></Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600" title="Pagar" onClick={() => openDetail(purchase)} aria-label="Registrar pago"><DollarSign className="h-3.5 w-3.5" /></Button>
                               )}
                               {purchase.status === 'COMPLETED' && (
-                                <Button variant="ghost" size="icon" className="h-7 w-7" title="Devolver" onClick={() => { openDetail(purchase) }}><RotateCcw className="h-3.5 w-3.5" /></Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" title="Devolver" onClick={() => { openDetail(purchase) }} aria-label="Devolver compra"><RotateCcw className="h-3.5 w-3.5" /></Button>
                               )}
                               {purchase.status !== 'CANCELLED' && (
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" title="Cancelar" onClick={() => setCancelPurchase(purchase)}><Ban className="h-3.5 w-3.5" /></Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" title="Cancelar" onClick={() => setCancelPurchase(purchase)} aria-label="Cancelar compra"><Ban className="h-3.5 w-3.5" /></Button>
                               )}
-                              <Button variant="ghost" size="icon" className="h-7 w-7" title="Imprimir" onClick={() => handlePrintPurchaseDetail(purchase)}><Printer className="h-3.5 w-3.5" /></Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" title="Imprimir" onClick={() => handlePrintPurchaseDetail(purchase)} aria-label="Imprimir compra"><Printer className="h-3.5 w-3.5" /></Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1449,7 +1449,7 @@ export function PurchasesView() {
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-xs text-muted-foreground font-mono">#{idx + 1}</span>
                         {purchaseItems.length > 1 && (
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => removeItem(item.id)}><X className="h-3 w-3" /></Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500" onClick={() => removeItem(item.id)} aria-label="Quitar producto"><X className="h-3 w-3" /></Button>
                         )}
                       </div>
 

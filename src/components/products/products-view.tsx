@@ -1089,7 +1089,7 @@ export function ProductsView() {
                           <TableCell className="text-center sticky right-0 bg-background">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Más opciones">
                                   <MoreHorizontal className="h-4 w-4" />
                                   <span className="sr-only">Acciones</span>
                                 </Button>
@@ -1270,6 +1270,7 @@ export function ProductsView() {
                         size="icon"
                         className="h-8 w-8"
                         onClick={() => openEditCategoryDialog(category)}
+                        aria-label="Editar categoría"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                         <span className="sr-only">Editar</span>
@@ -1279,6 +1280,7 @@ export function ProductsView() {
                         size="icon"
                         className="h-8 w-8 text-destructive hover:text-destructive"
                         onClick={() => setDeleteTarget({ type: 'category', item: category })}
+                        aria-label="Eliminar categoría"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         <span className="sr-only">Eliminar</span>
@@ -1494,6 +1496,7 @@ export function ProductsView() {
                     className="shrink-0 text-destructive hover:text-destructive"
                     onClick={() => setProductForm({ ...productForm, imgUrl: '' })}
                     title="Quitar imagen"
+                    aria-label="Quitar imagen"
                   >
                     <X className="h-4 w-4" />
                   </Button>
