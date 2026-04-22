@@ -565,3 +565,72 @@ Stage Summary:
 - All credit note creation paths now use atomic transactions (consecutive + create)
 - Lint clean (10 pre-existing errors in non-src files only)
 - Dev server healthy, /api/health returning 200
+
+---
+Task ID: 2
+Agent: full-stack-developer
+Task: Refactor POS monolithic component (2,271 lines)
+
+Work Log:
+- Created src/hooks/pos/use-pos-data.ts (173 lines): data fetching hook for products, services, categories, customers, cash registers, recent sales
+- Created src/hooks/pos/use-pos-cart.ts (453 lines): cart operations hook with add/remove/update, discount logic, tax calculations, tip, submit order, invoice creation
+- Created src/components/pos/pos-return-dialog.tsx (278 lines): extracted return dialog with forwardRef + useImperativeHandle pattern for programmatic open
+- Created src/components/pos/pos-recent-sales.tsx (145 lines): extracted recent sales dialog component
+- Refactored src/components/pos/pos-view.tsx: slimmed from 2,271 → 1,456 lines (36% reduction)
+- Exported shared types: Product, OpenCashRegister, RecentOrder from use-pos-data; DiscountType from use-pos-cart; POSReturnDialogRef from pos-return-dialog
+- usePosCart accepts deps parameter (openCashRegisters, selectedCashRegisterId, customers, fetchOpenCashRegisters) to access data hook values
+- usePosCart uses useAuthStore internally for store info (invoice creation)
+- POSReturnDialog uses forwardRef + useImperativeHandle to expose openReturnDialog() method
+- POSRecentSales receives returnDialogRef prop to trigger returns from recent sales list
+- Fixed React Compiler lint issues (preserve-manual-memoization) by adjusting useCallback dependency arrays
+- Removed unused useAppStore import
+- Preserved ALL existing types imports from @/types
+- POSView export name preserved for dynamic import in app-shell.tsx
+
+Stage Summary:
+- POS component split into 2 hooks + 2 sub-components + main view
+- pos-view.tsx reduced from 2,271 to 1,456 lines
+- All business logic preserved, no UI/behavior changes
+- Lint clean (0 new errors, only pre-existing require() errors in non-src files)
+
+---
+Task ID: 3
+Agent: main
+Task: Refactor tables-view monolithic component (2,697 lines) into smaller hooks + sub-components
+
+Work Log:
+- Created src/hooks/use-tables-data.ts (462 lines): data fetching hook + all shared types + constants + helpers
+  - Types: BarTable, TableSession, ComandaItem, SessionOrder, Product, Service, Category, Customer, OpenCashRegister
+  - Constants: ZONES, ZONE_STYLES, COMANDA_STATUS_STYLES, PAYMENT_METHODS
+  - Helpers: formatTimeElapsed, formatTime
+  - Hook: useTablesData() — fetches tables, sessions, products, services, categories, customers, cash registers
+  - Table CRUD: handleCreateTable, handleDeleteClick, handleConfirmDeleteTable, handleToggleTableActive
+- Created src/components/tables/table-session-dialog.tsx (1,065 lines): 5 dialog components
+  - OpenSessionDialog: form to open a new session (guests, customer, notes) — manages own form state
+  - CloseSessionDialog: AlertDialog to confirm session close
+  - AddTableDialog: form to create a new table (number, capacity, zone) — manages own form state
+  - DeleteTableDialog: AlertDialog to confirm table deletion
+  - PaymentDialog: full payment processing dialog with method selection, tip, discount, invoice mode, NIT validation — manages own state internally
+- Created src/components/tables/comanda-panel.tsx (925 lines): Sheet component for session/comanda management
+  - Session header info with time elapsed
+  - Quick action buttons (select all, mark served, cancel, cobrar, close)
+  - Comanda items list with inline quantity adjustment, notes editing (Popover), status badges, selection checkboxes
+  - Session orders history with print ticket button
+  - Add items section with product search, category filter, product/service lists
+  - Notes editing via Popover with save/cancel
+- Refactored src/components/tables/tables-view.tsx: slimmed from 2,697 → 663 lines (75% reduction)
+  - Uses useTablesData() hook for all data fetching
+  - Manages top-level UI state (selectedTable, sheetOpen, dialog visibility, item selection)
+  - Composes sub-components as dialogs + comanda panel
+  - TableCard sub-component retained (rendering only)
+  - Computed values (taxEstimate, selectedItemsTotal, etc.) computed in parent, passed as props
+- Fixed pre-existing TS bug: resolutionStart/resolutionEnd → resolutionStartNumber/resolutionEndNumber
+- Exported TablesView from main file (preserved for dynamic import in app-shell.tsx)
+- All existing types and imports kept working
+
+Stage Summary:
+- tables-view.tsx reduced from 2,697 to 663 lines (75% reduction)
+- 4 files created: use-tables-data.ts, table-session-dialog.tsx, comanda-panel.tsx, tables-view.tsx (rewritten)
+- All business logic preserved, no UI/behavior changes
+- TypeScript strict-mode clean (0 new errors)
+- ESLint clean (0 new errors, only pre-existing require() errors in non-src files)

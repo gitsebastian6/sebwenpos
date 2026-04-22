@@ -1,0 +1,453 @@
+'use client'
+
+import { useState, useCallback, useMemo } from 'react'
+import { useAuthStore } from '@/stores/auth-store'
+import { toast } from 'sonner'
+import { DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
+import { playCartAdd, playSaleSuccess, playError } from '@/lib/pos-sounds'
+import type { CartItem, PaymentMethod, InvoiceMode, LastOrderData, LastInvoiceData, CustomerSummary, Service } from '@/types'
+import type { Product, OpenCashRegister } from './use-pos-data'
+
+// ─── Types ──────────────────────────────────────────────
+
+export type DiscountType = 'NONE' | 'PERCENTAGE' | 'FIXED'
+
+// ─── Hook deps ─────────────────────────────────────────
+
+interface UsePosCartDeps {
+  openCashRegisters: OpenCashRegister[]
+  selectedCashRegisterId: string
+  customers: CustomerSummary[]
+  fetchOpenCashRegisters: () => Promise<void>
+}
+
+// ─── Hook ──────────────────────────────────────────────
+
+export function usePosCart(deps: UsePosCartDeps) {
+  const { store } = useAuthStore()
+  const storeId = store?.id
+
+  // ─── Cart state ──────────────────────────────────────
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [selectedCustomer, setSelectedCustomer] = useState<string>('none')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH')
+  const [notes, setNotes] = useState('')
+  const [tipAmount, setTipAmount] = useState<number>(0)
+  const [showTipInput, setShowTipInput] = useState(false)
+  const [transferRef, setTransferRef] = useState('')
+
+  // ─── Discount states ─────────────────────────────────
+  const [discountType, setDiscountType] = useState<DiscountType>('NONE')
+  const [discountValue, setDiscountValue] = useState<number>(0)
+  const [discountReason, setDiscountReason] = useState('')
+  const [showDiscountInput, setShowDiscountInput] = useState(false)
+
+  // ─── UI states ───────────────────────────────────────
+  const [showChargeDialog, setShowChargeDialog] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [cartSheetOpen, setCartSheetOpen] = useState(false)
+
+  // ─── Invoice mode ────────────────────────────────────
+  const isEInvEnabled = !!store?.invoiceEnabled && !!store?.nit
+  const hasStoreNit = !!store?.nit
+  const [posInvoiceMode, setPosInvoiceMode] = useState<InvoiceMode>('TIRILLA')
+  const [lastInvoiceData, setLastInvoiceData] = useState<LastInvoiceData | null>(null)
+  const [lastDocType, setLastDocType] = useState<'TIRILLA' | 'DOC_EQUIPOS' | 'ELECTRONICA'>('TIRILLA')
+  const [creatingInvoice, setCreatingInvoice] = useState(false)
+  const [invoiceCustomerNit, setInvoiceCustomerNit] = useState('')
+  const [invoiceCustomerName, setInvoiceCustomerName] = useState('')
+  const [invoiceCustomerEmail, setInvoiceCustomerEmail] = useState('')
+
+  // ─── Last order ──────────────────────────────────────
+  const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null)
+  const [lastOrderData, setLastOrderData] = useState<LastOrderData | null>(null)
+
+  // ─── Cart operations ─────────────────────────────────
+  const addToCart = useCallback(
+    (product: Product) => {
+      const wasEmpty = cart.length === 0
+      let didAdd = false
+      setCart((prev) => {
+        const existing = prev.find((item) => item.productId === product.id)
+        if (existing) {
+          if (existing.quantity >= product.currentStock) {
+            toast.warning(`Stock insuficiente para "${product.name}"`)
+            return prev
+          }
+          didAdd = true
+          return prev.map((item) =>
+            item.productId === product.id
+              ? { ...item, quantity: item.quantity + 1 }
+              : item
+          )
+        }
+        if (product.currentStock <= 0) {
+          toast.warning(`Sin stock para "${product.name}"`)
+          return prev
+        }
+        didAdd = true
+        return [
+          ...prev,
+          {
+            productId: product.id,
+            serviceId: null,
+            name: product.name,
+            salePrice: product.salePrice,
+            quantity: 1,
+            maxStock: product.currentStock,
+            isService: false,
+            taxRate: product.taxRate || undefined,
+          },
+        ]
+      })
+      if (didAdd) {
+        playCartAdd()
+      }
+      // Auto-open cart sheet when first product is added
+      if (wasEmpty) {
+        setCartSheetOpen(true)
+      }
+    },
+    [cart.length]
+  )
+
+  const addServiceToCart = useCallback(
+    (service: Service) => {
+      const wasEmpty = cart.length === 0
+      let didAdd = false
+      setCart((prev) => {
+        const existing = prev.find((item) => item.serviceId === service.id)
+        if (existing) {
+          didAdd = true
+          return prev.map((item) =>
+            item.serviceId === service.id
+              ? { ...item, quantity: item.quantity + 1 }
+              : item
+          )
+        }
+        didAdd = true
+        return [
+          ...prev,
+          {
+            productId: null,
+            serviceId: service.id,
+            name: service.name,
+            salePrice: service.price,
+            quantity: 1,
+            maxStock: 999999,
+            isService: true,
+          },
+        ]
+      })
+      if (didAdd) {
+        playCartAdd()
+      }
+      if (wasEmpty) {
+        setCartSheetOpen(true)
+      }
+    },
+    [cart.length]
+  )
+
+  const updateQuantity = useCallback(
+    (itemId: number, delta: number, isService: boolean) => {
+      setCart((prev) =>
+        prev
+          .map((item) => {
+            const match = isService ? item.serviceId === itemId : item.productId === itemId
+            if (!match) return item
+            const newQty = item.quantity + delta
+            if (newQty <= 0) return null
+            if (!item.isService && newQty > item.maxStock) {
+              toast.warning('Stock insuficiente')
+              return item
+            }
+            return { ...item, quantity: newQty }
+          })
+          .filter(Boolean) as CartItem[]
+      )
+    },
+    []
+  )
+
+  const removeFromCart = useCallback((itemId: number, isService: boolean) => {
+    setCart((prev) =>
+      prev.filter((item) =>
+        isService ? item.serviceId !== itemId : item.productId !== itemId
+      )
+    )
+  }, [])
+
+  // ─── Update per-item notes ───────────────────────────
+  const updateItemNotes = useCallback((itemId: number, isService: boolean, itemNotes: string) => {
+    setCart((prev) =>
+      prev.map((item) => {
+        const match = isService ? item.serviceId === itemId : item.productId === itemId
+        if (!match) return item
+        return { ...item, notes: itemNotes.trim() || undefined }
+      })
+    )
+  }, [])
+
+  const clearCart = useCallback(() => {
+    setCart([])
+    setNotes('')
+    setSelectedCustomer('none')
+    setLastOrderNumber(null)
+    setLastOrderData(null)
+    setTipAmount(0)
+    setShowTipInput(false)
+    setTransferRef('')
+    setDiscountType('NONE')
+    setDiscountValue(0)
+    setDiscountReason('')
+    setShowDiscountInput(false)
+    setCartSheetOpen(false)
+    setInvoiceCustomerNit('')
+    setInvoiceCustomerName('')
+    setInvoiceCustomerEmail('')
+  }, [])
+
+  const clearLastOrder = useCallback(() => {
+    setLastOrderNumber(null)
+    setLastOrderData(null)
+  }, [])
+
+  // ─── Cart calculations ───────────────────────────────
+  const cartItemCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart])
+  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.salePrice * item.quantity, 0), [cart])
+
+  // Estimated tax breakdown (prices in Colombia are tax-inclusive)
+  const taxEstimate = useMemo(() => {
+    const breakdown: Record<string, { name: string; code: string; base: number; rate: number; amount: number }> = {}
+    let totalTax = 0
+    for (const item of cart) {
+      const tr = item.taxRate
+      if (!tr || tr.rate === 0 || tr.rateType !== 'PERCENTAGE') continue
+      const totalRow = item.salePrice * item.quantity
+      const base = Math.round(totalRow / (1 + tr.rate / 100))
+      const tax = totalRow - base
+      if (breakdown[tr.code]) {
+        breakdown[tr.code].base += base
+        breakdown[tr.code].amount += tax
+      } else {
+        breakdown[tr.code] = { name: tr.name, code: tr.code, base, rate: tr.rate, amount: tax }
+      }
+      totalTax += tax
+    }
+    return { breakdown: Object.values(breakdown), totalTax }
+  }, [cart])
+
+  const discountAmount = useMemo(() => {
+    if (discountType === 'PERCENTAGE') {
+      return Math.round(subtotal * discountValue / 100)
+    }
+    if (discountType === 'FIXED') {
+      return Math.min(discountValue, subtotal)
+    }
+    return 0
+  }, [discountType, discountValue, subtotal])
+
+  const total = useMemo(() => subtotal - discountAmount + tipAmount, [subtotal, discountAmount, tipAmount])
+
+  // ─── Submit order ────────────────────────────────────
+  const handleSubmitOrder = async () => {
+    if (!storeId || cart.length === 0) return
+
+    // Block if no cash register is open — backend also validates, but catch early on frontend
+    if (deps.openCashRegisters.length === 0) {
+      toast.error('Debes abrir la caja antes de registrar una venta. Ve a Contabilidad → Caja.')
+      playError()
+      setShowChargeDialog(false)
+      return
+    }
+
+    // Fiado requires a customer
+    if (paymentMethod === 'FIADO' && selectedCustomer === 'none') {
+      toast.error('Para vender fiado debes seleccionar un cliente')
+      playError()
+      setShowChargeDialog(false)
+      return
+    }
+
+    // Transfer/Nequi/Daviplata require reference number
+    if (['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && !transferRef.trim()) {
+      toast.error(`Ingresa el número de ${paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod === 'NEQUI' ? 'Nequi' : 'Daviplata'}`)
+      playError()
+      setShowChargeDialog(false)
+      return
+    }
+
+    setIsSubmitting(true)
+
+    // Transfer/Nequi/Daviplata: append reference to notes
+    const isTransferMethod = ['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod)
+    const transferNote = isTransferMethod && transferRef.trim() ? `Ref: ${transferRef.trim()}` : ''
+
+    try {
+      const payload = {
+        storeId,
+        customerId: selectedCustomer !== 'none' ? Number(selectedCustomer) : null,
+        cashRegisterId: deps.selectedCashRegisterId !== 'auto' ? Number(deps.selectedCashRegisterId) : undefined,
+        paymentMethod,
+        tipAmount: paymentMethod !== 'FIADO' ? tipAmount : 0,
+        discountType,
+        discountAmount,
+        discountReason: discountReason.trim() || undefined,
+        notes: [
+          notes.trim(),
+          transferNote,
+        ].filter(Boolean).join(' | ') || undefined,
+        items: cart.map((item) => ({
+          ...(item.isService ? { serviceId: item.serviceId } : { productId: item.productId }),
+          quantity: item.quantity,
+          notes: item.notes || undefined,
+        })),
+      }
+
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Error al registrar la venta')
+      }
+
+      const order = await res.json()
+      playSaleSuccess()
+      toast.success('¡Venta registrada!', {
+        description: `Orden ${order.orderNumber}`,
+      })
+
+      // Refresh open cash registers after sale
+      deps.fetchOpenCashRegisters()
+
+      setLastOrderNumber(order.orderNumber)
+      setLastOrderData(order)
+      setLastDocType(posInvoiceMode)
+      setCart([])
+      setNotes('')
+      setTipAmount(0)
+      setShowTipInput(false)
+      setTransferRef('')
+      setDiscountType('NONE')
+      setDiscountValue(0)
+      setDiscountReason('')
+      setShowDiscountInput(false)
+      setCartSheetOpen(false)
+
+      // ── Auto-create electronic invoice if selected ──
+      if (posInvoiceMode === 'ELECTRONICA' && isEInvEnabled && order.id) {
+        try {
+          setCreatingInvoice(true)
+          // Determine NIT: manual input > selected customer > consumidor final
+          const finalNit = invoiceCustomerNit.trim()
+            ? invoiceCustomerNit.trim().replace(/[^0-9]/g, '')
+            : (selectedCustomer !== 'none'
+                ? (deps.customers.find(c => String(c.id) === selectedCustomer)?.nit?.replace(/[^0-9]/g, '') || DIAN_CONSUMIDOR_FINAL_NIT)
+                : DIAN_CONSUMIDOR_FINAL_NIT)
+          const finalName = invoiceCustomerName.trim()
+            || (selectedCustomer !== 'none'
+              ? deps.customers.find(c => String(c.id) === selectedCustomer)?.name
+              : undefined)
+          const finalEmail = invoiceCustomerEmail.trim() || undefined
+
+          const invBody: { orderId: number; testMode: boolean; customerNit: string; customerName: string; autoSend: boolean; customerEmail?: string } = {
+            orderId: order.id,
+            testMode: store?.invoiceTestMode ?? true,
+            customerNit: finalNit,
+            customerName: finalName || 'Consumidor Final',
+            autoSend: true,
+          }
+          if (finalEmail) invBody.customerEmail = finalEmail
+
+          const invRes = await fetch('/api/invoices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(invBody),
+          })
+          if (invRes.ok) {
+            const invoiceData = await invRes.json()
+            setLastInvoiceData(invoiceData)
+            toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, {
+              description: 'CUFE generado correctamente',
+              duration: 5000,
+            })
+          } else {
+            const err = await invRes.json().catch(() => ({}))
+            toast.error(`Error al generar factura: ${err.error || 'Desconocido'}`, { duration: 6000 })
+          }
+        } catch {
+          toast.error('Error al generar factura electrónica')
+        } finally {
+          setCreatingInvoice(false)
+        }
+      }
+    } catch (err) {
+      playError()
+      toast.error(err instanceof Error ? err.message : 'Error al registrar la venta')
+    } finally {
+      setIsSubmitting(false)
+      setShowChargeDialog(false)
+    }
+  }
+
+  return {
+    // Cart state
+    cart,
+    cartItemCount,
+    subtotal,
+    taxEstimate,
+    discountAmount,
+    total,
+
+    // Cart operations
+    addToCart,
+    addServiceToCart,
+    updateQuantity,
+    removeFromCart,
+    updateItemNotes,
+    clearCart,
+
+    // Discount state
+    discountType, setDiscountType,
+    discountValue, setDiscountValue,
+    discountReason, setDiscountReason,
+    showDiscountInput, setShowDiscountInput,
+
+    // Tip
+    tipAmount, setTipAmount,
+    showTipInput, setShowTipInput,
+
+    // Customer, notes, payment
+    selectedCustomer, setSelectedCustomer,
+    notes, setNotes,
+    paymentMethod, setPaymentMethod,
+    transferRef, setTransferRef,
+
+    // UI state
+    cartSheetOpen, setCartSheetOpen,
+    showChargeDialog, setShowChargeDialog,
+    isSubmitting,
+
+    // Invoice state
+    isEInvEnabled,
+    hasStoreNit,
+    posInvoiceMode, setPosInvoiceMode,
+    creatingInvoice,
+    invoiceCustomerNit, setInvoiceCustomerNit,
+    invoiceCustomerName, setInvoiceCustomerName,
+    invoiceCustomerEmail, setInvoiceCustomerEmail,
+
+    // Last order
+    lastOrderNumber, lastOrderData,
+    lastInvoiceData, lastDocType,
+    clearLastOrder,
+
+    // Submit
+    handleSubmitOrder,
+  }
+}
