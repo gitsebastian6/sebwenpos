@@ -85,56 +85,22 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { playCartAdd, playSaleSuccess, playError } from '@/lib/pos-sounds'
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner'
+import type { ProductSummary, Service, CategorySummary, CustomerSummary, CartItem, PaymentMethod, InvoiceMode, LastOrderData, LastInvoiceData, ReturnOrderDetail, OrderItemData } from '@/types'
 
 // ─── Types ──────────────────────────────────────────────
 
-interface Product {
-  id: number
-  name: string
-  salePrice: number
-  currentStock: number
-  categoryId: number | null
-  imgUrl: string | null
-  sku: string | null
-  barcode: string | null
-  category?: { id: number; name: string } | null
-  taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
-}
+// NOTE: local Product alias intentionally kept — uses `categoryId` and `currentStock` (non-optional) which differ from ProductSummary
+type Product = ProductSummary & { currentStock: number; categoryId: number | null }
 
-interface Service {
-  id: number
-  name: string
-  price: number
-  icon: string
-  unit: string
-  isActive: boolean
-}
+// Service imported from @/types
 
-interface Category {
-  id: number
-  name: string
-}
+// Category → CategorySummary imported from @/types
 
-interface Customer {
-  id: number
-  name: string
-  phone: string | null
-  nit?: string | null
-}
+// Customer → CustomerSummary imported from @/types
 
-interface CartItem {
-  productId: number | null
-  serviceId: number | null
-  name: string
-  salePrice: number
-  quantity: number
-  maxStock: number
-  isService: boolean
-  notes?: string
-  taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
-}
+// CartItem imported from @/types
 
-type PaymentMethod = 'CASH' | 'DAVIPLATA' | 'NEQUI' | 'CARD' | 'TRANSFER' | 'FIADO'
+// PaymentMethod imported from @/types
 type DiscountType = 'NONE' | 'PERCENTAGE' | 'FIXED'
 
 // ─── Payment method labels ──────────────────────────────
@@ -174,7 +140,7 @@ export function POSView() {
   const [notes, setNotes] = useState('')
   const [showChargeDialog, setShowChargeDialog] = useState(false)
   const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null)
-  const [lastOrderData, setLastOrderData] = useState<any>(null)
+  const [lastOrderData, setLastOrderData] = useState<LastOrderData | null>(null)
   const [tipAmount, setTipAmount] = useState<number>(0)
   const [showTipInput, setShowTipInput] = useState(false)
   const [transferRef, setTransferRef] = useState('')
@@ -186,11 +152,11 @@ export function POSView() {
   const [showDiscountInput, setShowDiscountInput] = useState(false)
 
   // ─── Invoice mode: TIRILLA (default), DOC_EQUIPOS (equivalente POS), or ELECTRONICA (when e-invoicing enabled) ──
-  type InvoiceMode = 'TIRILLA' | 'DOC_EQUIPOS' | 'ELECTRONICA'
+  // InvoiceMode imported from @/types
   const isEInvEnabled = !!store?.invoiceEnabled && !!store?.nit
   const hasStoreNit = !!store?.nit
   const [posInvoiceMode, setPosInvoiceMode] = useState<InvoiceMode>('TIRILLA')
-  const [lastInvoiceData, setLastInvoiceData] = useState<any>(null)
+  const [lastInvoiceData, setLastInvoiceData] = useState<LastInvoiceData | null>(null)
   const [lastDocType, setLastDocType] = useState<'TIRILLA' | 'DOC_EQUIPOS' | 'ELECTRONICA'>('TIRILLA')
   const [creatingInvoice, setCreatingInvoice] = useState(false)
   // ─── Invoice buyer info (Art. 11 DIAN — only name, NIT, email required) ──
@@ -206,7 +172,7 @@ export function POSView() {
   const [returnReason, setReturnReason] = useState('')
   const [returning, setReturning] = useState(false)
   const [returningOrderId, setReturningOrderId] = useState<number | null>(null)
-  const [returnOrderDetail, setReturnOrderDetail] = useState<any>(null)
+  const [returnOrderDetail, setReturnOrderDetail] = useState<ReturnOrderDetail | null>(null)
   const [returnItems, setReturnItems] = useState<Map<number, number>>(new Map())
   const [loadingReturnDetail, setLoadingReturnDetail] = useState(false)
 
@@ -280,7 +246,7 @@ export function POSView() {
       if (res.ok) {
         const data = await res.json()
         const shifts = data.shifts || []
-        setOpenCashRegisters(shifts.map((s: any) => ({
+        setOpenCashRegisters(shifts.map((s: { shift: { id: number; user: { fullName: string | null }; openedAt: string; openingBalance: number } }) => ({
           id: s.shift.id,
           user: s.shift.user,
           openedAt: s.shift.openedAt,
@@ -799,7 +765,7 @@ export function POSView() {
               : undefined)
           const finalEmail = invoiceCustomerEmail.trim() || undefined
 
-          const invBody: any = {
+          const invBody: { orderId: number; testMode: boolean; customerNit: string; customerName: string; autoSend: boolean; customerEmail?: string } = {
             orderId: order.id,
             testMode: store?.invoiceTestMode ?? true,
             customerNit: finalNit,
@@ -1135,7 +1101,7 @@ export function POSView() {
                 size="sm"
                 className="h-8 px-3 text-xs gap-1"
                 onClick={() => {
-                  const items: TicketItem[] = (lastOrderData.orderItems || []).map((item: any) => ({
+                  const items: TicketItem[] = (lastOrderData.orderItems || []).map((item: OrderItemData) => ({
                     name: item.productName,
                     quantity: item.quantity,
                     unitPrice: item.unitPrice,
@@ -1314,6 +1280,7 @@ export function POSView() {
                                 size="icon"
                                 className="h-7 w-7 text-muted-foreground hover:text-amber-600 shrink-0"
                                 title="Agregar nota"
+                                aria-label="Agregar nota"
                               >
                                 <Pencil className="h-3 w-3" />
                               </Button>
@@ -1340,6 +1307,7 @@ export function POSView() {
                             className="h-8 w-8 active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300 dark:hover:border-emerald-800 hover:shadow-sm hover:shadow-emerald-500/10"
                             onClick={() => updateQuantity(itemId, -1, item.isService)}
                             disabled={item.quantity <= 1}
+                            aria-label="Reducir cantidad"
                           >
                             <Minus className="h-3 w-3" />
                           </Button>
@@ -1352,6 +1320,7 @@ export function POSView() {
                             className="h-8 w-8 active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300 dark:hover:border-emerald-800 hover:shadow-sm hover:shadow-emerald-500/10"
                             onClick={() => updateQuantity(itemId, 1, item.isService)}
                             disabled={!item.isService && item.quantity >= item.maxStock}
+                            aria-label="Aumentar cantidad"
                           >
                             <Plus className="h-3 w-3" />
                           </Button>
@@ -1369,6 +1338,7 @@ export function POSView() {
                           className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 active:scale-90 transition-all duration-150 hover:shadow-sm"
                           onClick={() => removeFromCart(itemId, item.isService)}
                           title="Eliminar producto"
+                          aria-label="Eliminar producto del carrito"
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -1803,7 +1773,7 @@ export function POSView() {
                             size="sm"
                             className="h-7 px-2 text-xs text-primary hover:text-primary"
                             onClick={() => {
-                              const items: TicketItem[] = (lastOrderData.orderItems || []).map((item: any) => ({
+                              const items: TicketItem[] = (lastOrderData.orderItems || []).map((item: OrderItemData) => ({
                                 name: item.productName,
                                 quantity: item.quantity,
                                 unitPrice: item.unitPrice,
@@ -2094,12 +2064,12 @@ export function POSView() {
             <div className="space-y-4">
               {/* Items list */}
               <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
-                {returnOrderDetail.orderItems?.filter((i: any) => i.productId && i.quantity > (i.returnedQuantity || 0)).length === 0 ? (
+                {returnOrderDetail.orderItems?.filter((i) => i.productId && i.quantity > (i.returnedQuantity || 0)).length === 0 ? (
                   <div className="p-4 text-center text-sm text-muted-foreground">
                     No hay productos devolvibles en esta venta.
                   </div>
                 ) : (
-                  returnOrderDetail.orderItems?.map((item: any) => {
+                  returnOrderDetail.orderItems?.map((item) => {
                     if (!item.productId) return null
                     const available = item.quantity - (item.returnedQuantity || 0)
                     if (available <= 0) return null
@@ -2155,7 +2125,7 @@ export function POSView() {
               </div>
 
               {/* Services note */}
-              {returnOrderDetail.orderItems?.some((i: any) => !i.productId) && (
+              {returnOrderDetail.orderItems?.some((i) => !i.productId) && (
                 <p className="text-xs text-muted-foreground italic">
                   Los servicios no se pueden devolver al inventario.
                 </p>

@@ -119,8 +119,8 @@ export async function POST(req: NextRequest) {
         'Content-Disposition': `attachment; filename="${title.replace(/[^a-zA-Z0-9áéíóúñ ]/g, '').replace(/\s+/g, '_')}.pdf"`,
       },
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('PDF export error:', error)
-    return NextResponse.json({ error: error.message || 'Error generando PDF' }, { status: 500 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Error generando PDF' }, { status: 500 })
   }
 }

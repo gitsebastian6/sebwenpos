@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
+import type { Customer, OrderHistoryEntry } from '@/types'
+import { paymentMethodLabel } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -44,16 +46,7 @@ import { KPIBar } from '@/components/shared/kpi-bar'
 import { es } from 'date-fns/locale'
 
 // ── Types ──────────────────────────────────────────────────────────────────
-
-interface Customer {
-  id: number
-  name: string
-  phone: string | null
-  email: string | null
-  totalDebt: number
-  createdAt: string
-  _count?: { orders: number }
-}
+// Customer, OrderHistoryEntry imported from @/types
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -65,7 +58,7 @@ export function CustomersView() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null)
-  const [historyOrders, setHistoryOrders] = useState<any[]>([])
+  const [historyOrders, setHistoryOrders] = useState<OrderHistoryEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
@@ -219,8 +212,8 @@ export function CustomersView() {
       setPayAmount('')
       setPayNote('')
       fetchCustomers()
-    } catch (err: any) {
-      toast.error(err.message || 'Error al registrar abono')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Error al registrar abono')
     } finally {
       setPaying(false)
     }
@@ -361,6 +354,7 @@ export function CustomersView() {
                             size="icon"
                             className="h-8 w-8"
                             title="Ver historial"
+                            aria-label="Ver historial de pedidos"
                             onClick={() => viewOrderHistory(customer)}
                           >
                             <Eye className="h-4 w-4" />
@@ -370,6 +364,7 @@ export function CustomersView() {
                             size="icon"
                             className="h-8 w-8"
                             title="Editar"
+                            aria-label="Editar cliente"
                             onClick={() => openEditDialog(customer)}
                           >
                             <Pencil className="h-4 w-4" />
@@ -586,7 +581,7 @@ export function CustomersView() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {historyOrders.map((order: any) => (
+                  {historyOrders.map((order: OrderHistoryEntry) => (
                     <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-mono text-xs font-medium whitespace-nowrap">
                         {order.orderNumber}
@@ -653,12 +648,4 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function paymentMethodLabel(method: string) {
-  const labels: Record<string, string> = {
-    CASH: 'Efectivo',
-    CARD: 'Tarjeta',
-    TRANSFER: 'Transferencia',
-    MIXED: 'Mixto',
-  }
-  return labels[method] || method
-}
+

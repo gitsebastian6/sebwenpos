@@ -257,10 +257,10 @@ export async function sendInvoiceEmail(
       success: true,
       messageId: info.messageId,
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       success: false,
-      error: err?.message ?? String(err),
+      error: err instanceof Error ? err.message : String(err),
     }
   }
 }
@@ -292,7 +292,7 @@ export async function createTestTransport(): Promise<{
       user: account.user,
       pass: account.pass,
       smtp: account.smtp,
-      web: nodemailer.getTestMessageUrl({} as any) ?? '',
+      web: nodemailer.getTestMessageUrl({} as nodemailer.SendMailInfo) ?? '',
     },
   }
 }

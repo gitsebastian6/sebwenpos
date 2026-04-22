@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import type { TaxBreakdownEntry } from '@/types'
+import { formatCOP, paymentMethodLabel } from '@/lib/format'
 import { toast } from 'sonner'
 import {
   Plus, Search, Eye, Pencil, ArrowRightLeft, XCircle, Printer,
@@ -66,13 +68,8 @@ interface QuotationItem {
   notes: string | null
 }
 
-interface TaxBreakdownItem {
-  code: string
-  name: string
-  base: number
-  rate: number
-  amount: number
-}
+// TaxBreakdownItem → TaxBreakdownEntry imported from @/types
+type TaxBreakdownItem = TaxBreakdownEntry
 
 interface QuotationDetail extends Omit<QuotationListItem, 'itemCount'> {
   subtotal: number
@@ -109,8 +106,8 @@ interface CartItem {
 
 // ─── Constants ──────────────────────────────────────────
 
-const cop = (n: number) =>
-  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
+// cop → formatCOP imported from @/lib/format
+const cop = formatCOP
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   ACTIVE: { label: 'Activa', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800', dot: 'bg-emerald-500' },
@@ -661,7 +658,7 @@ export function QuotationsView() {
                           </Button>
                           {q.status === 'ACTIVE' && (
                             <>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openDetail(q.id)}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openDetail(q.id)} aria-label="Editar cotización">
                                 <Pencil className="h-4 w-4" />
                               </Button>
                               <Button

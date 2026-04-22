@@ -89,6 +89,7 @@ import {
   type KardexData,
 } from '@/lib/print-ticket'
 import { KPIBar } from '@/components/shared/kpi-bar'
+import { formatDateShort } from '@/lib/format'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -152,14 +153,7 @@ function getDirectionBadgeClass(direction: string) {
   return DIRECTION_BADGE_CLASSES[direction] || 'bg-secondary text-secondary-foreground border-border'
 }
 
-function formatDate(dateStr: string) {
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('es-CO', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
-}
+
 
 function formatTime(dateStr: string) {
   const date = new Date(dateStr)
@@ -1387,7 +1381,7 @@ export function AccountingView() {
                             <TableCell>
                               <div className="flex flex-col">
                                 <span className="text-xs font-medium">
-                                  {formatDate(entry.createdAt)}
+                                  {formatDateShort(entry.createdAt)}
                                 </span>
                                 <span className="text-[10px] text-muted-foreground">
                                   {formatTime(entry.createdAt)}
@@ -2326,7 +2320,7 @@ export function AccountingView() {
                                 <TableCell>
                                   <div className="flex flex-col">
                                     <span className="text-xs font-medium">
-                                      {formatDate(order.createdAt)}
+                                      {formatDateShort(order.createdAt)}
                                     </span>
                                     <span className="text-[10px] text-muted-foreground">
                                       {formatTime(order.createdAt)}
@@ -2487,7 +2481,7 @@ export function AccountingView() {
                           <div>
                             <CardTitle className="text-base">Turno #{shiftIndex + 1}</CardTitle>
                             <CardDescription className="text-xs mt-0.5">
-                              {shiftData.shift.user.fullName || 'Usuario'} · Apertura: {formatDate(shiftData.shift.openedAt)} {formatTime(shiftData.shift.openedAt)}
+                              {shiftData.shift.user.fullName || 'Usuario'} · Apertura: {formatDateShort(shiftData.shift.openedAt)} {formatTime(shiftData.shift.openedAt)}
                             </CardDescription>
                           </div>
                         </div>
@@ -2819,14 +2813,14 @@ export function AccountingView() {
                             <TableCell>
                               <div className="flex flex-col">
                                 <span className="text-xs font-medium tabular-nums">{formatTime(shift.openedAt)}</span>
-                                <span className="text-[10px] text-muted-foreground">{formatDate(shift.openedAt)}</span>
+                                <span className="text-[10px] text-muted-foreground">{formatDateShort(shift.openedAt)}</span>
                               </div>
                             </TableCell>
                             <TableCell>
                               {shift.closedAt ? (
                                 <div className="flex flex-col">
                                   <span className="text-xs font-medium tabular-nums">{formatTime(shift.closedAt)}</span>
-                                  <span className="text-[10px] text-muted-foreground">{formatDate(shift.closedAt)}</span>
+                                  <span className="text-[10px] text-muted-foreground">{formatDateShort(shift.closedAt)}</span>
                                 </div>
                               ) : (
                                 <span className="text-xs text-muted-foreground">—</span>
@@ -3110,7 +3104,7 @@ export function AccountingView() {
                         {expenses.map((expense) => (
                           <TableRow className="hover:bg-muted/30 transition-colors" key={expense.id}>
                             <TableCell className="text-xs tabular-nums whitespace-nowrap">
-                              {formatDate(expense.date)}
+                              {formatDateShort(expense.date)}
                             </TableCell>
                             <TableCell>
                               <Badge
@@ -3422,7 +3416,7 @@ export function AccountingView() {
                     <div>
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Apertura</p>
                       <p className="text-sm font-semibold tabular-nums">{formatTime(detailShiftData.shift.openedAt)}</p>
-                      <p className="text-[10px] text-muted-foreground">{formatDate(detailShiftData.shift.openedAt)}</p>
+                      <p className="text-[10px] text-muted-foreground">{formatDateShort(detailShiftData.shift.openedAt)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Cierre</p>
@@ -3430,7 +3424,7 @@ export function AccountingView() {
                         {detailShiftData.shift.closedAt ? formatTime(detailShiftData.shift.closedAt) : '—'}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        {detailShiftData.shift.closedAt ? formatDate(detailShiftData.shift.closedAt) : ''}
+                        {detailShiftData.shift.closedAt ? formatDateShort(detailShiftData.shift.closedAt) : ''}
                       </p>
                     </div>
                     <div>

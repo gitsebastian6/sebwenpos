@@ -524,6 +524,7 @@ export function EmployeesView() {
                             className="h-8 w-8 active:scale-[0.95] transition-all"
                             onClick={() => openEditDialog(emp)}
                             title="Editar"
+                            aria-label="Editar empleado"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -533,6 +534,7 @@ export function EmployeesView() {
                             className="h-8 w-8 text-destructive hover:text-destructive active:scale-[0.95] transition-all"
                             onClick={() => openDeleteDialog(emp)}
                             title="Eliminar"
+                            aria-label="Eliminar empleado"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>

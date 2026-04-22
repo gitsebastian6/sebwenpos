@@ -245,7 +245,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
     }
 
-    const where: any = { storeId }
+    const where: Record<string, unknown> = { storeId }
 
     if (status && status !== 'ALL') {
       where.status = status
@@ -318,7 +318,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const result = quotes.map((quote: any) => ({
+    const result = quotes.map((quote) => ({
       id: quote.id,
       quoteNumber: quote.quoteNumber,
       customerName: quote.customer?.name ?? quote.customerName ?? null,

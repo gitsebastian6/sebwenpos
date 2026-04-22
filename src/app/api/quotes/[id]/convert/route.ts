@@ -305,7 +305,7 @@ export async function POST(
       paymentMethod: order.paymentMethod,
       quoteNumber: quote.quoteNumber,
       createdAt: order.createdAt.toISOString(),
-      orderItems: order.orderItems.map((item: any) => ({
+      orderItems: order.orderItems.map((item) => ({
         id: item.id,
         productName: item.product?.name ?? item.service?.name ?? 'Producto',
         quantity: item.quantity,

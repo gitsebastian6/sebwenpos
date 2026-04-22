@@ -14,7 +14,7 @@ const informesParamsSchema = z.object({
 })
 
 // Serialize BigInt for JSON responses
-;(BigInt.prototype as any).toJSON = function () { return Number(this) }
+;(BigInt.prototype as unknown as { toJSON: () => number }).toJSON = function () { return Number(this) }
 
 // GET /api/reports/informes?storeId=X&from=YYYY-MM-DD&to=YYYY-MM-DD
 export async function GET(request: NextRequest) {

@@ -17,7 +17,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
     }
 
-    const results: { products: any[]; services: any[] } = { products: [], services: [] }
+    const results: {
+      products: Array<{
+        id: number; name: string; sku: string | null; salePrice: number
+        currentStock: number; category: { name: string } | null
+        taxRate: { code: string; rate: number; rateType: string } | null
+      }>
+      services: Array<{ id: number; name: string; price: number }>
+    } = { products: [], services: [] }
 
     // Search products (by name or SKU)
     if ((type === 'all' || type === 'products') && q.length >= 1) {

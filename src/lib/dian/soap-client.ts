@@ -213,11 +213,11 @@ function parseGetStatusResponse(xml: string): StatusResult {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function extractText(value: any): string | undefined {
+function extractText(value: unknown): string | undefined {
   if (!value) return undefined
   if (typeof value === 'string') return value.trim() || undefined
-  if (typeof value === 'object' && '#text' in value) {
-    const txt = String(value['#text']).trim()
+  if (typeof value === 'object' && value !== null && '#text' in value) {
+    const txt = String((value as Record<string, unknown>)['#text']).trim()
     return txt || undefined
   }
   return String(value).trim() || undefined
@@ -262,11 +262,11 @@ async function soapRequest(
 
     const xml = await response.text()
     return { ok: response.ok, status: response.status, xml }
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(`La petición a la DIAN excedió el tiempo de espera (${timeout}ms)`)
     }
-    throw new Error(`Error de conexión con la DIAN: ${error.message}`)
+    throw new Error(`Error de conexión con la DIAN: ${error instanceof Error ? error.message : 'Desconocido'}`)
   } finally {
     clearTimeout(timer)
   }
@@ -327,7 +327,7 @@ export async function sendBillToDIAN(
     }
 
     return parsed
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       success: false,
       errorMessage: error instanceof Error ? error.message : 'Error desconocido al enviar a la DIAN',
@@ -377,7 +377,7 @@ export async function getDIANStatus(
     }
 
     return parsed
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       success: false,
       errorMessage: error instanceof Error ? error.message : 'Error al consultar estado en la DIAN',
@@ -418,7 +418,7 @@ export async function getStatusByDocument(
     }
 
     return parseGetStatusResponse(result.xml)
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       success: false,
       errorMessage: error instanceof Error ? error.message : 'Error al consultar documento en la DIAN',

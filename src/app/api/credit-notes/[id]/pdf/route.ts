@@ -41,8 +41,8 @@ export async function GET(
 
     const store = creditNote.store
     const createdAt = creditNote.createdAt
-    const items: any[] = JSON.parse(creditNote.items || '[]')
-    const taxBreakdown: any[] = JSON.parse(creditNote.taxBreakdown || '[]')
+    const items: Array<{ productName?: string; quantity: number; unitPrice: number }> = JSON.parse(creditNote.items || '[]')
+    const taxBreakdown: Array<{ code: string; rate: number; amount: number }> = JSON.parse(creditNote.taxBreakdown || '[]')
     const cnNumber = formatInvoiceNumber(creditNote.prefix, creditNote.consecutive)
     const invNumber = formatInvoiceNumber(creditNote.invoice?.prefix, creditNote.invoice?.consecutive)
 

@@ -34,7 +34,7 @@ import { db } from '@/lib/db'
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface FullInvoiceProcessResult {
-  invoice: any
+  invoice: Record<string, unknown>
   xmlContent?: string
   pdfBuffer?: Buffer
   trackId?: string
@@ -398,7 +398,7 @@ export async function processInvoice(
   if (autoSendToDIAN && !store.invoiceTestMode && certPath && certPassword) {
     try {
       // Dynamic import for soap-client to avoid build-time errors if module not yet created
-      let soapModule: any
+      let soapModule: typeof import('./soap-client') | null = null
       try {
         soapModule = await import('./soap-client')
       } catch {
@@ -432,10 +432,10 @@ export async function processInvoice(
           },
         })
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // soap-client module not available yet — log but don't fail
       console.warn(
-        `[DIAN] No se pudo enviar a la DIAN: ${err?.message ?? err}`
+        `[DIAN] No se pudo enviar a la DIAN: ${err instanceof Error ? err.message : String(err)}`
       )
     }
   }
@@ -477,7 +477,7 @@ export async function emailInvoice(
 
   // We need the pdfBuffer — regenerate it
   // Parse tax breakdown
-  let taxBreakdown: any[] = []
+  let taxBreakdown: Array<{ code: string; name: string; base: number; rate: number; amount: number }> = []
   try {
     taxBreakdown = JSON.parse(invoice.taxBreakdown ?? '[]')
   } catch {

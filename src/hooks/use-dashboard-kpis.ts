@@ -2,6 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
+import type { OpenTable } from '@/types'
 
 // ── Types ───────────────────────────────────────────────
 
@@ -19,7 +20,7 @@ interface KPIS {
   inventory: { totalCost: number; daysOfInventory: number; avgDailyCOGS: number }
   losses: { outOfStockCount: number; outOfStockValue: number; estimatedLostDailyRevenue: number; estimatedLostMonthlyRevenue: number }
   breakEven: { monthlyFixedCosts: number; variableCostRatio: number; contributionMargin: number; breakEvenPoint: number; distanceToBreakEven: number; achievedPercent: number }
-  operational: { ordersToday: number; ordersThisMonth: number; avgTicketMonth: number; totalDebt: number; openTablesCount: number; openTables: any[] }
+  operational: { ordersToday: number; ordersThisMonth: number; avgTicketMonth: number; totalDebt: number; openTablesCount: number; openTables: OpenTable[] }
 }
 
 export interface DashboardData {

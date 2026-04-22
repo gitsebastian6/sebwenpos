@@ -52,23 +52,7 @@ import { format } from 'date-fns'
 import { KPIBar } from '@/components/shared/kpi-bar'
 import { es } from 'date-fns/locale'
 
-// ── Types ──────────────────────────────────────────────────────────────────
-
-interface Provider {
-  id: number
-  storeId: number
-  name: string
-  contactName: string | null
-  phone: string | null
-  email: string | null
-  address: string | null
-  city: string | null
-  nit: string | null
-  notes: string | null
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-}
+import type { Provider } from '@/types'
 
 type ActiveFilter = 'all' | 'active' | 'inactive'
 
@@ -416,6 +400,7 @@ export function ProvidersView() {
                             size="icon"
                             className="h-8 w-8"
                             title="Editar"
+                            aria-label="Editar proveedor"
                             onClick={() => openEditDialog(provider)}
                           >
                             <Pencil className="h-4 w-4" />
@@ -425,6 +410,7 @@ export function ProvidersView() {
                             size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive"
                             title="Eliminar"
+                            aria-label="Eliminar proveedor"
                             onClick={() => setDeleteProvider(provider)}
                           >
                             <Trash2 className="h-4 w-4" />

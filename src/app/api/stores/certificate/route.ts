@@ -51,11 +51,11 @@ function extractCertInfo(p12Path: string, password: string): {
       expiresAt: cert.validTo ? new Date(cert.validTo) : new Date(),
       serial: cert.serialNumber || '',
     }
-  } catch (error: any) {
-    if (error.message?.includes('password') || error.message?.includes('decrypt') || error.code === 'ERR_OSSL_') {
+  } catch (error: unknown) {
+    if (error instanceof Error && (error.message?.includes('password') || error.message?.includes('decrypt') || (error as NodeJS.ErrnoException).code === 'ERR_OSSL_')) {
       throw new Error('Contraseña del certificado incorrecta. Verifica e intenta de nuevo.')
     }
-    throw new Error('Error al leer el certificado: ' + (error.message || 'Formato inválido'))
+    throw new Error('Error al leer el certificado: ' + (error instanceof Error ? error.message : 'Formato inválido'))
   }
 }
 
@@ -198,10 +198,10 @@ export async function POST(request: NextRequest) {
         try { unlinkSync(tempPath) } catch {}
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error uploading certificate:', error)
     return NextResponse.json(
-      { error: error.message || 'Error interno del servidor' },
+      { error: error instanceof Error ? error.message : 'Error interno del servidor' },
       { status: 500 }
     )
   }

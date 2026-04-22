@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import type { OpenTable } from '@/types'
 import { formatCurrency } from '@/lib/auth'
 import {
   Card,
@@ -78,7 +79,7 @@ interface KPIS {
   inventory: { totalCost: number; daysOfInventory: number; avgDailyCOGS: number }
   losses: { outOfStockCount: number; outOfStockValue: number; estimatedLostDailyRevenue: number; estimatedLostMonthlyRevenue: number }
   breakEven: { monthlyFixedCosts: number; variableCostRatio: number; contributionMargin: number; breakEvenPoint: number; distanceToBreakEven: number; achievedPercent: number }
-  operational: { ordersToday: number; ordersThisMonth: number; avgTicketMonth: number; totalDebt: number; openTablesCount: number; openTables: any[] }
+  operational: { ordersToday: number; ordersThisMonth: number; avgTicketMonth: number; totalDebt: number; openTablesCount: number; openTables: OpenTable[] }
 }
 
 interface DashboardData {
@@ -624,7 +625,7 @@ export function DashboardView() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {kpi.operational.openTables.map((t: any) => {
+                {kpi.operational.openTables.map((t: OpenTable) => {
                   const elapsed = Math.floor((Date.now() - new Date(t.startedAt).getTime()) / 60000)
                   return (
                     <div key={t.id} className="flex items-center justify-between rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3 gap-3 hover:bg-amber-100/30 dark:hover:bg-amber-950/30 transition-colors">

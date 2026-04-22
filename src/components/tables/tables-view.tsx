@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
+import type { ProductSummary, Service, CategorySummary, CustomerSummary, InvoiceMode, OrderItemData } from '@/types'
+import { paymentMethodLabel } from '@/lib/format'
 import { playAlert, playSaleSuccess, playError } from '@/lib/pos-sounds'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -149,33 +151,10 @@ interface SessionOrder {
   createdAt: string
 }
 
-interface Product {
-  id: number
-  name: string
-  salePrice: number
-  category?: { id: number; name: string } | null
-  taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
-}
-
-interface Service {
-  id: number
-  name: string
-  price: number
-  icon: string
-  unit: string
-  isActive: boolean
-}
-
-interface Category {
-  id: number
-  name: string
-}
-
-interface Customer {
-  id: number
-  name: string
-  phone: string | null
-}
+// Product → ProductSummary, Service, Category → CategorySummary, Customer → CustomerSummary imported from @/types
+type Product = ProductSummary
+type Category = CategorySummary
+type Customer = CustomerSummary
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -260,18 +239,7 @@ function formatTime(startedAt: string): string {
   })
 }
 
-function paymentMethodLabel(method: string): string {
-  const labels: Record<string, string> = {
-    CASH: 'Efectivo',
-    CARD: 'Tarjeta',
-    TRANSFER: 'Transferencia',
-    DAVIPLATA: 'Daviplata',
-    NEQUI: 'Nequi',
-    FIADO: 'Fiado',
-    MIXED: 'Mixto',
-  }
-  return labels[method] || method
-}
+// paymentMethodLabel imported from @/lib/format
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
@@ -480,7 +448,7 @@ export function TablesView() {
       if (res.ok) {
         const data = await res.json()
         const shifts = data.shifts || []
-        setOpenCashRegisters(shifts.map((s: any) => ({
+        setOpenCashRegisters(shifts.map((s: { shift: { id: number; user: { fullName: string | null }; openedAt: string; openingBalance: number } }) => ({
           id: s.shift.id,
           user: s.shift.user,
           openingBalance: s.shift.openingBalance,
@@ -2335,7 +2303,7 @@ export function TablesView() {
                             size="sm"
                             className="mt-2 w-full gap-2 active:scale-[0.98] transition-all"
                             onClick={() => {
-                              const items: TicketItem[] = (lastPaymentData.orderItems || []).map((item: any) => ({
+                              const items: TicketItem[] = (lastPaymentData.orderItems || []).map((item: OrderItemData) => ({
                                 name: item.productName,
                                 quantity: item.quantity,
                                 unitPrice: item.unitPrice,
@@ -2644,6 +2612,7 @@ function TableCard({
               onClick={onToggleActive}
               disabled={!!table.activeSession || togglingTableId === table.id}
               title={table.isActive ? 'Desactivar mesa' : 'Activar mesa'}
+              aria-label={table.isActive ? 'Desactivar mesa' : 'Activar mesa'}
             >
               {togglingTableId === table.id ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2660,6 +2629,7 @@ function TableCard({
               onClick={onDelete}
               disabled={!!table.activeSession}
               title="Eliminar mesa"
+              aria-label="Eliminar mesa"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>

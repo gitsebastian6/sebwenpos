@@ -1374,6 +1374,7 @@ export function AdminPanel() {
                               className="size-8"
                               onClick={() => handleOpenEdit(store)}
                               title="Editar tienda"
+                              aria-label="Editar tienda"
                             >
                               <Pencil className="size-4" />
                             </Button>
@@ -1383,6 +1384,7 @@ export function AdminPanel() {
                               className="size-8"
                               onClick={() => handleOpenDetail(store.id)}
                               title="Ver detalle"
+                              aria-label="Ver detalle de tienda"
                             >
                               <Eye className="size-4" />
                             </Button>
@@ -1392,6 +1394,7 @@ export function AdminPanel() {
                               className="size-8"
                               onClick={() => handleOpenReset(store)}
                               title="Restablecer contraseña"
+                              aria-label="Restablecer contraseña"
                             >
                               <KeyRound className="size-4" />
                             </Button>
@@ -1402,6 +1405,7 @@ export function AdminPanel() {
                               onClick={() => handleToggleActive(store)}
                               disabled={togglingId === store.id}
                               title={store.isActive ? 'Desactivar' : 'Activar'}
+                              aria-label="Activar o desactivar tienda"
                             >
                               {togglingId === store.id ? (
                                 <RefreshCw className="size-4 animate-spin" />

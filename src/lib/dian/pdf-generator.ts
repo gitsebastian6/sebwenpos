@@ -267,7 +267,7 @@ export async function generateInvoicePDF(data: InvoicePDFData): Promise<Buffer> 
         const align = i === 0 || i === 2 ? 'center' : i === 1 ? 'left' : 'right'
         doc.text(headers[i], headerX[i] + 3, tableY + 4, {
           width: colWidths[i] - 6,
-          align: align as any,
+          align: align as 'left' | 'center' | 'right',
         })
       }
 

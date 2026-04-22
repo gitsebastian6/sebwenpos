@@ -56,6 +56,7 @@ import { printTicket, type TicketItem } from '@/lib/print-ticket'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { KPIBar } from '@/components/shared/kpi-bar'
+import { paymentMethodLabel } from '@/lib/format'
 import { es } from 'date-fns/locale'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -800,10 +801,4 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline" className={s.className}>{s.label}</Badge>
 }
 
-function paymentMethodLabel(method: string) {
-  const labels: Record<string, string> = {
-    CASH: 'Efectivo', CARD: 'Tarjeta', TRANSFER: 'Transferencia', MIXED: 'Mixto',
-    FIADO: 'Fiado', NEQUI: 'Nequi', DAVIPLATA: 'Daviplata',
-  }
-  return labels[method] || method
-}
+

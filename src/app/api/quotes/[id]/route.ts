@@ -248,7 +248,7 @@ export async function PUT(
         return updated
       } else {
         // Simple update without items
-        const updateData: any = {}
+        const updateData: Record<string, unknown> = {}
         if (data.status) updateData.status = data.status
         if (data.customerName !== undefined) updateData.customerName = data.customerName
         if (data.customerPhone !== undefined) updateData.customerPhone = data.customerPhone

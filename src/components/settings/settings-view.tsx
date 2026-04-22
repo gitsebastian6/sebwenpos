@@ -70,6 +70,8 @@ import {
   Send,
 } from 'lucide-react'
 import { EInvoicingConfig } from '@/components/settings/e-invoicing-config'
+import { TaxRate } from '@/types'
+import { formatCOP } from '@/lib/format'
 
 // ── Subscription Payment Panel ──
 // Shows subscription info (Trial/Active/Expired) with countdown.
@@ -167,10 +169,6 @@ function SubscriptionPaymentPanel() {
   const VENTIFY_SUPPORT_PHONE = '573012695457'
   const SUPPORT_WHATSAPP = `https://wa.me/${VENTIFY_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, quiero actualizar mi plan de suscripción en Ventify POS')}`
   const SUPPORT_PHONE = VENTIFY_SUPPORT_PHONE.slice(2) // local 10-digit format
-
-  function formatCOP(amount: number) {
-    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(amount)
-  }
 
   // ── Upload receipt handler ──
   function resetUploadForm() {
@@ -1876,10 +1874,10 @@ export function SettingsView() {
   const [userSaving, setUserSaving] = useState(false)
 
   // ── Tax rates state ──
-  const [taxRates, setTaxRates] = useState<any[]>([])
+  const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [loadingTaxes, setLoadingTaxes] = useState(false)
   const [showTaxDialog, setShowTaxDialog] = useState(false)
-  const [editingTax, setEditingTax] = useState<any>(null)
+  const [editingTax, setEditingTax] = useState<TaxRate | null>(null)
   const [savingTax, setSavingTax] = useState(false)
   const [deletingTaxId, setDeletingTaxId] = useState<number | null>(null)
 
@@ -1935,7 +1933,7 @@ export function SettingsView() {
   }
 
   // ── Open dialog for editing ──
-  function openEditTaxDialog(tax: any) {
+  function openEditTaxDialog(tax: TaxRate) {
     setEditingTax(tax)
     setTaxName(tax.name)
     setTaxCode(tax.code)
@@ -2014,7 +2012,7 @@ export function SettingsView() {
   }
 
   // ── Toggle tax active ──
-  async function handleToggleTaxActive(tax: any) {
+  async function handleToggleTaxActive(tax: TaxRate) {
     try {
       const res = await fetch(`/api/taxes/${tax.id}`, {
         method: 'PUT',
@@ -2899,6 +2897,7 @@ export function SettingsView() {
                             size="icon"
                             className="h-7 w-7 active:scale-[0.95] transition-all"
                             onClick={() => openEditTaxDialog(tax)}
+                            aria-label="Editar impuesto"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -2909,6 +2908,7 @@ export function SettingsView() {
                                 size="icon"
                                 className="h-7 w-7 text-destructive hover:text-destructive active:scale-[0.95] transition-all"
                                 onClick={() => setDeletingTaxId(tax.id)}
+                                aria-label="Eliminar impuesto"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>

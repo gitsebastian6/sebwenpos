@@ -78,6 +78,7 @@ import {
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { formatCOP } from '@/lib/format'
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -106,10 +107,6 @@ const STATUS_FILTERS = [
 
 const PAYMENT_LABELS: Record<string, string> = {
   '1': 'Efectivo', '2': 'Tarjeta', '10': 'Transferencia', '42': 'Nequi/Daviplata', '99': 'Mixto',
-}
-
-function formatCOP(n: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
 }
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -1179,6 +1176,7 @@ export function InvoicesView() {
                       size="icon"
                       className="h-7 w-7 shrink-0"
                       title="Copiar CUFE"
+                      aria-label="Copiar CUFE"
                       onClick={() => {
                         navigator.clipboard.writeText(invoiceDetail.cufe || '')
                         toast.success('CUFE copiado al portapapeles')

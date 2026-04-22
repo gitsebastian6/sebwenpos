@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useAppStore } from '@/stores/app-store'
 import { formatCurrency } from '@/lib/auth'
+import type { Product, Category, Provider, TaxRate, TraceMovement } from '@/types'
+import { formatCOP } from '@/lib/format'
 import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -87,57 +89,7 @@ import {
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-interface TaxRate {
-  id: number
-  name: string
-  code: string
-  rate: number
-  rateType: string
-  applyTo: string
-  category: string
-  isActive: boolean
-  isDefault: boolean
-  _count?: { products: number }
-}
-
-interface Product {
-  id: number
-  storeId: number
-  categoryId: number | null
-  providerId: number | null
-  taxRateId: number | null
-  sku: string | null
-  name: string
-  description: string | null
-  imgUrl: string | null
-  invima: string | null
-  costPrice: number
-  salePrice: number
-  commission: number
-  currentStock: number
-  minStock: number
-  isActive: boolean
-  category?: { id: number; name: string; icon: string | null } | null
-  provider?: { id: number; name: string } | null
-  taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
-  _count?: { orderItems: number }
-}
-
-interface Provider {
-  id: number
-  name: string
-  isActive: boolean
-}
-
-interface Category {
-  id: number
-  storeId: number
-  name: string
-  icon: string | null
-  createdAt: string
-  _count?: { products: number }
-}
+// Product, Category, Provider, TaxRate, TraceMovement imported from @/types
 
 interface ProductFormData {
   name: string
@@ -259,7 +211,7 @@ export function ProductsView() {
   // Trace data
   const [traceProductId, setTraceProductId] = useState<number | null>(null)
   const [traceProductName, setTraceProductName] = useState('')
-  const [traceMovements, setTraceMovements] = useState<any[]>([])
+  const [traceMovements, setTraceMovements] = useState<TraceMovement[]>([])
   const [traceLoading, setTraceLoading] = useState(false)
 
   // Import dialog
@@ -2011,7 +1963,7 @@ export function ProductsView() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {traceMovements.map((mov: any, idx: number) => (
+                  {traceMovements.map((mov: TraceMovement, idx: number) => (
                     <TableRow key={idx}>
                       <TableCell className="text-sm text-muted-foreground">
                         {mov.date

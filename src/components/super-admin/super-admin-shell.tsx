@@ -31,6 +31,7 @@ import {
   CircleDollarSign, ChevronDown, ChevronUp, BadgeCheck, AlertTriangle,
   Settings, MessageCircle, Info, Link2
 } from 'lucide-react'
+import { formatCOP, formatDateShort, formatDateTime } from '@/lib/format'
 import { useTheme } from 'next-themes'
 
 // ---- Types ----
@@ -123,17 +124,9 @@ interface StatsData {
   topStores: Array<{ storeId: number; storeName: string; orderCount: number; totalSales: number }>
 }
 
-function formatCOP(amount: number): string {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(amount)
-}
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
-}
 
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
+
 
 function formatLimit(val: number): string {
   return val === -1 ? '∞' : val.toLocaleString('es-CO')
@@ -436,7 +429,7 @@ export function SuperAdminShell() {
         </div>
         <div className="flex-1" />
         <Badge variant="outline" className="text-xs font-mono">{user?.cedula || 'SA'}</Badge>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Cambiar tema" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
         <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive gap-2" onClick={() => { logout(); toast.success('Sesión cerrada') }}>
@@ -637,6 +630,7 @@ export function SuperAdminShell() {
                                 size="icon"
                                 className="h-8 w-8"
                                 title="Editar plan"
+                                aria-label="Editar plan"
                                 onClick={() => openEditPlan(plan)}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
@@ -751,12 +745,12 @@ export function SuperAdminShell() {
                                 <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => handleViewDetail(s.id)}>
                                   <Eye className="h-3.5 w-3.5" /><span className="hidden lg:inline">Detalles</span>
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8" title="Resetear contraseña" onClick={() => { setSelectedUser(s.user); setNewPassword(''); setShowResetDialog(true) }}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" title="Resetear contraseña" aria-label="Restablecer contraseña" onClick={() => { setSelectedUser(s.user); setNewPassword(''); setShowResetDialog(true) }}>
                                   <KeyRound className="h-3.5 w-3.5 text-amber-500" />
                                 </Button>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8" title="Eliminar tienda">
+                                    <Button variant="ghost" size="icon" className="h-8 w-8" title="Eliminar tienda" aria-label="Eliminar tienda">
                                       <Trash2 className="h-3.5 w-3.5 text-destructive" />
                                     </Button>
                                   </AlertDialogTrigger>
@@ -1422,7 +1416,7 @@ export function SuperAdminShell() {
                               value={mbConfig.apiKey}
                               onChange={(e) => setMbConfig(prev => ({ ...prev, apiKey: e.target.value }))}
                             />
-                            <button type="button" onClick={() => setShowApiKey(!showApiKey)} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground">
+                            <button type="button" onClick={() => setShowApiKey(!showApiKey)} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground" aria-label="Mostrar u ocultar clave API">
                               {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </button>
                           </div>
@@ -1502,7 +1496,7 @@ export function SuperAdminShell() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input id="op" type={showOwnerPassword ? 'text' : 'password'} placeholder="Mínimo 6 caracteres" className="pl-10 pr-10 focus-visible:ring-primary/20 focus-visible:border-primary/40" value={form.ownerPassword} onChange={(e) => updateForm('ownerPassword', e.target.value)} />
-                    <button type="button" onClick={() => setShowOwnerPassword(!showOwnerPassword)} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground">{showOwnerPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+                    <button type="button" onClick={() => setShowOwnerPassword(!showOwnerPassword)} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground" aria-label="Mostrar u ocultar contraseña">{showOwnerPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                   </div>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
@@ -1713,7 +1707,7 @@ export function SuperAdminShell() {
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input type={showNewPassword ? 'text' : 'password'} placeholder="Mínimo 6 caracteres" className="pl-10 pr-10 focus-visible:ring-primary/20 focus-visible:border-primary/40" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground">{showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+                <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground" aria-label="Mostrar u ocultar contraseña">{showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
               </div>
             </div>
           </div>
@@ -2752,7 +2746,7 @@ function StoreDetailView({ store: detail, plans, onBack, onResetPassword, onRefr
                             <TableCell><Badge variant={emp.isActive ? 'default' : 'secondary'} className={emp.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/20' : ''}>{emp.isActive ? 'Activo' : 'Inactivo'}</Badge></TableCell>
                             <TableCell className="text-xs">{formatDate(emp.createdAt)}</TableCell>
                             <TableCell className="text-right">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Reset contraseña" onClick={() => onResetPassword(emp.user)}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Reset contraseña" aria-label="Restablecer contraseña" onClick={() => onResetPassword(emp.user)}>
                                 <KeyRound className="h-3.5 w-3.5 text-amber-500" />
                               </Button>
                             </TableCell>
@@ -3151,9 +3145,9 @@ function StoreDetailView({ store: detail, plans, onBack, onResetPassword, onRefr
                                     <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => handleViewReceipt(r)}><EyeIcon className="h-3.5 w-3.5" />Ver</Button>
                                     <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => handleDownloadReceipt(r)}><Download className="h-3.5 w-3.5" />Descargar</Button>
                                     {r.status === 'PENDING' && (<>
-                                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Aprobar" onClick={() => { setPreviewReceipt(r); setReviewNotes('') }}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Rechazar" onClick={() => { setPreviewReceipt(r); setReviewNotes('') }}><XCircle className="h-4 w-4 text-red-500" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Eliminar" onClick={() => handleDeleteReceipt(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Aprobar" aria-label="Aprobar comprobante" onClick={() => { setPreviewReceipt(r); setReviewNotes('') }}><CheckCircle2 className="h-4 w-4 text-emerald-600" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Rechazar" aria-label="Rechazar comprobante" onClick={() => { setPreviewReceipt(r); setReviewNotes('') }}><XCircle className="h-4 w-4 text-red-500" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Eliminar" aria-label="Eliminar comprobante" onClick={() => handleDeleteReceipt(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                     </>)}
                                   </div>
                                 </div>

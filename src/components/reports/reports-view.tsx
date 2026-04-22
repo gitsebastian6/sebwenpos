@@ -861,13 +861,13 @@ export function ReportsView() {
         <TabsContent value="perdidas" className="space-y-4 mt-4">
           <div className="grid grid-cols-2 gap-4">
             <Stat label="Productos Agotados" value={d.lostSales.length} icon={AlertTriangle} color="text-red-600" />
-            <Stat label="Venta Perdida Est./Día" value={formatCurrency(d.lostSales.reduce((s: number, p: any) => s + (p.avgDaily * p.salePrice), 0), cc)} icon={TrendingUp} color="text-red-600" />
+            <Stat label="Venta Perdida Est./Día" value={formatCurrency(d.lostSales.reduce((s: number, p: LostSaleItem) => s + (p.avgDaily * p.salePrice), 0), cc)} icon={TrendingUp} color="text-red-600" />
           </div>
           <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Productos sin Stock (30 días velocidad)</CardTitle></CardHeader><CardContent>
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Producto</TableHead><TableHead className="text-xs text-right">Precio</TableHead><TableHead className="text-xs text-right">Vendidos 30d</TableHead><TableHead className="text-xs text-right">Prom/Día</TableHead><TableHead className="text-xs text-right">Pérdida/Día</TableHead></TableRow></TableHeader><TableBody>
                 {d.lostSales.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={PackageSearch} title="¡Sin productos agotados! 🎉" /></TableCell></TableRow> :
-                d.lostSales.map((p: any) => (
+                d.lostSales.map((p: LostSaleItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={p.id}><TableCell className="text-xs font-medium">{p.name}</TableCell><TableCell className="text-right text-xs">{formatCurrency(p.salePrice, cc)}</TableCell><TableCell className="text-right text-xs">{p.sold30d}</TableCell><TableCell className="text-right text-xs">{p.avgDaily}</TableCell><TableCell className="text-right text-xs font-medium text-red-600">{formatCurrency(Math.round(p.avgDaily * p.salePrice), cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
@@ -898,7 +898,7 @@ export function ReportsView() {
             <div className="max-h-64 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Producto</TableHead><TableHead className="text-xs">Motivo</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs text-right">Valor</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
                 {registeredLosses.length === 0 ? <TableRow><TableCell colSpan={6}><EmptyState icon={AlertTriangle} title="Sin pérdidas registradas en el período" desc="Registra mercancía perdida, vencida o dañada" /></TableCell></TableRow> :
-                registeredLosses.map((m: any, i: number) => {
+                registeredLosses.map((m: TraceabilityItem, i: number) => {
                   // notes field contains "REASON — user notes" (reason first)
                   const rawNotes = m.notes || ''
                   const parts = rawNotes.includes(' — ') ? rawNotes.split(' — ') : [rawNotes, '']
@@ -955,7 +955,7 @@ export function ReportsView() {
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs">Tipo</TableHead><TableHead className="text-xs">Razón</TableHead><TableHead className="text-xs text-right">Descuento</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader><TableBody>
                 {d.discounts.items.length === 0 ? <TableRow><TableCell colSpan={6}><EmptyState icon={Tag} title="Sin descuentos en el período" /></TableCell></TableRow> :
-                d.discounts.items.map((o: any) => (
+                d.discounts.items.map((o: DiscountItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={o.id}><TableCell className="text-xs">{fdate(o.createdAt)}</TableCell><TableCell className="text-xs">{o.customer?.name || 'General'}</TableCell><TableCell><Badge variant="outline" className="text-[10px]">{o.discountType === 'PERCENTAGE' ? '%' : 'Fijo'}</Badge></TableCell><TableCell className="text-xs text-muted-foreground">{o.discountReason || '—'}</TableCell><TableCell className="text-right text-xs font-medium text-amber-600">-{formatCurrency(o.discountAmount, cc)}</TableCell><TableCell className="text-right text-sm">{formatCurrency(o.total, cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
@@ -971,7 +971,7 @@ export function ReportsView() {
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Apertura</TableHead><TableHead className="text-xs">Cierre</TableHead><TableHead className="text-xs">Responsable</TableHead><TableHead className="text-xs text-right">Base</TableHead><TableHead className="text-xs text-right">Esperado</TableHead><TableHead className="text-xs text-right">Real</TableHead><TableHead className="text-xs text-right">Diferencia</TableHead><TableHead className="text-xs">Estado</TableHead></TableRow></TableHeader><TableBody>
                 {d.cashRegisters.length === 0 ? <TableRow><TableCell colSpan={8}><EmptyState icon={Wallet} title="Sin registros de caja" /></TableCell></TableRow> :
-                d.cashRegisters.map((c: any) => (
+                d.cashRegisters.map((c: CashRegister) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={c.id}><TableCell className="text-xs">{fdatetime(c.openedAt)}</TableCell><TableCell className="text-xs">{c.closedAt ? fdatetime(c.closedAt) : '—'}</TableCell><TableCell className="text-xs">{c.user}</TableCell><TableCell className="text-right text-xs">{formatCurrency(c.openingBalance, cc)}</TableCell><TableCell className="text-right text-xs">{c.expectedCash ? formatCurrency(c.expectedCash, cc) : '—'}</TableCell><TableCell className="text-right text-xs">{c.closingBalance ? formatCurrency(c.closingBalance, cc) : '—'}</TableCell><TableCell className={`text-right text-xs font-medium ${c.difference !== null && c.difference !== 0 ? (c.difference > 0 ? 'text-emerald-600' : 'text-red-600') : ''}`}>{c.difference !== null ? formatCurrency(c.difference, cc) : '—'}</TableCell><TableCell><Badge className={`text-[10px] ${c.status === 'OPEN' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>{c.status === 'OPEN' ? 'Abierta' : 'Cerrada'}</Badge></TableCell></TableRow>
                 ))}
               </TableBody></Table>
@@ -991,7 +991,7 @@ export function ReportsView() {
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Servicio</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs text-right">Unitario</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader><TableBody>
                 {d.commissions.items.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={Percent} title="Sin servicios en el período" /></TableCell></TableRow> :
-                d.commissions.items.map((c: any) => (
+                d.commissions.items.map((c: CommissionItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={c.id}><TableCell className="text-xs">{fdatetime(c.createdAt)}</TableCell><TableCell className="text-xs font-medium">{c.service?.name || '—'}</TableCell><TableCell className="text-right text-xs">{c.quantity}</TableCell><TableCell className="text-right text-xs">{formatCurrency(c.unitPrice, cc)}</TableCell><TableCell className="text-right text-sm font-medium">{formatCurrency(c.totalAmount, cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
@@ -1010,7 +1010,7 @@ export function ReportsView() {
           </div>
           <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Por Categoría</CardTitle></CardHeader><CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {Object.entries(d.expenses.byCategory).sort((a: any, b: any) => b[1].total - a[1].total).map(([cat, info]: any) => (
+              {Object.entries(d.expenses.byCategory).sort((a: [string, ExpenseCategoryEntry], b: [string, ExpenseCategoryEntry]) => b[1].total - a[1].total).map(([cat, info]: [string, ExpenseCategoryEntry]) => (
                 <div key={cat} className="flex items-center justify-between p-2.5 rounded-lg border"><span className="text-sm">{EXP_CAT[cat] || cat}</span><div className="text-right"><span className="font-bold text-sm">{formatCurrency(info.total, cc)}</span><span className="text-[10px] text-muted-foreground ml-1">({info.count})</span></div></div>
               ))}
             </div>
@@ -1019,7 +1019,7 @@ export function ReportsView() {
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Categoría</TableHead><TableHead className="text-xs">Descripción</TableHead><TableHead className="text-xs text-right">Monto</TableHead></TableRow></TableHeader><TableBody>
                 {d.expenses.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={ArrowDownUp} title="Sin gastos en el período" /></TableCell></TableRow> :
-                d.expenses.items.map((e: any) => (
+                d.expenses.items.map((e: ExpenseItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={e.id}><TableCell className="text-xs">{fdate(e.date)}</TableCell><TableCell><Badge variant="outline" className="text-[10px]">{EXP_CAT[e.category] || e.category}</Badge></TableCell><TableCell className="text-xs truncate max-w-[200px]">{e.description}</TableCell><TableCell className="text-right text-sm font-medium text-red-600">-{formatCurrency(e.amount, cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
@@ -1074,7 +1074,7 @@ export function ReportsView() {
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold">Desglose por Tipo de Impuesto</h4>
                   <div className="grid gap-2">
-                    {d.ivaCollected.byCode.map((tax: any) => (
+                    {d.ivaCollected.byCode.map((tax: IvaByCode) => (
                       <div key={tax.code} className="flex items-center justify-between rounded-md border p-3">
                         <div>
                           <p className="font-medium text-sm">{tax.name}</p>
@@ -1105,7 +1105,7 @@ export function ReportsView() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {d.ivaCollected.orders.slice(0, 20).map((order: any) => (
+                        {d.ivaCollected.orders.slice(0, 20).map((order: IvaOrder) => (
                           <TableRow className="hover:bg-muted/30 transition-colors" key={order.id}>
                             <TableCell className="text-sm">{new Date(order.createdAt).toLocaleDateString('es-CO')}</TableCell>
                             <TableCell className="font-mono text-sm">#{order.orderNumber}</TableCell>
@@ -1147,7 +1147,7 @@ export function ReportsView() {
               <div className="max-h-96 overflow-y-auto">
                 <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Descripción</TableHead><TableHead className="text-xs text-right">Monto</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
                   {d.taxes.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={Receipt} title="Sin impuestos registrados" desc="Registra gastos con categoría 'Impuestos' desde Contabilidad > Gastos" /></TableCell></TableRow> :
-                  d.taxes.items.map((t: any) => (
+                  d.taxes.items.map((t: TaxItem) => (
                     <TableRow className="hover:bg-muted/30 transition-colors" key={t.id}><TableCell className="text-xs">{fdate(t.date)}</TableCell><TableCell className="text-xs">{t.description}</TableCell><TableCell className="text-right text-sm font-medium text-red-600">-{formatCurrency(t.amount, cc)}</TableCell><TableCell className="text-xs text-muted-foreground">{t.notes || '—'}</TableCell></TableRow>
                   ))}
                 </TableBody></Table>
@@ -1175,7 +1175,7 @@ export function ReportsView() {
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Producto</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
                 {d.returns.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={RotateCcw} title="Sin devoluciones en el período" /></TableCell></TableRow> :
-                d.returns.items.map((r: any) => (
+                d.returns.items.map((r: ReturnItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={r.id}><TableCell className="text-xs">{fdatetime(r.createdAt)}</TableCell><TableCell className="text-xs font-medium">{r.product?.name || 'Eliminado'}</TableCell><TableCell className={`text-right text-xs font-medium ${r.quantity > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{r.quantity > 0 ? '+' : ''}{r.quantity}</TableCell><TableCell className="text-xs text-muted-foreground">{r.notes || '—'}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
@@ -1197,7 +1197,7 @@ export function ReportsView() {
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Producto</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs">Stock Actual</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
                 {d.adjustments.items.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={SlidersHorizontal} title="Sin ajustes en el período" /></TableCell></TableRow> :
-                d.adjustments.items.map((a: any) => (
+                d.adjustments.items.map((a: AdjustmentItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={a.id}><TableCell className="text-xs">{fdatetime(a.createdAt)}</TableCell><TableCell className="text-xs font-medium">{a.product?.name || '—'}</TableCell><TableCell className={`text-right text-xs font-medium ${a.quantity > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{a.quantity > 0 ? '+' : ''}{a.quantity}</TableCell><TableCell className="text-right text-xs">{a.product?.currentStock ?? '—'}</TableCell><TableCell className="text-xs text-muted-foreground">{a.notes || '—'}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
@@ -1287,7 +1287,7 @@ export function ReportsView() {
                 <TableHead className="text-xs">Notas</TableHead>
               </TableRow></TableHeader><TableBody>
                 {filteredTraz.length === 0 ? <TableRow><TableCell colSpan={7}><EmptyState icon={Route} title="Sin movimientos para el filtro seleccionado" /></TableCell></TableRow> :
-                filteredTraz.map((m: any, i: number) => (
+                filteredTraz.map((m: TraceabilityItem, i: number) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={m.id + '-' + i}>
                     <TableCell className="text-xs whitespace-nowrap">{fdatetime(m.createdAt)}</TableCell>
                     <TableCell>
@@ -1323,7 +1323,7 @@ export function ReportsView() {
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Cotización</TableHead><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs text-right">Total</TableHead><TableHead className="text-xs">Items</TableHead><TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs">Válido Hasta</TableHead></TableRow></TableHeader><TableBody>
                 {d.quotes.length === 0 ? <TableRow><TableCell colSpan={7}><EmptyState icon={FileText} title="Sin cotizaciones en el período" /></TableCell></TableRow> :
-                d.quotes.map((q: any) => (
+                d.quotes.map((q: QuoteItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={q.id}>
                     <TableCell className="text-xs">{fdatetime(q.createdAt)}</TableCell>
                     <TableCell className="text-xs font-mono">{q.quotationNumber}</TableCell>
@@ -1360,7 +1360,7 @@ export function ReportsView() {
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Factura</TableHead><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs text-right">Total</TableHead><TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs">Ambiente</TableHead><TableHead className="text-xs">CUFE</TableHead></TableRow></TableHeader><TableBody>
                 {d.invoices.length === 0 ? <TableRow><TableCell colSpan={7}><EmptyState icon={FileCheck} title="Sin facturas electrónicas" /></TableCell></TableRow> :
-                d.invoices.map((inv: any) => (
+                d.invoices.map((inv: InvoiceItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={inv.id}>
                     <TableCell className="text-xs">{fdatetime(inv.createdAt)}</TableCell>
                     <TableCell className="text-xs font-mono">{inv.invoiceNumber}</TableCell>
@@ -1400,7 +1400,7 @@ export function ReportsView() {
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Nota</TableHead><TableHead className="text-xs">Tipo</TableHead><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs text-right">Monto</TableHead><TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs">Factura Ref.</TableHead></TableRow></TableHeader><TableBody>
                 {d.creditNotes.length === 0 ? <TableRow><TableCell colSpan={7}><EmptyState icon={FileText} title="Sin notas crédito/débito" /></TableCell></TableRow> :
-                d.creditNotes.map((cn: any) => (
+                d.creditNotes.map((cn: CreditNoteItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={cn.id}>
                     <TableCell className="text-xs">{fdatetime(cn.createdAt)}</TableCell>
                     <TableCell className="text-xs font-mono">{cn.noteNumber}</TableCell>
@@ -1432,12 +1432,12 @@ export function ReportsView() {
         {/* ── 17. CUENTAS POR COBRAR ── */}
         {/* ═══════════════════════════════════════════════ */}
         <TabsContent value="cxc" className="space-y-4 mt-4">
-          <Stat label="Deuda Total" value={formatCurrency(d.debts.reduce((s: number, c: any) => s + c.totalDebt, 0), cc)} icon={Users} color="text-red-600" />
+          <Stat label="Deuda Total" value={formatCurrency(d.debts.reduce((s: number, c: DebtItem) => s + c.totalDebt, 0), cc)} icon={Users} color="text-red-600" />
           <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Clientes con Deuda</CardTitle></CardHeader><CardContent>
             <div className="max-h-96 overflow-y-auto">
               <Table><TableHeader><TableRow><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs">Teléfono</TableHead><TableHead className="text-xs text-right">Deuda</TableHead></TableRow></TableHeader><TableBody>
                 {d.debts.length === 0 ? <TableRow><TableCell colSpan={3}><EmptyState icon={Users} title="¡Sin deudas pendientes! 🎉" /></TableCell></TableRow> :
-                d.debts.map((c: any) => (
+                d.debts.map((c: DebtItem) => (
                   <TableRow className="hover:bg-muted/30 transition-colors" key={c.id}><TableCell className="text-xs font-medium">{c.name}</TableCell><TableCell className="text-xs text-muted-foreground">{c.phone || '—'}</TableCell><TableCell className="text-right text-sm font-bold text-red-600">{formatCurrency(c.totalDebt, cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
@@ -1516,7 +1516,7 @@ export function ReportsView() {
                 products={products}
                 value={adjustForm.productId}
                 onValueChange={(v) => {
-                  const prod = products.find((p: any) => p.id === v)
+                  const prod = products.find((p: ReportProduct) => p.id === v)
                   setSelectedProductStock(prod?.currentStock ?? null)
                   setAdjustForm(f => ({ ...f, productId: v }))
                 }}
