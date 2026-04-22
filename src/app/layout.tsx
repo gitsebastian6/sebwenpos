@@ -5,6 +5,7 @@ import { Toaster } from "sonner"
 import { ThemeProvider } from "@/components/layout/theme-provider"
 import { AuthInterceptor } from "@/components/auth/auth-interceptor"
 import { ErrorBoundary } from "@/components/shared/error-boundary"
+import { QueryProvider } from "@/providers/query-provider"
 // Global fetch interceptor — patches window.fetch to inject Bearer token on all /api/ requests.
 // Must be imported early so it runs before any component's useEffect fires fetch calls.
 // The module is SSR-safe (only patches in browser) and idempotent.
@@ -50,9 +51,11 @@ export default function RootLayout({
       >
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
           <AuthInterceptor />
-          <ErrorBoundary>
-            {children}
-          </ErrorBoundary>
+          <QueryProvider>
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </QueryProvider>
           <Toaster richColors position="top-right" closeButton duration={5000} />
         </ThemeProvider>
       </body>
