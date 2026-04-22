@@ -26,6 +26,9 @@ export async function GET(
         user: {
           select: { id: true, cedula: true, fullName: true, email: true, phone: true, role: true, createdAt: true },
         },
+        parentStore: {
+          select: { id: true, name: true },
+        },
       },
     })
 
@@ -171,6 +174,26 @@ export async function GET(
       db.employee.count({ where: { storeId } }),
     ])
 
+    // ── Inherited subscription for branches ──
+    // Branches don't have their own subscription — they inherit from parent
+    let effectiveSubscription = subscription
+    let inheritedFrom: { id: number; name: string } | null = null
+
+    if (!subscription && store.parentStoreId) {
+      const parentSub = await db.store.findUnique({
+        where: { id: store.parentStoreId },
+        select: {
+          id: true,
+          name: true,
+          subscription: { include: { plan: true } },
+        },
+      })
+      if (parentSub?.subscription) {
+        effectiveSubscription = parentSub.subscription
+        inheritedFrom = { id: parentSub.id, name: parentSub.name }
+      }
+    }
+
     return NextResponse.json({
       store: {
         ...store,
@@ -196,7 +219,8 @@ export async function GET(
         totalExpenses: totalExpensesAmount._sum.amount || 0,
         ordersByStatus: Object.fromEntries(ordersByStatus.map(g => [g.status, g._count])),
       },
-      subscription,
+      subscription: effectiveSubscription,
+      inheritedFrom,
       dianInfo,
       invoiceStats: Object.fromEntries(invoiceStats.map(g => [g.status, g._count])),
       employees,

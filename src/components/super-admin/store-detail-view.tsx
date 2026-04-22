@@ -20,7 +20,7 @@ import {
   Building2, Users, Package, ShoppingCart, ClipboardList, CreditCard,
   Crown, FileText, Receipt, Zap, Truck, AlertCircle, Shield, KeyRound,
   Trash2, ArrowRight, Upload, TrendingUp, TrendingDown, DollarSign,
-  AlertTriangle, Pencil,
+  AlertTriangle, Pencil, Link2,
 } from 'lucide-react'
 import { formatCOP, formatDateTime, formatDate, getSubscriptionStatusBadge, UsageBar, BILLING_PERIODS } from './helpers'
 import type { StoreDetail, PlanData, StoreOwner } from './types'
@@ -37,7 +37,8 @@ interface StoreDetailViewProps {
 }
 
 export function StoreDetailView({ store: detail, plans, onBack, onResetPassword, onRefresh }: StoreDetailViewProps) {
-  const { store, stats, employees, roles, taxRates, categories, products, customers, orders, services, providers, expenses, subscription, dianInfo, invoiceStats } = detail
+  const { store, stats, employees, roles, taxRates, categories, products, customers, orders, services, providers, expenses, subscription, inheritedFrom, dianInfo, invoiceStats } = detail
+  const isBranch = !!store.parentStoreId
   const profit = stats.totalSales - stats.totalExpenses
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showResetProductsDialog, setShowResetProductsDialog] = useState(false)
@@ -117,12 +118,22 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
         <Button variant="ghost" size="sm" className="gap-1.5" onClick={onBack}><ArrowRight className="h-4 w-4 rotate-180" />Volver</Button>
         <Separator orientation="vertical" className="h-6" />
         <div className="flex items-center gap-2.5">
-          <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center">
-            <Building2 className="h-4 w-4 text-primary-foreground" />
+          <div className={`h-8 w-8 ${isBranch ? 'bg-violet-100 dark:bg-violet-500/15' : 'bg-primary'} rounded-lg flex items-center justify-center`}>
+            <Building2 className={`h-4 w-4 ${isBranch ? 'text-violet-600 dark:text-violet-400' : 'text-primary-foreground'}`} />
           </div>
           <div>
-            <h2 className="font-semibold text-sm">{store.name}</h2>
-            <p className="text-xs text-muted-foreground">{store.user.fullName} · {store.nit || 'Sin NIT'}</p>
+            <div className="flex items-center gap-2">
+              <h2 className="font-semibold text-sm">{store.name}</h2>
+              {isBranch && (
+                <Badge variant="outline" className="text-[10px] gap-1 border-violet-300 dark:border-violet-500/30 text-violet-600 dark:text-violet-400">
+                  <Link2 className="h-2.5 w-2.5" />Sucursal
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {store.user.fullName} · {store.nit || 'Sin NIT'}
+              {isBranch && inheritedFrom && <span className="text-violet-500 dark:text-violet-400"> · Hereda de {inheritedFrom.name}</span>}
+            </p>
           </div>
         </div>
       </header>
@@ -212,21 +223,39 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
           </Card>
 
           {/* Subscription Card */}
-          <Card className="border-l-4 border-l-amber-500 rounded-xl border-border/50">
+          <Card className={`rounded-xl border-border/50 ${isBranch ? 'border-l-4 border-l-violet-500' : 'border-l-4 border-l-amber-500'}`}>
             <CardHeader className="pb-3">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 bg-amber-100 dark:bg-amber-500/15 rounded-lg flex items-center justify-center">
-                    <Crown className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${isBranch ? 'bg-violet-100 dark:bg-violet-500/15' : 'bg-amber-100 dark:bg-amber-500/15'}`}>
+                    <Crown className={`h-4 w-4 ${isBranch ? 'text-violet-600 dark:text-violet-400' : 'text-amber-600 dark:text-amber-400'}`} />
                   </div>
                   <div>
-                    <CardTitle className="text-lg">Suscripción</CardTitle>
-                    <CardDescription>Plan y estado de la suscripción</CardDescription>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      Suscripción
+                      {isBranch && inheritedFrom && (
+                        <Badge variant="outline" className="text-[10px] gap-1 border-violet-300 dark:border-violet-500/30 text-violet-600 dark:text-violet-400">
+                          <Link2 className="h-2.5 w-2.5" />Heredada
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription>
+                      {isBranch && inheritedFrom
+                        ? <>Suscripción heredada de <span className="font-medium text-violet-600 dark:text-violet-400">{inheritedFrom.name}</span></>
+                        : 'Plan y estado de la suscripción'}
+                    </CardDescription>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" className="gap-1.5 active:scale-[0.98] transition-all" onClick={openChangePlan}>
-                  <CreditCard className="h-3.5 w-3.5" />Cambiar Plan
-                </Button>
+                {!isBranch && (
+                  <Button variant="outline" size="sm" className="gap-1.5 active:scale-[0.98] transition-all" onClick={openChangePlan}>
+                    <CreditCard className="h-3.5 w-3.5" />Cambiar Plan
+                  </Button>
+                )}
+                {isBranch && inheritedFrom && (
+                  <Button variant="outline" size="sm" className="gap-1.5 active:scale-[0.98] transition-all" onClick={() => onRefresh(inheritedFrom.id)}>
+                    <ArrowRight className="h-3.5 w-3.5" />Ver Tienda Principal
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -236,7 +265,7 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Plan Actual</p>
                     <div className="flex items-center gap-2">
-                      <Crown className="h-4 w-4 text-amber-500" />
+                      <Crown className={`h-4 w-4 ${isBranch ? 'text-violet-500' : 'text-amber-500'}`} />
                       <span className="font-semibold">{subscription.plan.name}</span>
                     </div>
                   </div>
@@ -304,8 +333,17 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
                 <div className="flex items-center justify-center py-6 text-center">
                   <div>
                     <Crown className="h-10 w-10 text-muted-foreground/30 mx-auto mb-2 animate-pulse" />
-                    <p className="text-sm text-muted-foreground">Sin suscripción activa</p>
-                    <p className="text-xs text-muted-foreground/70 mt-1">Asigne un plan a esta tienda</p>
+                    <p className="text-sm text-muted-foreground">
+                      {isBranch ? 'Sin suscripción heredada' : 'Sin suscripción activa'}
+                    </p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">
+                      {isBranch ? 'La tienda principal no tiene suscripción activa' : 'Asigne un plan a esta tienda'}
+                    </p>
+                    {isBranch && inheritedFrom && (
+                      <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={() => onRefresh(inheritedFrom.id)}>
+                        <ArrowRight className="h-3.5 w-3.5" />Ver Tienda Principal
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
@@ -426,14 +464,16 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
             </Card>
           </div>
 
-          {/* Sucursales (Branches) */}
-          <BranchesSection
-            storeId={store.id}
-            storeName={store.name}
-            storeLegalName={store.legalName}
-            storeNit={store.nit}
-            onRefresh={onRefresh}
-          />
+          {/* Sucursales (Branches) — only for parent stores, not for branches */}
+          {!isBranch && (
+            <BranchesSection
+              storeId={store.id}
+              storeName={store.name}
+              storeLegalName={store.legalName}
+              storeNit={store.nit}
+              onRefresh={onRefresh}
+            />
+          )}
 
           {/* Tabs con toda la información */}
           <Tabs defaultValue="employees" className="space-y-4">

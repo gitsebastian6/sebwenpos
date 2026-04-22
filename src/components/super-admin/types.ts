@@ -55,6 +55,7 @@ export interface StoreDetail {
   providers: Array<{ id: number; name: string; phone: string | null; email: string | null; nit: string | null; isActive: boolean }>
   expenses: Array<{ id: number; category: string; description: string; amount: number; date: string; createdAt: string }>
   subscription: SubscriptionData | null
+  inheritedFrom: { id: number; name: string } | null
   dianInfo: DianInfo
   invoiceStats: Array<{ status: string; _count: number }>
 }

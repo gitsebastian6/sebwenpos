@@ -803,3 +803,31 @@ Stage Summary:
 - Branch inheritance verified: branches inherit parent subscription status
 - Grace period logic verified: PAST_DUE only when graceEndDate > now
 - Test endpoint at POST /api/test/subscription-lifecycle (dev-only)
+
+---
+Task ID: branch-inherited-subscription-display
+Agent: main
+Task: Fix inherited subscription not showing in branch detail view in Super Admin
+
+Work Log:
+- Investigated: when clicking a branch (sucursal) in Super Admin detail view, the subscription card showed "Sin suscripción activa" because branches don't have their own subscription record
+- Root cause: API `/api/super-admin/stores/[id]/detail` only fetched `subscription.findUnique({ where: { storeId } })` which returns null for branches
+- Fix 1 (Backend): Added parentStore include to store query in detail API
+- Fix 2 (Backend): After subscription fetch, if null AND store has parentStoreId, fetch parent store's subscription and include as `effectiveSubscription`
+- Fix 3 (Backend): Added `inheritedFrom: { id, name }` to API response when subscription is inherited
+- Fix 4 (Types): Added `inheritedFrom` field to `StoreDetail` interface in types.ts
+- Fix 5 (Frontend): store-detail-view.tsx now detects branches via `isBranch = !!store.parentStoreId`
+- Fix 6 (Frontend): Header shows violet "Sucursal" badge and "Hereda de [ParentName]" text
+- Fix 7 (Frontend): Subscription card uses violet color theme for branches, shows "Heredada" badge
+- Fix 8 (Frontend): "Cambiar Plan" button hidden for branches, replaced with "Ver Tienda Principal" button
+- Fix 9 (Frontend): Empty state shows "Sin suscripción heredada" with contextual message
+- Fix 10 (Frontend): Branches section hidden when viewing a branch (no sub-branches)
+- Added `Link2` icon import to store-detail-view.tsx
+- Lint clean (0 new errors from our changes, 13 pre-existing)
+
+Stage Summary:
+- Branches now display inherited subscription from parent store in Super Admin detail view
+- Violet color theme distinguishes branches from main stores
+- "Ver Tienda Principal" button navigates to parent store's detail
+- Branches section (sucursales) hidden when viewing a branch store
+- 3 files modified: detail/route.ts, store-detail-view.tsx, types.ts
