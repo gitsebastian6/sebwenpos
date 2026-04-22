@@ -17,11 +17,11 @@ const GRACE_PERIOD_DAYS = 3
 async function transitionOverdueSubscriptions() {
   const now = new Date()
 
-  // Only heal EXPIRED subscriptions with future endDate (never CANCELLED — that's an intentional admin action)
+  // ── Step 1: Auto-heal EXPIRED or PAST_DUE when endDate is still in the future ──
   const healed = await db.subscription.findMany({
     where: {
       endDate: { gt: now },
-      status: 'EXPIRED',
+      status: { in: ['EXPIRED', 'PAST_DUE'] },
       cancelReason: null,
     },
   })
@@ -33,12 +33,11 @@ async function transitionOverdueSubscriptions() {
     })
   }
 
-  // Mark as PAST_DUE: expired but within grace window
+  // ── Step 2: ACTIVE/TRIAL → PAST_DUE when endDate has passed ──
   await db.subscription.updateMany({
     where: {
       endDate: { lt: now },
-      status: { in: ['TRIAL', 'ACTIVE', 'PAST_DUE'] },
-      graceEndDate: null,
+      status: { in: ['TRIAL', 'ACTIVE'] },
     },
     data: {
       status: 'PAST_DUE',
@@ -46,11 +45,12 @@ async function transitionOverdueSubscriptions() {
     },
   })
 
-  // Mark as EXPIRED: grace period ended
+  // ── Step 3: PAST_DUE → EXPIRED when grace period ended AND endDate is still past ──
   await db.subscription.updateMany({
     where: {
       graceEndDate: { lt: now },
       status: 'PAST_DUE',
+      endDate: { lt: now },
     },
     data: { status: 'EXPIRED' },
   })

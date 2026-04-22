@@ -28,11 +28,13 @@ const GRACE_PERIOD_DAYS = 3
 async function transitionOverdueSubscriptions() {
   const now = new Date()
 
-  // Only heal EXPIRED subscriptions with future endDate (never CANCELLED — that's an intentional admin action)
+  // ── Step 1: Auto-heal EXPIRED or PAST_DUE when endDate is still in the future ──
+  //    (e.g. after a payment extends the period while status was stale)
+  //    Never heal CANCELLED — that's an intentional admin action.
   const healed = await db.subscription.findMany({
     where: {
       endDate: { gt: now },
-      status: 'EXPIRED',
+      status: { in: ['EXPIRED', 'PAST_DUE'] },
       cancelReason: null,
     },
   })
@@ -45,12 +47,11 @@ async function transitionOverdueSubscriptions() {
     logger.warn(`Auto-healed subscription ${sub.id}: ${sub.status} → ${correctStatus} (endDate in future)`)
   }
 
-  // Mark as PAST_DUE: expired but within grace period
+  // ── Step 2: ACTIVE/TRIAL → PAST_DUE when endDate has passed ──
   await db.subscription.updateMany({
     where: {
       endDate: { lt: now },
-      status: { in: ['TRIAL', 'ACTIVE', 'PAST_DUE'] },
-      graceEndDate: null,
+      status: { in: ['TRIAL', 'ACTIVE'] },
     },
     data: {
       status: 'PAST_DUE',
@@ -58,11 +59,12 @@ async function transitionOverdueSubscriptions() {
     },
   })
 
-  // Mark as EXPIRED: grace period ended
+  // ── Step 3: PAST_DUE → EXPIRED when grace period ended AND endDate is still past ──
   await db.subscription.updateMany({
     where: {
       graceEndDate: { lt: now },
       status: 'PAST_DUE',
+      endDate: { lt: now },
     },
     data: { status: 'EXPIRED' },
   })
@@ -87,10 +89,30 @@ async function getSubscriptionInfo(storeId: number) {
     }
   }
 
-  // Auto-transition: ACTIVE/TRIAL → PAST_DUE, PAST_DUE → EXPIRED
+  // Auto-transition based on dates
+  const now = new Date()
+  const endDateInFuture = subscription.endDate && new Date(subscription.endDate) > now
+  const endDateInPast = subscription.endDate && new Date(subscription.endDate) <= now
+
+  // Auto-heal: EXPIRED or PAST_DUE → ACTIVE when endDate is still valid
   if (
-    subscription.endDate &&
-    new Date(subscription.endDate) < new Date() &&
+    endDateInFuture &&
+    (subscription.status === 'EXPIRED' || subscription.status === 'PAST_DUE') &&
+    !subscription.cancelReason
+  ) {
+    const correctStatus = subscription.billingPeriod === 'TRIAL' ? 'TRIAL' : 'ACTIVE'
+    const updated = await db.subscription.update({
+      where: { id: subscription.id },
+      data: { status: correctStatus, graceEndDate: null },
+      include: { plan: true },
+    })
+    logger.warn(`Auto-healed subscription ${subscription.id}: ${subscription.status} → ${correctStatus} (endDate in future)`)
+    return buildSubInfo(updated)
+  }
+
+  // ACTIVE/TRIAL → PAST_DUE when endDate has passed
+  if (
+    endDateInPast &&
     (subscription.status === 'TRIAL' || subscription.status === 'ACTIVE')
   ) {
     const graceEnd = new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000)
@@ -102,11 +124,12 @@ async function getSubscriptionInfo(storeId: number) {
     return buildSubInfo(updated)
   }
 
-  // PAST_DUE → EXPIRED when grace period ends
+  // PAST_DUE → EXPIRED when grace period ended AND endDate is still past
   if (
     subscription.status === 'PAST_DUE' &&
     subscription.graceEndDate &&
-    new Date(subscription.graceEndDate) < new Date()
+    new Date(subscription.graceEndDate) <= now &&
+    endDateInPast
   ) {
     const updated = await db.subscription.update({
       where: { id: subscription.id },

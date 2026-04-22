@@ -57,11 +57,12 @@ export async function POST(_req: NextRequest) {
       pastDueCount++
     }
 
-    // ── Step 2: Mark as EXPIRED: grace period ended ──
+    // ── Step 2: Mark as EXPIRED: grace period ended AND endDate is still past ──
     const expiredSubs = await db.subscription.findMany({
       where: {
         graceEndDate: { lt: now },
         status: 'PAST_DUE',
+        endDate: { lt: now },
       },
       include: {
         store: { select: { id: true, name: true } },
@@ -93,11 +94,11 @@ export async function POST(_req: NextRequest) {
       expiredCount++
     }
 
-    // ── Step 3: Self-heal — fix inconsistent subscriptions (endDate in future but EXPIRED, no cancelReason) ──
+    // ── Step 3: Self-heal — fix inconsistent subscriptions (endDate in future but EXPIRED/PAST_DUE, no cancelReason) ──
     const healedSubs = await db.subscription.findMany({
       where: {
         endDate: { gt: now },
-        status: 'EXPIRED',
+        status: { in: ['EXPIRED', 'PAST_DUE'] },
         cancelReason: null,
       },
       include: {
