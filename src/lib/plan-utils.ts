@@ -1,28 +1,31 @@
 // ── Plan Utilities ────────────────────────────────────────────────────────────
 // Helper functions for plan management: durations, expiration checks, and
 // automatic date calculations when a store's plan changes.
+//
+// VENTIFY POS Plans:
+//   Trial         → 7 days, $0, limited products/employees
+//   Pro           → 30 days/mes, $89,900, electronic invoicing + reports
+//   Empresarial   → 30 days/mes, $249,000, multi-store + API + everything
 
-export type PlanType = 'TRIAL' | 'BASIC' | 'PRO' | 'ENTERPRISE'
+export type PlanType = 'TRIAL' | 'PRO' | 'EMPRESARIAL'
 
 /** Duration in days for each plan type (null = never expires) */
 export const PLAN_DURATIONS: Record<PlanType, number | null> = {
-  TRIAL: 15,
-  BASIC: 30,
-  PRO: 365,
-  ENTERPRISE: null,
+  TRIAL: 7,
+  PRO: 30,
+  EMPRESARIAL: null, // billed per period, never auto-expires
 }
 
 /** Human-readable plan labels (Spanish) */
 export const PLAN_LABELS: Record<PlanType, string> = {
   TRIAL: 'Prueba',
-  BASIC: 'Básico',
   PRO: 'Pro',
-  ENTERPRISE: 'Empresa',
+  EMPRESARIAL: 'Empresarial',
 }
 
 /**
  * Returns the duration in days for a given plan.
- * Returns null for ENTERPRISE (never expires).
+ * Returns null for EMPRESARIAL (never expires).
  * Falls back to 30 days if the plan is unrecognized.
  */
 export function getPlanDuration(plan: string): number | null {
@@ -72,7 +75,7 @@ export function getPlanDaysRemaining(store: {
 /**
  * Calculates the plan start and expiration dates for a given plan.
  * Returns { planStartDate, planExpiresAt } as Date objects.
- * For ENTERPRISE, planExpiresAt will be null (never expires).
+ * For EMPRESARIAL, planExpiresAt will be null (never expires).
  * If a custom number of days is provided, it overrides the default duration.
  */
 export function calculatePlanDates(
