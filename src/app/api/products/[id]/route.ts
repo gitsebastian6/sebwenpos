@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +19,6 @@ const updateProductSchema = z.object({
   salePrice: z.number().int().min(1).optional(),
   minStock: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
-  currentStock: z.number().int().min(0).optional(),
   commission: z.number().int().min(0).max(100).optional(),
 })
 
@@ -42,6 +43,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     // Verify category belongs to store if provided
     if (data.categoryId !== undefined && data.categoryId !== null) {
       const category = await db.category.findFirst({
@@ -49,6 +53,26 @@ export async function PUT(
       })
       if (!category) {
         return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 400 })
+      }
+    }
+
+    // Verify provider belongs to store if provided
+    if (data.providerId !== undefined && data.providerId !== null) {
+      const provider = await db.provider.findFirst({
+        where: { id: data.providerId, storeId: existing.storeId },
+      })
+      if (!provider) {
+        return NextResponse.json({ error: 'Proveedor no encontrado' }, { status: 400 })
+      }
+    }
+
+    // Verify tax rate belongs to store if provided
+    if (data.taxRateId !== undefined && data.taxRateId !== null) {
+      const taxRate = await db.taxRate.findFirst({
+        where: { id: data.taxRateId, storeId: existing.storeId },
+      })
+      if (!taxRate) {
+        return NextResponse.json({ error: 'Tasa de impuesto no encontrada' }, { status: 400 })
       }
     }
 
@@ -66,7 +90,6 @@ export async function PUT(
         ...(data.salePrice !== undefined && { salePrice: data.salePrice }),
         ...(data.minStock !== undefined && { minStock: data.minStock }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
-        ...(data.currentStock !== undefined && { currentStock: data.currentStock }),
         ...(data.commission !== undefined && { commission: data.commission }),
         ...(data.taxRateId !== undefined && { taxRateId: data.taxRateId }),
       },
@@ -91,7 +114,7 @@ export async function PUT(
     if (error instanceof Error && error.message.includes('Unique')) {
       return NextResponse.json({ error: 'Ya existe un producto con ese nombre o SKU' }, { status: 409 })
     }
-    console.error('PUT /api/products/[id] error:', error)
+    logger.error('PUT /api/products/[id] error:', error)
     return NextResponse.json({ error: 'Error al actualizar producto' }, { status: 500 })
   }
 }
@@ -113,6 +136,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     // Soft delete
     await db.product.update({
       where: { id: productId },
@@ -121,7 +147,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('DELETE /api/products/[id] error:', error)
+    logger.error('DELETE /api/products/[id] error:', error)
     return NextResponse.json({ error: 'Error al eliminar producto' }, { status: 500 })
   }
 }

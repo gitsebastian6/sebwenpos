@@ -1,4 +1,5 @@
 import * as nodemailer from 'nodemailer'
+import { logger } from '@/lib/logger'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -367,7 +368,7 @@ export async function testSmtpConnection(
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : String(err)
-    console.error('[email-sender] Error al verificar conexión SMTP:', message)
+    logger.error('[email-sender] Error al verificar conexión SMTP:', message)
     return {
       success: false,
       error: `No se pudo establecer conexión con el servidor SMTP: ${message}`,
@@ -400,7 +401,7 @@ export async function sendInvoiceEmail(
   // 2. Validate recipient email
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!data.to || !emailRegex.test(data.to)) {
-    console.error(
+    logger.error(
       '[email-sender] Correo de destinatario inválido:',
       data.to,
     )
@@ -465,7 +466,7 @@ export async function sendInvoiceEmail(
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : String(err)
-    console.error('[email-sender] Error al enviar factura por correo:', message)
+    logger.error('[email-sender] Error al enviar factura por correo:', message)
 
     // Provide a descriptive Spanish error based on common failure types
     if (message.toLowerCase().includes('auth') || message.toLowerCase().includes('login')) {

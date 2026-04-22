@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireStoreAccess } from '@/lib/api-auth'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,6 +30,9 @@ export async function GET(req: NextRequest) {
     const q = searchParams.get('q') || ''
     const categoryId = searchParams.get('categoryId')
     const active = searchParams.get('active')
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '100')))
+    const skip = (page - 1) * limit
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
@@ -49,9 +54,13 @@ export async function GET(req: NextRequest) {
       where.isActive = active === 'true'
     }
 
-    const products = await db.product.findMany({
-      where,
-      include: {
+    const [total, products] = await Promise.all([
+      db.product.count({ where }),
+      db.product.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
         category: {
           select: { id: true, name: true, icon: true },
         },
@@ -69,11 +78,20 @@ export async function GET(req: NextRequest) {
         { isActive: 'desc' },
         { name: 'asc' },
       ],
-    })
+    }),
+    ])
 
-    return NextResponse.json(products)
+    return NextResponse.json({
+      data: products,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    })
   } catch (error) {
-    console.error('GET /api/products error:', error)
+    logger.error('GET /api/products error:', error)
     return NextResponse.json({ error: 'Error al obtener productos' }, { status: 500 })
   }
 }
@@ -84,6 +102,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = createProductSchema.parse(body)
 
+    // Auth: verify user has access to this store
+    const storeAccessError = requireStoreAccess(req, data.storeId)
+    if (storeAccessError) return storeAccessError
+
     // Verify category belongs to store if provided
     if (data.categoryId) {
       const category = await db.category.findFirst({
@@ -91,6 +113,49 @@ export async function POST(req: NextRequest) {
       })
       if (!category) {
         return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 400 })
+      }
+    }
+
+    // Verify provider belongs to store if provided
+    if (data.providerId) {
+      const provider = await db.provider.findFirst({
+        where: { id: data.providerId, storeId: data.storeId },
+      })
+      if (!provider) {
+        return NextResponse.json({ error: 'Proveedor no encontrado' }, { status: 400 })
+      }
+    }
+
+    // Verify tax rate belongs to store if provided
+    if (data.taxRateId) {
+      const taxRate = await db.taxRate.findFirst({
+        where: { id: data.taxRateId, storeId: data.storeId },
+      })
+      if (!taxRate) {
+        return NextResponse.json({ error: 'Tasa de impuesto no encontrada' }, { status: 400 })
+      }
+    }
+
+    // ---- CHECK SUBSCRIPTION PLAN LIMIT ----
+    const subscription = await db.subscription.findUnique({
+      where: { storeId: data.storeId },
+      include: { plan: { select: { maxProducts: true } } },
+    })
+
+    if (subscription) {
+      const maxProducts = subscription.plan.maxProducts
+      if (maxProducts !== -1) {
+        const currentCount = await db.product.count({
+          where: { storeId: data.storeId },
+        })
+        if (currentCount >= maxProducts) {
+          return NextResponse.json({
+            error: `Límite de productos alcanzado (${maxProducts}). Actualice su plan para agregar más productos.`,
+            limitReached: true,
+            current: currentCount,
+            max: maxProducts,
+          }, { status: 403 })
+        }
       }
     }
 
@@ -131,7 +196,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.message.includes('Unique')) {
       return NextResponse.json({ error: 'Ya existe un producto con ese nombre o SKU' }, { status: 409 })
     }
-    console.error('POST /api/products error:', error)
+    logger.error('POST /api/products error:', error)
     return NextResponse.json({ error: 'Error al crear producto' }, { status: 500 })
   }
 }

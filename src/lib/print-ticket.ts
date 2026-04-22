@@ -18,9 +18,15 @@ export interface TicketData {
   storeRegime?: string // Régimen fiscal: RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO
   invoiceResolution?: string // Número de resolución DIAN
   invoicePrefix?: string // Prefijo (FE, POS)
+  invoiceStartNumber?: number
+  invoiceEndNumber?: number
+  resolutionNumber?: string // Alias for invoiceResolution
+  resolutionStart?: number // Alias for invoiceStartNumber
+  resolutionEnd?: number // Alias for invoiceEndNumber
   orderNumber: string
   date: string // ISO string
   customer?: string
+  customerNit?: string // NIT del comprador
   tableName?: string
   items: TicketItem[]
   subtotal: number
@@ -32,6 +38,11 @@ export interface TicketData {
   paymentMethod: string
   currencyCode: string
   notes?: string
+  cufe?: string // Código Único de Factura Electrónica
+  qrCodeUrl?: string // URL del código QR para verificar en DIAN
+  isElectronic?: boolean // true = factura electrónica (muestra CUFE + QR + DIAN info)
+  isDocEquivalente?: boolean // true = documento equivalente POS (muestra resolución + NIT)
+  invoiceType?: string // '01'=normal, '03'=contingencia facturador, '04'=contingencia DIAN
 }
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -84,12 +95,56 @@ export function printTicket(data: TicketData) {
   const hasTip = data.tipAmount > 0
   const now = new Date()
 
+  // Resolve resolution fields (support both naming conventions)
+  const effectiveResolution = data.invoiceResolution || data.resolutionNumber
+  const effectiveStart = data.invoiceStartNumber ?? data.resolutionStart
+  const effectiveEnd = data.invoiceEndNumber ?? data.resolutionEnd
+  const isElectronic = data.isElectronic || !!data.cufe
+  const isDocEquivalente = data.isDocEquivalente || false
+
   const REGIME_LABELS: Record<string, string> = {
-    RESPONSABLE: 'Régimen Común',
-    NO_RESPONSABLE: 'No Responsable',
-    SIMPLIFICADO: 'Régimen Simplificado',
+    RESPONSABLE: 'Régimen Común — Responsable del IVA',
+    NO_RESPONSABLE: 'Régimen Simplificado — No Responsable del IVA',
+    SIMPLIFICADO: 'Régimen Simplificado - SIMPLE',
   }
-  const regimeLabel = data.storeRegime ? (REGIME_LABELS[data.storeRegime] || data.storeRegime) : ''
+  // If no regime specified but store has NIT, default to RESPONSABLE per DIAN rules
+  const effectiveRegime = data.storeRegime || (data.storeNIT ? 'RESPONSABLE' : '')
+  const regimeLabel = effectiveRegime ? (REGIME_LABELS[effectiveRegime] || effectiveRegime) : ''
+
+  // Format NIT for display: 222222222222 -> 222.222.222-222
+  function formatNIT(nit: string): string {
+    const clean = nit.replace(/[^0-9]/g, '')
+    if (clean.length <= 1) return nit
+    const digits = clean.slice(0, -1)
+    const checkDigit = clean.slice(-1)
+    // Add dots every 3 digits from the right
+    const parts: string[] = []
+    let remaining = digits
+    while (remaining.length > 3) {
+      parts.unshift(remaining.slice(-3))
+      remaining = remaining.slice(0, -3)
+    }
+    parts.unshift(remaining)
+    return `${parts.join('.')}-${checkDigit}`
+  }
+
+  // Determine customer NIT display
+  const isConsumidorFinal = !data.customerNit || data.customerNit === '222222222222'
+  const customerNitDisplay = isConsumidorFinal
+    ? 'NIT: 222.222.222-222 (Consumidor Final)'
+    : data.customerNit
+      ? `NIT: ${formatNIT(data.customerNit)}${data.customer ? ` — ${data.customer}` : ''}`
+      : ''
+
+  // Contingency type labels
+  const CONTINGENCY_LABELS: Record<string, string> = {
+    '03': 'FACTURA ELECTRÓNICA DE CONTINGENCIA (TIPO 03)',
+    '04': 'FACTURA ELECTRÓNICA SIN VALIDACIÓN PREVIA (TIPO 04)',
+  }
+  const contingencyLabel = data.invoiceType && data.invoiceType !== '01' ? (CONTINGENCY_LABELS[data.invoiceType] || '') : ''
+  // Determine document subtitle
+  const docSubtitle = contingencyLabel
+    || (isElectronic ? 'FACTURA ELECTRÓNICA DE VENTA' : isDocEquivalente ? 'DOCUMENTO EQUIVALENTE DE POS' : 'Tirilla de Venta')
 
   // Build items
   const itemsRows = data.items
@@ -111,7 +166,7 @@ export function printTicket(data: TicketData) {
   const totalItems = data.items.reduce((s, i) => s + i.quantity, 0)
 
   // Customer info
-  const customerBlock = data.customer
+  const customerBlock = data.customer && !isConsumidorFinal
     ? `<div class="info-row"><span>Cliente:</span><span>${data.customer}</span></div>`
     : ''
 
@@ -366,6 +421,49 @@ export function printTicket(data: TicketData) {
     border-bottom: 1px dotted #bbb;
   }
 
+  /* ── CUFE Section (electronic invoice) ── */
+  .cufe-section {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin: 4px 0;
+  }
+  .cufe-label {
+    font-size: 8px;
+    font-weight: bold;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
+  .cufe-value {
+    font-size: 7px;
+    color: #111;
+    word-break: break-all;
+    line-height: 1.4;
+    font-family: 'Courier New', monospace;
+  }
+
+  /* ── QR Code Section (electronic invoice) ── */
+  .qr-section {
+    text-align: center;
+    padding: 6px 0;
+    margin: 4px 0;
+  }
+  .qr-label {
+    font-size: 8px;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 4px;
+  }
+  .qr-image {
+    width: 150px;
+    height: 150px;
+    margin: 4px auto;
+    display: block;
+  }
+
   /* ── Print helpers ── */
   .dashed { border: none; border-top: 1px dashed #999; margin: 4px 0; }
   @media print {
@@ -378,7 +476,7 @@ export function printTicket(data: TicketData) {
   <!-- ═══ HEADER ═══ -->
   <div class="header">
     <div class="store-name">${data.storeName}</div>
-    <div class="store-subtitle">Factura de Venta</div>
+    <div class="store-subtitle">${docSubtitle}</div>
     ${data.storeNIT ? `<div class="store-detail">NIT: ${data.storeNIT}</div>` : ''}
     ${data.storeAddress ? `<div class="store-detail">${data.storeAddress}</div>` : ''}
     ${data.storePhone ? `<div class="store-detail">Tel: ${data.storePhone}</div>` : ''}
@@ -409,8 +507,16 @@ export function printTicket(data: TicketData) {
 
   <!-- ═══ TRIBUTARY INFO ═══ -->
   ${regimeLabel ? `<div class="tax-info">${regimeLabel}</div>` : ''}
-  ${data.invoiceResolution ? `<div class="tax-info">Resolución DIAN ${data.invoiceResolution}${data.invoicePrefix ? ` · Prefijo: ${data.invoicePrefix}` : ''}</div>` : ''}
-  ${data.storeNIT ? `<div class="tributary-msg">Responsable del IVA — Factura de venta de bienes y/o servicios</div>` : ''}
+  ${effectiveResolution ? `<div class="tax-info">Resolución DIAN ${effectiveResolution}${data.invoicePrefix ? ` Prefijo: ${data.invoicePrefix}` : ''}${effectiveStart != null && effectiveEnd != null ? ` Del ${String(effectiveStart).padStart(6, '0')} al ${String(effectiveEnd).padStart(6, '0')}` : ''}</div>` : ''}
+  ${isElectronic ? `<div class="tributary-msg">Venta sujeta al régimen de facturación electrónica</div>` : ''}
+  ${customerNitDisplay ? `<div class="tax-info">${customerNitDisplay}</div>` : ''}
+
+  <!-- ═══ CUFE (only for electronic invoices) ═══ -->
+  ${isElectronic && data.cufe ? `
+  <div class="cufe-section">
+    <div class="cufe-label">CUFE:</div>
+    <div class="cufe-value">${data.cufe}</div>
+  </div>` : ''}
 
   <!-- ═══ TOTALS ═══ -->
   <div class="totals-section">
@@ -464,10 +570,16 @@ export function printTicket(data: TicketData) {
   <!-- ═══ FOOTER ═══ -->
   <div class="footer">
     <hr class="dashed">
-    <div class="tax-info">NIT del adquirente: 222.222.222-222 (consumidor final)</div>
-    <div class="tax-info">Venta sujeta al régimen de facturación electrónica</div>
-    <hr class="dashed">
-    <div class="footer-msg">Gracias por su compra</div>
+    ${!customerNitDisplay && data.storeNIT ? `<div class="tax-info">NIT del adquirente: 222.222.222-222 (consumidor final)</div>` : ''}
+    ${isElectronic && data.qrCodeUrl ? `
+    <div class="qr-section">
+      <div class="qr-label">Verifique su factura en la DIAN:</div>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(data.qrCodeUrl)}" class="qr-image" alt="QR DIAN" />
+      <div class="qr-url" style="font-size:6px;color:#888;word-break:break-all;">${data.qrCodeUrl}</div>
+    </div>` : ''}
+    <div class="footer-msg">${isElectronic ? 'Representación gráfica de la factura electrónica de venta' : isDocEquivalente ? 'Documento equivalente de POS autorizado por la DIAN' : 'Gracias por su compra'}</div>
+    ${isElectronic ? '<div class="footer-msg">Autorizada mediante resolución DIAN</div>' : ''}
+    ${isDocEquivalente && !isElectronic ? '<div class="footer-msg">Autorizado mediante resolución DIAN como documento equivalente</div>' : ''}
     <div class="footer-msg">¡Vuelva pronto!</div>
     <hr class="dashed">
     <div class="footer-brand">VENTIFY POS &bull; ${now.toLocaleDateString('es-CO')}</div>

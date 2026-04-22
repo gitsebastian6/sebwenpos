@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
-// GET /api/stores/[id] — Validate store exists
+// GET handler — id from URL params (typed), no additional validation needed
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -24,9 +26,12 @@ export async function GET(
       return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(_request, storeId)
+    if (storeAccessErr) return storeAccessErr
+
     return NextResponse.json(store)
   } catch (error) {
-    console.error('Error validating store:', error)
+    logger.error('Error validating store:', error)
     return NextResponse.json({ error: 'Error al validar tienda' }, { status: 500 })
   }
 }

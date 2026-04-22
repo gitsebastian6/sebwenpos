@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,9 +65,12 @@ export async function GET(
       return NextResponse.json({ error: 'Tarifa de impuesto no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, taxRate.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     return NextResponse.json(taxRate)
   } catch (error) {
-    console.error('GET /api/taxes/[id] error:', error)
+    logger.error('GET /api/taxes/[id] error:', error)
     return NextResponse.json({ error: 'Error al obtener la tarifa de impuesto' }, { status: 500 })
   }
 }
@@ -91,6 +96,9 @@ export async function PUT(
     if (!existing) {
       return NextResponse.json({ error: 'Tarifa de impuesto no encontrada' }, { status: 404 })
     }
+
+    const storeAccessErr = requireStoreAccess(req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // Update in a transaction to handle isDefault logic
     const taxRate = await db.$transaction(async (tx) => {
@@ -139,7 +147,7 @@ export async function PUT(
         { status: 409 }
       )
     }
-    console.error('PUT /api/taxes/[id] error:', error)
+    logger.error('PUT /api/taxes/[id] error:', error)
     return NextResponse.json({ error: 'Error al actualizar la tarifa de impuesto' }, { status: 500 })
   }
 }
@@ -171,6 +179,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Tarifa de impuesto no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     // Prevent deletion if products are using this tax rate
     if (existing._count.products > 0) {
       return NextResponse.json(
@@ -185,7 +196,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('DELETE /api/taxes/[id] error:', error)
+    logger.error('DELETE /api/taxes/[id] error:', error)
     return NextResponse.json({ error: 'Error al eliminar la tarifa de impuesto' }, { status: 500 })
   }
 }

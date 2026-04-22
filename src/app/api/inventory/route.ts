@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +18,9 @@ export async function GET(req: NextRequest) {
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const storeAccessErr = requireStoreAccess(req, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const where: Record<string, unknown> = { storeId }
 
@@ -49,7 +54,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(formatted)
   } catch (error) {
-    console.error('Inventory GET error:', error)
+    logger.error('Inventory GET error:', error)
     return NextResponse.json({ error: 'Error al obtener movimientos' }, { status: 500 })
   }
 }
@@ -70,7 +75,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = createMovementSchema.parse(body)
 
-    // Verify product belongs to store
+    // Verify product
+    const storeAccessErr = requireStoreAccess(req, data.storeId)
+    if (storeAccessErr) return storeAccessErr
+
+    // Verify product exists and belongs to store
     const product = await db.product.findFirst({
       where: { id: data.productId, storeId: data.storeId },
     })
@@ -134,7 +143,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('Inventory POST error:', error)
+    logger.error('Inventory POST error:', error)
     return NextResponse.json({ error: 'Error al crear movimiento' }, { status: 500 })
   }
 }

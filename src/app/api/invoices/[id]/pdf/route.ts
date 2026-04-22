@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
 import { generateInvoicePDF, type InvoicePDFData } from '@/lib/invoicing/pdf-generator'
 import { formatInvoiceNumber } from '@/lib/invoice-utils'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,12 +21,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const { searchParams } = new URL(request.url)
-    const storeId = Number(searchParams.get('storeId'))
+    const url = new URL(request.url)
+    const storeId = z.coerce.number().int().positive().parse(url.searchParams.get('storeId'))
 
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
-    }
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // 1. Obtener factura completa con orden, items y tienda
     const invoice = await db.invoice.findFirst({
@@ -73,7 +75,7 @@ export async function GET(
     }> = JSON.parse(invoice.taxBreakdown || '[]')
 
     // Items de la orden
-    const items = (order?.orderItems || []).map((item: any, idx: number) => ({
+    const items = (order?.orderItems || []).map((item, idx) => ({
       lineNumber: idx + 1,
       description: item.product?.name ?? item.service?.name ?? 'Eliminado',
       quantity: item.quantity,
@@ -170,7 +172,7 @@ export async function GET(
       },
     })
   } catch (error) {
-    console.error('GET /api/invoices/[id]/pdf error:', error)
+    logger.error('GET /api/invoices/[id]/pdf error:', error)
     return NextResponse.json(
       { error: 'Error interno al generar el PDF de la factura' },
       { status: 500 },

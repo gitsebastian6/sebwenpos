@@ -8,6 +8,12 @@ async function main() {
 
   // Limpieza total (orden respetando FK)
   await prisma.invoice.deleteMany()
+  await prisma.creditNote.deleteMany()
+  await prisma.contingencyInvoice.deleteMany()
+  await prisma.quotationItem.deleteMany()
+  await prisma.quotation.deleteMany()
+  await prisma.paymentReceipt.deleteMany()
+  await prisma.subscription.deleteMany()
   await prisma.purchaseItem.deleteMany()
   await prisma.purchase.deleteMany()
   await prisma.expense.deleteMany()
@@ -27,7 +33,10 @@ async function main() {
   await prisma.category.deleteMany()
   await prisma.cashRegister.deleteMany()
   await prisma.taxRate.deleteMany()
+  await prisma.employee.deleteMany()
+  await prisma.role.deleteMany()
   await prisma.store.deleteMany()
+  await prisma.plan.deleteMany()
   await prisma.user.deleteMany()
 
   // =============================================
@@ -37,6 +46,7 @@ async function main() {
 
   const user = await prisma.user.create({
     data: {
+      cedula: '1098765432',
       phone: '3001234567',
       email: 'admin@ventify.com',
       passwordHash,
@@ -55,6 +65,90 @@ async function main() {
 
   const storeId = user.store!.id
   console.log(`✅ Usuario: ${user.phone} → Tienda: ${user.store!.name} (ID: ${storeId})`)
+
+  // =============================================
+  // 1.5 PLANES DE SUSCRIPCIÓN
+  // =============================================
+  const trialPlan = await prisma.plan.create({
+    data: {
+      name: 'Trial',
+      description: 'Plan de prueba gratuito por 7 días. Funcionalidad completa para evaluar el sistema.',
+      price: 0,
+      maxStores: 1,
+      maxEmployees: 3,
+      maxProducts: 50,
+      sortOrder: 1,
+      isActive: true,
+      features: JSON.stringify({
+        electronicInvoicing: false,
+        multiStore: false,
+        reports: false,
+        support: 'none',
+        priority: false,
+      }),
+    },
+  })
+  await prisma.plan.create({
+    data: {
+      name: 'Pro',
+      description: 'Ideal para negocios en crecimiento que necesitan facturación electrónica y más capacidad.',
+      price: 69000,
+      maxStores: 1,
+      maxEmployees: 15,
+      maxProducts: 500,
+      sortOrder: 2,
+      isActive: true,
+      features: JSON.stringify({
+        electronicInvoicing: true,
+        multiStore: false,
+        reports: true,
+        support: 'email',
+        priority: false,
+        advancedInventory: true,
+      }),
+    },
+  })
+  await prisma.plan.create({
+    data: {
+      name: 'Empresarial',
+      description: 'Solución completa para empresas con necesidades avanzadas y soporte prioritario.',
+      price: 149000,
+      maxStores: 1,
+      maxEmployees: -1,
+      maxProducts: -1,
+      sortOrder: 3,
+      isActive: true,
+      features: JSON.stringify({
+        electronicInvoicing: true,
+        multiStore: true,
+        reports: true,
+        support: 'dedicated',
+        priority: true,
+        advancedInventory: true,
+        api: true,
+        customBranding: true,
+        multiCurrency: true,
+      }),
+    },
+  })
+  console.log(`✅ 3 planes de suscripción creados (Trial id=${trialPlan.id})`)
+
+  // Asignar Trial al store recién creado
+  const trialEnd = new Date()
+  trialEnd.setDate(trialEnd.getDate() + 7)
+  await prisma.subscription.create({
+    data: {
+      storeId,
+      planId: trialPlan.id,
+      status: 'TRIAL',
+      startDate: new Date(),
+      endDate: trialEnd,
+      trialEndDate: trialEnd,
+      billingPeriod: 'MONTHLY',
+      billingPrice: 0,
+    },
+  })
+  console.log('✅ Suscripción Trial asignada a la tienda')
 
   // =============================================
   // 2. CATEGORÍAS

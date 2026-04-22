@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +22,9 @@ const storeUpdateSchema = z.object({
   resolutionStartNumber: z.number().int().min(0).optional().nullable(),
   resolutionEndNumber: z.number().int().min(0).optional().nullable(),
   invoiceTestMode: z.boolean().optional(),
+  // DIVIPOLA location fields
+  divipolaCode: z.string().max(10).optional().nullable(),
+  cityName: z.string().max(200).optional().nullable(),
 })
 
 // GET /api/stores?storeId=1  OR  GET /api/stores?userId=1
@@ -48,9 +53,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Store not found' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(request, parseInt(storeId!))
+    if (storeAccessErr) return storeAccessErr
+
     return NextResponse.json(store)
   } catch (error) {
-    console.error('Error fetching store:', error)
+    logger.error('Error fetching store:', error)
     return NextResponse.json({ error: 'Failed to fetch store' }, { status: 500 })
   }
 }
@@ -64,6 +72,9 @@ export async function PUT(request: NextRequest) {
     if (!storeId) {
       return NextResponse.json({ error: 'storeId is required' }, { status: 400 })
     }
+
+    const storeAccessErr = requireStoreAccess(request, parseInt(storeId))
+    if (storeAccessErr) return storeAccessErr
 
     const body = await request.json()
     const parsed = storeUpdateSchema.safeParse(body)
@@ -103,12 +114,14 @@ export async function PUT(request: NextRequest) {
         resolutionStartNumber: parsed.data.resolutionStartNumber ?? undefined,
         resolutionEndNumber: parsed.data.resolutionEndNumber ?? undefined,
         invoiceTestMode: parsed.data.invoiceTestMode ?? undefined,
+        divipolaCode: parsed.data.divipolaCode ?? undefined,
+        cityName: parsed.data.cityName ?? undefined,
       },
     })
 
     return NextResponse.json(store)
   } catch (error) {
-    console.error('Error updating store:', error)
+    logger.error('Error updating store:', error)
     return NextResponse.json({ error: 'Failed to update store' }, { status: 500 })
   }
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +36,9 @@ export async function GET(
       return NextResponse.json({ error: 'Mesa no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(request, table.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     const openSession = await db.tableSession.findFirst({
       where: { barTableId: tableId, status: 'OPEN' },
       select: {
@@ -65,7 +70,7 @@ export async function GET(
         : null,
     })
   } catch (error) {
-    console.error('GET /api/tables/[id] error:', error)
+    logger.error('GET /api/tables/[id] error:', error)
     return NextResponse.json({ error: 'Error al obtener la mesa' }, { status: 500 })
   }
 }
@@ -91,6 +96,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Mesa no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     const table = await db.barTable.update({
       where: { id: tableId },
       data: {
@@ -106,7 +114,7 @@ export async function PUT(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('PUT /api/tables/[id] error:', error)
+    logger.error('PUT /api/tables/[id] error:', error)
     return NextResponse.json({ error: 'Error al actualizar la mesa' }, { status: 500 })
   }
 }
@@ -129,6 +137,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Mesa no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(_req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     // Check for open sessions
     const openSession = await db.tableSession.findFirst({
       where: { barTableId: tableId, status: 'OPEN' },
@@ -144,7 +155,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('DELETE /api/tables/[id] error:', error)
+    logger.error('DELETE /api/tables/[id] error:', error)
     return NextResponse.json({ error: 'Error al eliminar la mesa' }, { status: 500 })
   }
 }

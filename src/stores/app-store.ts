@@ -7,6 +7,7 @@ export type AppView =
   | 'products'
   | 'customers'
   | 'providers'
+  | 'purchases'
   | 'orders'
   | 'invoices'
   | 'inventory'
@@ -14,6 +15,9 @@ export type AppView =
   | 'services'
   | 'reports'
   | 'settings'
+  | 'quotations'
+  | 'employees'
+  | 'roles'
 
 interface AppState {
   currentView: AppView

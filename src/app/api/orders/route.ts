@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { generateOrderNumber } from '@/lib/auth'
+import { requireStoreAccess } from '@/lib/api-auth'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +37,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const data = createOrderSchema.parse(body)
+
+    // Auth: verify user has access to this store
+    const storeAccessError = requireStoreAccess(req, data.storeId)
+    if (storeAccessError) return storeAccessError
 
     // Separate product and service items
     const productItems = data.items.filter((i) => i.productId)
@@ -236,7 +242,7 @@ export async function POST(req: NextRequest) {
 
     const orderNumber = generateOrderNumber()
 
-    // Use the cashRegisterId provided by the client, or find an open shift
+    // ─── Cash register validation: MUST have an open shift ──────────
     let targetCashRegisterId = data.cashRegisterId ?? null
     if (!targetCashRegisterId) {
       const openShift = await db.cashRegister.findFirst({
@@ -253,6 +259,14 @@ export async function POST(req: NextRequest) {
       if (!shiftExists) {
         targetCashRegisterId = null
       }
+    }
+
+    // BLOCK sale if no cash register is open
+    if (!targetCashRegisterId) {
+      return NextResponse.json(
+        { error: 'Debes abrir la caja antes de registrar una venta. Ve a Contabilidad → Caja y abre un turno.' },
+        { status: 400 },
+      )
     }
 
     // Create order, inventory movements, and journal entries in a transaction
@@ -290,6 +304,15 @@ export async function POST(req: NextRequest) {
 
       // 2. Create inventory movements and decrement stock (only for product items)
       for (const item of productItems) {
+        // Re-validate stock inside transaction to prevent race condition
+        const freshProduct = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { currentStock: true, name: true },
+        })
+        if (!freshProduct || freshProduct.currentStock < item.quantity) {
+          throw new Error(`Stock insuficiente para "${freshProduct?.name || 'Producto'}" (disponible: ${freshProduct?.currentStock || 0}). Intenta de nuevo.`)
+        }
+
         await tx.inventoryMovement.create({
           data: {
             storeId: data.storeId,
@@ -384,7 +407,7 @@ export async function POST(req: NextRequest) {
       if ((data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO') && data.customerId) {
         await tx.customer.update({
           where: { id: data.customerId },
-          data: { totalDebt: { increment: subtotal } },
+          data: { totalDebt: { increment: total } },
         })
         // Also create accounts receivable journal entry
         const cuentasPorCobrar = await tx.ledgerAccount.findFirst({
@@ -439,9 +462,8 @@ export async function POST(req: NextRequest) {
         paymentMethod: order.paymentMethod,
         customer: order.customer,
         cashRegisterId: targetCashRegisterId,
-        warning: !targetCashRegisterId ? 'No hay caja abierta. La venta no se registró en ningún turno de caja.' : undefined,
         createdAt: order.createdAt.toISOString(),
-        orderItems: order.orderItems.map((item: any) => ({
+        orderItems: order.orderItems.map((item) => ({
           id: item.id,
           productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
           quantity: item.quantity,
@@ -460,7 +482,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('POST /api/orders error:', error)
+    logger.error('POST /api/orders error:', error)
     return NextResponse.json({ error: 'Error interno al crear la orden' }, { status: 500 })
   }
 }
@@ -478,12 +500,15 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get('q')?.trim()
     const customerId = searchParams.get('customerId')
     const expand = searchParams.get('expand')
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '50')))
+    const skip = (page - 1) * limit
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
     }
 
-    const where: any = { storeId }
+    const where: Record<string, unknown> = { storeId }
 
     if (status && status !== 'ALL') {
       where.status = status
@@ -512,10 +537,14 @@ export async function GET(request: NextRequest) {
 
     const includeItems = expand === 'items'
 
-    const orders = await db.order.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      select: {
+    const [total, orders] = await Promise.all([
+      db.order.count({ where }),
+      db.order.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
         id: true,
         orderNumber: true,
         status: true,
@@ -546,9 +575,10 @@ export async function GET(request: NextRequest) {
           },
         } : {}),
       },
-    })
+    }),
+    ])
 
-    const result = orders.map((order: any) => ({
+    const result = orders.map((order) => ({
       id: order.id,
       orderNumber: order.orderNumber,
       customerName: order.customer?.name ?? null,
@@ -559,7 +589,7 @@ export async function GET(request: NextRequest) {
       tableSessionId: order.tableSessionId ?? null,
       tableName: order.tableSession?.barTable ? `Mesa ${order.tableSession.barTable.number}` : null,
       ...(includeItems ? {
-        orderItems: (order.orderItems || []).map((item: any) => ({
+        orderItems: (order.orderItems || []).map((item) => ({
           productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
           quantity: item.quantity,
           totalRow: Number(item.totalRow),
@@ -567,9 +597,17 @@ export async function GET(request: NextRequest) {
       } : {}),
     }))
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      data: result,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    })
   } catch (error) {
-    console.error('GET /api/orders error:', error)
+    logger.error('GET /api/orders error:', error)
     return NextResponse.json({ error: 'Error interno' }, { status: 500 })
   }
 }

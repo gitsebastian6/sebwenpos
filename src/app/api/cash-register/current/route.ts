@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
 // GET: Get all open shifts for store with real-time linked orders
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = request.nextUrl
-    const storeId = parseInt(searchParams.get('storeId') || '0')
+    const storeId = z.coerce.number().int().positive().parse(request.nextUrl.searchParams.get('storeId'))
 
-    if (!storeId) return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const shifts = await db.cashRegister.findMany({
       where: { storeId, status: 'OPEN' },
@@ -93,7 +96,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ shifts: shiftData })
   } catch (error) {
-    console.error('GET /api/cash-register/current error:', error)
+    logger.error('GET /api/cash-register/current error:', error)
     return NextResponse.json({ error: 'Error al obtener turnos abiertos' }, { status: 500 })
   }
 }

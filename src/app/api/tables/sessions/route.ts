@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +27,9 @@ export async function GET(req: NextRequest) {
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const storeAccessErr = requireStoreAccess(req, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const where: Record<string, unknown> = { storeId }
 
@@ -66,7 +71,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('GET /api/tables/sessions error:', error)
+    logger.error('GET /api/tables/sessions error:', error)
     return NextResponse.json({ error: 'Error al obtener las sesiones' }, { status: 500 })
   }
 }
@@ -77,6 +82,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const data = openSessionSchema.parse(body)
+
+    const storeAccessErr = requireStoreAccess(req, data.storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // Verify table exists and is active
     const table = await db.barTable.findUnique({
@@ -153,7 +161,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('POST /api/tables/sessions error:', error)
+    logger.error('POST /api/tables/sessions error:', error)
     return NextResponse.json({ error: 'Error al abrir la sesión' }, { status: 500 })
   }
 }

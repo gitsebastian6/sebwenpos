@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +26,9 @@ export async function GET(req: NextRequest) {
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const storeAccessErr = requireStoreAccess(req, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const tables = await db.barTable.findMany({
       where: { storeId },
@@ -79,7 +84,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(tablesWithSession)
   } catch (error) {
-    console.error('GET /api/tables error:', error)
+    logger.error('GET /api/tables error:', error)
     return NextResponse.json({ error: 'Error al obtener las mesas' }, { status: 500 })
   }
 }
@@ -90,6 +95,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const data = createTableSchema.parse(body)
+
+    // Verify store access
+    const storeAccessErr = requireStoreAccess(req, data.storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // Verify store exists
     const store = await db.store.findUnique({ where: { id: data.storeId } })
@@ -118,7 +127,7 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       )
     }
-    console.error('POST /api/tables error:', error)
+    logger.error('POST /api/tables error:', error)
     return NextResponse.json({ error: 'Error al crear la mesa' }, { status: 500 })
   }
 }

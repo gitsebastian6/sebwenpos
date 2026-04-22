@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NITInput } from '@/components/ui/nit-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -34,6 +35,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
+import { DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,6 +71,9 @@ import {
   MoreHorizontal,
   Package,
   Percent,
+  QrCode,
+  ExternalLink,
+  Printer,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
@@ -76,7 +81,10 @@ import { es } from 'date-fns/locale'
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const STORE_ID = '3'
+// Helper: get store ID from auth store (no hardcoded values)
+function getStoreId(store: { id: number } | null): string {
+  return store?.id?.toString() || ''
+}
 
 const STATUS_BADGES: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'Borrador', className: 'bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300 border-slate-200 dark:border-slate-700' },
@@ -230,14 +238,13 @@ export function InvoicesView() {
   const [creating, setCreating] = useState(false)
 
   // ── Create form ──
-  const [formNit, setFormNit] = useState('222222222222')
+  const [formNit, setFormNit] = useState(DIAN_CONSUMIDOR_FINAL_NIT)
   const [formName, setFormName] = useState('Consumidor Final')
   const [formAddress, setFormAddress] = useState('')
-  const [formPhone, setFormPhone] = useState('')
   const [formEmail, setFormEmail] = useState('')
-  const [formRegime, setFormRegime] = useState('NO_RESPONSABLE')
-  const [formType, setFormType] = useState('CC')
   const [formNotes, setFormNotes] = useState('')
+  const [formContingencyType, setFormContingencyType] = useState('01')
+  const [isConsumidorFinal, setIsConsumidorFinal] = useState(true)
 
   // ── Action loading ──
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -255,34 +262,38 @@ export function InvoicesView() {
   }, [invoices])
 
   // ── Fetch invoices ──
+  const storeId = getStoreId(store)
   const fetchInvoices = useCallback(async () => {
+    if (!storeId) return
     setLoading(true)
     try {
-      const params = new URLSearchParams({ storeId: STORE_ID })
+      const params = new URLSearchParams({ storeId })
       if (statusFilter !== 'ALL') params.set('status', statusFilter)
       if (dateFrom) params.set('from', dateFrom)
       if (dateTo) params.set('to', dateTo)
       if (search.trim()) params.set('q', search.trim())
       const res = await fetch(`/api/invoices?${params}`)
       if (!res.ok) throw new Error()
-      setInvoices(await res.json())
+      const json = await res.json()
+      setInvoices(Array.isArray(json) ? json : (json.data || []))
     } catch {
       toast.error('Error al cargar facturas')
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, dateFrom, dateTo, search])
+  }, [statusFilter, dateFrom, dateTo, search, storeId])
 
   useEffect(() => {
+    if (!storeId) return
     const timer = setTimeout(() => fetchInvoices(), 300)
     return () => clearTimeout(timer)
-  }, [fetchInvoices])
+  }, [fetchInvoices, storeId])
 
   // ── Fetch resolution status ──
   const fetchResolutionStatus = useCallback(async () => {
     setResolutionLoading(true)
     try {
-      const res = await fetch(`/api/invoices/resolution-status?storeId=${STORE_ID}`)
+      const res = await fetch(`/api/invoices/resolution-status?storeId=${storeId}`)
       if (!res.ok) throw new Error()
       setResolutionStatus(await res.json())
     } catch {
@@ -290,11 +301,12 @@ export function InvoicesView() {
     } finally {
       setResolutionLoading(false)
     }
-  }, [])
+  }, [storeId])
 
   useEffect(() => {
+    if (!storeId) return
     fetchResolutionStatus()
-  }, [fetchResolutionStatus])
+  }, [fetchResolutionStatus, storeId])
 
   // ── Open detail dialog ──
   async function openDetail(invoiceId: number) {
@@ -302,7 +314,7 @@ export function InvoicesView() {
     setInvoiceDetail(null)
     setDetailLoading(true)
     try {
-      const res = await fetch(`/api/invoices/${invoiceId}?storeId=${STORE_ID}`)
+      const res = await fetch(`/api/invoices/${invoiceId}?storeId=${storeId}`)
       if (!res.ok) throw new Error()
       setInvoiceDetail(await res.json())
     } catch {
@@ -319,30 +331,31 @@ export function InvoicesView() {
     setSelectedOrderId(null)
     setSelectedOrder(null)
     setOrdersSearch('')
-    setFormNit('222222222222')
+    setFormNit(DIAN_CONSUMIDOR_FINAL_NIT)
     setFormName('Consumidor Final')
     setFormAddress('')
-    setFormPhone('')
     setFormEmail('')
-    setFormRegime('NO_RESPONSABLE')
-    setFormType('CC')
     setFormNotes('')
+    setFormContingencyType('01')
+    setIsConsumidorFinal(true)
     setOrdersLoading(true)
     try {
       const from = new Date()
       from.setDate(from.getDate() - 30)
       const params = new URLSearchParams({
-        storeId: STORE_ID,
+        storeId,
         status: 'COMPLETED',
         from: from.toISOString().slice(0, 10),
       })
       const res = await fetch(`/api/orders?${params}`)
       if (!res.ok) throw new Error()
-      const orders: OrderForInvoice[] = await res.json()
+      const ordersJson = await res.json()
+      const orders: OrderForInvoice[] = Array.isArray(ordersJson) ? ordersJson : (ordersJson.data || [])
       // Filter out orders that already have invoices
-      const invoiceRes = await fetch(`/api/invoices?storeId=${STORE_ID}&status=ALL`)
+      const invoiceRes = await fetch(`/api/invoices?storeId=${storeId}&status=ALL`)
       if (invoiceRes.ok) {
-        const existingInvoices: InvoiceSummary[] = await invoiceRes.json()
+        const invJson = await invoiceRes.json()
+        const existingInvoices: InvoiceSummary[] = Array.isArray(invJson) ? invJson : (invJson.data || [])
         const invoicedOrderIds = new Set(existingInvoices.map(inv => inv.orderNumber).filter(Boolean))
         const filtered = orders.filter(o => !invoicedOrderIds.has(o.orderNumber))
         setAvailableOrders(filtered)
@@ -377,12 +390,10 @@ export function InvoicesView() {
           customerNit: formNit,
           customerName: formName,
           customerAddress: formAddress || undefined,
-          customerPhone: formPhone || undefined,
           customerEmail: formEmail || undefined,
-          customerRegime: formRegime,
-          customerType: formType,
           notes: formNotes || undefined,
           testMode: true,
+          invoiceType: formContingencyType,
         }),
       })
       if (!res.ok) {
@@ -402,11 +413,30 @@ export function InvoicesView() {
   }
 
   // ── Actions ──
+  async function handlePrintInvoice(invoiceId: number, invoiceNumber?: string) {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/pdf?storeId=${storeId}`)
+      if (!res.ok) throw new Error('Error al generar PDF')
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const printWindow = window.open(url, '_blank')
+      if (printWindow) {
+        printWindow.addEventListener('load', () => {
+          printWindow.print()
+        })
+      } else {
+        toast.error('Permite ventanas emergentes para imprimir')
+      }
+    } catch {
+      toast.error('Error al imprimir factura')
+    }
+  }
+
   async function handleAction(action: string, invoiceId: number, invoiceNumber?: string) {
     setActionLoading(action)
     try {
       if (action === 'pdf') {
-        const res = await fetch(`/api/invoices/${invoiceId}/pdf?storeId=${STORE_ID}`)
+        const res = await fetch(`/api/invoices/${invoiceId}/pdf?storeId=${storeId}`)
         if (!res.ok) throw new Error('Error al generar PDF')
         const blob = await res.blob()
         const url = window.URL.createObjectURL(blob)
@@ -417,20 +447,20 @@ export function InvoicesView() {
         window.URL.revokeObjectURL(url)
         toast.success('PDF descargado')
       } else if (action === 'send') {
-        const res = await fetch(`/api/invoices/${invoiceId}/send?storeId=${STORE_ID}`, { method: 'POST' })
+        const res = await fetch(`/api/invoices/${invoiceId}/send?storeId=${storeId}`, { method: 'POST' })
         if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Error al enviar') }
         toast.success('Factura enviada a DIAN')
         fetchInvoices()
         if (selectedInvoiceId === invoiceId) openDetail(invoiceId)
       } else if (action === 'status') {
-        const res = await fetch(`/api/invoices/${invoiceId}/status?storeId=${STORE_ID}`)
+        const res = await fetch(`/api/invoices/${invoiceId}/status?storeId=${storeId}`)
         if (!res.ok) throw new Error('Error al consultar estado')
         const data = await res.json()
         toast.success(`Estado DIAN: ${data.dianStatus || data.status || 'Consultado'}`)
         if (selectedInvoiceId === invoiceId) openDetail(invoiceId)
         fetchInvoices()
       } else if (action === 'email') {
-        const res = await fetch(`/api/invoices/${invoiceId}/email?storeId=${STORE_ID}`, { method: 'POST' })
+        const res = await fetch(`/api/invoices/${invoiceId}/email?storeId=${storeId}`, { method: 'POST' })
         if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Error al enviar email') }
         toast.success('Factura enviada por email')
         if (selectedInvoiceId === invoiceId) openDetail(invoiceId)
@@ -483,14 +513,14 @@ export function InvoicesView() {
             </p>
           </div>
         </div>
-        <Button onClick={openCreateDialog} className="gap-2">
+        <Button onClick={openCreateDialog} className="gap-2 active:scale-[0.98] transition-all">
           <Plus className="h-4 w-4" /> Crear Factura
         </Button>
       </div>
 
       {/* ── KPI Cards ──────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
+        <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -503,7 +533,7 @@ export function InvoicesView() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-emerald-200 dark:border-emerald-800">
+        <Card className="border-emerald-200 dark:border-emerald-800 hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -516,7 +546,7 @@ export function InvoicesView() {
             </div>
           </CardContent>
         </Card>
-        <Card className="border-amber-200 dark:border-amber-800">
+        <Card className="border-amber-200 dark:border-amber-800 hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -532,7 +562,7 @@ export function InvoicesView() {
       </div>
 
       {/* ── Filters ────────────────────────────────────── */}
-      <Card>
+      <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <Filter className="h-4 w-4 text-muted-foreground" />
@@ -549,7 +579,7 @@ export function InvoicesView() {
               <Input placeholder="Buscar factura..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Estado" /></SelectTrigger>
+              <SelectTrigger className="w-full focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue placeholder="Estado" /></SelectTrigger>
               <SelectContent>
                 {STATUS_FILTERS.map(s => (
                   <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
@@ -563,7 +593,7 @@ export function InvoicesView() {
       </Card>
 
       {/* ── Invoices Table ─────────────────────────────── */}
-      <Card>
+      <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
         <CardContent className="p-0">
           {loading ? (
             <div className="p-4 space-y-3">
@@ -573,14 +603,14 @@ export function InvoicesView() {
             </div>
           ) : invoices.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center px-4">
-              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                <FileText className="h-8 w-8 text-muted-foreground" />
+              <div className="h-20 w-20 rounded-full bg-muted/50 flex items-center justify-center mb-4 animate-pulse">
+                <FileText className="h-10 w-10 text-muted-foreground/60" />
               </div>
               <h3 className="font-semibold text-lg mb-1">Sin facturas</h3>
               <p className="text-sm text-muted-foreground max-w-sm">
                 No se encontraron facturas con los filtros actuales. Crea tu primera factura electrónica desde una orden completada.
               </p>
-              <Button onClick={openCreateDialog} variant="outline" className="mt-4 gap-2">
+              <Button onClick={openCreateDialog} variant="outline" className="mt-4 gap-2 active:scale-[0.98] transition-all">
                 <Plus className="h-4 w-4" /> Crear Factura
               </Button>
             </div>
@@ -600,7 +630,7 @@ export function InvoicesView() {
                 </TableHeader>
                 <TableBody>
                   {invoices.map((inv, idx) => (
-                    <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openDetail(inv.id)}>
+                    <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/30" onClick={() => openDetail(inv.id)}>
                       <TableCell className="text-xs text-muted-foreground">{idx + 1}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5">
@@ -690,7 +720,7 @@ export function InvoicesView() {
       </Card>
 
       {/* ── Resolution Status ──────────────────────────── */}
-      <Card>
+      <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Shield className="h-4 w-4 text-primary" />
@@ -750,7 +780,7 @@ export function InvoicesView() {
 
       {/* ── Create Invoice Dialog ──────────────────────── */}
       <Dialog open={showCreateDialog} onOpenChange={(open) => { if (!open) { setShowCreateDialog(false); setCreateStep(1) } }}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
@@ -842,56 +872,109 @@ export function InvoicesView() {
                 </div>
               )}
 
+              {/* DIAN Abecé info */}
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 space-y-1">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                  <div className="text-xs text-amber-800 dark:text-amber-200">
+                    <p className="font-medium">Resolución 000165/2023 — Artículo 11</p>
+                    <p className="text-muted-foreground mt-0.5">Solo se requiere Nombre, NIT y correo electrónico.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Consumidor Final toggle */}
+              <Button
+                type="button"
+                variant={isConsumidorFinal ? 'default' : 'outline'}
+                size="sm"
+                className={`w-full gap-2 ${isConsumidorFinal ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+                onClick={() => {
+                  if (isConsumidorFinal) {
+                    setIsConsumidorFinal(false)
+                    setFormNit('')
+                    setFormName('')
+                  } else {
+                    setIsConsumidorFinal(true)
+                    setFormNit(DIAN_CONSUMIDOR_FINAL_NIT)
+                    setFormName('Consumidor Final')
+                  }
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {isConsumidorFinal ? 'Consumidor Final activado' : 'Marcar como Consumidor Final'}
+              </Button>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="inv-nit" className="text-xs font-medium">NIT / Documento *</Label>
-                  <Input id="inv-nit" value={formNit} onChange={(e) => setFormNit(e.target.value)} placeholder="222222222222" />
+                  <Label htmlFor="inv-nit" className="text-xs font-medium">NIT *</Label>
+                  <NITInput
+                    id="inv-nit"
+                    value={formNit}
+                    onChange={(val) => { setFormNit(val); if (val !== DIAN_CONSUMIDOR_FINAL_NIT) setIsConsumidorFinal(false) }}
+                    placeholder={DIAN_CONSUMIDOR_FINAL_NIT}
+                    disabled={isConsumidorFinal}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="inv-name" className="text-xs font-medium">Nombre / Razón Social *</Label>
-                  <Input id="inv-name" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Consumidor Final" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="inv-type" className="text-xs font-medium">Tipo Documento</Label>
-                  <Select value={formType} onValueChange={setFormType}>
-                    <SelectTrigger id="inv-type" className="w-full"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CC">CC — Cédula</SelectItem>
-                      <SelectItem value="NIT">NIT — Nit</SelectItem>
-                      <SelectItem value="CE">CE — Cédula Extranjería</SelectItem>
-                      <SelectItem value="TI">TI — Tarjeta Identidad</SelectItem>
-                      <SelectItem value="PP">PP — Pasaporte</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="inv-regime" className="text-xs font-medium">Régimen</Label>
-                  <Select value={formRegime} onValueChange={setFormRegime}>
-                    <SelectTrigger id="inv-regime" className="w-full"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="RESPONSABLE">Responsable</SelectItem>
-                      <SelectItem value="NO_RESPONSABLE">No Responsable</SelectItem>
-                      <SelectItem value="SIMPLIFICADO">Simplificado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="inv-address" className="text-xs font-medium">Dirección</Label>
-                  <Input id="inv-address" value={formAddress} onChange={(e) => setFormAddress(e.target.value)} placeholder="Dirección del cliente" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="inv-phone" className="text-xs font-medium">Teléfono</Label>
-                  <Input id="inv-phone" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} placeholder="3101234567" />
+                  <Input
+                    id="inv-name"
+                    value={formName}
+                    onChange={(e) => { setFormName(e.target.value); if (e.target.value !== 'Consumidor Final') setIsConsumidorFinal(false) }}
+                    placeholder="Consumidor Final"
+                    disabled={isConsumidorFinal}
+                  />
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label htmlFor="inv-email" className="text-xs font-medium">Email</Label>
                   <Input id="inv-email" type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} placeholder="cliente@email.com" />
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
+                  <Label htmlFor="inv-address" className="text-xs font-medium flex items-center gap-1.5">
+                    Dirección
+                    <span className="text-[10px] text-muted-foreground font-normal">Solo requerido si la entrega es fuera de la sede del negocio</span>
+                  </Label>
+                  <Input id="inv-address" value={formAddress} onChange={(e) => setFormAddress(e.target.value)} placeholder="Dirección del cliente (opcional)" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="inv-contingency" className="text-xs font-medium">Tipo de Factura</Label>
+                  <Select value={formContingencyType} onValueChange={setFormContingencyType}>
+                    <SelectTrigger id="inv-contingency" className="w-full focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="01">01 — Normal</SelectItem>
+                      <SelectItem value="03">03 — Contingencia Facturador</SelectItem>
+                      <SelectItem value="04">04 — Contingencia DIAN Offline</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="sm:col-span-2 space-y-1.5">
                   <Label htmlFor="inv-notes" className="text-xs font-medium">Notas (opcional)</Label>
                   <Textarea id="inv-notes" value={formNotes} onChange={(e) => setFormNotes(e.target.value)} placeholder="Observaciones adicionales..." rows={2} className="text-xs" />
                 </div>
               </div>
+              {formContingencyType === '03' && (
+                <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+                    <div className="text-xs text-red-800 dark:text-red-200">
+                      <p className="font-medium">Contingencia Tipo 03</p>
+                      <p className="text-muted-foreground mt-0.5">Falla tecnológica del facturador. Debe tener factura pre-autorizada en papel y transmitir dentro de las 48 horas.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {formContingencyType === '04' && (
+                <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+                    <div className="text-xs text-red-800 dark:text-red-200">
+                      <p className="font-medium">Contingencia Tipo 04</p>
+                      <p className="text-muted-foreground mt-0.5">Sistema DIAN fuera de línea. Emitir sin validación previa, reintentar cada 30 min, máximo 48h para transmitir.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -910,7 +993,7 @@ export function InvoicesView() {
 
       {/* ── Invoice Detail Dialog ──────────────────────── */}
       <Dialog open={!!selectedInvoiceId} onOpenChange={(open) => { if (!open) { setSelectedInvoiceId(null); setInvoiceDetail(null) } }}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
@@ -1008,7 +1091,7 @@ export function InvoicesView() {
                     </TableHeader>
                     <TableBody>
                       {invoiceDetail.order?.orderItems?.map((item) => (
-                        <TableRow key={item.id}>
+                        <TableRow key={item.id} className="hover:bg-muted/30">
                           <TableCell className="text-xs font-medium">{item.productName}</TableCell>
                           <TableCell className="text-center text-xs">{item.quantity}</TableCell>
                           <TableCell className="text-right text-xs text-muted-foreground">{formatCOP(item.unitPrice)}</TableCell>
@@ -1107,6 +1190,34 @@ export function InvoicesView() {
                 </div>
               )}
 
+              {/* QR Code for DIAN verification */}
+              {invoiceDetail.qrCode && (
+                <div>
+                  <h4 className="text-xs font-semibold mb-2 flex items-center gap-1.5 text-muted-foreground uppercase tracking-wide">
+                    <QrCode className="h-3.5 w-3.5" /> Código QR — Verificación DIAN
+                  </h4>
+                  <div className="flex flex-col items-center gap-2 rounded-lg bg-muted/50 p-4">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(invoiceDetail.qrCode)}`}
+                      alt="QR Verificación DIAN"
+                      className="w-36 h-36 rounded-lg border border-border/50 bg-white p-1"
+                    />
+                    <a
+                      href={invoiceDetail.qrCode}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Verificar en portal DIAN
+                    </a>
+                    <p className="text-[10px] text-muted-foreground break-all text-center max-w-full">
+                      {invoiceDetail.qrCode}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Resolution info */}
               {invoiceDetail.resolutionNumber && (
                 <div>
@@ -1178,7 +1289,11 @@ export function InvoicesView() {
               {/* Action buttons */}
               <Separator />
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => handleAction('pdf', invoiceDetail.id, invoiceDetail.invoiceNumber)} disabled={actionLoading === `pdf-${invoiceDetail.id}`} className="gap-2">
+                <Button onClick={() => handlePrintInvoice(invoiceDetail.id, invoiceDetail.invoiceNumber)} className="gap-2">
+                  <Printer className="h-4 w-4" />
+                  Imprimir
+                </Button>
+                <Button onClick={() => handleAction('pdf', invoiceDetail.id, invoiceDetail.invoiceNumber)} disabled={actionLoading === `pdf-${invoiceDetail.id}`} variant="outline" className="gap-2">
                   {actionLoading === `pdf-${invoiceDetail.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   Descargar PDF
                 </Button>

@@ -7,50 +7,131 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  VENTIFY POS — Hybrid Schema (SQLite dev / PostgreSQL prod)    ║
+// ║  ─────────────────────────────────────────────────────────────  ║
+// ║  DEVELOPMENT: SQLite (file:./db/custom.db) — zero config        ║
+// ║  PRODUCTION:  PostgreSQL — change provider + DATABASE_URL       ║
+// ║                                                                  ║
+// ║  To migrate to PostgreSQL:                                      ║
+// ║    1. Change provider below to "postgresql"                     ║
+// ║    2. Change DATABASE_URL in .env to postgresql://...           ║
+// ║    3. Run: bunx prisma generate && bunx prisma db push          ║
+// ║    4. Run: bun prisma/migrate-sqlite-to-pg.ts                   ║
+// ║    5. Update src/lib/db.ts to use PrismaPg adapter              ║
+// ║                                                                  ║
+// ║  All raw SQL queries use src/lib/db-dialect.ts helper which      ║
+// ║  auto-detects the dialect from DATABASE_URL.                    ║
+// ╚══════════════════════════════════════════════════════════════════╝
+
+// ----------------------------------------------
+// CONTEXTO: HISTORIAL DE EVENTOS DEL SISTEMA (SaaS Analytics)
+// ----------------------------------------------
+
+model StoreEventLog {
+  id          Int      @id @default(autoincrement())
+  storeId     Int      @map("store_id")
+  eventType   String   @map("event_type")
+  // STORE_CREATED, STORE_ACTIVATED, TRIAL_STARTED, TRIAL_ENDED,
+  // SUBSCRIPTION_ACTIVE, SUBSCRIPTION_PAST_DUE, SUBSCRIPTION_CANCELLED,
+  // SUBSCRIPTION_REACTIVATED, PLAN_UPGRADED, PLAN_DOWNGRADED,
+  // BRANCH_CREATED, STORE_DELETED
+  previousValue String? @map("previous_value")
+  newValue     String?  @map("new_value")
+  metadata    String   @default("{}") @map("metadata")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, eventType])
+  @@index([eventType, createdAt])
+  @@index([createdAt])
+  @@map("store_event_logs")
+}
+
 // ----------------------------------------------
 // CONTEXTO: IDENTIDAD Y ACCESO
 // ----------------------------------------------
 
 model User {
   id           Int      @id @default(autoincrement())
-  phone        String   @unique
+  cedula       String   @unique
+  phone        String?
   email        String?
   passwordHash String
   fullName     String?  @map("full_name")
-  cedula       String?  // Numero de identificacion / cedula
-  role         String   @default("OWNER") // OWNER, EMPLOYEE
+  role         String   @default("OWNER") // SUPER_ADMIN, OWNER, EMPLOYEE
+  securityQuestion  String?   @map("security_question")
+  securityAnswer    String?   @map("security_answer")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt
 
-  store Store? @relation("UserStore")
+  store    Store?    @relation("UserStore")
+  employee Employee? @relation("EmployeeStore")
 
-  cashRegisters CashRegister[]
+  cashRegisters    CashRegister[]
+  purchases        Purchase[]       @relation("UserPurchases")
+  purchasePaymentRecords PurchasePayment[] @relation("UserPurchasePayments")
 
   @@map("users")
+}
+
+// ----------------------------------------------
+// CONTEXTO: OTP (One-Time Password) para WhatsApp
+// ----------------------------------------------
+
+model OtpToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  phone     String
+  code      String
+  verified  Boolean  @default(false)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("otp_tokens")
 }
 
 model Store {
   id           Int      @id @default(autoincrement())
   userId       Int      @unique @map("user_id")
   name         String
-  legalName    String?  @map("legal_name") // Razon social / nombre legal
-  nit          String?  // Numero de Identificacion Tributaria
-  address      String?  // Direccion del negocio
-  phone        String?  // Telefono del negocio
+  legalName    String?  @map("legal_name")
+  nit          String?
+  address      String?
+  phone        String?
   currencyCode String   @default("COP") @map("currency_code")
   countryCode  String?  @map("country_code")
   // DIAN Resolution (Facturación Electrónica)
-  invoicePrefix          String?  @map("invoice_prefix") // Prefijo: FE, POS
-  resolutionNumber       String?  @map("resolution_number") // Número de resolución DIAN: 18764
-  resolutionStartDate    DateTime? @map("resolution_start_date") // Fecha inicio rango numeración
-  resolutionEndDate      DateTime? @map("resolution_end_date") // Fecha fin rango numeración
-  resolutionStartNumber  Int?     @map("resolution_start_number") // Consecutivo inicial
-  resolutionEndNumber    Int?     @map("resolution_end_number") // Consecutivo final
-  invoiceTestMode        Boolean  @default(true) @map("invoice_test_mode") // true=habilitación, false=producción
+  invoicePrefix          String?  @map("invoice_prefix")
+  resolutionNumber       String?  @map("resolution_number")
+  resolutionStartDate    DateTime? @map("resolution_start_date")
+  resolutionEndDate      DateTime? @map("resolution_end_date")
+  resolutionStartNumber  Int?     @map("resolution_start_number")
+  resolutionEndNumber    Int?     @map("resolution_end_number")
+  invoiceTestMode        Boolean  @default(true) @map("invoice_test_mode")
+  // Facturación Electrónica Híbrida
+  invoiceProvider        String   @default("NONE") @map("invoice_provider")
+  invoiceEnabled         Boolean  @default(false) @map("invoice_enabled")
+  certificateUploaded    Boolean  @default(false) @map("certificate_uploaded")
+  certificatePassword    String?  @map("certificate_password")
+  softwareId             String?  @map("software_id")
+  softwarePin            String?  @map("software_pin")
+  providerConfig         String   @default("{}") @map("provider_config")
+  // DIVIPOLA (código municipio DIAN)
+  divipolaCode           String?  @map("divipola_code")
+  cityName               String?  @map("city_name")
+  // Sucursal / Branch support
+  parentStoreId          Int?     @map("parent_store_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt
 
-  user                User                 @relation("UserStore", fields: [userId], references: [id])
+  user                User                 @relation("UserStore", fields: [userId], references: [id], onDelete: Restrict)
+  parentStore         Store?               @relation("StoreBranches", fields: [parentStoreId], references: [id])
+  branches            Store[]              @relation("StoreBranches")
+  employees           Employee[]
+  roles               Role[]
   categories          Category[]
   products            Product[]
   inventoryMovements  InventoryMovement[]
@@ -69,8 +150,161 @@ model Store {
   expenses            Expense[]
   taxRates            TaxRate[]
   invoices            Invoice[]
+  creditNotes         CreditNote[]
+  contingencyInvoices ContingencyInvoice[]
+  quotations          Quotation[]
+  subscription        Subscription?
+  paymentReceipts     PaymentReceipt[]
+  subscriptionHistories SubscriptionHistory[]
+  billingRecords      BillingRecord[]
+  purchasePayments    PurchasePayment[]
+  costHistories       CostHistory[]
+  storeEventLogs     StoreEventLog[]
 
   @@map("stores")
+}
+
+// ----------------------------------------------
+// CONTEXTO: PLANES Y SUSCRIPCIONES (SaaS)
+// ----------------------------------------------
+
+model Plan {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  price       Int
+  maxStores         Int @default(1) @map("max_stores")
+  maxEmployees      Int @default(5) @map("max_employees")
+  maxProducts       Int @default(100) @map("max_products")
+  features    String   @default("{}") @map("features")
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@unique([name])
+  @@map("plans")
+}
+
+model Subscription {
+  id             Int       @id @default(autoincrement())
+  storeId        Int       @unique @map("store_id")
+  planId         Int       @map("plan_id")
+  status         String    @default("TRIAL")
+  startDate      DateTime  @default(now()) @map("start_date")
+  endDate        DateTime? @map("end_date")
+  trialEndDate   DateTime? @map("trial_end_date")
+  graceEndDate   DateTime? @map("grace_end_date")
+  cancelReason   String?   @map("cancel_reason")
+  billingPeriod  String    @default("MONTHLY") @map("billing_period")
+  billingPrice   Int
+  lastBilledAt   DateTime? @map("last_billed_at")
+  nextBillingAt  DateTime? @map("next_billing_at")
+  // ── Proration: credit for unused days when changing plans ──
+  prorationCredit Int      @default(0) @map("proration_credit")
+  previousPlanId  Int?     @map("previous_plan_id")
+  previousPlanName String? @map("previous_plan_name")
+  proratedDaysRemaining Int @default(0) @map("prorated_days_remaining")
+  // ── Expiry alert tracking ──
+  alertSentAt3d  DateTime? @map("alert_sent_at_3d")
+  alertSentAt1d  DateTime? @map("alert_sent_at_1d")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt
+
+  store            Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  plan            Plan              @relation(fields: [planId], references: [id], onDelete: Restrict)
+  paymentReceipts PaymentReceipt[]
+  subscriptionHistories SubscriptionHistory[]
+  billingRecords  BillingRecord[]
+
+  @@index([planId])
+  @@map("subscriptions")
+}
+
+// ----------------------------------------------
+// CONTEXTO: COMPROBANTES DE PAGO
+// ----------------------------------------------
+
+model SubscriptionHistory {
+  id             Int      @id @default(autoincrement())
+  storeId        Int      @map("store_id")
+  subscriptionId Int      @map("subscription_id")
+  eventType      String   @map("event_type") // CREATED, RENEWED, CANCELLED, PLAN_CHANGED, EXPIRED, REACTIVATED, TRIAL_STARTED, GRACE_STARTED, BILLING_PERIOD_CHANGED
+  previousStatus String?  @map("previous_status")
+  newStatus      String?  @map("new_status")
+  previousPlanId Int?     @map("previous_plan_id")
+  newPlanId      Int?     @map("new_plan_id")
+  previousPlanName String? @map("previous_plan_name")
+  newPlanName    String?  @map("new_plan_name")
+  description    String?
+  metadata       String   @default("{}") @map("metadata") // JSON with extra context
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([subscriptionId])
+  @@index([eventType])
+  @@map("subscription_history")
+}
+
+model BillingRecord {
+  id              Int      @id @default(autoincrement())
+  storeId         Int      @map("store_id")
+  subscriptionId  Int      @map("subscription_id")
+  receiptId       Int?     @map("receipt_id") // FK to PaymentReceipt if paid via receipt
+  planId          Int      @map("plan_id")
+  planName        String   @map("plan_name")
+  billingPeriod   String   @map("billing_period") // MONTHLY, QUARTERLY, SEMI_ANNUAL, ANNUAL
+  amount          Int      // COP charged
+  prorationCredit Int      @default(0) @map("proration_credit")
+  netAmount       Int      @map("net_amount") // amount - prorationCredit
+  status          String   @default("PAID") // PAID, PENDING, FAILED
+  paymentMethod   String?  @map("payment_method")
+  periodStart     DateTime @map("period_start")
+  periodEnd       DateTime @map("period_end")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  store        Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  subscription Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  receipt     PaymentReceipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+
+  @@index([storeId])
+  @@index([subscriptionId])
+  @@index([receiptId])
+  @@map("billing_records")
+}
+
+model PaymentReceipt {
+  id             Int       @id @default(autoincrement())
+  subscriptionId Int       @map("subscription_id")
+  storeId        Int       @map("store_id")
+  fileName       String    @map("file_name")
+  fileSize       Int       @map("file_size")
+  fileType       String    @map("file_type")
+  fileData       String    @map("file_data")
+  amount         Int
+  reference      String?
+  paymentMethod  String    @default("OTHER") @map("payment_method")
+  notes          String?
+  status         String    @default("PENDING")
+  reviewedBy     String?   @map("reviewed_by")
+  reviewNotes    String?   @map("review_notes")
+  reviewedAt     DateTime? @map("reviewed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  billingRecords BillingRecord[]
+
+  @@index([subscriptionId])
+  @@index([storeId, status])
+  @@map("payment_receipts")
 }
 
 // ----------------------------------------------
@@ -80,21 +314,22 @@ model Store {
 model TaxRate {
   id          Int      @id @default(autoincrement())
   storeId     Int      @map("store_id")
-  name        String   // Nombre descriptivo: "IVA 19%", "IVA 5%", "Impoconsumo 8%"
-  code        String   @unique // Codigo DIAN: "01"=IVA 19%, "02"=IVA 5%, "03"=IVA 0% Exento, "04"=IVA Excluido, "05"=Impoconsumo
-  rateType    String   @map("rate_type") // PERCENTAGE, FIXED_AMOUNT
-  rate        Int      // Tasa: 19 para 19%, 800 para $800 fijos
-  applyTo     String   @default("PRODUCT") // PRODUCT, SERVICE, BOTH
-  category    String   @default("SALES_TAX") // SALES_TAX, CONSUMPTION_TAX, WITHHOLDING, MUNICIPAL
+  name        String
+  code        String
+  rateType    String   @map("rate_type")
+  rate        Int
+  applyTo     String   @default("PRODUCT")
+  category    String   @default("SALES_TAX")
   isActive    Boolean  @default(true) @map("is_active")
-  isDefault   Boolean  @default(false) @map("is_default") // Tasa por defecto para nuevos productos
-  description String?  // Descripcion detallada o nota legal
+  isDefault   Boolean  @default(false) @map("is_default")
+  description String?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt
 
-  store     Store     @relation(fields: [storeId], references: [id])
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
   products  Product[]
 
+  @@unique([storeId, code])
   @@map("tax_rates")
 }
 
@@ -106,55 +341,151 @@ model Invoice {
   id              Int      @id @default(autoincrement())
   storeId         Int      @map("store_id")
   orderId         Int      @unique @map("order_id")
-  // Numeracion DIAN
-  prefix          String   @default("FE") // Prefijo de la resolucion: FE, POS
-  consecutive     Int      // Numero consecutivo dentro del rango autorizado
-  resolutionNumber String? @map("resolution_number") // Numero de resolucion DIAN: 18764
-  resolutionDate  DateTime? @map("resolution_date") // Fecha de la resolucion
-  startDate       DateTime? @map("start_date") // Fecha inicio rango de numeracion
-  endDate         DateTime? @map("end_date") // Fecha fin rango de numeracion
-  startNumber     Int?     @map("start_number") // Consecutivo inicial autorizado
-  endNumber       Int?     @map("end_number") // Consecutivo final autorizado
-  // Informacion del cliente
-  customerNit     String?  @map("customer_nit") // NIT del cliente (DIAN requires 13 digits or 222222222222 for consumer)
-  customerName    String?  @map("customer_name") // Nombre / razon social del cliente
-  customerAddress String?  @map("customer_address") // Direccion del cliente
-  customerPhone   String?  @map("customer_phone") // Telefono del cliente
-  customerEmail   String?  @map("customer_email") // Email del cliente
-  customerRegime  String?  @map("customer_regime") // Regimen fiscal: RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO
-  customerType    String?  @map("customer_type") // Tipo de documento: CC, NIT, CE, TI, PP
-  // Desglose tributario
-  subtotalBase    Int      @map("subtotal_base") // Base gravable (antes de impuestos)
-  taxExemptAmount Int      @default(0) @map("tax_exempt_amount") // Monto exento de impuestos
-  taxBreakdown    String?  @map("tax_breakdown") // JSON: [{code:"01",name:"IVA 19%",base:50000,rate:19,amount:9500}]
-  totalTaxAmount  Int      @default(0) @map("total_tax_amount") // Suma total de impuestos
-  totalWithTax    Int      @map("total_with_tax") // Total con impuestos
-  discountAmount  Int      @default(0) @map("discount_amount") // Descuento total
-  tipAmount       Int      @default(0) @map("tip_amount") // Propina
-  grandTotal      Int      @map("grand_total") // Total final (totalWithTax - discount + tip)
-  paymentMethod   String?  @map("payment_method") // Metodo de pago DIAN: 1=EFECTIVO, 2=BANCO, etc.
-  paymentNotes    String?  @map("payment_notes") // Notas de pago
-  // DIAN Compliance
-  cufe            String?  // Codigo Unico de Factura Electronica (CUFE/CUDFE)
-  qrCode          String?  @map("qr_code") // URL del codigo QR con CUFE
-  xmlContent      String?  @map("xml_content") // XML UBL 2.1 generado
-  notes           String?  // Notas/observaciones
-  // Estado
-  status          String   @default("DRAFT") // DRAFT, PENDING_VALIDATE, VALIDATED, DELIVERED, REJECTED, CANCELLED
-  dianResponse    String?  @map("dian_response") // JSON: respuesta de la DIAN al validar
-  dianErrorCode   String?  @map("dian_error_code") // Codigo de error DIAN si fue rechazada
-  sentAt          DateTime? @map("sent_at") // Fecha/hora de envio a DIAN
-  validatedAt     DateTime? @map("validated_at") // Fecha/hora de validacion exitosa
-  emailedAt       DateTime? @map("emailed_at") // Fecha/hora de envio por email al cliente
-  // Ambiente
-  testMode        Boolean  @default(true) @map("test_mode") // true=habilitacion, false=produccion
+  prefix          String   @default("FE")
+  consecutive     Int
+  resolutionNumber String? @map("resolution_number")
+  resolutionDate  DateTime? @map("resolution_date")
+  startDate       DateTime? @map("start_date")
+  endDate         DateTime? @map("end_date")
+  startNumber     Int?     @map("start_number")
+  endNumber       Int?     @map("end_number")
+  customerNit     String?  @map("customer_nit")
+  customerName    String?  @map("customer_name")
+  customerAddress String?  @map("customer_address")
+  customerPhone   String?  @map("customer_phone")
+  customerEmail   String?  @map("customer_email")
+  customerRegime  String?  @map("customer_regime")
+  customerType    String?  @map("customer_type")
+  subtotalBase    Int      @map("subtotal_base")
+  taxExemptAmount Int      @default(0) @map("tax_exempt_amount")
+  taxBreakdown    String?  @map("tax_breakdown")
+  totalTaxAmount  Int      @default(0) @map("total_tax_amount")
+  totalWithTax    Int      @map("total_with_tax")
+  discountAmount  Int      @default(0) @map("discount_amount")
+  tipAmount       Int      @default(0) @map("tip_amount")
+  grandTotal      Int      @map("grand_total")
+  paymentMethod   String?  @map("payment_method")
+  paymentNotes    String?  @map("payment_notes")
+  cufe            String?
+  qrCode          String?  @map("qr_code")
+  xmlContent      String?  @map("xml_content")
+  notes           String?
+  status          String   @default("DRAFT")
+  dianResponse    String?  @map("dian_response")
+  dianErrorCode   String?  @map("dian_error_code")
+  sentAt          DateTime? @map("sent_at")
+  validatedAt     DateTime? @map("validated_at")
+  emailedAt       DateTime? @map("emailed_at")
+  testMode        Boolean  @default(true) @map("test_mode")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt
 
-  store Store @relation(fields: [storeId], references: [id])
-  order Order @relation(fields: [orderId], references: [id])
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
+  creditNotes         CreditNote[]
+  contingencyInvoices ContingencyInvoice[]
+
+  @@index([storeId, createdAt])
+  @@index([storeId, status])
   @@map("invoices")
+}
+
+model CreditNote {
+  id                Int       @id @default(autoincrement())
+  storeId           Int       @map("store_id")
+  invoiceId         Int?      @map("invoice_id")
+  prefix            String    @default("NC")
+  consecutive       Int
+  resolutionNumber  String?   @map("resolution_number")
+  resolutionDate    DateTime? @map("resolution_date")
+  startDate         DateTime? @map("start_date")
+  endDate           DateTime? @map("end_date")
+  startNumber       Int?      @map("start_number")
+  endNumber         Int?      @map("end_number")
+  noteType          String    @default("CREDIT")
+  concept           String    @map("concept")
+  description       String?
+  customerNit       String?   @map("customer_nit")
+  customerName      String?   @map("customer_name")
+  customerEmail     String?   @map("customer_email")
+  customerPhone     String?   @map("customer_phone")
+  customerAddress   String?   @map("customer_address")
+  customerRegime    String?   @map("customer_regime")
+  customerType      String?   @map("customer_type")
+  subtotalBase      Int       @default(0) @map("subtotal_base")
+  taxExemptAmount   Int       @default(0) @map("tax_exempt_amount")
+  taxBreakdown      String?   @map("tax_breakdown")
+  totalTaxAmount    Int       @default(0) @map("total_tax_amount")
+  totalWithTax      Int       @map("total_with_tax")
+  discountAmount    Int       @default(0) @map("discount_amount")
+  grandTotal        Int       @map("grand_total")
+  cufe              String?
+  qrCode            String?   @map("qr_code")
+  xmlContent        String?   @map("xml_content")
+  referencedInvoiceId String?  @map("referenced_invoice_id")
+  referencedPrefix   String?  @map("referenced_prefix")
+  referencedConsec   Int?     @map("referenced_consec")
+  status            String    @default("DRAFT")
+  dianResponse      String?   @map("dian_response")
+  sentAt            DateTime? @map("sent_at")
+  validatedAt       DateTime? @map("validated_at")
+  emailedAt         DateTime? @map("emailed_at")
+  testMode          Boolean   @default(true) @map("test_mode")
+  notes             String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt
+
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  invoice  Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([storeId])
+  @@index([invoiceId])
+  @@map("credit_notes")
+}
+
+model ContingencyInvoice {
+  id                Int       @id @default(autoincrement())
+  storeId           Int       @map("store_id")
+  invoiceId         Int?      @map("invoice_id")
+  prefix            String    @default("FC")
+  consecutive       Int
+  contingencyType   String    @default("04")
+  reason            String?
+  customerNit       String?   @map("customer_nit")
+  customerName      String?   @map("customer_name")
+  customerEmail     String?   @map("customer_email")
+  customerPhone     String?   @map("customer_phone")
+  customerAddress   String?   @map("customer_address")
+  customerRegime    String?   @map("customer_regime")
+  customerType      String?   @map("customer_type")
+  subtotalBase      Int       @default(0) @map("subtotal_base")
+  taxExemptAmount   Int       @default(0) @map("tax_exempt_amount")
+  taxBreakdown      String?   @map("tax_breakdown")
+  totalTaxAmount    Int       @default(0) @map("total_tax_amount")
+  totalWithTax      Int       @map("total_with_tax")
+  discountAmount    Int       @default(0) @map("discount_amount")
+  grandTotal        Int       @map("grand_total")
+  originalCufe      String?   @map("original_cufe")
+  originalCufeQR    String?   @map("original_cufe_qr")
+  contingencyCufe   String?   @map("contingency_cufe")
+  xmlContent        String?   @map("xml_content")
+  status            String    @default("DRAFT")
+  dianResponse      String?   @map("dian_response")
+  contingencyStart  DateTime  @default(now()) @map("contingency_start")
+  contingencyEnd    DateTime? @map("contingency_end")
+  retransmittedAt   DateTime? @map("retransmitted_at")
+  testMode          Boolean   @default(true) @map("test_mode")
+  notes             String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt
+
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  invoice  Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([storeId])
+  @@index([invoiceId])
+  @@map("contingency_invoices")
 }
 
 // ----------------------------------------------
@@ -169,7 +500,7 @@ model Category {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt
 
-  store    Store     @relation(fields: [storeId], references: [id])
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
   products Product[]
 
   @@unique([storeId, name])
@@ -181,30 +512,36 @@ model Product {
   storeId       Int      @map("store_id")
   categoryId    Int?     @map("category_id")
   providerId    Int?     @map("provider_id")
-  taxRateId     Int?     @map("tax_rate_id") // Clasificacion tributaria del producto
+  taxRateId     Int?     @map("tax_rate_id")
   sku           String?
+  barcode       String?
   name          String
   description   String?
   imgUrl        String?  @map("img_url")
-  invima        String?                                      // Registro INVIMA (opcional, Colombia)
-  costPrice     Int      @default(0) @map("cost_price")       // en pesos colombianos
-  salePrice     Int                                         // en pesos colombianos (incluye IVA si aplica)
-  commission    Int      @default(0) @map("commission")   // porcentaje de comision (0-100)
+  invima        String?
+  costPrice     Int      @default(0) @map("cost_price")
+  salePrice     Int
+  commission    Int      @default(0) @map("commission")
   currentStock  Int      @default(0) @map("current_stock")
   minStock      Int      @default(5) @map("min_stock")
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt
 
-  store              Store                @relation(fields: [storeId], references: [id])
-  category           Category?            @relation(fields: [categoryId], references: [id])
-  provider           Provider?            @relation(fields: [providerId], references: [id])
-  taxRate            TaxRate?             @relation(fields: [taxRateId], references: [id])
+  store              Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category           Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  provider           Provider?            @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  taxRate            TaxRate?             @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
   inventoryMovements InventoryMovement[]
   orderItems         OrderItem[]
   comandaItems       ComandaItem[]
   purchaseItems      PurchaseItem[]
+  quotationItems     QuotationItem[]
+  costHistories      CostHistory[]
 
+  @@index([categoryId])
+  @@index([providerId])
+  @@index([taxRateId])
   @@unique([storeId, name])
   @@map("products")
 }
@@ -213,74 +550,159 @@ model InventoryMovement {
   id           Int      @id @default(autoincrement())
   storeId      Int      @map("store_id")
   productId    Int      @map("product_id")
-  quantity     Int      // positivo=entrada, negativo=salida
-  movementType String   @map("movement_type") // PURCHASE, SALE, ADJUSTMENT, RETURN, LOSS
+  quantity     Int
+  movementType String   @map("movement_type")
   referenceId  Int?     @map("reference_id")
   notes        String?
   createdAt    DateTime @default(now()) @map("created_at")
 
-  store   Store   @relation(fields: [storeId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
-  order   Order?  @relation("OrderMovements", fields: [referenceId], references: [id])
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  order   Order?  @relation("OrderMovements", fields: [referenceId], references: [id], onDelete: Cascade)
 
+  @@index([storeId, productId, createdAt])
+  @@index([referenceId])
   @@map("inventory_movements")
 }
 
 model Purchase {
-  id            Int      @id @default(autoincrement())
-  storeId       Int      @map("store_id")
-  providerId    Int?     @map("provider_id")
-  invoiceNumber String?  @map("invoice_number") // Numero de factura del proveedor
-  date          DateTime @default(now())
-  notes         String?
-  total         Int      @default(0) // total en pesos
-  status        String   @default("COMPLETED") // COMPLETED, CANCELLED
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt
+  id               Int       @id @default(autoincrement())
+  storeId          Int       @map("store_id")
+  providerId       Int?      @map("provider_id")
+  invoiceNumber    String?   @map("invoice_number")
+  documentType     String    @default("FACTURA_COMPRA") @map("document_type") // FACTURA_COMPRA, NOTA_CREDITO, NOTA_DEBITO, RECIBO_CAJA, ORDEN_COMPRA
+  consecutiveNumber String?   @map("consecutive_number")
+  date             DateTime  @default(now())
+  dueDate          DateTime? @map("due_date")
+  paymentTerms     String    @default("CONTADO") @map("payment_terms") // CONTADO, CREDITO_30, CREDITO_60, CREDITO_90
+  paymentStatus    String    @default("PENDING") @map("payment_status") // PENDING, PARTIAL, PAID
+  amountPaid       Int       @default(0) @map("amount_paid")
+  subtotal         Int       @default(0)
+  totalIva         Int       @default(0) @map("total_iva")
+  totalReteFuente  Int       @default(0) @map("total_rete_fuente")
+  totalReteIca     Int       @default(0) @map("total_rete_ica")
+  totalReteIva     Int       @default(0) @map("total_rete_iva")
+  totalDiscount    Int       @default(0) @map("total_discount")
+  notes            String?
+  total            Int       @default(0)
+  status           String    @default("COMPLETED") // PENDING, APPROVED, RECEIVED, PARTIAL, COMPLETED, CANCELLED
+  createdById      Int?      @map("created_by_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt
 
-  store         Store          @relation(fields: [storeId], references: [id])
-  provider      Provider?      @relation(fields: [providerId], references: [id])
-  purchaseItems PurchaseItem[]
+  store            Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  provider         Provider?         @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  purchaseItems    PurchaseItem[]
+  purchasePayments PurchasePayment[]
+  costHistoryRecords  CostHistory[]
+  createdBy        User?             @relation("UserPurchases", fields: [createdById], references: [id], onDelete: SetNull)
 
+  @@index([storeId])
+  @@index([providerId])
+  @@index([storeId, date])
+  @@index([status])
   @@map("purchases")
 }
 
 model PurchaseItem {
-  id               Int @id @default(autoincrement())
-  purchaseId       Int @map("purchase_id")
-  productId        Int @map("product_id")
+  id               Int      @id @default(autoincrement())
+  purchaseId       Int      @map("purchase_id")
+  productId        Int      @map("product_id")
   quantity         Int
-  returnedQuantity Int @default(0) @map("returned_quantity") // cantidad ya devuelta
-  unitCost         Int @map("unit_cost") // costo unitario en pesos
-  total            Int // quantity * unitCost
+  returnedQuantity Int      @default(0) @map("returned_quantity")
+  unitCost         Int      @map("unit_cost")
+  ivaRate          Int      @default(0) @map("iva_rate") // IVA % for this item (0 = exento, 19, 5, etc.)
+  ivaAmount        Int      @default(0) @map("iva_amount")
+  discountAmount   Int      @default(0) @map("discount_amount")
+  lotNumber        String?  @map("lot_number")
+  expiryDate       DateTime? @map("expiry_date")
+  manufacturingDate DateTime? @map("manufacturing_date")
+  total            Int      // unitCost * quantity + ivaAmount - discountAmount
 
   purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
 
+  @@index([purchaseId])
+  @@index([productId])
   @@map("purchase_items")
 }
 
 model Provider {
-  id          Int      @id @default(autoincrement())
-  storeId     Int      @map("store_id")
-  name        String
-  contactName String?  @map("contact_name")
-  phone       String?
-  email       String?
-  address     String?
-  city        String?
-  nit         String?  // Numero de Identificacion Tributaria
-  notes       String?
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  storeId      Int      @map("store_id")
+  name         String
+  contactName  String?  @map("contact_name")
+  phone        String?
+  email        String?
+  address      String?
+  city         String?
+  nit          String?
+  dv           String?                          // Dígito de verificación
+  regime       String   @default("NO_RESPONSABLE") // RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO, GRAN_CONTRIBUTUYENTE
+  autoretainer Boolean  @default(false) @map("autoretainer") // Autoretenedor de IVA
+  paymentTerms String   @default("CONTADO") @map("payment_terms") // CONTADO, CREDITO_30, CREDITO_60, CREDITO_90
+  creditLimit  Int      @default(0) @map("credit_limit")
+  totalDebt    Int      @default(0) @map("total_debt")
+  totalPurchases Int     @default(0) @map("total_purchases")
+  notes        String?
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt
 
-  store     Store      @relation(fields: [storeId], references: [id])
+  store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
   products  Product[]
   purchases Purchase[]
 
   @@unique([storeId, name])
+  @@index([storeId, nit])
   @@map("providers")
+}
+
+// ----------------------------------------------
+// CONTEXTO: PAGOS A PROVEEDORES
+// ----------------------------------------------
+
+model PurchasePayment {
+  id            Int      @id @default(autoincrement())
+  purchaseId    Int      @map("purchase_id")
+  storeId       Int      @map("store_id")
+  amount        Int
+  paymentMethod String   @default("CASH") @map("payment_method") // CASH, TRANSFER, CHECK, CARD
+  reference     String?
+  notes         String?
+  createdById   Int?     @map("created_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  purchase  Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("UserPurchasePayments", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([purchaseId])
+  @@index([storeId])
+  @@map("purchase_payments")
+}
+
+// ----------------------------------------------
+// CONTEXTO: HISTORIAL DE COSTOS POR PRODUCTO
+// ----------------------------------------------
+
+model CostHistory {
+  id           Int      @id @default(autoincrement())
+  productId    Int      @map("product_id")
+  storeId      Int      @map("store_id")
+  previousCost Int      @map("previous_cost")
+  newCost      Int      @map("new_cost")
+  purchaseId   Int?     @map("purchase_id")
+  reason       String?  // PURCHASE, MANUAL, ADJUSTMENT
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  purchase Purchase? @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@index([storeId])
+  @@map("cost_histories")
 }
 
 // ----------------------------------------------
@@ -293,18 +715,20 @@ model Customer {
   name            String
   phone           String?
   email           String?
-  nit             String?  // NIT o numero de identificacion tributaria
-  documentType    String?  @map("document_type") // CC, NIT, CE, TI, PP
-  address         String?  // Direccion del cliente
-  regime          String?  // Regimen fiscal: RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO
-  totalDebt       Int      @default(0) @map("total_debt") // en pesos
+  nit             String?
+  documentType    String?  @map("document_type")
+  address         String?
+  regime          String?
+  totalDebt       Int      @default(0) @map("total_debt")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt
 
-  store          Store          @relation(fields: [storeId], references: [id])
+  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
   orders         Order[]
   tableSessions  TableSession[]
+  quotations     Quotation[]
 
+  @@index([storeId])
   @@map("customers")
 }
 
@@ -315,28 +739,33 @@ model Order {
   tableSessionId Int?           @map("table_session_id")
   cashRegisterId Int?           @map("cash_register_id")
   orderNumber    String         @map("order_number")
-  subtotal       Int            // pesos (solo productos/servicios, SIN impuestos)
-  taxAmount      Int            @default(0) @map("tax_amount") // total impuestos
-  taxBreakdown   String?        @map("tax_breakdown") // JSON desglose por tipo de impuesto
-  tipAmount      Int            @default(0) @map("tip_amount") // propina en pesos
-  discountAmount Int            @default(0) @map("discount_amount") // descuento en pesos
-  discountType   String         @default("NONE") @map("discount_type") // NONE, PERCENTAGE, FIXED
-  discountReason String?        @map("discount_reason") // razon del descuento
-  total          Int            // pesos (subtotal + taxAmount - discountAmount + tipAmount)
-  status         String         @default("COMPLETED") // COMPLETED, PENDING, CANCELLED, CREDIT
-  paymentMethod  String         @default("CASH") @map("payment_method") // CASH, DAVIPLATA, NEQUI, CARD, TRANSFER, MIXED, CREDIT
+  subtotal       Int
+  taxAmount      Int            @default(0) @map("tax_amount")
+  taxBreakdown   String?        @map("tax_breakdown")
+  tipAmount      Int            @default(0) @map("tip_amount")
+  discountAmount Int            @default(0) @map("discount_amount")
+  discountType   String         @default("NONE") @map("discount_type")
+  discountReason String?        @map("discount_reason")
+  total          Int
+  status         String         @default("COMPLETED")
+  paymentMethod  String         @default("CASH") @map("payment_method")
   notes          String?
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt
 
-  store              Store               @relation(fields: [storeId], references: [id])
-  customer           Customer?           @relation(fields: [customerId], references: [id])
-  tableSession       TableSession?       @relation(fields: [tableSessionId], references: [id])
-  cashRegister       CashRegister?       @relation(fields: [cashRegisterId], references: [id])
+  store              Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  tableSession       TableSession?       @relation(fields: [tableSessionId], references: [id], onDelete: SetNull)
+  cashRegister       CashRegister?       @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
   orderItems         OrderItem[]
   inventoryMovements InventoryMovement[] @relation("OrderMovements")
   invoice            Invoice?
 
+  @@index([storeId, createdAt])
+  @@index([storeId, status])
+  @@index([customerId])
+  @@index([tableSessionId])
+  @@index([cashRegisterId])
   @@map("orders")
 }
 
@@ -346,19 +775,22 @@ model OrderItem {
   productId        Int?     @map("product_id")
   serviceId        Int?     @map("service_id")
   quantity         Int
-  returnedQuantity Int      @default(0) @map("returned_quantity") // cantidad ya devuelta
-  unitPrice        Int      @map("unit_price") // precio al momento de la venta
-  totalRow         Int      @map("total_row")  // quantity * unitPrice
-  taxCode          String?  @map("tax_code") // Codigo del impuesto aplicado (snapshot): "01", "02", "03", "04", "05"
-  taxRate          Int      @default(0) @map("tax_rate") // Tasa del impuesto al momento de la venta (snapshot)
-  taxAmount        Int      @default(0) @map("tax_amount") // Monto del impuesto para esta linea
-  taxBase          Int      @default(0) @map("tax_base") // Base gravable para esta linea
-  notes            String?  // notas del item (ej: "sin hielo", "doble")
+  returnedQuantity Int      @default(0) @map("returned_quantity")
+  unitPrice        Int      @map("unit_price")
+  totalRow         Int      @map("total_row")
+  taxCode          String?  @map("tax_code")
+  taxRate          Int      @default(0) @map("tax_rate")
+  taxAmount        Int      @default(0) @map("tax_amount")
+  taxBase          Int      @default(0) @map("tax_base")
+  notes            String?
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product? @relation(fields: [productId], references: [id])
-  service Service? @relation(fields: [serviceId], references: [id])
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
+  @@index([orderId])
+  @@index([productId])
+  @@index([serviceId])
   @@map("order_items")
 }
 
@@ -369,15 +801,15 @@ model OrderItem {
 model BarTable {
   id        Int      @id @default(autoincrement())
   storeId   Int      @map("store_id")
-  number    Int      // numero de mesa
-  name      String?  // nombre opcional (ej: "Terraza 1")
-  capacity  Int      @default(4) // capacidad en personas
-  zone      String   @default("PRINCIPAL") // PRINCIPAL, TERRAZA, VIP, BARRA, EXTERIOR
+  number    Int
+  name      String?
+  capacity  Int      @default(4)
+  zone      String   @default("PRINCIPAL")
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt
 
-  store          Store          @relation(fields: [storeId], references: [id])
+  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
   tableSessions  TableSession[]
 
   @@unique([storeId, number])
@@ -389,18 +821,21 @@ model TableSession {
   storeId      Int      @map("store_id")
   barTableId   Int      @map("bar_table_id")
   customerId   Int?     @map("customer_id")
-  guests       Int      @default(1) // numero de personas en la mesa
+  guests       Int      @default(1)
   startedAt    DateTime @default(now()) @map("started_at")
   closedAt     DateTime? @map("closed_at")
-  status       String   @default("OPEN") // OPEN, CLOSED
+  status       String   @default("OPEN")
   notes        String?
 
-  store       Store        @relation(fields: [storeId], references: [id])
-  barTable    BarTable     @relation(fields: [barTableId], references: [id])
-  customer    Customer?    @relation(fields: [customerId], references: [id])
+  store       Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  barTable    BarTable     @relation(fields: [barTableId], references: [id], onDelete: Cascade)
+  customer    Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
   orders      Order[]
   comandaItems ComandaItem[]
 
+  @@index([storeId])
+  @@index([barTableId])
+  @@index([customerId])
   @@map("table_sessions")
 }
 
@@ -410,19 +845,23 @@ model ComandaItem {
   tableSessionId Int      @map("table_session_id")
   productId      Int?     @map("product_id")
   serviceId      Int?     @map("service_id")
-  productName    String   @map("product_name") // nombre al momento de pedir
+  productName    String   @map("product_name")
   quantity       Int
-  unitPrice      Int      @map("unit_price") // precio al momento de pedir (pesos)
-  total          Int      // quantity * unitPrice (pesos)
-  notes          String?  // notas del item (ej: "sin hielo", "extra limon")
-  status         String   @default("PENDING") // PENDING, SERVED, PAID, CANCELLED
+  unitPrice      Int      @map("unit_price")
+  total          Int
+  notes          String?
+  status         String   @default("PENDING")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  store        Store         @relation(fields: [storeId], references: [id])
+  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
   tableSession TableSession  @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
-  product      Product?      @relation(fields: [productId], references: [id])
-  service      Service?      @relation(fields: [serviceId], references: [id])
+  product      Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  service      Service?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
+  @@index([storeId])
+  @@index([tableSessionId])
+  @@index([productId])
+  @@index([serviceId])
   @@map("comanda_items")
 }
 
@@ -434,14 +873,15 @@ model LedgerAccount {
   id        Int     @id @default(autoincrement())
   storeId   Int     @map("store_id")
   name      String
-  type      String  // ASSET, LIABILITY, EQUITY, INCOME, EXPENSE
+  type      String
   isDefault Boolean @default(false) @map("is_default")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt
 
-  store          Store           @relation(fields: [storeId], references: [id])
+  store          Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
   journalEntries JournalEntry[]
 
+  @@index([storeId])
   @@map("ledger_accounts")
 }
 
@@ -449,16 +889,17 @@ model JournalEntry {
   id              Int      @id @default(autoincrement())
   storeId         Int      @map("store_id")
   ledgerAccountId Int      @map("ledger_account_id")
-  amount          Int      // siempre positivo
-  direction       String   // DEBIT, CREDIT
+  amount          Int
+  direction       String
   description     String?
-  referenceType   String?  @map("reference_type") // ORDER, EXPENSE, TOPUP
+  referenceType   String?  @map("reference_type")
   referenceId     Int?     @map("reference_id")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  store         Store         @relation(fields: [storeId], references: [id])
-  ledgerAccount LedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+  store         Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  ledgerAccount LedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Cascade)
 
+  @@index([storeId, ledgerAccountId])
   @@map("journal_entries")
 }
 
@@ -471,14 +912,14 @@ model Service {
   storeId     Int      @map("store_id")
   name        String
   description String?
-  price       Int      @default(0) // precio unitario en pesos
-  icon        String   @default("Star") // nombre del icono Lucide
-  unit        String   @default("servicio") // unidad: "servicio", "unidad", "rollo", "hora"
+  price       Int      @default(0)
+  icon        String   @default("Star")
+  unit        String   @default("servicio")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt
 
-  store              Store                @relation(fields: [storeId], references: [id])
+  store              Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   serviceTransactions ServiceTransaction[]
   comandaItems        ComandaItem[]
   orderItems         OrderItem[]
@@ -492,16 +933,18 @@ model ServiceTransaction {
   storeId      Int      @map("store_id")
   serviceId    Int      @map("service_id")
   quantity     Int      @default(1)
-  unitPrice    Int      @map("unit_price") // precio al momento de la transaccion (pesos)
-  totalAmount  Int      @map("total_amount") // quantity * unitPrice (pesos)
+  unitPrice    Int      @map("unit_price")
+  totalAmount  Int      @map("total_amount")
   notes        String?
-  status       String   @default("COMPLETED") // COMPLETED, CANCELLED
+  status       String   @default("COMPLETED")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt
 
-  store   Store   @relation(fields: [storeId], references: [id])
-  service Service @relation(fields: [serviceId], references: [id])
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 
+  @@index([storeId])
+  @@index([serviceId])
   @@map("service_transactions")
 }
 
@@ -515,18 +958,20 @@ model CashRegister {
   userId          Int       @map("user_id")
   openedAt        DateTime  @default(now()) @map("opened_at")
   closedAt        DateTime? @map("closed_at")
-  openingBalance  Int       @default(0) @map("opening_balance") // en pesos
-  closingBalance  Int?      @map("closing_balance") // en pesos
-  expectedCash    Int?      @map("expected_cash") // calculado: apertura + ventas efectivo - pagos fiado
-  difference      Int?      @map("difference") // cierre - esperado
-  status          String    @default("OPEN") // OPEN, CLOSED
-  countBreakdown  String?   @map("count_breakdown") // JSON: { CASH: 500000, DAVIPLATA: 200000, ... }
+  openingBalance  Int       @default(0) @map("opening_balance")
+  closingBalance  Int?      @map("closing_balance")
+  expectedCash    Int?      @map("expected_cash")
+  difference      Int?      @map("difference")
+  status          String    @default("OPEN")
+  countBreakdown  String?   @map("count_breakdown")
   notes           String?
 
-  store Store @relation(fields: [storeId], references: [id])
-  user  User  @relation(fields: [userId], references: [id])
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Restrict)
   orders Order[]
 
+  @@index([storeId, status])
+  @@index([userId])
   @@map("cash_registers")
 }
 
@@ -537,15 +982,133 @@ model CashRegister {
 model Expense {
   id          Int      @id @default(autoincrement())
   storeId     Int      @map("store_id")
-  category    String   // ARRIENDO, SERVICIOS, NOMINA, INSUMOS, LICENCIAS, IMPUESTOS, TRANSPORTE, MANTENIMIENTO, OTRO
-  description String   // descripcion del gasto
-  amount      Int      // monto en pesos
+  category    String
+  description String
+  amount      Int
   date        DateTime @default(now())
   notes       String?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt
 
-  store Store @relation(fields: [storeId], references: [id])
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
+  @@index([storeId, date])
   @@map("expenses")
+}
+
+// ----------------------------------------------
+// CONTEXTO: ROLES Y PERMISOS (SaaS)
+// ----------------------------------------------
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  storeId     Int      @map("store_id")
+  name        String
+  description String?
+  permissions String   @default("{}") @map("permissions")
+  isDefault   Boolean  @default(false) @map("is_default")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt
+
+  store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  employees Employee[]
+
+  @@unique([storeId, name])
+  @@map("roles")
+}
+
+// ----------------------------------------------
+// CONTEXTO: EMPLEADOS (SaaS)
+// ----------------------------------------------
+
+model Employee {
+  id          Int      @id @default(autoincrement())
+  storeId     Int      @map("store_id")
+  userId      Int      @unique @map("user_id")
+  roleId      Int?     @map("role_id")
+  position    String?
+  permissions String   @default("{}") @map("permissions")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation("EmployeeStore", fields: [userId], references: [id], onDelete: Restrict)
+  role  Role? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
+  @@index([storeId])
+  @@index([roleId])
+  @@map("employees")
+}
+
+// ----------------------------------------------
+// CONTEXTO: COTIZACIONES
+// ----------------------------------------------
+
+model Quotation {
+  id                Int       @id @default(autoincrement())
+  storeId           Int       @map("store_id")
+  customerId        Int?      @map("customer_id")
+  quotationNumber   String    @map("quotation_number")
+  customerName      String?   @map("customer_name")
+  customerNit       String?   @map("customer_nit")
+  customerEmail     String?   @map("customer_email")
+  customerPhone     String?   @map("customer_phone")
+  customerAddress   String?   @map("customer_address")
+  subtotal          Int       @default(0)
+  taxAmount         Int       @default(0) @map("tax_amount")
+  taxBreakdown      String?   @map("tax_breakdown")
+  discountAmount    Int       @default(0) @map("discount_amount")
+  discountType      String    @default("NONE") @map("discount_type")
+  total             Int       @default(0)
+  validUntil        DateTime? @map("valid_until")
+  notes             String?
+  status            String    @default("ACTIVE")
+  convertedToOrderId Int?     @map("converted_to_order_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt
+
+  store    Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items    QuotationItem[]
+
+  @@index([storeId])
+  @@index([customerId])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id            Int      @id @default(autoincrement())
+  quotationId   Int      @map("quotation_id")
+  productId     Int?     @map("product_id")
+  productName   String   @map("product_name")
+  quantity      Int
+  unitPrice     Int      @map("unit_price")
+  totalRow      Int      @map("total_row")
+  taxCode       String?  @map("tax_code")
+  taxRate       Int      @default(0) @map("tax_rate")
+  taxAmount     Int      @default(0) @map("tax_amount")
+  taxBase       Int      @default(0) @map("tax_base")
+  notes         String?
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([quotationId])
+  @@index([productId])
+  @@map("quotation_items")
+}
+
+// ----------------------------------------------
+// CONTEXTO: CONFIGURACIÓN DEL SISTEMA (Global)
+// ----------------------------------------------
+
+model SystemSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String   @default("")
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
 }

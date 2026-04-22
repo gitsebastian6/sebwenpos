@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
+import { sql } from '@/lib/db-dialect'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
+
+const informesParamsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+})
 
 // Serialize BigInt for JSON responses
 ;(BigInt.prototype as any).toJSON = function () { return Number(this) }
@@ -10,11 +20,11 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
-    const storeId = parseInt(searchParams.get('storeId') || '0')
-    const from = searchParams.get('from')
-    const to = searchParams.get('to')
+    const params = informesParamsSchema.parse(Object.fromEntries(searchParams.entries()))
+    const { storeId, from, to } = params
 
-    if (!storeId) return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const now = new Date()
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -32,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     const safe = async <T>(name: string, fn: () => Promise<T>): Promise<T | null> => {
       try { return await fn() }
-      catch (e: any) { console.error(`[Informes] ${name}:`, e.message); return null }
+      catch (e: unknown) { logger.error(`[Informes] ${name}:`, e instanceof Error ? e.message : String(e)); return null }
     }
 
     const results = await Promise.all([
@@ -59,7 +69,7 @@ export async function GET(request: NextRequest) {
                COUNT(CASE WHEN current_stock = 0 THEN 1 END) as "outOfStock",
                COUNT(CASE WHEN current_stock <= min_stock THEN 1 END) as "lowStock",
                COUNT(*) as "totalProducts"
-        FROM products WHERE store_id = ${storeId} AND is_active = 1
+        FROM products WHERE store_id = ${storeId} AND is_active = ${sql.bool(true)}
       `)),
       safe('inv-avg-cogs', () => db.$queryRawUnsafe(`
         SELECT COALESCE(SUM(p.cost_price * oi.quantity) / MAX(days), 0) as "avgDailyCOGS",
@@ -67,25 +77,29 @@ export async function GET(request: NextRequest) {
         FROM order_items oi
         JOIN products p ON p.id = oi.product_id
         JOIN orders o ON o.id = oi.order_id
-        CROSS JOIN (SELECT COUNT(DISTINCT date(created_at / 1000, 'unixepoch')) as days
+        CROSS JOIN (SELECT COUNT(DISTINCT ${sql.dateCol('created_at')}) as days
                     FROM orders WHERE store_id = ${storeId} AND status = 'COMPLETED'
-                    AND created_at >= ${(now.getTime() - 30 * 86400000)}) d
+                    AND created_at >= ${sql.timestamp(now.getTime() - 30 * 86400000)}) d
         WHERE o.store_id = ${storeId} AND o.status = 'COMPLETED'
-        AND o.created_at >= ${(now.getTime() - 30 * 86400000)}
+        AND o.created_at >= ${sql.timestamp(now.getTime() - 30 * 86400000)}
       `)),
 
-      // 3. RENTABILIDAD
-      safe('profit-month', () => db.$queryRawUnsafe(`
-        SELECT COALESCE(SUM(o.subtotal), 0) as "revenue",
-               COALESCE(SUM(p.cost_price * oi.quantity), 0) as "cogs",
-               COALESCE(SUM(o.discount_amount), 0) as "discounts",
-               COALESCE(SUM(o.tip_amount), 0) as "tips"
-        FROM orders o
-        JOIN order_items oi ON oi.order_id = o.id
-        JOIN products p ON p.id = oi.product_id
-        WHERE o.store_id = ${storeId} AND o.status = 'COMPLETED'
-        AND o.created_at >= ${monthStart.getTime()} AND o.created_at <= ${todayEnd.getTime()}
-      `)),
+      // 3. RENTABILIDAD (respects dateFilter, includes CREDIT orders)
+      safe('profit-month', () => {
+        const pGte = dateFilter?.gte || monthStart
+        const pLte = dateFilter?.lte || todayEnd
+        return db.$queryRawUnsafe(`
+          SELECT COALESCE(SUM(o.subtotal), 0) as "revenue",
+                 COALESCE(SUM(p.cost_price * oi.quantity), 0) as "cogs",
+                 COALESCE(SUM(o.discount_amount), 0) as "discounts",
+                 COALESCE(SUM(o.tip_amount), 0) as "tips"
+          FROM orders o
+          JOIN order_items oi ON oi.order_id = o.id
+          JOIN products p ON p.id = oi.product_id
+          WHERE o.store_id = ${storeId} AND o.status IN ('COMPLETED', 'CREDIT')
+          AND o.created_at >= ${sql.timestamp(pGte.getTime())} AND o.created_at <= ${sql.timestamp(pLte.getTime())}
+        `)
+      }),
 
       // 4. COMPRAS
       safe('purchases', () => db.purchase.findMany({
@@ -97,16 +111,31 @@ export async function GET(request: NextRequest) {
         orderBy: { date: 'desc' }
       })),
 
-      // 5. VENTAS — Detalle por período
-      safe('sales-orders', () => db.order.findMany({
-        where: { storeId, status: { in: ['COMPLETED', 'CREDIT'] }, ...(dateFilter ? { createdAt: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }) },
-        include: {
-          orderItems: { include: { product: { select: { name: true, category: { select: { name: true } } } } } },
-          customer: { select: { name: true } },
-          tableSession: { select: { barTable: { select: { number: true, name: true } } } }
-        },
-        orderBy: { createdAt: 'desc' }
-      })),
+      // 5. VENTAS — GROUP BY aggregates + limited order list (was: load ALL orders + N JS loops)
+      safe('sales-data', async () => {
+        const sGte = dateFilter?.gte || monthStart
+        const sLte = dateFilter?.lte || todayEnd
+        const sDateClause = `AND o.created_at >= ${sql.timestamp(sGte.getTime())} AND o.created_at <= ${sql.timestamp(sLte.getTime())}`
+        const sBase = `o.store_id = ${storeId} AND o.status IN ('COMPLETED', 'CREDIT') ${sDateClause}`
+        const [agg, byPayment, byCategory, bySource, topProds, ordersList] = await Promise.all([
+          db.$queryRawUnsafe(`SELECT COALESCE(SUM(o.total),0) as total, COUNT(*) as count FROM orders o WHERE ${sBase}`),
+          db.$queryRawUnsafe(`SELECT o.payment_method as method, COUNT(*) as count, SUM(o.total) as total FROM orders o WHERE ${sBase} GROUP BY o.payment_method`),
+          db.$queryRawUnsafe(`SELECT COALESCE(c.name, 'Sin categoría') as category, SUM(oi.quantity) as qty, SUM(oi.total_row) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN products p ON p.id = oi.product_id LEFT JOIN categories c ON c.id = p.category_id WHERE ${sBase} GROUP BY c.name`),
+          db.$queryRawUnsafe(`SELECT CASE WHEN o.table_session_id IS NOT NULL THEN 'MESA' ELSE 'POS' END as source, COUNT(*) as count, SUM(o.total) as total FROM orders o WHERE ${sBase} GROUP BY CASE WHEN o.table_session_id IS NOT NULL THEN 'MESA' ELSE 'POS' END`),
+          db.$queryRawUnsafe(`SELECT oi.product_id as productId, COALESCE(p.name, 'Eliminado') as name, SUM(oi.quantity) as qty, SUM(oi.total_row) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN products p ON p.id = oi.product_id WHERE ${sBase} AND oi.product_id IS NOT NULL GROUP BY oi.product_id ORDER BY total DESC LIMIT 20`),
+          db.order.findMany({
+            where: { storeId, status: { in: ['COMPLETED', 'CREDIT'] }, ...(dateFilter ? { createdAt: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }) },
+            include: {
+              orderItems: { include: { product: { select: { name: true, category: { select: { name: true } } } } } },
+              customer: { select: { name: true } },
+              tableSession: { select: { barTable: { select: { number: true, name: true } } } }
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+          }),
+        ])
+        return { agg, byPayment, byCategory, bySource, topProds, ordersList }
+      }),
 
       // 6. VENTAS PERDIDAS
       safe('lost-sales', () => db.$queryRawUnsafe(`
@@ -118,19 +147,23 @@ export async function GET(request: NextRequest) {
           SELECT oi.product_id, SUM(oi.quantity) as "total_qty"
           FROM order_items oi JOIN orders o ON o.id = oi.order_id
           WHERE o.store_id = ${storeId} AND o.status = 'COMPLETED'
-          AND o.created_at >= ${(now.getTime() - 30 * 86400000)}
+          AND o.created_at >= ${sql.timestamp(now.getTime() - 30 * 86400000)}
           GROUP BY oi.product_id
         ) v ON v.product_id = p.id
-        WHERE p.store_id = ${storeId} AND p.is_active = 1 AND p.current_stock = 0
+        WHERE p.store_id = ${storeId} AND p.is_active = ${sql.bool(true)} AND p.current_stock = 0
         ORDER BY v.total_qty DESC
       `)),
 
-      // 7. PUNTO DE EQUILIBRIO
-      safe('breakeven', () => db.$queryRawUnsafe(`
-        SELECT COALESCE(SUM(amount), 0) as "fixedCosts"
-        FROM expenses WHERE store_id = ${storeId}
-        AND date >= ${monthStart.getTime()} AND date <= ${todayEnd.getTime()}
-      `)),
+      // 7. PUNTO DE EQUILIBRIO (respects dateFilter)
+      safe('breakeven', () => {
+        const bGte = dateFilter?.gte || monthStart
+        const bLte = dateFilter?.lte || todayEnd
+        return db.$queryRawUnsafe(`
+          SELECT COALESCE(SUM(amount), 0) as "fixedCosts"
+          FROM expenses WHERE store_id = ${storeId}
+          AND date >= ${sql.timestamp(bGte.getTime())} AND date <= ${sql.timestamp(bLte.getTime())}
+        `)
+      }),
 
       // 8. DEVOLUCIONES
       safe('returns', () => db.inventoryMovement.findMany({
@@ -161,9 +194,9 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' }
       })),
 
-      // 12. IMPUESTOS — Expenses with category IMPUESTOS
+      // 12. IMPUESTOS — Expenses with category IMPUESTOS (use date field consistently)
       safe('taxes', () => db.expense.findMany({
-        where: { storeId, category: 'IMPUESTOS', ...(dateFilter ? { date: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }) },
+        where: { storeId, category: 'IMPUESTOS', ...(dateFilter ? { date: dateFilter } : { date: { gte: monthStart, lte: todayEnd } }) },
         orderBy: { date: 'desc' }
       })),
 
@@ -180,10 +213,10 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' }
       })),
 
-      // 15. TRAZABILIDAD — All movements
+      // 15. TRAZABILIDAD — All movements (includes costPrice/salePrice for loss value calc)
       safe('traceability', () => db.inventoryMovement.findMany({
         where: { storeId, ...(dateFilter ? { createdAt: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }) },
-        include: { product: { select: { name: true, category: { select: { name: true } } } } },
+        include: { product: { select: { name: true, costPrice: true, salePrice: true, category: { select: { name: true } } } } },
         orderBy: { createdAt: 'desc' },
         take: 200
       })),
@@ -195,15 +228,44 @@ export async function GET(request: NextRequest) {
         orderBy: { totalDebt: 'desc' }
       })),
 
-      // 17. COTIZACIONES — Pending orders (as quotes proxy)
-      safe('quotes', () => db.order.findMany({
-        where: { storeId, status: 'PENDING', ...(dateFilter ? { createdAt: dateFilter } : {}) },
+      // 17. COTIZACIONES — Real quotations table
+      safe('quotes', () => db.quotation.findMany({
+        where: { storeId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
         include: {
-          orderItems: { include: { product: { select: { name: true } } } },
-          customer: { select: { name: true } }
+          items: { include: { product: { select: { name: true } } } },
+          customer: { select: { name: true, nit: true, phone: true } }
         },
         orderBy: { createdAt: 'desc' },
-        take: 50
+        take: 100
+      })),
+
+      // 17b. COTIZACIONES — KPIs
+      safe('quotes-kpis', () => db.quotation.aggregate({
+        where: { storeId, status: 'ACTIVE' },
+        _sum: { total: true }, _count: { id: true }
+      })),
+      safe('quotes-converted', () => db.quotation.count({
+        where: { storeId, status: 'CONVERTED' }
+      })),
+
+      // 19. FACTURAS ELECTRÓNICAS
+      safe('invoices', () => db.invoice.findMany({
+        where: { storeId, ...(dateFilter ? { createdAt: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }) },
+        include: {
+          order: { select: { orderNumber: true } }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100
+      })),
+
+      // 20. NOTAS CRÉDITO/DÉBITO
+      safe('credit-notes', () => db.creditNote.findMany({
+        where: { storeId, ...(dateFilter ? { createdAt: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }) },
+        include: {
+          invoice: { select: { prefix: true, consecutive: true } }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100
       })),
 
       // 18. IVA RECAUDADO — Tax collected from sales
@@ -239,7 +301,7 @@ export async function GET(request: NextRequest) {
       })),
     ])
 
-    const N = (v: bigint | number | null | undefined) => Number(v ?? 0)
+    const N = (v: unknown) => Number(v ?? 0)
 
     // ── 1. TU LOCAL EN CIFRAS ──
     const todaySales = results[0]
@@ -304,38 +366,32 @@ export async function GET(request: NextRequest) {
       purchasesByProvider[name].total += p.total
     }
 
-    // ── 5. VENTAS ──
-    const orders = Array.isArray(results[9]) ? results[9] : []
-    const salesByPayment: Record<string, { count: number; total: number }> = {}
-    const salesByCategory: Record<string, { qty: number; total: number }> = {}
-    const salesBySource = { MESA: { count: 0, total: 0 }, POS: { count: 0, total: 0 } }
-    for (const o of orders) {
-      const m = o.paymentMethod
-      if (!salesByPayment[m]) salesByPayment[m] = { count: 0, total: 0 }
-      salesByPayment[m].count++
-      salesByPayment[m].total += o.total
-      if (o.tableSessionId) { salesBySource.MESA.count++; salesBySource.MESA.total += o.total }
-      else { salesBySource.POS.count++; salesBySource.POS.total += o.total }
-      for (const item of o.orderItems) {
-        const cat = item.product?.category?.name || 'Sin categoría'
-        if (!salesByCategory[cat]) salesByCategory[cat] = { qty: 0, total: 0 }
-        salesByCategory[cat].qty += item.quantity
-        salesByCategory[cat].total += item.totalRow
-      }
-    }
-    const salesTotal = orders.reduce((s, o) => s + o.total, 0)
+    // ── 5. VENTAS — from GROUP BY queries (no N+1) ──
+    const salesData = results[9] || {}
+    const salesAggRow = Array.isArray(salesData.agg) ? salesData.agg[0] : null
+    const salesTotal = N(salesAggRow?.total)
+    const salesOrderCount = N(salesAggRow?.count)
 
-    // Top products from orders
-    const productSales: Record<string, { name: string; qty: number; total: number }> = {}
-    for (const o of orders) {
-      for (const item of o.orderItems) {
-        const name = item.product?.name || 'Eliminado'
-        if (!productSales[name]) productSales[name] = { name, qty: 0, total: 0 }
-        productSales[name].qty += item.quantity
-        productSales[name].total += item.totalRow
-      }
+    const salesByPayment: Record<string, { count: number; total: number }> = {}
+    for (const row of (salesData.byPayment || [])) {
+      salesByPayment[row.method] = { count: N(row.count), total: N(row.total) }
     }
-    const topProducts = Object.values(productSales).sort((a, b) => b.total - a.total).slice(0, 20)
+
+    const salesByCategory: Record<string, { qty: number; total: number }> = {}
+    for (const row of (salesData.byCategory || [])) {
+      salesByCategory[row.category] = { qty: N(row.qty), total: N(row.total) }
+    }
+
+    const salesBySource = { MESA: { count: 0, total: 0 }, POS: { count: 0, total: 0 } }
+    for (const row of (salesData.bySource || [])) {
+      salesBySource[row.source] = { count: N(row.count), total: N(row.total) }
+    }
+
+    const topProducts = (salesData.topProds || []).map((row) => ({
+      name: row.name, qty: N(row.qty), total: N(row.total),
+    }))
+
+    const orders = salesData.ordersList || []
 
     // ── 7. PUNTO DE EQUILIBRIO ──
     const beRow = Array.isArray(results[11]) ? results[11][0] : null
@@ -363,25 +419,29 @@ export async function GET(request: NextRequest) {
     const traceability = Array.isArray(results[19]) ? results[19] : []
     const debts = Array.isArray(results[20]) ? results[20] : []
     const quotes = Array.isArray(results[21]) ? results[21] : []
-    const ivaOrdersRaw = Array.isArray(results[22]) ? results[22] : []
+    const quotesKpis = results[22] || null
+    const quotesConverted = Number(results[23] || 0)
+    const ivaOrdersRaw = Array.isArray(results[24]) ? results[24] : []
+    const invoices = Array.isArray(results[25]) ? results[25] : []
+    const creditNotes = Array.isArray(results[26]) ? results[26] : []
 
     // ── 18. IVA RECAUDADO ──
     const ivaOrders = ivaOrdersRaw
-      .filter((o: any) => o.taxAmount > 0)
-      .map((o: any) => ({
+      .filter((o) => Number(o.taxAmount) > 0)
+      .map((o) => ({
         ...o,
         createdAt: o.createdAt.toISOString(),
-        taxBreakdown: o.taxBreakdown ? JSON.parse(o.taxBreakdown) : [],
+        taxBreakdown: o.taxBreakdown ? JSON.parse(String(o.taxBreakdown)) : [],
       }))
 
-    const totalIva = ivaOrders.reduce((sum: number, o: any) => sum + o.taxAmount, 0)
-    const totalBase = ivaOrders.reduce((sum: number, o: any) => sum + (o.subtotal || 0), 0)
+    const totalIva = ivaOrders.reduce((sum, o) => sum + Number(o.taxAmount), 0)
+    const totalBase = ivaOrders.reduce((sum, o) => sum + Number(o.subtotal || 0), 0)
 
     // Group by tax code for summary
     const ivaByCodeMap = new Map<string, { name: string; code: string; rate: number; base: number; amount: number }>()
-    ivaOrders.forEach((o: any) => {
+    ivaOrders.forEach((o) => {
       const breakdown = o.taxBreakdown || []
-      breakdown.forEach((t: any) => {
+      breakdown.forEach((t) => {
         const existing = ivaByCodeMap.get(t.code)
         if (existing) {
           existing.base += t.base
@@ -426,10 +486,10 @@ export async function GET(request: NextRequest) {
       profitability,
       purchases: { items: purchases, total: purchasesTotal, byProvider: purchasesByProvider },
       sales: {
-        orders: orders.slice(0, 100),
+        orders,
         total: salesTotal,
-        orderCount: orders.length,
-        avgTicket: orders.length > 0 ? Math.round(salesTotal / orders.length) : 0,
+        orderCount: salesOrderCount,
+        avgTicket: salesOrderCount > 0 ? Math.round(salesTotal / salesOrderCount) : 0,
         byPayment: salesByPayment,
         byCategory: salesByCategory,
         bySource: salesBySource,
@@ -452,10 +512,58 @@ export async function GET(request: NextRequest) {
       traceability,
       debts,
       quotes,
+      quotesSummary: {
+        activeCount: Number(quotesKpis?._count?.id || 0),
+        activeTotal: Number(quotesKpis?._sum?.total || 0),
+        convertedCount: quotesConverted,
+        totalCount: quotes.length,
+      },
+      invoices: invoices.map((inv) => ({
+        id: inv.id,
+        invoiceNumber: `${inv.prefix}${String(inv.consecutive).padStart(10, '0')}`,
+        customerNit: inv.customerNit,
+        customerName: inv.customerName || 'Consumidor Final',
+        grandTotal: Number(inv.grandTotal),
+        totalTax: Number(inv.totalTaxAmount),
+        status: inv.status,
+        testMode: inv.testMode,
+        cufe: inv.cufe,
+        sentAt: inv.sentAt?.toISOString() || null,
+        validatedAt: inv.validatedAt?.toISOString() || null,
+        createdAt: inv.createdAt.toISOString(),
+        orderNumber: inv.order?.orderNumber || null,
+      })),
+      invoicesSummary: {
+        total: invoices.reduce((s, inv) => s + Number(inv.grandTotal), 0),
+        count: invoices.length,
+        validated: invoices.filter((inv) => inv.status === 'VALIDATED' || inv.status === 'DELIVERED').length,
+        pending: invoices.filter((inv) => inv.status === 'DRAFT' || inv.status === 'PENDING_VALIDATE').length,
+        rejected: invoices.filter((inv) => inv.status === 'REJECTED').length,
+      },
+      creditNotes: creditNotes.map((cn) => ({
+        id: cn.id,
+        noteNumber: `${cn.prefix}${String(cn.consecutive).padStart(10, '0')}`,
+        noteType: cn.noteType,
+        customerName: cn.customerName || 'Consumidor Final',
+        totalAmount: Number(cn.grandTotal),
+        reason: cn.concept || '',
+        status: cn.status,
+        createdAt: cn.createdAt.toISOString(),
+        invoiceNumber: cn.invoice ? `${cn.invoice.prefix}${String(cn.invoice.consecutive).padStart(10, '0')}` : null,
+      })),
+      creditNotesSummary: {
+        total: creditNotes.reduce((s, cn) => s + Number(cn.grandTotal), 0),
+        count: creditNotes.length,
+        creditCount: creditNotes.filter((cn) => cn.noteType === 'CREDIT').length,
+        debitCount: creditNotes.filter((cn) => cn.noteType === 'DEBIT').length,
+      },
       ivaCollected,
     })
   } catch (error) {
-    console.error('GET /api/reports/informes error:', error)
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Parámetros inválidos: ' + error.issues.map(i => i.message).join(', ') }, { status: 400 })
+    }
+    logger.error('GET /api/reports/informes error:', error)
     return NextResponse.json({ error: 'Error al generar informes', detail: String(error) }, { status: 500 })
   }
 }

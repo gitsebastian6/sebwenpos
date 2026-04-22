@@ -33,6 +33,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
 import {
   Search,
   ClipboardList,
@@ -49,6 +50,7 @@ import {
   ShoppingBag,
   UtensilsCrossed,
   Percent,
+  Loader2,
 } from 'lucide-react'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
 import { toast } from 'sonner'
@@ -129,6 +131,9 @@ export function OrdersView() {
   const [returning, setReturning] = useState(false)
   const [returnItems, setReturnItems] = useState<Map<number, number>>(new Map())
 
+  const isEInvEnabled = !!store?.invoiceEnabled && !!store?.nit
+  const [generatingInvoice, setGeneratingInvoice] = useState<number | null>(null)
+
   const fetchOrders = useCallback(async () => {
     if (!store?.id) return
     setLoading(true)
@@ -141,8 +146,8 @@ export function OrdersView() {
 
       const res = await fetch(`/api/orders?${params}`)
       if (!res.ok) throw new Error('Error al cargar órdenes')
-      const data = await res.json()
-      setOrders(data)
+      const json = await res.json()
+      setOrders(Array.isArray(json) ? json : (json.data || []))
     } catch {
       toast.error('Error al cargar órdenes')
     } finally {
@@ -189,6 +194,9 @@ export function OrdersView() {
     printTicket({
       storeName: store.name, storeNIT: store.nit || undefined,
       storeAddress: store.address || undefined, storePhone: store.phone || undefined,
+      storeRegime: 'RESPONSABLE',
+      invoiceResolution: store.resolutionNumber || undefined,
+      invoicePrefix: store.invoicePrefix || undefined,
       orderNumber: detail.orderNumber, date: detail.createdAt,
       customer: detail.customer?.name, tableName: detail.tableName ?? undefined,
       items, subtotal: detail.subtotal, tipAmount: detail.tipAmount,
@@ -261,6 +269,13 @@ export function OrdersView() {
       }
       const data = await res.json()
       toast.success(data.message)
+      // Show credit note notification if auto-generated
+      if (data.creditNote) {
+        toast.success(`Nota Crédito ${data.creditNote.noteNumber} generada automáticamente`, {
+          description: `${data.creditNote.concept} por $${data.creditNote.grandTotal.toLocaleString('es-CO')}`,
+          duration: 6000,
+        })
+      }
       setShowReturnDialog(false)
       setReturnItems(new Map())
       setSelectedOrderId(null)
@@ -269,6 +284,42 @@ export function OrdersView() {
       toast.error(e instanceof Error ? e.message : 'Error al procesar devolución')
     } finally {
       setReturning(false)
+    }
+  }
+
+  async function handleGenerateInvoice(orderId: number, orderData: OrderDetail) {
+    if (!store?.id) return
+    setGeneratingInvoice(orderId)
+    try {
+      const invBody: Record<string, unknown> = {
+        orderId,
+        testMode: store.invoiceTestMode ?? true,
+        customerNit: orderData.customer?.email ? (orderData as Record<string, unknown>).customerNit || DIAN_CONSUMIDOR_FINAL_NIT : DIAN_CONSUMIDOR_FINAL_NIT,
+        customerName: orderData.customer?.name || 'Consumidor Final',
+        autoSend: true,
+      }
+      if (orderData.customer?.email) (invBody as Record<string, unknown>).customerEmail = orderData.customer.email
+
+      const invRes = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(invBody),
+      })
+      if (invRes.ok) {
+        const invoiceData = await invRes.json()
+        toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, {
+          description: 'CUFE generado correctamente',
+          duration: 5000,
+        })
+        fetchOrders()
+      } else {
+        const err = await invRes.json().catch(() => ({}))
+        toast.error(`Error al generar factura: ${err.error || 'Desconocido'}`, { duration: 6000 })
+      }
+    } catch {
+      toast.error('Error al generar factura electrónica')
+    } finally {
+      setGeneratingInvoice(null)
     }
   }
 
@@ -281,7 +332,7 @@ export function OrdersView() {
   // ─── Render helper for an order section ────────────────
   function renderOrderTable(orderList: OrderSummary[], icon: React.ReactNode, title: string, emptyMsg: string) {
     return (
-      <Card>
+      <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
         <CardContent className="p-0">
           <div className="flex items-center gap-2 px-4 pt-4 pb-2">
             {icon}
@@ -289,7 +340,7 @@ export function OrdersView() {
             <Badge variant="secondary" className="ml-auto text-xs">{orderList.length}</Badge>
           </div>
           {orderList.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="flex flex-col items-center justify-center py-12 text-center">
               <p className="text-sm text-muted-foreground">{emptyMsg}</p>
             </div>
           ) : (
@@ -309,7 +360,7 @@ export function OrdersView() {
                 </TableHeader>
                 <TableBody>
                   {orderList.map((order) => (
-                    <TableRow key={order.id} className="cursor-pointer" onClick={() => openOrderDetail(order.id)}>
+                    <TableRow key={order.id} className="cursor-pointer hover:bg-muted/30" onClick={() => openOrderDetail(order.id)}>
                       <TableCell className="font-mono text-xs font-medium truncate max-w-[70px]" title={order.orderNumber}>{order.orderNumber}</TableCell>
                       <TableCell className="text-xs">
                         <div className="flex items-center gap-1.5 truncate max-w-[80px]" title={order.customerName || undefined}>
@@ -375,7 +426,7 @@ export function OrdersView() {
       </div>
 
       {/* ── Filters ────────────────────────────────────────── */}
-      <Card>
+      <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <Filter className="h-4 w-4 text-muted-foreground" />
@@ -394,7 +445,7 @@ export function OrdersView() {
             </div>
             {/* Status Filter */}
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Estado" /></SelectTrigger>
+              <SelectTrigger className="w-full focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue placeholder="Estado" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos</SelectItem>
                 <SelectItem value="COMPLETED">Completadas</SelectItem>
@@ -405,7 +456,7 @@ export function OrdersView() {
             </Select>
             {/* Section Filter */}
             <Select value={sectionFilter} onValueChange={(v) => setSectionFilter(v as 'ALL' | 'POS' | 'MESA')}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Origen" /></SelectTrigger>
+              <SelectTrigger className="w-full focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue placeholder="Origen" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los orígenes</SelectItem>
                 <SelectItem value="POS">🏪 Punto de Venta</SelectItem>
@@ -423,35 +474,35 @@ export function OrdersView() {
       {/* ── Order Sections ─────────────────────────────────── */}
       {loading ? (
         <div className="space-y-4">
-          <Card><CardContent className="p-4"><div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-md" />)}</div></CardContent></Card>
-          <Card><CardContent className="p-4"><div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-md" />)}</div></CardContent></Card>
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50"><CardContent className="p-4"><div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-md" />)}</div></CardContent></Card>
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50"><CardContent className="p-4"><div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-md" />)}</div></CardContent></Card>
         </div>
       ) : sectionFilter === 'ALL' ? (
         /* Show both sections separately */
         <>
           {renderOrderTable(
             posOrders,
-            <ShoppingBag className="h-4 w-4 text-emerald-600" />,
+            <ShoppingBag className="h-5 w-5 text-emerald-500" />,
             'Tickets de Venta (Punto de Venta)',
             'Sin tickets de venta'
           )}
           <div className="py-2" />
           {renderOrderTable(
             mesaOrders,
-            <UtensilsCrossed className="h-4 w-4 text-amber-600" />,
+            <UtensilsCrossed className="h-5 w-5 text-amber-500" />,
             'Órdenes de Mesa',
             'Sin órdenes de mesa'
           )}
         </>
       ) : sectionFilter === 'POS' ? (
-        renderOrderTable(posOrders, <ShoppingBag className="h-4 w-4 text-emerald-600" />, 'Tickets de Venta (Punto de Venta)', 'Sin tickets de venta')
+        renderOrderTable(posOrders, <ShoppingBag className="h-5 w-5 text-emerald-500" />, 'Tickets de Venta (Punto de Venta)', 'Sin tickets de venta')
       ) : (
-        renderOrderTable(mesaOrders, <UtensilsCrossed className="h-4 w-4 text-amber-600" />, 'Órdenes de Mesa', 'Sin órdenes de mesa')
+        renderOrderTable(mesaOrders, <UtensilsCrossed className="h-5 w-5 text-amber-500" />, 'Órdenes de Mesa', 'Sin órdenes de mesa')
       )}
 
       {/* ── Order Detail Dialog ────────────────────────────── */}
       <Dialog open={!!selectedOrderId} onOpenChange={(open) => !open && setSelectedOrderId(null)}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
@@ -505,7 +556,7 @@ export function OrdersView() {
                 <>
                   <div>
                     <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5"><User className="h-4 w-4" />Cliente</h4>
-                    <Card className="bg-muted/30"><CardContent className="p-3">
+                    <Card className="bg-muted/30 hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50"><CardContent className="p-3">
                       <p className="font-medium">{orderDetail.customer.name}</p>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm text-muted-foreground">
                         {orderDetail.customer.phone && <span>{orderDetail.customer.phone}</span>}
@@ -534,7 +585,7 @@ export function OrdersView() {
                     </TableHeader>
                     <TableBody>
                       {orderDetail.orderItems.map((item) => (
-                        <TableRow key={item.id}>
+                        <TableRow key={item.id} className="hover:bg-muted/30">
                           <TableCell className="font-medium text-sm">
                             {item.productName}
                             {item.returnedQuantity > 0 && (
@@ -595,12 +646,27 @@ export function OrdersView() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3">
-                <Button onClick={() => handlePrintTicket(orderDetail)} className="flex-1" variant="outline">
+              <div className="flex flex-wrap gap-3">
+                <Button onClick={() => handlePrintTicket(orderDetail)} className="flex-1 active:scale-[0.98] transition-all" variant="outline">
                   <Printer className="h-4 w-4 mr-2" />Imprimir
                 </Button>
+                {isEInvEnabled && (
+                  <Button
+                    variant="outline"
+                    className="gap-2 active:scale-[0.98] transition-all text-primary border-primary/30 hover:bg-primary/10"
+                    onClick={() => handleGenerateInvoice(orderDetail.id, orderDetail)}
+                    disabled={generatingInvoice === orderDetail.id}
+                  >
+                    {generatingInvoice === orderDetail.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileText className="h-4 w-4" />
+                    )}
+                    {generatingInvoice === orderDetail.id ? 'Generando...' : 'Factura Electrónica'}
+                  </Button>
+                )}
                 {orderDetail.status === 'COMPLETED' && orderDetail.orderItems.some(i => i.productId && i.quantity > i.returnedQuantity) && (
-                  <Button variant="destructive" onClick={openReturnDialog} className="flex-1">
+                  <Button variant="destructive" onClick={openReturnDialog} className="flex-1 active:scale-[0.98] transition-all">
                     <RotateCcw className="h-4 w-4 mr-2" />Devolver
                   </Button>
                 )}
@@ -618,14 +684,14 @@ export function OrdersView() {
               )}
             </div>
           ) : (
-            <div className="flex items-center justify-center py-8 text-muted-foreground"><p>No se pudo cargar el detalle.</p></div>
+            <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground"><ClipboardList className="h-10 w-10 mb-2 opacity-30" /><p className="text-sm">No se pudo cargar el detalle.</p></div>
           )}
         </DialogContent>
       </Dialog>
 
       {/* ── Return Dialog (Partial Selection) ────────────────── */}
       <Dialog open={showReturnDialog} onOpenChange={(open) => { if (!open) { setShowReturnDialog(false); setReturnItems(new Map()) } }}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="h-5 w-5 text-destructive" />

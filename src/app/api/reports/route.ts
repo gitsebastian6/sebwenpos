@@ -1,20 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
+import { sql } from '@/lib/db-dialect'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
+
+const reportParamsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+})
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
-    const storeId = parseInt(searchParams.get('storeId') || '0')
-    const from = searchParams.get('from')
-    const to = searchParams.get('to')
+    const params = reportParamsSchema.parse(Object.fromEntries(searchParams.entries()))
+    const { storeId, from, to } = params
 
-    if (!storeId) return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
-    // Build date filter — SQLite stores created_at as INTEGER (Unix ms), not DateTime
-    // Prisma expects DateTime objects, but SQLite compares as integers.
-    // Use ISO strings for Prisma DateTime comparisons which SQLite handles correctly.
+    // Build date filter for Prisma queries
     const dateFilter: Record<string, unknown> = {}
     if (from) {
       const d = new Date(from)
@@ -26,158 +34,212 @@ export async function GET(request: NextRequest) {
       d.setHours(23, 59, 59, 999)
       dateFilter.lte = d
     }
-
     const hasDateFilter = from || to
+    const fromMs = dateFilter.gte instanceof Date ? (dateFilter.gte as Date).getTime() : null
+    const toMs = dateFilter.lte instanceof Date ? (dateFilter.lte as Date).getTime() : null
 
-    // 1. Sales Summary (from orders)
+    // Build SQL date clause for raw queries
+    const dateClause = [
+      fromMs !== null ? `AND o.created_at >= ${sql.timestamp(fromMs)}` : '',
+      toMs !== null ? `AND o.created_at <= ${sql.timestamp(toMs)}` : '',
+    ].join(' ')
+
+    const baseWhere = `o.store_id = ${storeId} AND o.status IN ('COMPLETED', 'CREDIT') ${dateClause}`
+
+    // Prisma where for recentOrders
     const ordersWhere: Record<string, unknown> = { storeId, status: { in: ['COMPLETED', 'CREDIT'] } }
     if (hasDateFilter) ordersWhere.createdAt = dateFilter
 
-    const orders = await db.order.findMany({
-      where: ordersWhere,
-      include: {
-        orderItems: {
-          include: { product: { select: { id: true, name: true, category: { select: { name: true } } } } },
-        },
-        customer: { select: { id: true, name: true } },
-        tableSession: {
-          select: {
-            id: true,
-            barTable: { select: { number: true, name: true, zone: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    // Services where (for Prisma)
+    const servicesWhere: Record<string, unknown> = { storeId, status: 'COMPLETED' }
+    if (hasDateFilter) servicesWhere.createdAt = dateFilter
 
-    const totalSales = orders.reduce((s, o) => s + o.total, 0)
-    const totalTips = orders.reduce((s, o) => s + (o.tipAmount || 0), 0)
-    const completedOrders = orders.filter((o) => o.status === 'COMPLETED')
-    const creditOrders = orders.filter((o) => o.status === 'CREDIT')
-    const totalCompletedSales = completedOrders.reduce((s, o) => s + o.total, 0)
-    const totalCreditSales = creditOrders.reduce((s, o) => s + o.total, 0)
-    const ordersWithTips = orders.filter((o) => (o.tipAmount || 0) > 0)
-    const totalOrders = orders.length
+    // ───────────────────────────────────────────────────────────
+    // ALL QUERIES IN PARALLEL — no N+1, no full order scan
+    // ───────────────────────────────────────────────────────────
+    const [
+      salesAgg,
+      completedAgg,
+      creditAgg,
+      tipsAgg,
+      byPaymentRaw,
+      bySourceRaw,
+      byCategoryRaw,
+      topProductsRaw,
+      recentOrders,
+      customersWithDebt,
+      lowStockProducts,
+      inventoryData,
+      ledgerAccounts,
+      serviceTxns,
+      openSessions,
+      dailySalesRaw,
+    ] = await Promise.all([
+      // ── Sales aggregates (was: full order scan + JS reduce) ──
+      db.$queryRawUnsafe<Array<{ total: number | bigint; count: number | bigint }>>(`
+        SELECT COALESCE(SUM(o.total), 0) as total, COUNT(*) as count
+        FROM orders o WHERE ${baseWhere}
+      `),
+      db.$queryRawUnsafe<Array<{ total: number | bigint; count: number | bigint }>>(`
+        SELECT COALESCE(SUM(o.total), 0) as total, COUNT(*) as count
+        FROM orders o WHERE o.store_id = ${storeId} AND o.status = 'COMPLETED' ${dateClause}
+      `),
+      db.$queryRawUnsafe<Array<{ total: number | bigint; count: number | bigint }>>(`
+        SELECT COALESCE(SUM(o.total), 0) as total, COUNT(*) as count
+        FROM orders o WHERE o.store_id = ${storeId} AND o.status = 'CREDIT' ${dateClause}
+      `),
+      db.$queryRawUnsafe<Array<{ total: number | bigint; count: number | bigint }>>(`
+        SELECT COALESCE(SUM(o.tip_amount), 0) as total, COUNT(*) as count
+        FROM orders o WHERE ${baseWhere} AND o.tip_amount > 0
+      `),
+
+      // ── GROUP BY queries (was: N nested loops in JS) ──
+      db.$queryRawUnsafe<Array<{ method: string; count: number | bigint; total: number | bigint }>>(`
+        SELECT o.payment_method as method, COUNT(*) as count, SUM(o.total) as total
+        FROM orders o WHERE ${baseWhere}
+        GROUP BY o.payment_method
+      `),
+      db.$queryRawUnsafe<Array<{ source: string; count: number | bigint; total: number | bigint }>>(`
+        SELECT CASE WHEN o.table_session_id IS NOT NULL THEN 'MESA' ELSE 'POS' END as source,
+               COUNT(*) as count, SUM(o.total) as total
+        FROM orders o WHERE ${baseWhere}
+        GROUP BY CASE WHEN o.table_session_id IS NOT NULL THEN 'MESA' ELSE 'POS' END
+      `),
+      db.$queryRawUnsafe<Array<{ category: string; quantity: number | bigint; total: number | bigint }>>(`
+        SELECT COALESCE(c.name, 'Sin Categoría') as category,
+               SUM(oi.quantity) as quantity, SUM(oi.total_row) as total
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        LEFT JOIN products p ON p.id = oi.product_id
+        LEFT JOIN categories c ON c.id = p.category_id
+        WHERE ${baseWhere}
+        GROUP BY c.name
+      `),
+      db.$queryRawUnsafe<Array<{ productId: number; name: string; quantity: number | bigint; total: number | bigint }>>(`
+        SELECT oi.product_id as productId, COALESCE(p.name, 'Producto eliminado') as name,
+               SUM(oi.quantity) as quantity, SUM(oi.total_row) as total
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        LEFT JOIN products p ON p.id = oi.product_id
+        WHERE ${baseWhere} AND oi.product_id IS NOT NULL
+        GROUP BY oi.product_id
+        ORDER BY total DESC LIMIT 15
+      `),
+
+      // ── Recent 50 orders (DB-level limit, was: load ALL then slice) ──
+      db.order.findMany({
+        where: ordersWhere,
+        include: {
+          orderItems: {
+            include: { product: { select: { id: true, name: true, category: { select: { name: true } } } } },
+          },
+          customer: { select: { name: true } },
+          tableSession: { select: { barTable: { select: { number: true, name: true } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+
+      // ── Other queries (unchanged logic) ──
+      db.customer.findMany({
+        where: { storeId, totalDebt: { gt: 0 } },
+        select: { id: true, name: true, phone: true, totalDebt: true },
+        orderBy: { totalDebt: 'desc' },
+      }),
+      db.product.findMany({
+        where: { storeId, isActive: true, currentStock: { lte: 5 } },
+        select: {
+          id: true, name: true, currentStock: true, minStock: true, salePrice: true,
+          category: { select: { name: true } },
+        },
+        orderBy: { currentStock: 'asc' },
+      }),
+      db.product.findMany({
+        where: { storeId, isActive: true },
+        select: { currentStock: true, costPrice: true, salePrice: true },
+      }),
+      db.ledgerAccount.findMany({ where: { storeId } }),
+      db.serviceTransaction.findMany({
+        where: servicesWhere,
+        include: { service: { select: { name: true } } },
+      }),
+      db.tableSession.findMany({
+        where: { storeId, status: 'OPEN' },
+        include: {
+          barTable: { select: { number: true, name: true } },
+          comandaItems: { select: { total: true, status: true } },
+        },
+      }),
+      db.$queryRawUnsafe<Array<{ day: string; total: bigint; count: bigint }>>(`
+        SELECT ${sql.dateCol('o.created_at')} as day, SUM(o.total) as total, COUNT(*) as count
+        FROM orders o
+        WHERE o.store_id = ${storeId} AND o.status IN ('COMPLETED', 'CREDIT')
+          AND o.created_at >= ${sql.nowMinusDays(6)}
+        GROUP BY day ORDER BY day ASC
+      `),
+    ])
+
+    // ───────────────────────────────────────────────────────────
+    // PROCESS RESULTS (no N+1 — all data already from single queries)
+    // ───────────────────────────────────────────────────────────
+    const N = (v: number | bigint | null | undefined) => Number(v ?? 0)
+
+    const totalSales = N(salesAgg[0]?.total)
+    const totalOrders = N(salesAgg[0]?.count)
+    const totalCompletedSales = N(completedAgg[0]?.total)
+    const totalCreditSales = N(creditAgg[0]?.total)
+    const totalTips = N(tipsAgg[0]?.total)
+    const tipsOrderCount = N(tipsAgg[0]?.count)
 
     // 2. Sales by Payment Method
     const salesByPayment: Record<string, { count: number; total: number }> = {}
-    for (const order of orders) {
-      const method = order.paymentMethod
-      if (!salesByPayment[method]) salesByPayment[method] = { count: 0, total: 0 }
-      salesByPayment[method].count++
-      salesByPayment[method].total += order.total
+    for (const row of byPaymentRaw) {
+      salesByPayment[row.method] = { count: N(row.count), total: N(row.total) }
     }
 
     // 3. Sales by Source (MESA vs POS)
-    const salesBySource = { MESA: { count: 0, total: 0 }, POS: { count: 0, total: 0 } }
-    for (const order of orders) {
-      if (order.tableSessionId) {
-        salesBySource.MESA.count++
-        salesBySource.MESA.total += order.total
-      } else {
-        salesBySource.POS.count++
-        salesBySource.POS.total += order.total
-      }
+    const salesBySource: Record<string, { count: number; total: number }> = { MESA: { count: 0, total: 0 }, POS: { count: 0, total: 0 } }
+    for (const row of bySourceRaw) {
+      salesBySource[row.source] = { count: N(row.count), total: N(row.total) }
     }
 
     // 4. Sales by Category
     const salesByCategory: Record<string, { quantity: number; total: number }> = {}
-    for (const order of orders) {
-      for (const item of order.orderItems) {
-        const cat = item.product?.category?.name || 'Sin Categoría'
-        if (!salesByCategory[cat]) salesByCategory[cat] = { quantity: 0, total: 0 }
-        salesByCategory[cat].quantity += item.quantity
-        salesByCategory[cat].total += item.totalRow
-      }
+    for (const row of byCategoryRaw) {
+      salesByCategory[row.category] = { quantity: N(row.quantity), total: N(row.total) }
     }
 
-    // 5. Top Products
-    const productSales: Record<
-      string,
-      { productId: number; name: string; quantity: number; total: number }
-    > = {}
-    for (const order of orders) {
-      for (const item of order.orderItems) {
-        const key = String(item.productId)
-        if (!productSales[key]) {
-          productSales[key] = {
-            productId: item.productId,
-            name: item.product?.name || 'Producto eliminado',
-            quantity: 0,
-            total: 0,
-          }
-        }
-        productSales[key].quantity += item.quantity
-        productSales[key].total += item.totalRow
-      }
-    }
-    const topProducts = Object.values(productSales)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 15)
-
-    // 6. Customer Debts (CxC)
-    const customersWithDebt = await db.customer.findMany({
-      where: { storeId, totalDebt: { gt: 0 } },
-      select: { id: true, name: true, phone: true, totalDebt: true },
-      orderBy: { totalDebt: 'desc' },
-    })
-
-    // 7. Inventory Status (low stock products)
-    const lowStockProducts = await db.product.findMany({
-      where: { storeId, isActive: true, currentStock: { lte: 5 } },
-      select: {
-        id: true,
-        name: true,
-        currentStock: true,
-        minStock: true,
-        salePrice: true,
-        category: { select: { name: true } },
-      },
-      orderBy: { currentStock: 'asc' },
-    })
+    // 5. Top Products (already sorted and limited from SQL)
+    const topProducts = topProductsRaw.map(row => ({
+      productId: row.productId,
+      name: row.name,
+      quantity: N(row.quantity),
+      total: N(row.total),
+    }))
 
     // 8. Inventory Valuation
-    const inventoryData = await db.product.findMany({
-      where: { storeId, isActive: true },
-      select: { currentStock: true, costPrice: true, salePrice: true },
-    })
     const totalInventoryCost = inventoryData.reduce((s, p) => s + p.currentStock * p.costPrice, 0)
     const totalInventoryRetail = inventoryData.reduce((s, p) => s + p.currentStock * p.salePrice, 0)
 
-    // 9. Ledger Accounts summary
-    const ledgerAccounts = await db.ledgerAccount.findMany({
-      where: { storeId },
-    })
+    // 9. Ledger Accounts summary — single GROUP BY query
     const accountBalances: Record<string, number> = {}
-    for (const acc of ledgerAccounts) {
-      const entries = await db.journalEntry.findMany({
-        where: { ledgerAccountId: acc.id },
-        select: { amount: true, direction: true },
-      })
-      let balance = 0
-      for (const e of entries) {
-        balance += e.direction === 'DEBIT' ? Number(e.amount) : -Number(e.amount)
+    if (ledgerAccounts.length > 0) {
+      const balances = await db.$queryRaw<Array<{ name: string; balance: number }>>`
+        SELECT la.name, SUM(CASE WHEN je.direction = 'DEBIT' THEN je.amount ELSE -je.amount END) AS balance
+        FROM ledger_accounts la
+        LEFT JOIN journal_entries je ON je.ledger_account_id = la.id
+        WHERE la.store_id = ${storeId}
+        GROUP BY la.id, la.name
+      `
+      for (const b of balances) {
+        accountBalances[b.name] = Number(b.balance)
       }
-      accountBalances[acc.name] = balance
     }
 
-    // 10. Services Summary (new model: ServiceTransaction has totalAmount, no commissionEarned)
-    const servicesWhere: Record<string, unknown> = { storeId, status: 'COMPLETED' }
-    if (hasDateFilter) servicesWhere.createdAt = dateFilter
-    const serviceTxns = await db.serviceTransaction.findMany({
-      where: servicesWhere,
-      include: { service: { select: { name: true } } },
-    })
+    // 10. Services Summary
     const totalServiceAmount = serviceTxns.reduce((s, svc) => s + Number(svc.totalAmount), 0)
 
     // 11. Open Tables/Sessions
-    const openSessions = await db.tableSession.findMany({
-      where: { storeId, status: 'OPEN' },
-      include: {
-        barTable: { select: { number: true, name: true } },
-        comandaItems: { select: { total: true, status: true } },
-      },
-    })
     const openTableConsumption = openSessions.reduce((s, ses) => {
       return (
         s +
@@ -187,22 +249,7 @@ export async function GET(request: NextRequest) {
       )
     }, 0)
 
-    // 12. Daily sales breakdown (last 7 days)
-    // Use raw SQL for date comparison since SQLite stores created_at as INTEGER
-    const dailySalesRaw = await db.$queryRawUnsafe<Array<{ day: string; total: bigint; count: bigint }>>(`
-      SELECT
-        date(created_at / 1000, 'unixepoch', 'localtime') as day,
-        SUM(total) as total,
-        COUNT(*) as count
-      FROM orders
-      WHERE store_id = ${storeId}
-        AND status IN ('COMPLETED', 'CREDIT')
-        AND created_at >= (strftime('%s', 'now', 'localtime', '-6 days') * 1000)
-      GROUP BY day
-      ORDER BY day ASC
-    `)
-
-    // Fill missing days
+    // 12. Daily sales breakdown (last 7 days) — fill missing days
     const dailySales: Array<{ date: string; sales: number; orders: number }> = []
     for (let i = 6; i >= 0; i--) {
       const d = new Date()
@@ -225,7 +272,7 @@ export async function GET(request: NextRequest) {
         total: totalSales,
         subtotal: totalSales - totalTips,
         tips: totalTips,
-        tipsOrderCount: ordersWithTips.length,
+        tipsOrderCount,
         completed: totalCompletedSales,
         credit: totalCreditSales,
         orderCount: totalOrders,
@@ -253,7 +300,7 @@ export async function GET(request: NextRequest) {
       },
       dailySales,
       profit,
-      recentOrders: orders.slice(0, 50).map((o) => ({
+      recentOrders: recentOrders.map((o) => ({
         id: o.id,
         orderNumber: o.orderNumber,
         customer: o.customer?.name || 'Cliente general',
@@ -274,7 +321,10 @@ export async function GET(request: NextRequest) {
       })),
     })
   } catch (error) {
-    console.error('GET /api/reports error:', error)
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Parámetros inválidos: ' + error.issues.map(i => i.message).join(', ') }, { status: 400 })
+    }
+    logger.error('GET /api/reports error:', error)
     return NextResponse.json({ error: 'Error al generar informe' }, { status: 500 })
   }
 }

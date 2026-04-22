@@ -146,12 +146,12 @@ function DashboardSkeleton() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {Array.from({ length: 6 }).map((_, i) => (
-          <Card key={i}><CardContent className="p-6"><Skeleton className="h-20 w-full rounded-lg" /></CardContent></Card>
+          <Card key={i} className="rounded-xl border-border/50"><CardContent className="p-6"><Skeleton className="h-20 w-full rounded-lg" /></CardContent></Card>
         ))}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {Array.from({ length: 2 }).map((_, i) => (
-          <Card key={i}><CardHeader><Skeleton className="h-5 w-40" /></CardHeader><CardContent><Skeleton className="h-[300px] w-full" /></CardContent></Card>
+          <Card key={i} className="rounded-xl border-border/50"><CardHeader><Skeleton className="h-5 w-40" /></CardHeader><CardContent><Skeleton className="h-[300px] w-full" /></CardContent></Card>
         ))}
       </div>
     </div>
@@ -180,10 +180,10 @@ function KPICard({
   tooltip?: string
 }) {
   const card = (
-    <Card className="gap-3">
+    <Card className="gap-3 rounded-xl border-border/50 hover:shadow-md transition-shadow duration-200">
       <CardHeader className="flex flex-row items-center justify-between pb-0">
         <CardDescription className="text-xs font-medium text-muted-foreground">{title}</CardDescription>
-        <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${iconBg}`}>
+        <div className={`h-9 w-9 rounded-lg flex items-center justify-center ring-1 ring-inset ring-primary/20 shadow-[0_0_10px_rgba(16,185,129,0.08)] ${iconBg}`}>
           <Icon className={`h-4 w-4 ${iconColor}`} />
         </div>
       </CardHeader>
@@ -234,9 +234,9 @@ export function DashboardView() {
 
   if (loading) return <DashboardSkeleton />
   if (error) return (
-    <Card className="border-destructive/50"><CardContent className="p-6">
+    <Card className="border-destructive/50 rounded-xl"><CardContent className="p-6">
       <div className="flex flex-col items-center gap-3 text-center">
-        <AlertTriangle className="h-8 w-8 text-destructive" />
+        <AlertTriangle className="h-10 w-10 text-destructive animate-pulse" />
         <p className="font-semibold">Error al cargar</p>
         <button onClick={fetchDashboard} className="text-sm text-primary underline">Reintentar</button>
       </div>
@@ -261,8 +261,8 @@ export function DashboardView() {
         {/* ── SECCIÓN 1: VENTAS (3 KPIs principales) ── */}
         {/* ═══════════════════════════════════════════════ */}
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <DollarSign className="h-4 w-4 text-emerald-500" />
+          <div className="flex items-center gap-2.5 mb-3">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Ventas</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -299,8 +299,8 @@ export function DashboardView() {
         {/* ── SECCIÓN 2: RENTABILIDAD ── */}
         {/* ═══════════════════════════════════════════════ */}
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="h-4 w-4 text-emerald-500" />
+          <div className="flex items-center gap-2.5 mb-3">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Rentabilidad</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -347,7 +347,7 @@ export function DashboardView() {
         {/* ── SECCIÓN 3: GRÁFICA + TOP PRODUCTOS ── */}
         {/* ═══════════════════════════════════════════════ */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
+          <Card className="rounded-xl border-border/50 hover:shadow-md transition-shadow duration-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
             <CardHeader>
               <CardTitle className="text-base">Ventas Últimos 7 Días</CardTitle>
               <CardDescription>Ingresos diarios en {cc}</CardDescription>
@@ -369,7 +369,7 @@ export function DashboardView() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="rounded-xl border-border/50 hover:shadow-md transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Flame className="h-4 w-4 text-emerald-500" />
@@ -380,13 +380,13 @@ export function DashboardView() {
             <CardContent>
               {data.topProducts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-center">
-                  <Package className="h-10 w-10 text-muted-foreground/30 mb-2" />
+                  <Package className="h-12 w-12 text-muted-foreground/30 mb-2 animate-pulse" />
                   <p className="text-sm text-muted-foreground">Sin datos de ventas</p>
                 </div>
               ) : (
                 <div className="max-h-[300px] overflow-y-auto space-y-1.5 pr-1">
                   {data.topProducts.map((p, i) => (
-                    <div key={p.product?.id || i} className="flex items-center justify-between rounded-lg border p-2.5 gap-2">
+                    <div key={p.product?.id || i} className="flex items-center justify-between rounded-lg border border-border/50 p-2.5 gap-2 hover:bg-muted/30 transition-colors">
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-bold shrink-0">{i + 1}</span>
                         <div className="min-w-0">
@@ -413,7 +413,7 @@ export function DashboardView() {
         {/* ═══════════════════════════════════════════════ */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Punto de Equilibrio */}
-          <Card className="border-2 border-dashed">
+          <Card className="border border-dashed border-border/50 rounded-xl hover:shadow-md transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Target className="h-4 w-4 text-primary" />
@@ -430,7 +430,7 @@ export function DashboardView() {
                 </div>
                 <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all ${kpi.breakEven.achievedPercent >= 100 ? 'bg-emerald-500' : kpi.breakEven.achievedPercent >= 70 ? 'bg-amber-500' : 'bg-red-500'}`}
+                    className={`h-full rounded-full transition-all duration-700 ease-out ${kpi.breakEven.achievedPercent >= 100 ? 'bg-emerald-500' : kpi.breakEven.achievedPercent >= 70 ? 'bg-amber-500' : 'bg-red-500'}`}
                     style={{ width: `${Math.min(100, kpi.breakEven.achievedPercent)}%` }}
                   />
                 </div>
@@ -476,7 +476,7 @@ export function DashboardView() {
           </Card>
 
           {/* Pérdidas y Faltantes */}
-          <Card className="border-2 border-dashed">
+          <Card className="border border-dashed border-border/50 rounded-xl hover:shadow-md transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-red-500" />
@@ -529,7 +529,7 @@ export function DashboardView() {
         {/* ═══════════════════════════════════════════════ */}
         {/* ── SECCIÓN 5: RESUMEN RÁPIDO + OPERACIONES ── */}
         {/* ═══════════════════════════════════════════════ */}
-        <Card className="border-dashed">
+        <Card className="border border-dashed border-border/50 rounded-xl hover:shadow-md transition-shadow duration-200">
           <CardContent className="p-4">
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <div className="flex items-center gap-1.5">
@@ -570,7 +570,7 @@ export function DashboardView() {
         {/* ═══════════════════════════════════════════════ */}
         {/* ── SECCIÓN 6: ÓRDENES RECIENTES ── */}
         {/* ═══════════════════════════════════════════════ */}
-        <Card>
+        <Card className="rounded-xl border-border/50 hover:shadow-md transition-shadow duration-200">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <ShoppingCart className="h-4 w-4" />
@@ -580,7 +580,7 @@ export function DashboardView() {
           <CardContent>
             {data.recentOrders.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
-                <ShoppingCart className="h-10 w-10 text-muted-foreground/30 mb-2" />
+                <ShoppingCart className="h-12 w-12 text-muted-foreground/30 mb-2 animate-pulse" />
                 <p className="text-sm text-muted-foreground">Sin órdenes registradas</p>
               </div>
             ) : (
@@ -597,7 +597,7 @@ export function DashboardView() {
                   </TableHeader>
                   <TableBody>
                     {data.recentOrders.map((order) => (
-                      <TableRow key={order.id}>
+                      <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
                         <TableCell className="font-mono text-xs">{order.orderNumber}</TableCell>
                         <TableCell><Badge className={`text-[10px] ${statusColor(order.status)}`}>{statusLabel(order.status)}</Badge></TableCell>
                         <TableCell className="text-xs">{order.customerName || '—'}</TableCell>
@@ -614,7 +614,7 @@ export function DashboardView() {
 
         {/* ── Open Tables (if any) ── */}
         {kpi.operational.openTables.length > 0 && (
-          <Card>
+          <Card className="rounded-xl border-border/50 hover:shadow-md transition-shadow duration-200">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Armchair className="h-4 w-4 text-amber-500" />
@@ -627,7 +627,7 @@ export function DashboardView() {
                 {kpi.operational.openTables.map((t: any) => {
                   const elapsed = Math.floor((Date.now() - new Date(t.startedAt).getTime()) / 60000)
                   return (
-                    <div key={t.id} className="flex items-center justify-between rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3 gap-3">
+                    <div key={t.id} className="flex items-center justify-between rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3 gap-3 hover:bg-amber-100/30 dark:hover:bg-amber-950/30 transition-colors">
                       <div className="min-w-0">
                         <p className="text-sm font-medium">Mesa {t.tableNumber}{t.tableName ? ` — ${t.tableName}` : ''}</p>
                         <p className="text-xs text-muted-foreground">{t.customerName ?? 'Sin cliente'} · {t.guests}p · {Math.floor(elapsed / 60)}h {elapsed % 60}m</p>

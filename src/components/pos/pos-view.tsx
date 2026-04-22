@@ -1,16 +1,18 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
 import { ProductImage } from '@/components/ui/product-image'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
+import { NITInput } from '@/components/ui/nit-input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
 import { Textarea } from '@/components/ui/textarea'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
@@ -69,6 +71,12 @@ import {
   Pencil,
   RotateCcw,
   Clock,
+  FileText,
+  Receipt,
+  QrCode,
+  MonitorSmartphone,
+  Hash,
+  ScanBarcode,
 } from 'lucide-react'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
 import { KPIBar } from '@/components/shared/kpi-bar'
@@ -76,6 +84,7 @@ import { useAppStore } from '@/stores/app-store'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { playCartAdd, playSaleSuccess, playError } from '@/lib/pos-sounds'
+import { useBarcodeScanner } from '@/hooks/use-barcode-scanner'
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -87,6 +96,7 @@ interface Product {
   categoryId: number | null
   imgUrl: string | null
   sku: string | null
+  barcode: string | null
   category?: { id: number; name: string } | null
   taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
 }
@@ -109,6 +119,7 @@ interface Customer {
   id: number
   name: string
   phone: string | null
+  nit?: string | null
 }
 
 interface CartItem {
@@ -174,6 +185,19 @@ export function POSView() {
   const [discountReason, setDiscountReason] = useState('')
   const [showDiscountInput, setShowDiscountInput] = useState(false)
 
+  // ─── Invoice mode: TIRILLA (default), DOC_EQUIPOS (equivalente POS), or ELECTRONICA (when e-invoicing enabled) ──
+  type InvoiceMode = 'TIRILLA' | 'DOC_EQUIPOS' | 'ELECTRONICA'
+  const isEInvEnabled = !!store?.invoiceEnabled && !!store?.nit
+  const hasStoreNit = !!store?.nit
+  const [posInvoiceMode, setPosInvoiceMode] = useState<InvoiceMode>('TIRILLA')
+  const [lastInvoiceData, setLastInvoiceData] = useState<any>(null)
+  const [lastDocType, setLastDocType] = useState<'TIRILLA' | 'DOC_EQUIPOS' | 'ELECTRONICA'>('TIRILLA')
+  const [creatingInvoice, setCreatingInvoice] = useState(false)
+  // ─── Invoice buyer info (Art. 11 DIAN — only name, NIT, email required) ──
+  const [invoiceCustomerNit, setInvoiceCustomerNit] = useState('')
+  const [invoiceCustomerName, setInvoiceCustomerName] = useState('')
+  const [invoiceCustomerEmail, setInvoiceCustomerEmail] = useState('')
+
   // ─── Cart Sheet state ────────────────────────────────
   const [cartSheetOpen, setCartSheetOpen] = useState(false)
 
@@ -203,6 +227,51 @@ export function POSView() {
   // ─── Cart state ──────────────────────────────────────
   const [cart, setCart] = useState<CartItem[]>([])
 
+  // ─── Barcode scanner state ──────────────────────────
+  const [barcodeFlash, setBarcodeFlash] = useState<'success' | 'error' | null>(null)
+  const barcodeInputRef = useRef<HTMLInputElement>(null)
+
+  // ─── Barcode scan handler ──────────────────────────
+  const handleBarcodeScan = useCallback(
+    (barcode: string) => {
+      // Search products for exact barcode match (case insensitive)
+      const product = products.find(
+        (p) => p.barcode && p.barcode.toLowerCase() === barcode.toLowerCase()
+      )
+      if (product) {
+        addToCart(product)
+        toast.success(`Escaneado: ${product.name}`)
+        setBarcodeFlash('success')
+      } else {
+        playError()
+        toast.error(`Producto no encontrado: ${barcode}`)
+        setBarcodeFlash('error')
+      }
+      // Clear flash after 1.5s
+      setTimeout(() => setBarcodeFlash(null), 1500)
+    },
+    [products, addToCart]
+  )
+
+  // ─── Barcode scanner hook ──────────────────────────
+  // Enabled only when no dialog is open
+  const anyDialogOpen = showChargeDialog || showReturnDialog || showRecentSales
+  useBarcodeScanner({ onScan: handleBarcodeScan, enabled: !anyDialogOpen })
+
+  // ─── Dedicated barcode input handler ──────────────
+  const handleBarcodeInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        const value = (e.target as HTMLInputElement).value.trim()
+        if (value.length >= 4) {
+          handleBarcodeScan(value)
+          ;(e.target as HTMLInputElement).value = ''
+        }
+      }
+    },
+    [handleBarcodeScan]
+  )
+
   // ─── Fetch open cash registers ──────────────────
   const fetchOpenCashRegisters = useCallback(async () => {
     if (!storeId) return
@@ -228,10 +297,10 @@ export function POSView() {
     if (!storeId) return
     setIsLoadingProducts(true)
     try {
-      const res = await fetch(`/api/products?storeId=${storeId}&active=true`)
+      const res = await fetch(`/api/products?storeId=${storeId}&active=true&limit=500`)
       if (!res.ok) throw new Error('Error al cargar productos')
-      const data = await res.json()
-      setProducts(data)
+      const json = await res.json()
+      setProducts(Array.isArray(json) ? json : (json.data || []))
     } catch {
       toast.error('Error al cargar productos')
       playError()
@@ -271,10 +340,10 @@ export function POSView() {
     if (!storeId) return
     setIsLoadingCustomers(true)
     try {
-      const res = await fetch(`/api/customers?storeId=${storeId}`)
+      const res = await fetch(`/api/customers?storeId=${storeId}&limit=200`)
       if (!res.ok) throw new Error('Error al cargar clientes')
-      const data = await res.json()
-      setCustomers(data)
+      const json = await res.json()
+      setCustomers(Array.isArray(json) ? json : (json.data || []))
     } catch {
       // Silent fail - customers are optional
     } finally {
@@ -462,6 +531,9 @@ export function POSView() {
     setDiscountReason('')
     setShowDiscountInput(false)
     setCartSheetOpen(false)
+    setInvoiceCustomerNit('')
+    setInvoiceCustomerName('')
+    setInvoiceCustomerEmail('')
   }, [])
 
   // ─── Return last order ─────────────────────────────
@@ -537,6 +609,13 @@ export function POSView() {
       }
       const data = await res.json()
       toast.success(data.message)
+      // Show credit note notification if auto-generated
+      if (data.creditNote) {
+        toast.success(`Nota Crédito ${data.creditNote.noteNumber} generada automáticamente`, {
+          description: `${data.creditNote.concept} por $${data.creditNote.grandTotal.toLocaleString('es-CO')}`,
+          duration: 6000,
+        })
+      }
       setShowReturnDialog(false)
       setReturningOrderId(null)
       setReturnOrderDetail(null)
@@ -570,8 +649,9 @@ export function POSView() {
       })
       const res = await fetch(`/api/orders?${params}`)
       if (!res.ok) throw new Error('Error')
-      const data = await res.json()
-      setRecentOrders(data.slice(0, 50)) // Last 50
+      const json = await res.json()
+      const recentData = Array.isArray(json) ? json : (json.data || [])
+      setRecentOrders(recentData.slice(0, 50)) // Last 50
     } catch {
       toast.error('Error al cargar ventas recientes')
     } finally {
@@ -617,6 +697,14 @@ export function POSView() {
   // ─── Submit order ────────────────────────────────────
   const handleSubmitOrder = async () => {
     if (!storeId || cart.length === 0) return
+
+    // Block if no cash register is open — backend also validates, but catch early on frontend
+    if (openCashRegisters.length === 0) {
+      toast.error('Debes abrir la caja antes de registrar una venta. Ve a Contabilidad → Caja.')
+      playError()
+      setShowChargeDialog(false)
+      return
+    }
 
     // Fiado requires a customer
     if (paymentMethod === 'FIADO' && selectedCustomer === 'none') {
@@ -678,16 +766,12 @@ export function POSView() {
         description: `Orden ${order.orderNumber}`,
       })
 
-      // Show warning from API if present
-      if (order.warning) {
-        toast.warning(order.warning, { duration: 6000 })
-      }
-
       // Refresh open cash registers after sale
       fetchOpenCashRegisters()
 
       setLastOrderNumber(order.orderNumber)
       setLastOrderData(order)
+      setLastDocType(posInvoiceMode)
       setCart([])
       setNotes('')
       setTipAmount(0)
@@ -698,6 +782,54 @@ export function POSView() {
       setDiscountReason('')
       setShowDiscountInput(false)
       setCartSheetOpen(false)
+
+      // ── Auto-create electronic invoice if selected ──
+      if (posInvoiceMode === 'ELECTRONICA' && isEInvEnabled && order.id) {
+        try {
+          setCreatingInvoice(true)
+          // Determine NIT: manual input > selected customer > consumidor final
+          const finalNit = invoiceCustomerNit.trim()
+            ? invoiceCustomerNit.trim().replace(/[^0-9]/g, '')
+            : (selectedCustomer !== 'none'
+                ? (customers.find(c => String(c.id) === selectedCustomer)?.nit?.replace(/[^0-9]/g, '') || DIAN_CONSUMIDOR_FINAL_NIT)
+                : DIAN_CONSUMIDOR_FINAL_NIT)
+          const finalName = invoiceCustomerName.trim()
+            || (selectedCustomer !== 'none'
+              ? customers.find(c => String(c.id) === selectedCustomer)?.name
+              : undefined)
+          const finalEmail = invoiceCustomerEmail.trim() || undefined
+
+          const invBody: any = {
+            orderId: order.id,
+            testMode: store?.invoiceTestMode ?? true,
+            customerNit: finalNit,
+            customerName: finalName || 'Consumidor Final',
+            autoSend: true,
+          }
+          if (finalEmail) invBody.customerEmail = finalEmail
+
+          const invRes = await fetch('/api/invoices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(invBody),
+          })
+          if (invRes.ok) {
+            const invoiceData = await invRes.json()
+            setLastInvoiceData(invoiceData)
+            toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, {
+              description: 'CUFE generado correctamente',
+              duration: 5000,
+            })
+          } else {
+            const err = await invRes.json().catch(() => ({}))
+            toast.error(`Error al generar factura: ${err.error || 'Desconocido'}`, { duration: 6000 })
+          }
+        } catch {
+          toast.error('Error al generar factura electrónica')
+        } finally {
+          setCreatingInvoice(false)
+        }
+      }
     } catch (err) {
       playError()
       toast.error(err instanceof Error ? err.message : 'Error al registrar la venta')
@@ -721,10 +853,10 @@ export function POSView() {
       <Card
         key={product.id}
         className={`
-          cursor-pointer transition-all duration-150 select-none overflow-hidden
-          hover:shadow-lg active:scale-[0.97]
+          cursor-pointer transition-all duration-200 select-none overflow-hidden border-border/50
+          hover:shadow-md hover:border-primary/20 active:scale-[0.97]
           ${isOutOfStock ? 'opacity-50 grayscale cursor-not-allowed' : ''}
-          ${inCart ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-background shadow-emerald-100 dark:shadow-emerald-900/20' : ''}
+          ${inCart ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-background shadow-emerald-500/10 dark:shadow-emerald-900/20' : ''}
         `}
         onClick={() => !isOutOfStock && addToCart(product)}
       >
@@ -785,9 +917,9 @@ export function POSView() {
       <Card
         key={service.id}
         className={`
-          cursor-pointer transition-all duration-150 select-none overflow-hidden
-          hover:shadow-lg active:scale-[0.97]
-          ${inCart ? 'ring-2 ring-violet-500 ring-offset-1 dark:ring-offset-background shadow-violet-100 dark:shadow-violet-900/20' : ''}
+          cursor-pointer transition-all duration-200 select-none overflow-hidden border-border/50
+          hover:shadow-md hover:border-primary/20 active:scale-[0.97]
+          ${inCart ? 'ring-2 ring-violet-500 ring-offset-1 dark:ring-offset-background shadow-violet-500/10 dark:shadow-violet-900/20' : ''}
         `}
         onClick={() => addServiceToCart(service)}
       >
@@ -842,10 +974,11 @@ export function POSView() {
       ) : selectedCategory === 'servicios' ? (
         filteredServices.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-            <PackageSearch className="h-12 w-12 opacity-30" />
-            <p className="text-sm">
+            <PackageSearch className="h-16 w-16 opacity-20 animate-[pulse_3s_ease-in-out_infinite]" />
+            <p className="text-sm font-medium">
               {searchQuery ? 'No se encontraron servicios' : 'No hay servicios activos'}
             </p>
+            <p className="text-xs opacity-60">Intenta con otra categoría o término de búsqueda</p>
           </div>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
@@ -854,10 +987,11 @@ export function POSView() {
         )
       ) : filteredProducts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-          <PackageSearch className="h-12 w-12 opacity-30" />
-          <p className="text-sm">
+          <PackageSearch className="h-16 w-16 opacity-20 animate-[pulse_3s_ease-in-out_infinite]" />
+          <p className="text-sm font-medium">
             {searchQuery ? 'No se encontraron productos' : 'No hay productos activos'}
           </p>
+          <p className="text-xs opacity-60">Intenta con otra categoría o término de búsqueda</p>
         </div>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
@@ -871,25 +1005,80 @@ export function POSView() {
     <div className="flex flex-col gap-3 h-full relative min-w-0 overflow-x-hidden">
       <KPIBar context="pos" />
 
-      {/* ═══ HEADER: Search + Category Tabs ═══════════ */}
-      {/* Search bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-        <Input
-          type="text"
-          placeholder="Buscar producto por nombre o SKU..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10 h-11 text-base"
-        />
+      {/* ═══ HEADER: Barcode Input + Search + Category Tabs ═══════════ */}
+      {/* Barcode scanner input + search row */}
+      <div className="flex items-center gap-2">
+        {/* Dedicated barcode input */}
+        <div className="relative shrink-0 w-44 sm:w-52">
+          <ScanBarcode
+            className={`absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors duration-300 ${
+              barcodeFlash === 'success'
+                ? 'text-emerald-500'
+                : barcodeFlash === 'error'
+                  ? 'text-red-500'
+                  : 'text-muted-foreground'
+            }`}
+          />
+          <Input
+            ref={barcodeInputRef}
+            data-barcode-input
+            type="text"
+            placeholder="Escanear código..."
+            onKeyDown={handleBarcodeInputKeyDown}
+            className={`pl-9 pr-2 h-11 text-sm bg-background/80 backdrop-blur-sm transition-all duration-300 ${
+              barcodeFlash === 'success'
+                ? 'ring-2 ring-emerald-500/50 border-emerald-500/50'
+                : barcodeFlash === 'error'
+                  ? 'ring-2 ring-red-500/50 border-red-500/50'
+                  : 'focus-visible:ring-emerald-500/30 focus-visible:border-emerald-500/50'
+            }`}
+          />
+        </div>
+
+        {/* Search bar */}
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Buscar producto por nombre o SKU..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 h-11 text-base bg-background/80 backdrop-blur-sm focus-visible:ring-emerald-500/30 focus-visible:border-emerald-500/50 focus-visible:shadow-[0_0_20px_rgba(16,185,129,0.12)] transition-all duration-200"
+          />
+          {/* Barcode scanner active indicator */}
+          {!anyDialogOpen && (
+            <div
+              className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 transition-all duration-300 ${
+                barcodeFlash === 'success'
+                  ? 'opacity-100'
+                  : barcodeFlash === 'error'
+                    ? 'opacity-100'
+                    : 'opacity-50'
+              }`}
+            >
+              <div
+                className={`h-1.5 w-1.5 rounded-full transition-colors duration-300 ${
+                  barcodeFlash === 'success'
+                    ? 'bg-emerald-500'
+                    : barcodeFlash === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-emerald-400 animate-pulse'
+                }`}
+              />
+              <span className="text-[11px] text-muted-foreground hidden sm:inline whitespace-nowrap">
+                Escáner activo
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Category tabs - wrap so all categories are visible */}
       <div className="flex items-center gap-2 flex-wrap">
         <Button
-          variant={selectedCategory === 'all' ? 'default' : 'outline'}
+          variant="outline"
           size="sm"
-          className="shrink-0 h-8"
+          className={`shrink-0 h-8 transition-all duration-200 ${selectedCategory === 'all' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/15 shadow-sm shadow-emerald-500/10' : 'hover:bg-muted/80'}`}
           onClick={() => setSelectedCategory('all')}
         >
           Todos
@@ -897,9 +1086,9 @@ export function POSView() {
         {categories.map((cat) => (
           <Button
             key={cat.id}
-            variant={selectedCategory === String(cat.id) ? 'default' : 'outline'}
+            variant="outline"
             size="sm"
-            className="shrink-0 h-8"
+            className={`shrink-0 h-8 transition-all duration-200 ${selectedCategory === String(cat.id) ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/15 shadow-sm shadow-emerald-500/10' : 'hover:bg-muted/80'}`}
             onClick={() => setSelectedCategory(String(cat.id))}
           >
             {cat.name}
@@ -907,9 +1096,9 @@ export function POSView() {
         ))}
         {services.length > 0 && (
           <Button
-            variant={selectedCategory === 'servicios' ? 'default' : 'outline'}
+            variant="outline"
             size="sm"
-            className="shrink-0 h-8 gap-1"
+            className={`shrink-0 h-8 gap-1 transition-all duration-200 ${selectedCategory === 'servicios' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/15 shadow-sm shadow-emerald-500/10' : 'hover:bg-muted/80'}`}
             onClick={() => setSelectedCategory('servicios')}
           >
             <Star className="h-3.5 w-3.5" />
@@ -925,7 +1114,7 @@ export function POSView() {
       {cartItemCount > 0 && (
         <button
           onClick={() => setCartSheetOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 h-14 px-5 rounded-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold shadow-xl shadow-emerald-600/30 transition-all duration-200 lg:bottom-8 lg:right-8"
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 h-14 px-5 rounded-full bg-emerald-600 hover:bg-emerald-700 hover:shadow-2xl hover:shadow-emerald-600/40 active:scale-95 text-white font-bold shadow-xl shadow-emerald-600/30 transition-all duration-200 lg:bottom-8 lg:right-8"
         >
           <ShoppingCart className="h-5 w-5" />
           <span className="text-sm">{cartItemCount}</span>
@@ -958,9 +1147,13 @@ export function POSView() {
                     storeNIT: store?.nit || undefined,
                     storeAddress: store?.address || undefined,
                     storePhone: store?.phone || undefined,
-                    orderNumber: lastOrderData.orderNumber,
+                    storeRegime: 'RESPONSABLE',
+                    invoiceResolution: store?.resolutionNumber || undefined,
+                    invoicePrefix: store?.invoicePrefix || undefined,
+                    orderNumber: lastInvoiceData?.invoiceNumber || lastOrderData.orderNumber,
                     date: lastOrderData.createdAt,
                     customer: lastOrderData.customer?.name,
+                    customerNit: lastInvoiceData?.customerNit,
                     items,
                     subtotal: lastOrderData.subtotal,
                     tipAmount: lastOrderData.tipAmount || 0,
@@ -971,11 +1164,20 @@ export function POSView() {
                     paymentMethod: lastOrderData.paymentMethod,
                     currencyCode: currencyCode,
                     notes: lastOrderData.notes ?? undefined,
+                    cufe: lastInvoiceData?.cufe,
+                    qrCodeUrl: lastInvoiceData?.qrCode,
+                    isElectronic: !!lastInvoiceData?.cufe,
+                    isDocEquivalente: lastDocType === 'DOC_EQUIPOS' && !lastInvoiceData?.cufe,
+                    resolutionNumber: store?.resolutionNumber || undefined,
+                    resolutionStart: store?.resolutionStartNumber || undefined,
+                    resolutionEnd: store?.resolutionEndNumber || undefined,
                   })
                 }}
               >
                 <Printer className="h-3.5 w-3.5" />
                 <span>Imprimir</span>
+                {lastInvoiceData?.cufe && <Badge variant="outline" className="text-[9px] px-1 py-0 text-primary border-primary/30">FE</Badge>}
+                {lastDocType === 'DOC_EQUIPOS' && !lastInvoiceData?.cufe && <Badge variant="outline" className="text-[9px] px-1 py-0 text-amber-600 border-amber-300">Doc.Equi</Badge>}
               </Button>
               <Button
                 variant="outline"
@@ -1028,10 +1230,15 @@ export function POSView() {
           </SheetHeader>
 
           {cart.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2 px-4">
-              <ShoppingCart className="h-16 w-16 opacity-15" />
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3 px-4">
+              <div className="relative">
+                <ShoppingCart className="h-20 w-20 opacity-15" />
+                <div className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-muted/50 flex items-center justify-center">
+                  <Plus className="h-3.5 w-3.5 opacity-40" />
+                </div>
+              </div>
               <p className="text-sm font-medium">Ticket vacío</p>
-              <p className="text-xs">Selecciona productos para comenzar</p>
+              <p className="text-xs opacity-60">Selecciona productos para comenzar</p>
             </div>
           ) : (
             <>
@@ -1043,7 +1250,7 @@ export function POSView() {
                     return (
                       <div
                         key={cartItemKey(item)}
-                        className="flex items-center gap-2 py-3 border-b last:border-b-0"
+                        className="flex items-center gap-2 py-3 border-b border-border/40 last:border-b-0 hover:bg-muted/40 rounded-lg px-1.5 -mx-1.5 transition-colors duration-150"
                       >
                         {/* Item info */}
                         <div className="flex-1 min-w-0">
@@ -1130,19 +1337,19 @@ export function POSView() {
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-8 w-8 active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300 dark:hover:border-emerald-800 hover:shadow-sm hover:shadow-emerald-500/10"
                             onClick={() => updateQuantity(itemId, -1, item.isService)}
                             disabled={item.quantity <= 1}
                           >
                             <Minus className="h-3 w-3" />
                           </Button>
-                          <span className="w-8 text-center text-sm font-semibold tabular-nums">
+                          <span className="w-8 text-center text-sm font-bold tabular-nums text-foreground bg-muted/60 rounded-md py-1">
                             {item.quantity}
                           </span>
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-8 w-8 active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300 dark:hover:border-emerald-800 hover:shadow-sm hover:shadow-emerald-500/10"
                             onClick={() => updateQuantity(itemId, 1, item.isService)}
                             disabled={!item.isService && item.quantity >= item.maxStock}
                           >
@@ -1151,7 +1358,7 @@ export function POSView() {
                         </div>
 
                         {/* Line total */}
-                        <p className="text-sm font-semibold tabular-nums min-w-[80px] text-right shrink-0">
+                        <p className="text-sm font-bold tabular-nums min-w-[80px] text-right shrink-0 text-foreground">
                           {formatCurrency(item.salePrice * item.quantity, currencyCode)}
                         </p>
 
@@ -1159,7 +1366,7 @@ export function POSView() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 active:scale-90 transition-all duration-150 hover:shadow-sm"
                           onClick={() => removeFromCart(itemId, item.isService)}
                           title="Eliminar producto"
                         >
@@ -1172,8 +1379,8 @@ export function POSView() {
               </div>
 
               {/* Bottom section: summary + options + charge */}
-              <div className="shrink-0 border-t bg-background">
-                <div className="px-4 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
+              <div className="shrink-0 border-t border-border bg-background/95 backdrop-blur-sm shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+                <div className="px-4 py-4 space-y-3.5 max-h-[60vh] overflow-y-auto">
                   {/* Summary */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
@@ -1414,9 +1621,9 @@ export function POSView() {
 
                     <Separator />
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-xl font-bold">Total</span>
-                      <span className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                    <div className="flex items-center justify-between rounded-lg bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/10 px-3 py-2 -mx-1">
+                      <span className="text-lg font-bold tracking-tight">Total</span>
+                      <span className="text-2xl font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400 tracking-tight">
                         {formatCurrency(total, currencyCode)}
                       </span>
                     </div>
@@ -1564,7 +1771,7 @@ export function POSView() {
                   {/* Action buttons */}
                   <div className="flex flex-col gap-2 pt-1">
                     <Button
-                      className="w-full h-12 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                      className="w-full h-12 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white active:scale-[0.98] transition-all duration-150 shadow-lg shadow-emerald-600/20 hover:shadow-xl hover:shadow-emerald-600/30"
                       disabled={cart.length === 0 || isSubmitting || openCashRegisters.length === 0}
                       onClick={() => setShowChargeDialog(true)}
                     >
@@ -1575,7 +1782,7 @@ export function POSView() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full text-destructive hover:text-destructive"
+                      className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 active:scale-[0.98] transition-all duration-150"
                       onClick={clearCart}
                     >
                       <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -1608,9 +1815,13 @@ export function POSView() {
                                 storeNIT: store?.nit || undefined,
                                 storeAddress: store?.address || undefined,
                                 storePhone: store?.phone || undefined,
-                                orderNumber: lastOrderData.orderNumber,
+                                storeRegime: 'RESPONSABLE',
+                                invoiceResolution: store?.resolutionNumber || undefined,
+                                invoicePrefix: store?.invoicePrefix || undefined,
+                                orderNumber: lastInvoiceData?.invoiceNumber || lastOrderData.orderNumber,
                                 date: lastOrderData.createdAt,
                                 customer: lastOrderData.customer?.name,
+                                customerNit: lastInvoiceData?.customerNit,
                                 items,
                                 subtotal: lastOrderData.subtotal,
                                 tipAmount: lastOrderData.tipAmount || 0,
@@ -1621,11 +1832,20 @@ export function POSView() {
                                 paymentMethod: lastOrderData.paymentMethod,
                                 currencyCode: currencyCode,
                                 notes: lastOrderData.notes ?? undefined,
+                                cufe: lastInvoiceData?.cufe,
+                                qrCodeUrl: lastInvoiceData?.qrCode,
+                                isElectronic: !!lastInvoiceData?.cufe,
+                                isDocEquivalente: lastDocType === 'DOC_EQUIPOS' && !lastInvoiceData?.cufe,
+                                resolutionNumber: store?.resolutionNumber || undefined,
+                                resolutionStart: store?.resolutionStartNumber || undefined,
+                                resolutionEnd: store?.resolutionEndNumber || undefined,
                               })
                             }}
                           >
                             <Printer className="h-3.5 w-3.5 mr-1" />
                             Imprimir
+                            {lastInvoiceData?.cufe && <Badge variant="outline" className="text-[9px] px-1 py-0 text-primary border-primary/30 ml-1">FE</Badge>}
+                            {lastDocType === 'DOC_EQUIPOS' && !lastInvoiceData?.cufe && <Badge variant="outline" className="text-[9px] px-1 py-0 text-amber-600 border-amber-300 ml-1">Doc.Equi</Badge>}
                           </Button>
                           <Button
                             variant="ghost"
@@ -1657,6 +1877,113 @@ export function POSView() {
             <DialogDescription asChild>
               <div className="space-y-3">
                 <p>¿Estás seguro de que deseas registrar esta venta?</p>
+
+                {/* ── Invoice Mode Selector (only when e-invoicing is enabled) ── */}
+                {hasStoreNit && (
+                  <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5" />
+                      Tipo de Comprobante
+                    </Label>
+                    <div className={`grid gap-2 ${isEInvEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setPosInvoiceMode('TIRILLA')}
+                        className={`flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-all cursor-pointer ${
+                          posInvoiceMode === 'TIRILLA'
+                            ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
+                            : 'border-border hover:border-primary/30 hover:bg-muted/50 text-muted-foreground'
+                        }`}
+                      >
+                        <Receipt className="h-5 w-5" />
+                        <span className="text-xs font-semibold">Tirilla</span>
+                        <span className="text-[10px] opacity-70">Venta simple</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPosInvoiceMode('DOC_EQUIPOS')}
+                        className={`flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-all cursor-pointer ${
+                          posInvoiceMode === 'DOC_EQUIPOS'
+                            ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
+                            : 'border-border hover:border-primary/30 hover:bg-muted/50 text-muted-foreground'
+                        }`}
+                      >
+                        <MonitorSmartphone className="h-5 w-5" />
+                        <span className="text-xs font-semibold">Doc. Equivalente</span>
+                        <span className="text-[10px] opacity-70">POS / Resolución</span>
+                      </button>
+                      {isEInvEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => setPosInvoiceMode('ELECTRONICA')}
+                        className={`flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-all cursor-pointer ${
+                          posInvoiceMode === 'ELECTRONICA'
+                            ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
+                            : 'border-border hover:border-primary/30 hover:bg-muted/50 text-muted-foreground'
+                        }`}
+                      >
+                        <FileText className="h-5 w-5" />
+                        <span className="text-xs font-semibold">Factura Elect.</span>
+                        <span className="text-[10px] opacity-70">CUFE y QR DIAN</span>
+                      </button>
+                      )}
+                    </div>
+                    {posInvoiceMode === 'ELECTRONICA' && (
+                      <div className="flex items-center gap-1.5 text-[10px] text-primary/80">
+                        <QrCode className="h-3 w-3" />
+                        Se generará automáticamente con CUFE y QR DIAN
+                      </div>
+                    )}
+                    {posInvoiceMode === 'DOC_EQUIPOS' && store?.resolutionNumber && (
+                      <div className="flex items-center gap-1.5 text-[10px] text-primary/80">
+                        <Hash className="h-3 w-3" />
+                        Resolución: {store.resolutionNumber} — Prefijo: {store.invoicePrefix || 'POS'}
+                      </div>
+                    )}
+                    {/* ── Buyer info fields (Art. 11 DIAN: only name, NIT, email) ── */}
+                    {posInvoiceMode === 'ELECTRONICA' && (
+                      <div className="space-y-2 mt-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">NIT del comprador (opcional)</Label>
+                            <NITInput
+                              value={invoiceCustomerNit}
+                              onChange={setInvoiceCustomerNit}
+                              placeholder={selectedCustomer !== 'none'
+                                ? customers.find(c => String(c.id) === selectedCustomer)?.nit || DIAN_CONSUMIDOR_FINAL_NIT
+                                : DIAN_CONSUMIDOR_FINAL_NIT}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Nombre / Razón social</Label>
+                            <Input
+                              placeholder={selectedCustomer !== 'none'
+                                ? customers.find(c => String(c.id) === selectedCustomer)?.name || 'Consumidor Final'
+                                : 'Consumidor Final'}
+                              value={invoiceCustomerName}
+                              onChange={(e) => setInvoiceCustomerName(e.target.value)}
+                              className="h-9 text-sm"
+                              maxLength={200}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Email (requerido para DIAN)</Label>
+                          <Input
+                            type="email"
+                            placeholder={selectedCustomer !== 'none'
+                              ? customers.find(c => String(c.id) === selectedCustomer)?.phone || ''
+                              : ''}
+                            value={invoiceCustomerEmail}
+                            onChange={(e) => setInvoiceCustomerEmail(e.target.value)}
+                            className="h-9 text-sm"
+                            maxLength={200}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="bg-muted rounded-lg p-3 space-y-1.5">
                   <div className="flex justify-between text-sm">
@@ -1733,14 +2060,14 @@ export function POSView() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowChargeDialog(false)} disabled={isSubmitting}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setShowChargeDialog(false)} disabled={isSubmitting || creatingInvoice} className="active:scale-[0.98] transition-all duration-150">Cancelar</Button>
             <Button
               onClick={handleSubmitOrder}
-              disabled={isSubmitting}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+              disabled={isSubmitting || creatingInvoice}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 active:scale-[0.98] transition-all duration-150 shadow-lg shadow-emerald-600/20"
             >
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isSubmitting ? 'Procesando...' : 'Confirmar Venta'}
+              {isSubmitting ? 'Procesando...' : posInvoiceMode === 'ELECTRONICA' && isEInvEnabled ? 'Confirmar + Factura Electrónica' : posInvoiceMode === 'DOC_EQUIPOS' ? 'Confirmar + Doc. Equivalente' : 'Confirmar Venta'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1853,6 +2180,7 @@ export function POSView() {
                   variant="outline"
                   onClick={() => { setShowReturnDialog(false); setReturnOrderDetail(null); setReturnItems(new Map()) }}
                   disabled={returning}
+                  className="active:scale-[0.98] transition-all duration-150"
                 >
                   Cancelar
                 </Button>
@@ -1860,6 +2188,7 @@ export function POSView() {
                   variant="destructive"
                   onClick={handleReturnOrder}
                   disabled={returning || returnItems.size === 0}
+                  className="active:scale-[0.98] transition-all duration-150"
                 >
                   {returning ? 'Procesando...' : `Devolver ${returnItems.size > 0 ? `(${returnItems.size} producto${returnItems.size > 1 ? 's' : ''})` : ''}`}
                 </Button>
@@ -1887,7 +2216,7 @@ export function POSView() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar por número de orden, cliente o producto..."
-              className="pl-9"
+              className="pl-9 bg-background/80 backdrop-blur-sm focus-visible:shadow-[0_0_15px_rgba(16,185,129,0.1)] transition-all duration-200"
               value={recentSalesSearch}
               onChange={(e) => setRecentSalesSearch(e.target.value)}
             />
@@ -1901,7 +2230,7 @@ export function POSView() {
             </div>
           ) : recentOrders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <ShoppingCart className="mb-3 h-10 w-10 text-muted-foreground/30" />
+              <ShoppingCart className="mb-3 h-14 w-14 text-muted-foreground/25 animate-[pulse_3s_ease-in-out_infinite]" />
               <p className="text-muted-foreground font-medium text-sm">
                 No hay ventas completadas hoy
               </p>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +23,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { storeId, note } = parsed.data
+
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // Get all customers with debt
     const customersWithDebt = await db.customer.findMany({
@@ -114,7 +119,7 @@ export async function POST(request: NextRequest) {
       totalDebtReset,
     })
   } catch (error) {
-    console.error('POST /api/customers/reset-debts error:', error)
+    logger.error('POST /api/customers/reset-debts error:', error)
     return NextResponse.json({ error: 'Error al resetear saldos' }, { status: 500 })
   }
 }

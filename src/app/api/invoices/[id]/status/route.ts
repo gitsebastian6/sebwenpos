@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
 import { getStatus, parseDIANStatusMessage } from '@/lib/invoicing/soap-client'
 import { formatInvoiceNumber } from '@/lib/invoice-utils'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,14 +20,13 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const { searchParams } = new URL(request.url)
-    const storeId = Number(searchParams.get('storeId'))
-
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
-    }
+    const url = new URL(request.url)
+    const storeId = z.coerce.number().int().positive().parse(url.searchParams.get('storeId'))
 
     // 1. Obtener factura
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
+
     const invoice = await db.invoice.findFirst({
       where: { id: Number(id), storeId },
     })
@@ -125,7 +127,7 @@ export async function GET(
       timestamp: statusResult.timestamp,
     })
   } catch (error) {
-    console.error('GET /api/invoices/[id]/status error:', error)
+    logger.error('GET /api/invoices/[id]/status error:', error)
     return NextResponse.json(
       { error: 'Error interno al consultar el estado de la factura en la DIAN' },
       { status: 500 },

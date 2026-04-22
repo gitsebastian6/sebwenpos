@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { generateInvoicePDF, type InvoicePDFData } from '@/lib/invoicing/pdf-generator'
 import { sendInvoiceEmail } from '@/lib/invoicing/email-sender'
 import { formatInvoiceNumber } from '@/lib/invoice-utils'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +37,9 @@ export async function POST(
     // 1. Validar body
     const body = await request.json()
     const data = sendEmailSchema.parse(body)
+
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // 2. Obtener factura completa con orden, items y tienda
     const invoice = await db.invoice.findFirst({
@@ -87,7 +92,7 @@ export async function POST(
     const createdAt = invoice.createdAt
     const taxBreakdown = JSON.parse(invoice.taxBreakdown || '[]')
 
-    const items = (order?.orderItems || []).map((item: any, idx: number) => ({
+    const items = (order?.orderItems || []).map((item, idx) => ({
       lineNumber: idx + 1,
       description: item.product?.name ?? item.service?.name ?? 'Eliminado',
       quantity: item.quantity,
@@ -187,7 +192,7 @@ export async function POST(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('POST /api/invoices/[id]/email error:', error)
+    logger.error('POST /api/invoices/[id]/email error:', error)
     return NextResponse.json(
       { error: 'Error interno al enviar la factura por correo electronico' },
       { status: 500 },

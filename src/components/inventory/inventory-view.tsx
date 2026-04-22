@@ -182,10 +182,11 @@ export function InventoryView() {
     if (!storeId) return
     setIsLoadingAlerts(true)
     try {
-      const res = await fetch(`/api/products?storeId=${storeId}`)
+      const res = await fetch(`/api/products?storeId=${storeId}&limit=500`)
       if (!res.ok) throw new Error()
-      const data: Product[] = await res.json()
-      const alerts: LowStockAlert[] = data
+      const json = await res.json()
+      const allProducts: Product[] = Array.isArray(json) ? json : (json.data || [])
+      const alerts: LowStockAlert[] = allProducts
         .filter((p) => p.currentStock <= p.minStock)
         .map((p) => ({
           id: p.id,
@@ -225,10 +226,10 @@ export function InventoryView() {
     if (!storeId) return
     setIsLoadingProducts(true)
     try {
-      const res = await fetch(`/api/products?storeId=${storeId}`)
+      const res = await fetch(`/api/products?storeId=${storeId}&limit=500`)
       if (!res.ok) throw new Error()
-      const data = await res.json()
-      setProducts(data)
+      const json = await res.json()
+      setProducts(Array.isArray(json) ? json : (json.data || []))
     } catch {
       toast.error('Error al cargar productos')
     } finally {
@@ -515,7 +516,7 @@ export function InventoryView() {
           {/* LOSS CARD */}
           <button
             onClick={() => openActionDialog('loss')}
-            className="group relative flex flex-col items-center gap-3 rounded-xl border-2 border-red-200 bg-red-50 p-6 text-center transition-all hover:border-red-400 hover:bg-red-100/70 dark:border-red-900/60 dark:bg-red-950/30 dark:hover:border-red-700 dark:hover:bg-red-950/50"
+            className="group relative flex flex-col items-center gap-3 rounded-xl border-2 active:scale-[0.98] transition-all border-red-200 bg-red-50 p-6 text-center transition-all hover:border-red-400 hover:bg-red-100/70 dark:border-red-900/60 dark:bg-red-950/30 dark:hover:border-red-700 dark:hover:bg-red-950/50"
           >
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/60 transition-transform group-hover:scale-110">
               <AlertTriangle className="h-7 w-7 text-red-600 dark:text-red-400" />
@@ -535,7 +536,7 @@ export function InventoryView() {
           {/* RETURN CARD */}
           <button
             onClick={() => openActionDialog('return')}
-            className="group relative flex flex-col items-center gap-3 rounded-xl border-2 border-sky-200 bg-sky-50 p-6 text-center transition-all hover:border-sky-400 hover:bg-sky-100/70 dark:border-sky-900/60 dark:bg-sky-950/30 dark:hover:border-sky-700 dark:hover:bg-sky-950/50"
+            className="group relative flex flex-col items-center gap-3 rounded-xl border-2 active:scale-[0.98] transition-all border-sky-200 bg-sky-50 p-6 text-center transition-all hover:border-sky-400 hover:bg-sky-100/70 dark:border-sky-900/60 dark:bg-sky-950/30 dark:hover:border-sky-700 dark:hover:bg-sky-950/50"
           >
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-900/60 transition-transform group-hover:scale-110">
               <RotateCcw className="h-7 w-7 text-sky-600 dark:text-sky-400" />
@@ -555,7 +556,7 @@ export function InventoryView() {
           {/* ADJUST CARD */}
           <button
             onClick={() => openActionDialog('adjust')}
-            className="group relative flex flex-col items-center gap-3 rounded-xl border-2 border-amber-200 bg-amber-50 p-6 text-center transition-all hover:border-amber-400 hover:bg-amber-100/70 dark:border-amber-900/60 dark:bg-amber-950/30 dark:hover:border-amber-700 dark:hover:bg-amber-950/50"
+            className="group relative flex flex-col items-center gap-3 rounded-xl border-2 active:scale-[0.98] transition-all border-amber-200 bg-amber-50 p-6 text-center transition-all hover:border-amber-400 hover:bg-amber-100/70 dark:border-amber-900/60 dark:bg-amber-950/30 dark:hover:border-amber-700 dark:hover:bg-amber-950/50"
           >
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/60 transition-transform group-hover:scale-110">
               <SlidersHorizontal className="h-7 w-7 text-amber-600 dark:text-amber-400" />
@@ -579,7 +580,7 @@ export function InventoryView() {
       {/* ═══════════════════════════════════════════════════════════
           SECTION: ALERTAS DE STOCK BAJO
           ═══════════════════════════════════════════════════════════ */}
-      <Card className="border-amber-300/50 dark:border-amber-600/50">
+      <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-amber-300/50 dark:border-amber-600/50">
         <CardHeader>
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
@@ -600,7 +601,7 @@ export function InventoryView() {
             </div>
           ) : lowStockProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-              <PackageSearch className="h-10 w-10 mb-2 opacity-40" />
+              <PackageSearch className="h-14 w-14 mb-3 opacity-40 animate-pulse" />
               <p className="text-sm">No hay alertas de stock bajo</p>
               <p className="text-xs">Todos los productos tienen stock suficiente</p>
             </div>
@@ -641,7 +642,7 @@ export function InventoryView() {
       {/* ═══════════════════════════════════════════════════════════
           SECTION: INVENTARIO DE PRODUCTOS (with search bar)
           ═══════════════════════════════════════════════════════════ */}
-      <Card>
+      <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -649,10 +650,9 @@ export function InventoryView() {
               <CardDescription>Lista completa con stock actual</CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
+              <Button variant="outline"
                 size="sm"
-                className="text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/50"
+                className="text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/50 active:scale-[0.98] transition-all"
                 onClick={() => setShowResetDialog(true)}
               >
                 <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
@@ -695,7 +695,7 @@ export function InventoryView() {
             </div>
           ) : filteredProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-              <PackageSearch className="h-10 w-10 mb-2 opacity-40" />
+              <PackageSearch className="h-14 w-14 mb-3 opacity-40 animate-pulse" />
               <p className="text-sm">
                 {productSearch ? 'No se encontraron productos' : 'No hay productos registrados'}
               </p>
@@ -704,7 +704,7 @@ export function InventoryView() {
             <div className="max-h-[400px] overflow-y-auto rounded-md border">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors">
                     <TableHead>Producto</TableHead>
                     <TableHead className="whitespace-nowrap">Categoría</TableHead>
                     <TableHead className="text-right">Stock</TableHead>
@@ -713,7 +713,7 @@ export function InventoryView() {
                 </TableHeader>
                 <TableBody>
                   {filteredProducts.map((product) => (
-                    <TableRow key={product.id}>
+                    <TableRow className="hover:bg-muted/30 transition-colors" key={product.id}>
                       <TableCell className="font-medium text-xs">
                         <div className="truncate max-w-[120px]" title={product.name}>
                           <span className="truncate">{product.name}</span>
@@ -765,12 +765,11 @@ export function InventoryView() {
           </div>
           <div className="hidden sm:block flex-1" />
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
+            <Button variant="outline"
               size="sm"
               onClick={handleExportMovementsExcel}
               disabled={isLoadingMovements || movements.length === 0}
-              className="gap-2"
+              className="gap-2 active:scale-[0.98] transition-all"
             >
               <Download className="h-4 w-4" />
               <span className="text-xs">Excel</span>
@@ -779,7 +778,7 @@ export function InventoryView() {
         </div>
 
         {/* Filters */}
-        <Card>
+        <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
           <CardContent className="pt-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="flex flex-wrap items-end gap-2 flex-1">
@@ -787,7 +786,7 @@ export function InventoryView() {
                 <div className="flex-1 min-w-[140px] space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Tipo</Label>
                   <Select value={filterType} onValueChange={setFilterType}>
-                    <SelectTrigger className="h-9">
+                    <SelectTrigger className="h-9 focus-visible:ring-primary/20 focus-visible:border-primary/40">
                       <SelectValue placeholder="Todos" />
                     </SelectTrigger>
                     <SelectContent>
@@ -803,7 +802,7 @@ export function InventoryView() {
                 <div className="flex-1 min-w-[140px] space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Producto</Label>
                   <Select value={filterProduct} onValueChange={setFilterProduct}>
-                    <SelectTrigger className="h-9">
+                    <SelectTrigger className="h-9 focus-visible:ring-primary/20 focus-visible:border-primary/40">
                       <SelectValue placeholder="Todos" />
                     </SelectTrigger>
                     <SelectContent>
@@ -822,7 +821,7 @@ export function InventoryView() {
         </Card>
 
         {/* Movements Table */}
-        <Card>
+        <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
           <CardContent className="pt-6">
             {isLoadingMovements ? (
               <div className="space-y-3">
@@ -832,7 +831,7 @@ export function InventoryView() {
               </div>
             ) : movements.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <PackageSearch className="h-10 w-10 mb-2 opacity-40" />
+                <PackageSearch className="h-14 w-14 mb-3 opacity-40 animate-pulse" />
                 <p className="text-sm">No hay movimientos registrados</p>
                 <p className="text-xs">Los movimientos aparecerán aquí cuando registres pérdidas, devoluciones o ajustes</p>
               </div>
@@ -840,7 +839,7 @@ export function InventoryView() {
               <div className="max-h-[480px] overflow-y-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="hover:bg-muted/30 transition-colors">
                       <TableHead className="w-[120px] whitespace-nowrap">Fecha</TableHead>
                       <TableHead>Producto</TableHead>
                       <TableHead className="w-[80px] whitespace-nowrap">Tipo</TableHead>
@@ -850,7 +849,7 @@ export function InventoryView() {
                   </TableHeader>
                   <TableBody>
                     {movements.map((m) => (
-                      <TableRow key={m.id}>
+                      <TableRow className="hover:bg-muted/30 transition-colors" key={m.id}>
                         <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                           {formatDate(m.createdAt)}
                         </TableCell>
@@ -887,7 +886,7 @@ export function InventoryView() {
           Step 2: Completar formulario
           ═══════════════════════════════════════════════════════════ */}
       <Dialog open={actionDialogOpen} onOpenChange={(open) => { if (!open) setActionDialogOpen(false) }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className={`flex items-center gap-2 ${actionType === 'loss' ? 'text-red-600 dark:text-red-400' : actionType === 'return' ? 'text-sky-600 dark:text-sky-400' : 'text-amber-600 dark:text-amber-400'}`}>
               {config.icon}
@@ -975,10 +974,9 @@ export function InventoryView() {
                         {selectedProduct.category?.name || 'Sin categoría'} &middot; Stock actual: <span className="font-semibold text-foreground">{selectedProduct.currentStock} uds</span>
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
+                    <Button variant="ghost"
                       size="icon"
-                      className="h-7 w-7"
+                      className="h-7 w-7 active:scale-[0.98] transition-all"
                       onClick={clearSelectedProduct}
                     >
                       <X className="h-3.5 w-3.5" />
@@ -1007,7 +1005,7 @@ export function InventoryView() {
                     <div className="space-y-2">
                       <Label>¿Por qué se perdió? *</Label>
                       <Select value={lossReason} onValueChange={setLossReason}>
-                        <SelectTrigger>
+                        <SelectTrigger className="focus-visible:ring-primary/20 focus-visible:border-primary/40">
                           <SelectValue placeholder="Selecciona el motivo" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1075,7 +1073,7 @@ export function InventoryView() {
                           setAdjustQuantity('')
                         }
                       }}>
-                        <SelectTrigger className="h-9">
+                        <SelectTrigger className="h-9 focus-visible:ring-primary/20 focus-visible:border-primary/40">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1158,7 +1156,7 @@ export function InventoryView() {
 
       {/* ─── Dialog: Resetear Stock ──────────────────────────── */}
       <Dialog open={showResetDialog} onOpenChange={(open) => { if (!open) { setShowResetDialog(false); setResetNote('') } }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="h-5 w-5 text-destructive" />

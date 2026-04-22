@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireStoreAccess } from '@/lib/api-auth'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(services)
   } catch (error) {
-    console.error('Error fetching services:', error)
+    logger.error('Error fetching services:', error)
     return NextResponse.json({ error: 'Failed to fetch services' }, { status: 500 })
   }
 }
@@ -75,6 +77,10 @@ export async function POST(request: NextRequest) {
       }
 
       const { storeId, serviceId, quantity, unitPrice, totalAmount, notes } = parsed.data
+
+      // Auth: verify user has access to this store
+      const transactionStoreAccessError = requireStoreAccess(request, storeId)
+      if (transactionStoreAccessError) return transactionStoreAccessError
 
       // Verify service exists and belongs to store
       const service = await db.service.findFirst({
@@ -111,6 +117,10 @@ export async function POST(request: NextRequest) {
 
     const { storeId, name, description, price, icon, unit } = parsed.data
 
+    // Auth: verify user has access to this store
+    const serviceStoreAccessError = requireStoreAccess(request, storeId)
+    if (serviceStoreAccessError) return serviceStoreAccessError
+
     const service = await db.service.create({
       data: {
         storeId,
@@ -125,7 +135,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(service, { status: 201 })
   } catch (error) {
-    console.error('Error creating service:', error)
+    logger.error('Error creating service:', error)
     return NextResponse.json({ error: 'Failed to create service' }, { status: 500 })
   }
 }

@@ -1,21 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
+
+const kardexParamsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+  productId: z.coerce.number().int().positive(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+})
 
 // GET: Kardex for a product (inventory movements with running balance)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
-    const storeId = parseInt(searchParams.get('storeId') || '0')
-    const productId = parseInt(searchParams.get('productId') || '0')
-    const from = searchParams.get('from')
-    const to = searchParams.get('to')
+    const params = kardexParamsSchema.parse(Object.fromEntries(searchParams.entries()))
+    const { storeId, productId, from, to } = params
 
-    if (!storeId) return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
-    if (!productId) return NextResponse.json({ error: 'productId requerido' }, { status: 400 })
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
-    // Verify product belongs to store
+    // Verify product exists and belongs to store
     const product = await db.product.findFirst({
       where: { id: productId, storeId },
       select: {
@@ -97,7 +105,10 @@ export async function GET(request: NextRequest) {
       currentStock: product.currentStock,
     })
   } catch (error) {
-    console.error('GET /api/inventory/kardex error:', error)
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Parámetros inválidos: ' + error.issues.map(i => i.message).join(', ') }, { status: 400 })
+    }
+    logger.error('GET /api/inventory/kardex error:', error)
     return NextResponse.json({ error: 'Error al obtener kardex' }, { status: 500 })
   }
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireStoreAccess } from '@/lib/api-auth'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ expenses })
   } catch (error) {
-    console.error('GET /api/expenses error:', error)
+    logger.error('GET /api/expenses error:', error)
     return NextResponse.json({ error: 'Error interno' }, { status: 500 })
   }
 }
@@ -73,6 +75,10 @@ export async function POST(request: NextRequest) {
 
     const { storeId, category, description, amount, date, notes } = parsed.data
     const dateObj = new Date(date)
+
+    // Auth: verify user has access to this store
+    const storeAccessError = requireStoreAccess(request, storeId)
+    if (storeAccessError) return storeAccessError
 
     const expense = await db.$transaction(async (tx) => {
       // Find expense account (EXPENSE type)
@@ -136,7 +142,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ expense }, { status: 201 })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error interno'
-    console.error('POST /api/expenses error:', error)
+    logger.error('POST /api/expenses error:', error)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

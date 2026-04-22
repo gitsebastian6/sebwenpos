@@ -207,8 +207,9 @@ async function getTotalInvoices(storeId: number): Promise<number> {
  * Obtiene el siguiente consecutivo de forma atómica para facturación electrónica.
  *
  * Utiliza una transacción de Prisma para garantizar que dos terminales no obtengan
- * el mismo consecutivo simultáneamente. SQLite serializa las escrituras, por lo que
- * no se requieren bloqueos explícitos.
+ * el mismo consecutivo simultáneamente. PostgreSQL provee row-level locking
+ * automático dentro de transacciones, asegurando serialización sin bloqueos
+ * explícitos adicionales.
  *
  * Validaciones realizadas dentro de la transacción:
  * 1. La tienda tiene resolución DIAN configurada

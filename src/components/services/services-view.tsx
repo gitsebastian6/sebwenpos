@@ -484,21 +484,21 @@ export function ServicesView() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card>
+        <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
           <CardContent className="flex flex-col items-center justify-center pt-4 pb-4">
             <Package className="h-5 w-5 text-muted-foreground mb-1" />
             <span className="text-2xl font-bold">{services.length}</span>
             <span className="text-xs text-muted-foreground">Servicios</span>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
           <CardContent className="flex flex-col items-center justify-center pt-4 pb-4">
             <History className="h-5 w-5 text-muted-foreground mb-1" />
             <span className="text-2xl font-bold">{transactions.length}</span>
             <span className="text-xs text-muted-foreground">Registros</span>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
           <CardContent className="flex flex-col items-center justify-center pt-4 pb-4">
             <TrendingUp className="h-5 w-5 text-emerald-600 mb-1" />
             <span className="text-2xl font-bold">
@@ -511,7 +511,7 @@ export function ServicesView() {
           </CardContent>
         </Card>
         {papelStats && (
-          <Card>
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
             <CardContent className="flex flex-col items-center justify-center pt-4 pb-4">
               <ScrollText className="h-5 w-5 text-sky-600 mb-1" />
               <span className="text-2xl font-bold">{papelStats.totalRollos}</span>
@@ -534,7 +534,7 @@ export function ServicesView() {
               <h2 className="text-lg font-semibold">Servicios del Bar</h2>
               <p className="text-sm text-muted-foreground">Administra los servicios que ofreces</p>
             </div>
-            <Button onClick={openCreateService} size="sm">
+            <Button className="active:scale-[0.98] transition-all" onClick={openCreateService} size="sm">
               <Plus className="h-4 w-4 mr-2" />
               Nuevo Servicio
             </Button>
@@ -547,9 +547,9 @@ export function ServicesView() {
               ))}
             </div>
           ) : services.length === 0 ? (
-            <Card>
+            <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
               <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <Package className="h-10 w-10 mb-2 opacity-40" />
+                <Package className="h-14 w-14 mb-3 opacity-40 animate-pulse" />
                 <p className="text-sm">No hay servicios creados</p>
                 <p className="text-xs">Crea tu primer servicio</p>
               </CardContent>
@@ -574,18 +574,16 @@ export function ServicesView() {
                           </div>
                         </div>
                         <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
+                          <Button variant="ghost"
                             size="icon"
-                            className="h-7 w-7"
+                            className="h-7 w-7 active:scale-[0.98] transition-all"
                             onClick={() => openEditService(s)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            variant="ghost"
+                          <Button variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            className="h-7 w-7 text-destructive hover:text-destructive active:scale-[0.98] transition-all"
                             onClick={() => setDeleteService(s)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -623,7 +621,7 @@ export function ServicesView() {
               <h2 className="text-lg font-semibold">Historial de Servicios</h2>
               <p className="text-sm text-muted-foreground">Registro de servicios prestados</p>
             </div>
-            <Button onClick={openCreateTransaction} size="sm">
+            <Button className="active:scale-[0.98] transition-all" onClick={openCreateTransaction} size="sm">
               <Plus className="h-4 w-4 mr-2" />
               Registrar Servicio
             </Button>
@@ -636,21 +634,21 @@ export function ServicesView() {
               ))}
             </div>
           ) : transactions.length === 0 ? (
-            <Card>
+            <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
               <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <History className="h-10 w-10 mb-2 opacity-40" />
+                <History className="h-14 w-14 mb-3 opacity-40 animate-pulse" />
                 <p className="text-sm">No hay registros</p>
                 <p className="text-xs">Los servicios registrados aparecerán aquí</p>
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
               <CardContent className="p-0">
                 <div className="max-h-[500px] overflow-y-auto">
                   {/* Desktop Table */}
                   <Table className="hidden md:table">
                     <TableHeader>
-                      <TableRow>
+                      <TableRow className="hover:bg-muted/30 transition-colors">
                         <TableHead className="w-[130px]">Fecha</TableHead>
                         <TableHead>Servicio</TableHead>
                         <TableHead className="text-center">Cantidad</TableHead>
@@ -663,7 +661,7 @@ export function ServicesView() {
                     </TableHeader>
                     <TableBody>
                       {transactions.map((tx) => (
-                        <TableRow key={tx.id}>
+                        <TableRow className="hover:bg-muted/30 transition-colors" key={tx.id}>
                           <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                             {formatDate(tx.createdAt)}
                           </TableCell>
@@ -702,10 +700,10 @@ export function ServicesView() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1 justify-end">
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditTx(tx)}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 active:scale-[0.98] transition-all" onClick={() => openEditTx(tx)}>
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteTx(tx)}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive active:scale-[0.98] transition-all" onClick={() => setDeleteTx(tx)}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
@@ -745,10 +743,10 @@ export function ServicesView() {
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>{tx.quantity} {tx.service?.unit || 'servicio'} × {formatCurrency(tx.unitPrice, currencyCode)}</span>
                           <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEditTx(tx)}>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 active:scale-[0.98] transition-all" onClick={() => openEditTx(tx)}>
                               <Pencil className="h-3 w-3" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => setDeleteTx(tx)}>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive active:scale-[0.98] transition-all" onClick={() => setDeleteTx(tx)}>
                               <Trash2 className="h-3 w-3" />
                             </Button>
                           </div>
@@ -768,7 +766,7 @@ export function ServicesView() {
 
       {/* ═══ CREATE SERVICE DIALOG ═══ */}
       <Dialog open={showCreateService} onOpenChange={(open) => !open && setShowCreateService(false)}>
-        <DialogContent>
+        <DialogContent className="backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Nuevo Servicio</DialogTitle>
             <DialogDescription>Crea un nuevo servicio para el bar</DialogDescription>
@@ -787,13 +785,13 @@ export function ServicesView() {
                 <Label>Precio (COP) *</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                  <Input type="number" min="0" className="pl-7" value={formPrice} onChange={(e) => setFormPrice(e.target.value)} placeholder="0" />
+                  <Input type="number" min="0" className="pl-7 focus-visible:ring-primary/20 focus-visible:border-primary/40" value={formPrice} onChange={(e) => setFormPrice(e.target.value)} placeholder="0" />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Unidad</Label>
                 <Select value={formUnit} onValueChange={setFormUnit}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {UNIT_OPTIONS.map(u => (
                       <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
@@ -809,7 +807,7 @@ export function ServicesView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateService(false)}>Cancelar</Button>
-            <Button onClick={handleCreateService} disabled={isSubmittingService}>
+            <Button className="active:scale-[0.98] transition-all" onClick={handleCreateService} disabled={isSubmittingService}>
               {isSubmittingService && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Crear Servicio
             </Button>
@@ -819,7 +817,7 @@ export function ServicesView() {
 
       {/* ═══ CREATE TRANSACTION DIALOG ═══ */}
       <Dialog open={showCreateTransaction} onOpenChange={(open) => !open && setShowCreateTransaction(false)}>
-        <DialogContent>
+        <DialogContent className="backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Registrar Servicio</DialogTitle>
             <DialogDescription>Registra la prestación de un servicio</DialogDescription>
@@ -828,7 +826,7 @@ export function ServicesView() {
             <div className="space-y-2">
               <Label>Servicio *</Label>
               <Select value={String(txServiceId)} onValueChange={(v) => setTxServiceId(Number(v))}>
-                <SelectTrigger><SelectValue placeholder="Selecciona servicio" /></SelectTrigger>
+                <SelectTrigger className="focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue placeholder="Selecciona servicio" /></SelectTrigger>
                 <SelectContent>
                   {services.filter(s => s.isActive).map(s => (
                     <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
@@ -845,7 +843,7 @@ export function ServicesView() {
                 <Label>Precio Unit. (COP)</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                  <Input type="number" min="0" className="pl-7" value={txUnitPrice} onChange={(e) => setTxUnitPrice(e.target.value)} />
+                  <Input type="number" min="0" className="pl-7 focus-visible:ring-primary/20 focus-visible:border-primary/40" value={txUnitPrice} onChange={(e) => setTxUnitPrice(e.target.value)} />
                 </div>
               </div>
             </div>
@@ -864,7 +862,7 @@ export function ServicesView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateTransaction(false)}>Cancelar</Button>
-            <Button onClick={handleCreateTransaction} disabled={isSubmittingTx}>
+            <Button className="active:scale-[0.98] transition-all" onClick={handleCreateTransaction} disabled={isSubmittingTx}>
               {isSubmittingTx && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Registrar
             </Button>
@@ -874,7 +872,7 @@ export function ServicesView() {
 
       {/* ═══ EDIT SERVICE DIALOG ═══ */}
       <Dialog open={!!editingService} onOpenChange={(open) => !open && setEditingService(null)}>
-        <DialogContent>
+        <DialogContent className="backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Editar Servicio</DialogTitle>
             <DialogDescription>Modifica los datos del servicio</DialogDescription>
@@ -893,13 +891,13 @@ export function ServicesView() {
                 <Label>Precio (COP) *</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                  <Input type="number" min="0" className="pl-7" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
+                  <Input type="number" min="0" className="pl-7 focus-visible:ring-primary/20 focus-visible:border-primary/40" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Unidad</Label>
                 <Select value={editUnit} onValueChange={setEditUnit}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {UNIT_OPTIONS.map(u => (
                       <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
@@ -915,7 +913,7 @@ export function ServicesView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingService(null)}>Cancelar</Button>
-            <Button onClick={handleSaveService} disabled={isSavingService}>
+            <Button className="active:scale-[0.98] transition-all" onClick={handleSaveService} disabled={isSavingService}>
               {isSavingService && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Guardar
             </Button>
@@ -925,7 +923,7 @@ export function ServicesView() {
 
       {/* ═══ EDIT TRANSACTION DIALOG ═══ */}
       <Dialog open={!!editingTx} onOpenChange={(open) => !open && setEditingTx(null)}>
-        <DialogContent>
+        <DialogContent className="backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Editar Registro #{editingTx?.id}</DialogTitle>
             <DialogDescription>Modifica los datos del registro</DialogDescription>
@@ -944,7 +942,7 @@ export function ServicesView() {
                 <Label>Precio Unit. (COP)</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                  <Input type="number" min="0" className="pl-7" value={editTxUnitPrice} onChange={(e) => setEditTxUnitPrice(e.target.value)} />
+                  <Input type="number" min="0" className="pl-7 focus-visible:ring-primary/20 focus-visible:border-primary/40" value={editTxUnitPrice} onChange={(e) => setEditTxUnitPrice(e.target.value)} />
                 </div>
               </div>
             </div>
@@ -955,7 +953,7 @@ export function ServicesView() {
             <div className="space-y-2">
               <Label>Estado</Label>
               <Select value={editTxStatus} onValueChange={setEditTxStatus}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="COMPLETED">Completado</SelectItem>
                   <SelectItem value="CANCELLED">Cancelado</SelectItem>
@@ -965,7 +963,7 @@ export function ServicesView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingTx(null)}>Cancelar</Button>
-            <Button onClick={handleSaveTx} disabled={isSavingTx}>
+            <Button className="active:scale-[0.98] transition-all" onClick={handleSaveTx} disabled={isSavingTx}>
               {isSavingTx && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Guardar
             </Button>
@@ -975,7 +973,7 @@ export function ServicesView() {
 
       {/* ═══ DELETE SERVICE CONFIRMATION ═══ */}
       <AlertDialog open={!!deleteService} onOpenChange={(open) => !open && setDeleteService(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="backdrop-blur-sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Servicio</AlertDialogTitle>
             <AlertDialogDescription>
@@ -998,7 +996,7 @@ export function ServicesView() {
 
       {/* ═══ DELETE TRANSACTION CONFIRMATION ═══ */}
       <AlertDialog open={!!deleteTx} onOpenChange={(open) => !open && setDeleteTx(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="backdrop-blur-sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Registro</AlertDialogTitle>
             <AlertDialogDescription>

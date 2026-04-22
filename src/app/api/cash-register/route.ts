@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +24,9 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get('to') // YYYY-MM-DD
 
     if (!storeId) return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
+
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const where: Record<string, unknown> = { storeId }
     if (status && ['OPEN', 'CLOSED'].includes(status)) {
@@ -51,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ shifts })
   } catch (error) {
-    console.error('GET /api/cash-register error:', error)
+    logger.error('GET /api/cash-register error:', error)
     return NextResponse.json({ error: 'Error al listar turnos' }, { status: 500 })
   }
 }
@@ -67,6 +72,9 @@ export async function POST(request: NextRequest) {
 
     const { storeId, userId, openingBalance, notes } = parsed.data
 
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
+
     const shift = await db.cashRegister.create({
       data: {
         storeId,
@@ -81,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ shift }, { status: 201 })
   } catch (error) {
-    console.error('POST /api/cash-register error:', error)
+    logger.error('POST /api/cash-register error:', error)
     return NextResponse.json({ error: 'Error al abrir caja' }, { status: 500 })
   }
 }

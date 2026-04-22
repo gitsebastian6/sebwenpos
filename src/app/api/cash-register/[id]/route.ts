@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +36,9 @@ export async function GET(
       return NextResponse.json({ error: 'Turno no encontrado' }, { status: 404 })
     }
 
-    // Check if detailed view is requested (include orders with items)
+    const storeAccessErr = requireStoreAccess(request, shift.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     const { searchParams } = request.nextUrl
     const includeOrders = searchParams.get('includeOrders') === 'true'
 
@@ -167,7 +171,7 @@ export async function GET(
 
     return NextResponse.json(response)
   } catch (error) {
-    console.error('GET /api/cash-register/[id] error:', error)
+    logger.error('GET /api/cash-register/[id] error:', error)
     return NextResponse.json({ error: 'Error al obtener turno' }, { status: 500 })
   }
 }
@@ -190,6 +194,10 @@ export async function PUT(
     }
 
     const body = await request.json()
+
+    const storeAccessErr = requireStoreAccess(request, shift.storeId)
+    if (storeAccessErr) return storeAccessErr
+
 
     // ── Reopen closed shift ────────────────────────────────────────────────
     if (body.action === 'reopen' && shift.status === 'CLOSED') {
@@ -264,7 +272,7 @@ export async function PUT(
 
     return NextResponse.json({ shift: updated, expectedCash, difference })
   } catch (error) {
-    console.error('PUT /api/cash-register/[id] error:', error)
+    logger.error('PUT /api/cash-register/[id] error:', error)
     return NextResponse.json({ error: 'Error al procesar turno' }, { status: 500 })
   }
 }
@@ -292,6 +300,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Turno no encontrado' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(request, shift.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     if (shift._count.orders > 0) {
       return NextResponse.json({
         error: 'No se puede eliminar un turno con ventas asociadas',
@@ -303,7 +314,7 @@ export async function DELETE(
 
     return NextResponse.json({ message: 'Turno eliminado correctamente' })
   } catch (error) {
-    console.error('DELETE /api/cash-register/[id] error:', error)
+    logger.error('DELETE /api/cash-register/[id] error:', error)
     return NextResponse.json({ error: 'Error al eliminar turno' }, { status: 500 })
   }
 }

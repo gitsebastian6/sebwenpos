@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
+import { sql } from '@/lib/db-dialect'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
+
+const dailyReportParamsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+  date: z.string().optional(),
+})
 
 // GET: Daily summary report (Corte Z)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
-    const storeId = parseInt(searchParams.get('storeId') || '0')
-    const dateParam = searchParams.get('date')
+    const params = dailyReportParamsSchema.parse(Object.fromEntries(searchParams.entries()))
+    const { storeId, date: dateParam } = params
 
-    if (!storeId) return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
-    // Determine date range — SQLite stores created_at as INTEGER (Unix ms)
+    // Determine date range
     const reportDate = dateParam ? new Date(dateParam + 'T00:00:00') : new Date()
     const startOfDay = new Date(reportDate)
     startOfDay.setHours(0, 0, 0, 0)
@@ -22,113 +32,145 @@ export async function GET(request: NextRequest) {
 
     const dateStr = reportDate.toISOString().split('T')[0]
 
-    // Orders for the day using Prisma (avoids raw SQL issues)
-    const ordersRaw = await db.$queryRawUnsafe<Array<{
-      id: number; total: number; subtotal: number; tipAmount: number
-      paymentMethod: string; status: string
-    }>>(`
-      SELECT id, total, subtotal, tip_amount as tipAmount, payment_method as paymentMethod, status
-      FROM orders
-      WHERE store_id = ${storeId} AND status IN ('COMPLETED', 'CREDIT', 'CANCELLED')
-        AND created_at >= ${startTs} AND created_at < ${endTs}
-      ORDER BY created_at DESC
-    `)
+    const dayFilter = `AND o.created_at >= ${sql.timestamp(startTs)} AND o.created_at < ${sql.timestamp(endTs)}`
+    // For tables without 'o' alias (service_transactions, cash_registers)
+    const dayFilterNoAlias = `AND created_at >= ${sql.timestamp(startTs)} AND created_at < ${sql.timestamp(endTs)}`
 
-    // Fetch order items separately for product info
-    const orders = ordersRaw.length > 0
-      ? await db.order.findMany({
-          where: { id: { in: ordersRaw.map(o => o.id) } },
-          include: {
-            orderItems: {
-              include: { product: { select: { id: true, name: true, category: { select: { name: true } } } } },
-            },
-          },
-        })
-      : []
+    // Helper: convert bigint/number to plain number
+    const N = (v: number | bigint | null | undefined) => Number(v ?? 0)
 
-    const completedOrders = orders.filter((o) => o.status === 'COMPLETED' || o.status === 'CREDIT')
-    const cancelledOrders = orders.filter((o) => o.status === 'CANCELLED')
+    // ───────────────────────────────────────────────────────
+    // ALL QUERIES IN PARALLEL — use CAST(...AS INTEGER) to
+    // prevent BigInt from SQLite SUM/COUNT aggregates
+    // ───────────────────────────────────────────────────────
+    const [
+      orderStatsRaw,
+      byPaymentRaw,
+      topProductsRaw,
+      cashRegisterRaw,
+      closedShiftRaw,
+      newDebtsRaw,
+      servicesRaw,
+      cancelledCount,
+    ] = await Promise.all([
+      // 1. Sales totals (completed + credit)
+      db.$queryRawUnsafe<Array<{ total: number; subtotal: number; tips: number; count: number }>>(`
+        SELECT CAST(COALESCE(SUM(o.total), 0) AS INTEGER) as total,
+               CAST(COALESCE(SUM(o.subtotal), 0) AS INTEGER) as subtotal,
+               CAST(COALESCE(SUM(o.tip_amount), 0) AS INTEGER) as tips,
+               CAST(COUNT(*) AS INTEGER) as count
+        FROM orders o
+        WHERE o.store_id = ${storeId} AND o.status IN ('COMPLETED', 'CREDIT') ${dayFilter}
+      `),
 
-    // Sales totals
-    let totalSales = 0
-    let totalSubtotal = 0
-    let totalTips = 0
-    for (const order of completedOrders) {
-      totalSales += order.total
-      totalSubtotal += order.subtotal
-      totalTips += order.tipAmount || 0
-    }
+      // 2. Payment method breakdown
+      db.$queryRawUnsafe<Array<{ method: string; count: number; total: number; tips: number }>>(`
+        SELECT o.payment_method as method,
+               CAST(COUNT(*) AS INTEGER) as count,
+               CAST(SUM(o.total) AS INTEGER) as total,
+               CAST(SUM(o.tip_amount) AS INTEGER) as tips
+        FROM orders o
+        WHERE o.store_id = ${storeId} AND o.status IN ('COMPLETED', 'CREDIT') ${dayFilter}
+        GROUP BY o.payment_method
+      `),
+
+      // 3. Top products
+      db.$queryRawUnsafe<Array<{ productId: number; name: string; quantity: number; total: number }>>(`
+        SELECT oi.product_id as productId, COALESCE(p.name, 'Eliminado') as name,
+               CAST(SUM(oi.quantity) AS INTEGER) as quantity,
+               CAST(SUM(oi.total_row) AS INTEGER) as total
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        LEFT JOIN products p ON p.id = oi.product_id
+        WHERE o.store_id = ${storeId} AND o.status IN ('COMPLETED', 'CREDIT') ${dayFilter}
+        GROUP BY oi.product_id
+        ORDER BY total DESC LIMIT 5
+      `),
+
+      // 4. Cash register open today
+      db.$queryRawUnsafe<Array<{ openingBalance: number }>>(`
+        SELECT CAST(opening_balance AS INTEGER) as openingBalance FROM cash_registers
+        WHERE store_id = ${storeId} AND status = 'OPEN'
+        ORDER BY opened_at DESC LIMIT 1
+      `),
+
+      // 5. Closed shift today
+      db.$queryRawUnsafe<Array<{ openingBalance: number }>>(`
+        SELECT CAST(opening_balance AS INTEGER) as openingBalance FROM cash_registers
+        WHERE store_id = ${storeId} AND status = 'CLOSED'
+          AND opened_at >= ${sql.timestamp(startTs)} AND opened_at < ${sql.timestamp(endTs)}
+        ORDER BY opened_at DESC LIMIT 1
+      `),
+
+      // 6. Customer debts created today
+      db.$queryRawUnsafe<Array<{ total: number; customerName: string | null }>>(`
+        SELECT CAST(o.total AS INTEGER) as total, c.name as customerName
+        FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
+        WHERE o.store_id = ${storeId} AND o.status = 'CREDIT'
+          ${dayFilter}
+      `),
+
+      // 7. Services income today
+      db.$queryRawUnsafe<Array<{ totalAmount: number | null }>>(`
+        SELECT CAST(COALESCE(SUM(total_amount), 0) AS INTEGER) as totalAmount FROM service_transactions
+        WHERE store_id = ${storeId} AND status = 'COMPLETED'
+          ${dayFilterNoAlias}
+      `),
+
+      // 8. Cancelled orders count
+      db.order.count({
+        where: {
+          storeId,
+          status: 'CANCELLED',
+          createdAt: { gte: new Date(startTs), lt: new Date(endTs) },
+        },
+      }),
+    ])
+
+    // Process results
+    const statsRow = orderStatsRaw[0]
+    const totalSales = N(statsRow?.total)
+    const totalSubtotal = N(statsRow?.subtotal)
+    const totalTips = N(statsRow?.tips)
+    const completedCount = N(statsRow?.count)
 
     // Payment method breakdown
     const byPayment: Record<string, { count: number; total: number; tips: number }> = {}
-    for (const order of completedOrders) {
-      const method = order.paymentMethod
-      if (!byPayment[method]) byPayment[method] = { count: 0, total: 0, tips: 0 }
-      byPayment[method].count++
-      byPayment[method].total += order.total
-      byPayment[method].tips += order.tipAmount || 0
+    for (const row of byPaymentRaw) {
+      byPayment[row.method] = { count: N(row.count), total: N(row.total), tips: N(row.tips) }
     }
 
-    // Top products
-    const productSales: Record<string, { productId: number; name: string; quantity: number; total: number }> = {}
-    for (const order of completedOrders) {
-      for (const item of order.orderItems) {
-        const key = String(item.productId)
-        if (!productSales[key]) {
-          productSales[key] = { productId: item.productId || 0, name: item.product?.name || 'Eliminado', quantity: 0, total: 0 }
-        }
-        productSales[key].quantity += item.quantity
-        productSales[key].total += item.totalRow
-      }
-    }
-    const topProducts = Object.values(productSales).sort((a, b) => b.total - a.total).slice(0, 5)
+    // Top products (already sorted from SQL)
+    const topProducts = topProductsRaw.map(row => ({
+      productId: row.productId,
+      name: row.name,
+      quantity: N(row.quantity),
+      total: N(row.total),
+    }))
 
-    // Cash register open today
-    const cashRegisterRaw = await db.$queryRawUnsafe<Array<{ openingBalance: number }>>(`
-      SELECT opening_balance as openingBalance FROM cash_registers
-      WHERE store_id = ${storeId} AND status = 'OPEN'
-      ORDER BY opened_at DESC LIMIT 1
-    `)
-
+    // Cash register
     let openingBalance = 0
     if (cashRegisterRaw.length > 0) {
-      openingBalance = cashRegisterRaw[0].openingBalance
-    } else {
-      const closedShiftRaw = await db.$queryRawUnsafe<Array<{ openingBalance: number }>>(`
-        SELECT opening_balance as openingBalance FROM cash_registers
-        WHERE store_id = ${storeId} AND status = 'CLOSED'
-          AND opened_at >= ${startTs} AND opened_at < ${endTs}
-        ORDER BY opened_at DESC LIMIT 1
-      `)
-      if (closedShiftRaw.length > 0) openingBalance = closedShiftRaw[0].openingBalance
+      openingBalance = Number(cashRegisterRaw[0].openingBalance ?? 0)
+    } else if (closedShiftRaw.length > 0) {
+      openingBalance = Number(closedShiftRaw[0].openingBalance ?? 0)
     }
 
     const cashTotal = (byPayment['CASH']?.total || 0) + (byPayment['EFECTIVO']?.total || 0)
     const expectedCash = openingBalance + cashTotal
 
-    // Customer debts created today
-    const newDebtsRaw = await db.$queryRawUnsafe<Array<{ total: number; customerName: string | null }>>(`
-      SELECT o.total, c.name as customerName
-      FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
-      WHERE o.store_id = ${storeId} AND o.status = 'CREDIT'
-        AND o.created_at >= ${startTs} AND o.created_at < ${endTs}
-    `)
-    const totalNewDebts = newDebtsRaw.reduce((s, o) => s + Number(o.total), 0)
+    // Customer debts
+    const totalNewDebts = newDebtsRaw.reduce((s, o) => s + N(o.total), 0)
 
-    // Services income today
-    const servicesRaw = await db.$queryRawUnsafe<Array<{ totalAmount: bigint }>>(`
-      SELECT SUM(total_amount) as totalAmount FROM service_transactions
-      WHERE store_id = ${storeId} AND status = 'COMPLETED'
-        AND created_at >= ${startTs} AND created_at < ${endTs}
-    `)
+    // Services
     const totalServices = servicesRaw[0]?.totalAmount ? Number(servicesRaw[0].totalAmount) : 0
 
     return NextResponse.json({
       date: dateStr,
       orders: {
-        total: ordersRaw.length,
-        completed: completedOrders.length,
-        cancelled: cancelledOrders.length,
+        total: completedCount + cancelledCount,
+        completed: completedCount,
+        cancelled: cancelledCount,
       },
       sales: { total: totalSales, subtotal: totalSubtotal, tips: totalTips },
       byPayment,
@@ -137,12 +179,15 @@ export async function GET(request: NextRequest) {
       newDebts: {
         count: newDebtsRaw.length,
         total: totalNewDebts,
-        details: newDebtsRaw.map((d) => ({ customer: d.customerName || 'Cliente general', total: Number(d.total) })),
+        details: newDebtsRaw.map((d) => ({ customer: d.customerName || 'Cliente general', total: N(d.total) })),
       },
       services: totalServices,
     })
   } catch (error) {
-    console.error('GET /api/reports/daily error:', error)
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Parámetros inválidos: ' + error.issues.map(i => i.message).join(', ') }, { status: 400 })
+    }
+    logger.error('GET /api/reports/daily error:', error)
     return NextResponse.json({ error: 'Error al generar corte Z' }, { status: 500 })
   }
 }

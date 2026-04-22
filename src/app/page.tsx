@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { useAuthStore, checkAndRepairAuth } from '@/stores/auth-store'
+import { useAppStore } from '@/stores/app-store'
 import { AuthPage } from '@/components/auth/auth-page'
 import { AppShell } from '@/components/layout/app-shell'
+import { SuperAdminShell } from '@/components/super-admin/super-admin-shell'
 import { QueryProvider } from '@/providers/query-provider'
 
 function LoadingScreen() {
@@ -25,39 +27,43 @@ function useIsClient() {
 
 export default function Home() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const userId = useAuthStore((s) => s.user?.id)
   const store = useAuthStore((s) => s.store)
+  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin)
   const logout = useAuthStore((s) => s.logout)
   const isClient = useIsClient()
   const repaired = useRef(false)
+
+  // ── Reset view to Dashboard on every new login (different user) ──
+  useEffect(() => {
+    if (isClient && isAuthenticated && userId) {
+      useAppStore.getState().setView('dashboard')
+    }
+  }, [isClient, userId]) // triggers when userId changes (new login)
 
   // On first client mount, check for corrupted auth data and repair it
   useEffect(() => {
     if (isClient && !repaired.current) {
       repaired.current = true
-      const { isAuthenticated: valid, wasCorrupted } = checkAndRepairAuth()
+      const { wasCorrupted } = checkAndRepairAuth()
       if (wasCorrupted) {
-        // If corrupted data was found and cleared, force logout in the store
         logout()
       }
-      // If localStorage says authenticated but Zustand hasn't hydrated yet,
-      // we wait for Zustand to rehydrate naturally
     }
   }, [isClient, logout])
 
-  // If authenticated but no store after client mount, the session data is
-  // corrupted. Logout in an effect (NOT during render) to avoid hydration issues.
+  // If authenticated but no store (and not Super Admin), the session data is corrupted
   useEffect(() => {
-    if (isClient && isAuthenticated && !store) {
-      // Give Zustand persist a brief moment to rehydrate
+    if (isClient && isAuthenticated && !store && !isSuperAdmin) {
       const timer = setTimeout(() => {
-        const currentStore = useAuthStore.getState().store
-        if (!currentStore) {
+        const state = useAuthStore.getState()
+        if (!state.store && !state.isSuperAdmin) {
           useAuthStore.getState().logout()
         }
       }, 500)
       return () => clearTimeout(timer)
     }
-  }, [isClient, isAuthenticated, store])
+  }, [isClient, isAuthenticated, store, isSuperAdmin])
 
   // Before client mount (SSR / first hydration tick), always show loading.
   if (!isClient) return <LoadingScreen />
@@ -65,10 +71,13 @@ export default function Home() {
   // After mount, if not authenticated, show login.
   if (!isAuthenticated) return <AuthPage />
 
-  // If authenticated but store is null, show loading briefly.
+  // Super Admin → Super Admin Dashboard
+  if (isSuperAdmin) return <SuperAdminShell />
+
+  // If authenticated but store is null (shouldn't happen for non-admin), show loading briefly.
   if (!store) return <LoadingScreen />
 
-  // store is guaranteed non-null here
+  // Store Owner or Employee → App Shell
   return (
     <QueryProvider>
       <AppShell />

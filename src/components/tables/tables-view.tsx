@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
 import {
   Dialog,
   DialogContent,
@@ -54,6 +55,11 @@ import {
 } from '@/components/ui/popover'
 import {
   Plus,
+  FileText,
+  Receipt,
+  QrCode,
+  MonitorSmartphone,
+  Hash,
   Users,
   Clock,
   DollarSign,
@@ -314,6 +320,19 @@ export function TablesView() {
   const [discountValue, setDiscountValue] = useState<number>(0)
   const [discountReason, setDiscountReason] = useState<string>('')
 
+  // ── Invoice mode: TIRILLA (default), DOC_EQUIPOS (equivalente POS), or ELECTRONICA (when e-invoicing enabled) ──
+  const isEInvEnabled = !!store?.invoiceEnabled && !!store?.nit
+  const hasStoreNit = !!store?.nit
+  type InvoiceMode = 'TIRILLA' | 'DOC_EQUIPOS' | 'ELECTRONICA'
+  const [tableInvoiceMode, setTableInvoiceMode] = useState<InvoiceMode>('TIRILLA')
+  const [invoiceCustomerNit, setInvoiceCustomerNit] = useState('')
+  const [invoiceCustomerName, setInvoiceCustomerName] = useState('')
+  const [invoiceCustomerEmail, setInvoiceCustomerEmail] = useState('')
+  const [nitDvError, setNitDvError] = useState('')
+  const [creatingInvoice, setCreatingInvoice] = useState(false)
+  const [lastInvoiceData, setLastInvoiceData] = useState<any>(null)
+  const [lastDocType, setLastDocType] = useState<'TIRILLA' | 'DOC_EQUIPOS' | 'ELECTRONICA'>('TIRILLA')
+
   // ── Close session confirm ──
   const [closeSessionOpen, setCloseSessionOpen] = useState(false)
   const [closeSessionSaving, setCloseSessionSaving] = useState(false)
@@ -396,8 +415,8 @@ export function TablesView() {
     try {
       const res = await fetch(`/api/customers?storeId=${store.id}`)
       if (!res.ok) throw new Error('Error')
-      const data = await res.json()
-      setCustomers(data)
+      const json = await res.json()
+      setCustomers(Array.isArray(json) ? json : (json.data || []))
     } catch {
       // silently fail - customers are optional
     } finally {
@@ -417,8 +436,8 @@ export function TablesView() {
       if (categoryId && categoryId !== 'all') params.set('categoryId', categoryId)
       const res = await fetch(`/api/products?${params.toString()}`)
       if (!res.ok) throw new Error('Error')
-      const data = await res.json()
-      setProducts(data)
+      const json = await res.json()
+      setProducts(Array.isArray(json) ? json : (json.data || []))
     } catch {
       toast.error('Error al cargar productos')
     } finally {
@@ -806,6 +825,33 @@ export function TablesView() {
     }
   }
 
+  // ─── Update Item Quantity ──────────────────────────────────────────
+
+  const [updatingQtyItemId, setUpdatingQtyItemId] = useState<number | null>(null)
+
+  async function handleUpdateItemQuantity(itemId: number, newQuantity: number) {
+    if (!session || newQuantity < 1) return
+    setUpdatingQtyItemId(itemId)
+    try {
+      const res = await fetch(`/api/tables/sessions/${session.id}/comanda`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemIds: [itemId], quantity: newQuantity }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Error al actualizar cantidad')
+      }
+      await fetchSession(session.id)
+      fetchTables()
+    } catch (err) {
+      playError()
+      toast.error(err instanceof Error ? err.message : 'Error al actualizar cantidad')
+    } finally {
+      setUpdatingQtyItemId(null)
+    }
+  }
+
   // ─── Pay for Items ─────────────────────────────────────────────────────
 
   function handleOpenPayment() {
@@ -819,6 +865,11 @@ export function TablesView() {
     setDiscountType('NONE')
     setDiscountValue(0)
     setDiscountReason('')
+    setTableInvoiceMode('TIRILLA')
+    setInvoiceCustomerNit('')
+    setInvoiceCustomerName('')
+    setInvoiceCustomerEmail('')
+    setNitDvError('')
   }
 
   async function handleConfirmPayment() {
@@ -832,9 +883,11 @@ export function TablesView() {
         ? Math.min(discountValue, subtotal)
         : 0
 
-    // Warn if no cajas are open (but still allow payment)
+    // Block if no cash register is open — backend also validates, but catch early on frontend
     if (openCashRegisters.length === 0) {
-      toast.warning('⚠️ No hay cajas abiertas. El pago se procesará sin caja asociada.')
+      toast.error('Debes abrir la caja antes de procesar pagos. Ve a Contabilidad → Caja.')
+      setPaymentSaving(false)
+      return
     }
 
     // Fiado/CREDIT requires a customer
@@ -875,11 +928,49 @@ export function TablesView() {
       playSaleSuccess()
       const paymentData = await res.json()
       setLastPaymentData(paymentData)
+      setLastDocType(tableInvoiceMode)
       toast.success(`Pago exitoso - ${paymentMethodLabel(paymentMethod)}`)
 
-      // Show warning from payment response if present
-      if (paymentData.warning) {
-        toast.warning(paymentData.warning)
+      // ── Auto-create electronic invoice if selected ──
+      if (tableInvoiceMode === 'ELECTRONICA' && isEInvEnabled && paymentData.id) {
+        try {
+          setCreatingInvoice(true)
+          const finalNit = invoiceCustomerNit.trim()
+            ? invoiceCustomerNit.trim().replace(/[^0-9]/g, '')
+            : (session?.customer?.nit?.replace(/[^0-9]/g, '') || DIAN_CONSUMIDOR_FINAL_NIT)
+          const finalName = invoiceCustomerName.trim() || session?.customer?.name || 'Consumidor Final'
+          const finalEmail = invoiceCustomerEmail.trim() || undefined
+
+          const invBody: Record<string, unknown> = {
+            orderId: paymentData.id,
+            testMode: store?.invoiceTestMode ?? true,
+            customerNit: finalNit,
+            customerName: finalName,
+            autoSend: true,
+          }
+          if (finalEmail) invBody.customerEmail = finalEmail
+
+          const invRes = await fetch('/api/invoices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(invBody),
+          })
+          if (invRes.ok) {
+            const invoiceData = await invRes.json()
+            setLastInvoiceData(invoiceData)
+            toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, {
+              description: 'CUFE generado correctamente',
+              duration: 5000,
+            })
+          } else {
+            const err = await invRes.json().catch(() => ({}))
+            toast.error(`Error al generar factura: ${err.error || 'Desconocido'}`, { duration: 6000 })
+          }
+        } catch {
+          toast.error('Error al generar factura electrónica')
+        } finally {
+          setCreatingInvoice(false)
+        }
       }
 
       setPaymentOpen(false)
@@ -1060,13 +1151,13 @@ export function TablesView() {
             </p>
           </div>
         </div>
-        <Button onClick={() => {
+        <Button className="gap-2 shrink-0 active:scale-[0.98] transition-all" onClick={() => {
           setNewTableNumber('')
           setNewTableName('')
           setNewTableCapacity('4')
           setNewTableZone('PRINCIPAL')
           setAddTableOpen(true)
-        }} className="gap-2 shrink-0">
+        }} >
           <Plus className="h-4 w-4" />
           Agregar Mesa
         </Button>
@@ -1075,21 +1166,21 @@ export function TablesView() {
       {/* ── Status Summary ──────────────────────────────────────────────── */}
       {!tablesLoading && tables.length > 0 && (
         <div className="flex flex-wrap gap-3">
-          <div className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm">
+          <div className="flex items-center gap-2 rounded-lg border border-border/50 px-3 py-1.5 text-sm hover:shadow-sm transition-all duration-200">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
             <span className="text-muted-foreground">Disponibles:</span>
             <span className="font-semibold">
               {tables.filter((t) => t.isActive && !t.activeSession).length}
             </span>
           </div>
-          <div className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm">
+          <div className="flex items-center gap-2 rounded-lg border border-border/50 px-3 py-1.5 text-sm hover:shadow-sm transition-all duration-200">
             <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
             <span className="text-muted-foreground">Ocupadas:</span>
             <span className="font-semibold">
               {tables.filter((t) => t.isActive && !!t.activeSession).length}
             </span>
           </div>
-          <div className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm">
+          <div className="flex items-center gap-2 rounded-lg border border-border/50 px-3 py-1.5 text-sm hover:shadow-sm transition-all duration-200">
             <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
             <span className="text-muted-foreground">Mantenimiento:</span>
             <span className="font-semibold">
@@ -1117,15 +1208,14 @@ export function TablesView() {
           ))}
         </div>
       ) : tables.length === 0 ? (
-        <Card>
+        <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <Users className="h-12 w-12 text-muted-foreground/50 mb-4" />
+            <Users className="h-16 w-16 text-muted-foreground/40 mb-4 animate-pulse" />
             <p className="text-muted-foreground font-medium">No hay mesas creadas</p>
             <p className="text-sm text-muted-foreground/70 mt-1">
               Crea tu primera mesa para comenzar
             </p>
-            <Button
-              className="mt-4 gap-2"
+            <Button className="mt-4 gap-2 active:scale-[0.98] transition-all"
               onClick={() => setAddTableOpen(true)}
             >
               <Plus className="h-4 w-4" />
@@ -1153,7 +1243,7 @@ export function TablesView() {
       <Dialog open={openSessionOpen} onOpenChange={(open) => {
         if (!open) setOpenSessionOpen(false)
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Abrir Mesa {selectedTable?.number}</DialogTitle>
             <DialogDescription>
@@ -1167,11 +1257,10 @@ export function TablesView() {
                 Invitados <span className="text-destructive">*</span>
               </Label>
               <div className="flex items-center gap-3">
-                <Button
-                  type="button"
+                <Button type="button"
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9"
+                  className="h-9 w-9 active:scale-[0.98] transition-all"
                   onClick={() => setSessionGuests(String(Math.max(1, parseInt(sessionGuests, 10) - 1)))}
                 >
                   <Minus className="h-4 w-4" />
@@ -1185,11 +1274,10 @@ export function TablesView() {
                   value={sessionGuests}
                   onChange={(e) => setSessionGuests(e.target.value)}
                 />
-                <Button
-                  type="button"
+                <Button type="button"
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9"
+                  className="h-9 w-9 active:scale-[0.98] transition-all"
                   onClick={() => setSessionGuests(String(parseInt(sessionGuests, 10) + 1))}
                 >
                   <Plus className="h-4 w-4" />
@@ -1230,7 +1318,7 @@ export function TablesView() {
             <Button variant="outline" onClick={() => setOpenSessionOpen(false)} disabled={openSessionSaving}>
               Cancelar
             </Button>
-            <Button onClick={handleOpenSession} disabled={openSessionSaving} className="gap-2">
+            <Button className="gap-2 active:scale-[0.98] transition-all" onClick={handleOpenSession} disabled={openSessionSaving}>
               {openSessionSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               Abrir Mesa
             </Button>
@@ -1242,7 +1330,7 @@ export function TablesView() {
       <Dialog open={addTableOpen} onOpenChange={(open) => {
         if (!open) setAddTableOpen(false)
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Nueva Mesa</DialogTitle>
             <DialogDescription>
@@ -1312,7 +1400,7 @@ export function TablesView() {
             <Button variant="outline" onClick={() => setAddTableOpen(false)} disabled={addTableSaving}>
               Cancelar
             </Button>
-            <Button onClick={handleCreateTable} disabled={addTableSaving} className="gap-2">
+            <Button className="gap-2 active:scale-[0.98] transition-all" onClick={handleCreateTable} disabled={addTableSaving}>
               {addTableSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               Crear Mesa
             </Button>
@@ -1324,7 +1412,7 @@ export function TablesView() {
       <Dialog open={paymentOpen} onOpenChange={(open) => {
         if (!open) setPaymentOpen(false)
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Cobrar</DialogTitle>
             <DialogDescription>
@@ -1333,6 +1421,127 @@ export function TablesView() {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {/* ── Invoice Mode Selector (when store has NIT) ── */}
+            {hasStoreNit && (
+              <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5" />
+                  Tipo de Comprobante
+                </Label>
+                <div className={`grid gap-2 ${isEInvEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setTableInvoiceMode('TIRILLA')}
+                    className={`flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-all cursor-pointer ${
+                      tableInvoiceMode === 'TIRILLA'
+                        ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
+                        : 'border-border hover:border-primary/30 hover:bg-muted/50 text-muted-foreground'
+                    }`}
+                  >
+                    <Receipt className="h-5 w-5" />
+                    <span className="text-xs font-semibold">Tirilla</span>
+                    <span className="text-[10px] opacity-70">Venta simple</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTableInvoiceMode('DOC_EQUIPOS')}
+                    className={`flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-all cursor-pointer ${
+                      tableInvoiceMode === 'DOC_EQUIPOS'
+                        ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
+                        : 'border-border hover:border-primary/30 hover:bg-muted/50 text-muted-foreground'
+                    }`}
+                  >
+                    <MonitorSmartphone className="h-5 w-5" />
+                    <span className="text-xs font-semibold">Doc. Equivalente</span>
+                    <span className="text-[10px] opacity-70">POS / Resolución</span>
+                  </button>
+                  {isEInvEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => setTableInvoiceMode('ELECTRONICA')}
+                    className={`flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-all cursor-pointer ${
+                      tableInvoiceMode === 'ELECTRONICA'
+                        ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
+                        : 'border-border hover:border-primary/30 hover:bg-muted/50 text-muted-foreground'
+                    }`}
+                  >
+                    <FileText className="h-5 w-5" />
+                    <span className="text-xs font-semibold">Factura Elect.</span>
+                    <span className="text-[10px] opacity-70">CUFE y QR DIAN</span>
+                  </button>
+                  )}
+                </div>
+                {tableInvoiceMode === 'ELECTRONICA' && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-primary/80">
+                    <QrCode className="h-3 w-3" />
+                    Se generará automáticamente con CUFE y QR DIAN
+                  </div>
+                )}
+                {tableInvoiceMode === 'DOC_EQUIPOS' && store?.resolutionNumber && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-primary/80">
+                    <Hash className="h-3 w-3" />
+                    Resolución: {store.resolutionNumber} — Prefijo: {store.invoicePrefix || 'POS'}
+                  </div>
+                )}
+                {/* ── Buyer info fields (Art. 11 DIAN: only name, NIT, email) ── */}
+                {tableInvoiceMode === 'ELECTRONICA' && (
+                  <div className="space-y-2 mt-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">NIT del comprador (opcional)</Label>
+                        <Input
+                          placeholder={session?.customer?.nit || DIAN_CONSUMIDOR_FINAL_NIT}
+                          value={invoiceCustomerNit}
+                          onChange={(e) => {
+                            setInvoiceCustomerNit(e.target.value)
+                            setNitDvError('')
+                          }}
+                          onBlur={() => {
+                            const nit = invoiceCustomerNit.trim().replace(/[^0-9]/g, '')
+                            if (nit && nit !== DIAN_CONSUMIDOR_FINAL_NIT && nit.length >= 9) {
+                              const digits = nit.slice(0, -1)
+                              const dv = parseInt(nit[nit.length - 1], 10)
+                              const weights = [71,67,59,53,47,43,41,37,29,23,19,17,13,7,3]
+                              const n = digits.length
+                              const w = weights.slice(-n)
+                              let sum = 0
+                              for (let i = 0; i < n; i++) sum += parseInt(digits[i], 10) * w[i]
+                              const r = sum % 11
+                              const expected = (r === 0 || r === 1) ? r : 11 - r
+                              if (dv !== expected) setNitDvError(`DV inválido (esperado: ${expected})`)
+                            }
+                          }}
+                          className="h-9 text-sm"
+                          maxLength={20}
+                        />
+                        {nitDvError && <p className="text-[10px] text-destructive">{nitDvError}</p>}
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">Nombre / Razón social</Label>
+                        <Input
+                          placeholder={session?.customer?.name || 'Consumidor Final'}
+                          value={invoiceCustomerName}
+                          onChange={(e) => setInvoiceCustomerName(e.target.value)}
+                          className="h-9 text-sm"
+                          maxLength={200}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Email (requerido para DIAN)</Label>
+                      <Input
+                        type="email"
+                        placeholder=""
+                        value={invoiceCustomerEmail}
+                        onChange={(e) => setInvoiceCustomerEmail(e.target.value)}
+                        className="h-9 text-sm"
+                        maxLength={200}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {/* Selected items summary */}
             <div className="rounded-lg border p-3 space-y-2">
               <p className="text-sm font-medium text-muted-foreground">
@@ -1389,29 +1598,26 @@ export function TablesView() {
                     placeholder="0"
                     className="h-8 text-sm tabular-nums"
                   />
-                  <Button
-                    type="button"
+                  <Button type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30"
+                    className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30 active:scale-[0.98] transition-all"
                     onClick={() => setTipAmount(Math.round(selectedItemsTotal * 0.1))}
                   >
                     10%
                   </Button>
-                  <Button
-                    type="button"
+                  <Button type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30"
+                    className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30 active:scale-[0.98] transition-all"
                     onClick={() => setTipAmount(Math.round(selectedItemsTotal * 0.15))}
                   >
                     15%
                   </Button>
-                  <Button
-                    type="button"
+                  <Button type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30"
+                    className="h-8 px-2 text-xs text-pink-600 hover:text-pink-700 hover:bg-pink-50 dark:text-pink-400 dark:hover:bg-pink-950/30 active:scale-[0.98] transition-all"
                     onClick={() => setTipAmount(0)}
                   >
                     Quitar
@@ -1465,7 +1671,7 @@ export function TablesView() {
                         setDiscountValue(0)
                       }}
                     >
-                      <SelectTrigger className="h-8 text-sm w-auto min-w-[110px]">
+                      <SelectTrigger className="h-8 text-sm w-auto min-w-[110px] focus-visible:ring-primary/20 focus-visible:border-primary/40">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1492,11 +1698,10 @@ export function TablesView() {
                       placeholder="0"
                       className="h-8 text-sm tabular-nums flex-1"
                     />
-                    <Button
-                      type="button"
+                    <Button type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-8 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30 shrink-0"
+                      className="h-8 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30 shrink-0 active:scale-[0.98] transition-all"
                       onClick={() => {
                         setDiscountType('NONE')
                         setDiscountValue(0)
@@ -1566,7 +1771,7 @@ export function TablesView() {
                 </div>
               ) : (
                 <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId}>
-                  <SelectTrigger className="h-9">
+                  <SelectTrigger className="h-9 focus-visible:ring-primary/20 focus-visible:border-primary/40">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1647,9 +1852,18 @@ export function TablesView() {
             <Button variant="outline" onClick={() => setPaymentOpen(false)} disabled={paymentSaving}>
               Cancelar
             </Button>
-            <Button onClick={handleConfirmPayment} disabled={paymentSaving} className="gap-2">
-              {paymentSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Confirmar Pago
+            <Button className="gap-2 active:scale-[0.98] transition-all" onClick={handleConfirmPayment} disabled={paymentSaving || creatingInvoice}>
+              {creatingInvoice ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generando Factura...
+                </>
+              ) : (
+                <>
+                  {paymentSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {tableInvoiceMode === 'ELECTRONICA' ? 'Confirmar + Factura Electrónica' : tableInvoiceMode === 'DOC_EQUIPOS' ? 'Confirmar + Doc. Equivalente' : 'Confirmar Pago'}
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1659,7 +1873,7 @@ export function TablesView() {
       <AlertDialog open={closeSessionOpen} onOpenChange={(open) => {
         if (!open) setCloseSessionOpen(false)
       }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="backdrop-blur-sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Cerrar Mesa</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1686,7 +1900,7 @@ export function TablesView() {
       <AlertDialog open={deleteTableOpen} onOpenChange={(open) => {
         if (!open) setDeleteTableOpen(false)
       }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="backdrop-blur-sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar Mesa</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1781,19 +1995,17 @@ export function TablesView() {
                   <div className="space-y-4 p-4">
                     {/* ── Quick Actions ──────────────────────────────── */}
                     <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
+                      <Button size="sm"
                         variant="outline"
-                        className="gap-1.5 text-xs"
+                        className="gap-1.5 text-xs active:scale-[0.98] transition-all"
                         onClick={selectAllPayable}
                         disabled={!hasUnpaidItems}
                       >
                         Seleccionar todo
                       </Button>
-                      <Button
-                        size="sm"
+                      <Button size="sm"
                         variant="outline"
-                        className="gap-1.5 text-xs border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                        className="gap-1.5 text-xs border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30 active:scale-[0.98] transition-all"
                         onClick={() => handleMarkServed(selectedPendingItems.map((i) => i.id))}
                         disabled={!canServe || servingItemIds.length > 0}
                       >
@@ -1804,29 +2016,26 @@ export function TablesView() {
                         )}
                         Marcar Servido{selectedPendingItems.length > 1 ? 's' : ''}
                       </Button>
-                      <Button
-                        size="sm"
+                      <Button size="sm"
                         variant="outline"
-                        className="gap-1.5 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30"
+                        className="gap-1.5 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30 active:scale-[0.98] transition-all"
                         onClick={() => handleCancelItem(selectedItemIds)}
                         disabled={selectedItemIds.length === 0 || servingItemIds.length > 0}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         Cancelar ({selectedItemIds.length})
                       </Button>
-                      <Button
-                        size="sm"
-                        className="gap-1.5 text-xs"
+                      <Button size="sm"
+                        className="gap-1.5 text-xs active:scale-[0.98] transition-all"
                         onClick={handleOpenPayment}
                         disabled={!canPay}
                       >
                         <DollarSign className="h-3.5 w-3.5" />
                         Cobrar ({selectedItemIds.length})
                       </Button>
-                      <Button
-                        size="sm"
+                      <Button size="sm"
                         variant="outline"
-                        className="gap-1.5 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30"
+                        className="gap-1.5 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30 active:scale-[0.98] transition-all"
                         onClick={() => setCloseSessionOpen(true)}
                         disabled={hasUnpaidItems}
                       >
@@ -1871,14 +2080,48 @@ export function TablesView() {
                                   />
                                 )}
                                 <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={`text-sm font-medium truncate ${
-                                        isPaidOrCancelled ? 'line-through text-muted-foreground' : ''
-                                      }`}
-                                    >
-                                      {item.quantity}x {item.productName}
-                                    </span>
+                                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                      {!isPaidOrCancelled ? (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              if (item.quantity > 1) handleUpdateItemQuantity(item.id, item.quantity - 1)
+                                            }}
+                                            disabled={item.quantity <= 1 || updatingQtyItemId !== null}
+                                            className="h-5 w-5 rounded border border-border flex items-center justify-center text-xs hover:bg-muted transition-colors disabled:opacity-30 shrink-0"
+                                          >
+                                            <Minus className="h-3 w-3" />
+                                          </button>
+                                          <span
+                                            className="text-sm font-semibold tabular-nums min-w-[1.5rem] text-center"
+                                          >
+                                            {item.quantity}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              handleUpdateItemQuantity(item.id, item.quantity + 1)
+                                            }}
+                                            disabled={updatingQtyItemId !== null}
+                                            className="h-5 w-5 rounded border border-border flex items-center justify-center text-xs hover:bg-muted transition-colors disabled:opacity-30 shrink-0"
+                                          >
+                                            <Plus className="h-3 w-3" />
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <span className="text-sm font-medium tabular-nums">{item.quantity}x</span>
+                                      )}
+                                      <span
+                                        className={`text-sm font-medium truncate ${
+                                          isPaidOrCancelled ? 'line-through text-muted-foreground' : ''
+                                        }`}
+                                      >
+                                        {item.productName}
+                                      </span>
+                                    </div>
                                     <Badge
                                       variant="outline"
                                       className={`text-[10px] px-1.5 py-0 shrink-0 ${statusStyle.className}`}
@@ -1891,7 +2134,6 @@ export function TablesView() {
                                         {item.notes}
                                       </span>
                                     )}
-                                  </div>
                                   <div className="text-xs text-muted-foreground mt-0.5">
                                     {formatCurrency(item.unitPrice, store?.currencyCode)} c/u
                                     {' · '}
@@ -1920,10 +2162,9 @@ export function TablesView() {
                                           setNotesEditText(item.notes || '')
                                         }}
                                       >
-                                        <Button
-                                          variant="ghost"
+                                        <Button variant="ghost"
                                           size="icon"
-                                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted"
+                                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted active:scale-[0.98] transition-all"
                                           title={item.notes ? 'Editar nota' : 'Agregar nota'}
                                         >
                                           {item.notes ? (
@@ -1948,10 +2189,9 @@ export function TablesView() {
                                           autoFocus
                                         />
                                         <div className="flex items-center justify-end gap-2">
-                                          <Button
-                                            size="sm"
+                                          <Button size="sm"
                                             variant="outline"
-                                            className="h-7 text-xs"
+                                            className="h-7 text-xs active:scale-[0.98] transition-all"
                                             onClick={(e) => {
                                               e.stopPropagation()
                                               setNotesPopoverItemId(null)
@@ -1959,9 +2199,8 @@ export function TablesView() {
                                           >
                                             Cancelar
                                           </Button>
-                                          <Button
-                                            size="sm"
-                                            className="h-7 text-xs gap-1"
+                                          <Button size="sm"
+                                            className="h-7 text-xs gap-1 active:scale-[0.98] transition-all"
                                             onClick={(e) => {
                                               e.stopPropagation()
                                               handleUpdateItemNotes(item.id, notesEditText)
@@ -1977,10 +2216,9 @@ export function TablesView() {
                                   </Popover>
                                 )}
                                 {item.status === 'PENDING' && (
-                                  <Button
-                                    variant="ghost"
+                                  <Button variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7 shrink-0 text-amber-600 hover:text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900/40"
+                                    className="h-7 w-7 shrink-0 text-amber-600 hover:text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900/40 active:scale-[0.98] transition-all"
                                     onClick={() => handleMarkServed([item.id])}
                                     disabled={servingItemIds.length > 0}
                                     title="Marcar como servido"
@@ -1993,10 +2231,9 @@ export function TablesView() {
                                   </Button>
                                 )}
                                 {(item.status === 'PENDING' || item.status === 'SERVED') && (
-                                  <Button
-                                    variant="ghost"
+                                  <Button variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7 shrink-0 text-red-500 hover:text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/40"
+                                    className="h-7 w-7 shrink-0 text-red-500 hover:text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/40 active:scale-[0.98] transition-all"
                                     onClick={() => handleCancelItem([item.id])}
                                     disabled={servingItemIds.length > 0}
                                     title="Cancelar item"
@@ -2094,10 +2331,9 @@ export function TablesView() {
                         </div>
                         {/* Print last ticket button */}
                         {lastPaymentData && (
-                          <Button
-                            variant="outline"
+                          <Button variant="outline"
                             size="sm"
-                            className="mt-2 w-full gap-2"
+                            className="mt-2 w-full gap-2 active:scale-[0.98] transition-all"
                             onClick={() => {
                               const items: TicketItem[] = (lastPaymentData.orderItems || []).map((item: any) => ({
                                 name: item.productName,
@@ -2111,6 +2347,9 @@ export function TablesView() {
                                 storeNIT: store?.nit || undefined,
                                 storeAddress: store?.address || undefined,
                                 storePhone: store?.phone || undefined,
+                                storeRegime: 'RESPONSABLE',
+                                invoiceResolution: store?.resolutionNumber || undefined,
+                                invoicePrefix: store?.invoicePrefix || undefined,
                                 orderNumber: lastPaymentData.orderNumber,
                                 date: lastPaymentData.createdAt,
                                 customer: lastPaymentData.customer?.name || session.customer?.name,
@@ -2123,12 +2362,26 @@ export function TablesView() {
                                 taxAmount: lastPaymentData.taxAmount || 0,
                                 taxBreakdown: lastPaymentData.taxBreakdown || undefined,
                                 paymentMethod: lastPaymentData.paymentMethod,
+                                isElectronic: !!lastInvoiceData?.cufe,
+                                isDocEquivalente: lastDocType === 'DOC_EQUIPOS' && !lastInvoiceData?.cufe,
+                                cufe: lastInvoiceData?.cufe || undefined,
+                                qrCodeUrl: lastInvoiceData?.qrCodeUrl || undefined,
+                                customerNit: lastInvoiceData?.customerNit || undefined,
+                                resolutionNumber: store?.resolutionNumber || undefined,
+                                resolutionStart: store?.resolutionStart ? String(store.resolutionStart) : undefined,
+                                resolutionEnd: store?.resolutionEnd ? String(store.resolutionEnd) : undefined,
                                 currencyCode: store?.currencyCode || 'COP',
                               })
                             }}
                           >
                             <Printer className="h-4 w-4" />
                             Imprimir Último Ticket
+                            {lastInvoiceData?.cufe && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/30 text-primary">FE</Badge>
+                            )}
+                            {lastDocType === 'DOC_EQUIPOS' && !lastInvoiceData?.cufe && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-600">Doc.Equi</Badge>
+                            )}
                           </Button>
                         )}
                       </div>
@@ -2158,11 +2411,10 @@ export function TablesView() {
                           <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
                           <Label className="text-xs text-muted-foreground">Notas para el próximo item (opcional)</Label>
                           {pendingItemNotes && (
-                            <Button
-                              type="button"
+                            <Button type="button"
                               variant="ghost"
                               size="sm"
-                              className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground ml-auto"
+                              className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground ml-auto active:scale-[0.98] transition-all"
                               onClick={() => setPendingItemNotes('')}
                             >
                               <X className="h-3 w-3" />
@@ -2181,9 +2433,8 @@ export function TablesView() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center mb-3">
                         <div className="relative flex-1">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Buscar producto..."
-                            className="pl-9 h-10"
+                          <Input placeholder="Buscar producto..."
+                            className="pl-9 h-10 focus-visible:ring-primary/20 focus-visible:border-primary/40"
                             value={productSearch}
                             onChange={(e) => {
                               setProductSearch(e.target.value)
@@ -2198,7 +2449,7 @@ export function TablesView() {
                             fetchProducts(productSearch, val)
                           }}
                         >
-                          <SelectTrigger className="w-full sm:w-44">
+                          <SelectTrigger className="w-full sm:w-44 focus-visible:ring-primary/20 focus-visible:border-primary/40">
                             <SelectValue placeholder="Todas" />
                           </SelectTrigger>
                           <SelectContent>
@@ -2403,10 +2654,9 @@ function TableCard({
               )}
             </Button>
             {/* Delete button */}
-            <Button
-              variant="ghost"
+            <Button variant="ghost"
               size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-900/40"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-900/40 active:scale-[0.98] transition-all"
               onClick={onDelete}
               disabled={!!table.activeSession}
               title="Eliminar mesa"

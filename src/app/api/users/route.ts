@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess, getAuthStoreId } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +40,21 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
+    // Store isolation: only allow updating users in the same store
+    const authStoreId = getAuthStoreId(request)
+    if (authStoreId) {
+      // Look up the target user's store via employee record
+      const employee = await db.employee.findFirst({
+        where: { userId: parseInt(userId) },
+        select: { storeId: true },
+      })
+      if (employee && employee.storeId !== authStoreId) {
+        return NextResponse.json({ error: 'No tienes acceso a este usuario' }, { status: 403 })
+      }
+      const storeAccessErr = requireStoreAccess(request, authStoreId)
+      if (storeAccessErr) return storeAccessErr
+    }
+
     const user = await db.user.update({
       where: { id: parseInt(userId) },
       data: {
@@ -57,7 +74,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(user)
   } catch (error) {
-    console.error('Error updating user:', error)
+    logger.error('Error updating user:', error)
     return NextResponse.json({ error: 'Failed to update user' }, { status: 500 })
   }
 }

@@ -14,6 +14,10 @@ export interface CUFEParams {
   discountAmount: number
   grandTotal: number
   currencyCode?: string
+  resolutionNumber?: string
+  resolutionDate?: string
+  pinSoftware?: string
+  providerNit: string
 }
 
 export interface QRCodeParams {
@@ -23,6 +27,7 @@ export interface QRCodeParams {
   date: string            // YYYY-MM-DD
   grandTotal: number
   cufe: string
+  testMode?: boolean
 }
 
 export interface TaxBreakdownItem {
@@ -77,17 +82,131 @@ const PAYMENT_CODE_MAP: Record<string, string> = {
 
 /**
  * Mapea el metodo de pago del POS al codigo DIAN.
- * Si no se encuentra, retorna "99" (otro/no especificado).
  */
 export function getDIANPaymentCode(paymentMethod: string): string {
   return PAYMENT_CODE_MAP[paymentMethod.toUpperCase()] ?? '99'
 }
 
-// ─── Generacion CUFE ──────────────────────────────────────────────────────
+// ─── NIT: Limpieza y Validación de DV ─────────────────────────────────────
 
 /**
- * Genera el CUFE (Codigo Unico de Factura Electronica) usando SHA-384.
- * Sigue el algoritmo simplificado de la DIAN.
+ * Limpia un NIT colombiano: elimina puntos, guiones y espacios.
+ * Retorna solo los dígitos (incluyendo el DV como último dígito).
+ *
+ * Ejemplos:
+ *  - "900.123.456-7" → "9001234567"
+ *  - "222222222222"  → "222222222222"
+ *  - "900123456-7"   → "9001234567"
+ */
+export function cleanNit(nit: string): string {
+  if (!nit || typeof nit !== 'string') return ''
+  return nit.replace(/[^0-9]/g, '')
+}
+
+/**
+ * Separa un NIT en dígitos principales y dígito de verificación (DV).
+ *
+ * Ejemplos:
+ *  - "9001234567"    → { digits: "900123456", dv: 7 }
+ *  - "222222222222"  → { digits: "22222222222", dv: 2 }
+ *  - "8301044871"    → { digits: "830104487", dv: 1 }
+ */
+export function splitNitDV(nit: string): { digits: string; dv: number } {
+  const cleaned = cleanNit(nit)
+  if (cleaned.length <= 1) return { digits: cleaned, dv: 0 }
+
+  const dv = parseInt(cleaned[cleaned.length - 1], 10)
+  const digits = cleaned.slice(0, -1)
+  return { digits, dv }
+}
+
+/**
+ * Calcula el dígito de verificación (DV) de un NIT colombiano.
+ *
+ * Algoritmo oficial DIAN:
+ * 1. Se asignan pesos [71,67,59,53,47,43,41,37,29,23,19,17,13,7,3] de izquierda a derecha.
+ *    Para NITs más cortos que 15 dígitos, se usan los últimos N pesos.
+ * 2. Se multiplica cada dígito por su peso.
+ * 3. Se suman todos los productos.
+ * 4. El DV se calcula como: 11 - (suma mod 11).
+ *    Si el resultado es > 9, DV = 0.
+ *    Si (suma mod 11) es 0 o 1, DV = (suma mod 11).
+ *
+ * @param nitDigits - NIT sin el DV (solo dígitos numéricos)
+ * @returns El dígito de verificación (0-9)
+ *
+ * @example
+ * calculateNITDV("900123456")  // → 7
+ * calculateNITDV("22222222222") // → 2
+ * calculateNITDV("830104487")  // → 1
+ */
+export function calculateNITDV(nitDigits: string): number {
+  const cleaned = cleanNit(nitDigits)
+  if (cleaned.length === 0) return -1
+
+  // Pesos oficiales DIAN (hasta 15 posiciones)
+  const weights = [71, 67, 59, 53, 47, 43, 41, 37, 29, 23, 19, 17, 13, 7, 3]
+
+  // Tomar los últimos N pesos según la longitud del NIT
+  const n = cleaned.length
+  const relevantWeights = weights.slice(-n)
+
+  // Multiplicar cada dígito por su peso
+  let sum = 0
+  for (let i = 0; i < n; i++) {
+    sum += parseInt(cleaned[i], 10) * relevantWeights[i]
+  }
+
+  const remainder = sum % 11
+
+  // Calcular DV
+  if (remainder === 0 || remainder === 1) {
+    return remainder
+  }
+  return 11 - remainder
+}
+
+/**
+ * Valida que el dígito de verificación de un NIT colombiano sea correcto.
+ *
+ * Para el NIT genérico "222222222222" (consumidor final), siempre retorna true.
+ *
+ * @param nit - NIT en cualquier formato (con puntos, guiones, etc.)
+ * @returns true si el DV es válido, false si no
+ */
+export function validateNITDV(nit: string): boolean {
+  const cleaned = cleanNit(nit)
+  if (cleaned.length < 2) return false
+
+  // Consumidor final genérico — siempre válido
+  if (cleaned === '222222222222') return true
+
+  const expectedDV = calculateNITDV(cleaned.slice(0, -1))
+  const actualDV = parseInt(cleaned[cleaned.length - 1], 10)
+
+  return expectedDV === actualDV
+}
+
+/**
+ * Formatea un NIT para visualización: "900123456-7"
+ */
+export function formatNIT(nit: string): string {
+  const { digits, dv } = splitNitDV(nit)
+  if (!digits) return nit
+  return `${digits}-${dv}`
+}
+
+// ─── Generacion CUFE (DIAN v2.1 — sin separadores) ──────────────────────
+
+/**
+ * Genera el CUFE (Código Único de Factura Electrónica) siguiendo la
+ * especificación DIAN v2.1.
+ *
+ * Los campos se concatenan SIN separadores (concatenación directa),
+ * y el resultado se hashea con SHA-384 y se codifica en base64.
+ *
+ * @param params - Parámetros de la factura para el CUFE
+ * @returns CUFE base64 (64 caracteres)
  */
 export function generateCUFE(params: CUFEParams): string {
   const {
@@ -102,45 +221,60 @@ export function generateCUFE(params: CUFEParams): string {
     discountAmount,
     grandTotal,
     currencyCode = 'COP',
+    resolutionNumber = '',
+    resolutionDate = '',
+    pinSoftware = '',
+    providerNit,
   } = params
 
-  // Limpiar NIT: eliminar caracteres no numericos excepto guion final
-  const cleanNit = (nit: string) => {
-    const cleaned = nit.replace(/[^0-9]/g, '')
-    // Si termina en -X (digito de verificacion), preservar
-    const dashMatch = nit.match(/(-[\d])$/)
-    return dashMatch ? cleaned + dashMatch[1] : cleaned
-  }
+  // Limpiar NITs: solo dígitos
+  const cleanStoreNit = cleanNit(storeNit)
+  const cleanCustomerNit = cleanNit(customerNit)
+  const cleanProviderNit = cleanNit(providerNit)
 
+  // Dividir NIT emisor en dígitos + DV
+  const { digits: storeDigits, dv: storeDV } = splitNitDV(storeNit)
+  const { digits: customerDigits, dv: customerDV } = splitNitDV(customerNit)
+
+  // Total sin impuestos = subtotalBase (base antes de IVA)
+  const totalSinImpuestos = subtotalBase
+
+  // Concatenar campos según DIAN v2.1 (SIN separadores)
   const fields = [
-    cleanNit(storeNit),
-    issueDate,
-    issueTime,
-    padField(prefix, 4),
-    padField(consecutive, 20),
-    cleanNit(customerNit),
-    padField(Math.round(subtotalBase), 20),
-    padField(Math.round(subtotalBase), 20), // Total sin impuestos = subtotalBase
-    padField(Math.round(totalTaxAmount), 20),
-    padField(Math.round(discountAmount), 20),
-    padField(Math.round(grandTotal), 20),
-    currencyCode,
-    '10',                // Codigo tipo operacion: venta estandar
-    '',                  // CUDE placeholder (vacio para CUFE)
-    '',                  // Numero certificado placeholder
-    '900123456-7',       // NIT del proveedor del software (placeholder)
+    String(1),                             // Tipo emisor: 1 = factura de venta
+    storeDigits,                           // NIT emisor (sin DV)
+    padField(storeDV, 1),                  // DV emisor
+    issueDate,                             // YYYYMMDD
+    issueTime,                             // HHmmssSSS
+    prefix,                                // Prefijo resolución
+    padField(consecutive, 20),             // Consecutivo (20 dígitos)
+    String(1),                             // Tipo receptor: 1 = NIT
+    customerDigits,                        // NIT receptor (sin DV)
+    padField(customerDV, 1),               // DV receptor
+    padField(Math.round(subtotalBase), 20),       // Base gravable
+    padField(Math.round(totalSinImpuestos), 20),  // Total sin impuestos
+    padField(Math.round(totalTaxAmount), 20),     // Total impuestos
+    padField(Math.round(discountAmount), 20),     // Total descuento
+    padField(Math.round(grandTotal), 20),         // Total factura
+    currencyCode,                          // Moneda
+    String(10),                            // Tipo operación: 10 = venta estándar
+    resolutionNumber,                      // Número resolución
+    resolutionDate.replace(/-/g, ''),      // Fecha resolución YYYYMMDD
+    pinSoftware,                           // PIN software
+    cleanProviderNit,                      // NIT proveedor tecnológico
   ]
 
-  const inputString = fields.join('|')
+  const rawString = fields.join('')
+  const hash = crypto.createHash('sha384').update(rawString, 'utf8').digest('base64')
 
-  return crypto.createHash('sha384').update(inputString).digest('base64')
+  return hash
 }
 
 // ─── Generacion URL QR ────────────────────────────────────────────────────
 
 /**
- * Genera la URL del codigo QR para la factura electronica DIAN.
- * Esta URL permite consultar la validez de la factura en el portal de la DIAN.
+ * Genera la URL del código QR para la factura electrónica DIAN.
+ * Usa la URL de habilitación o producción según el modo.
  */
 export function generateQRCodeURL(params: QRCodeParams): string {
   const {
@@ -150,29 +284,88 @@ export function generateQRCodeURL(params: QRCodeParams): string {
     date,
     grandTotal,
     cufe,
+    testMode = true,
   } = params
 
   const formattedNumber = formatInvoiceNumber(prefix, consecutive)
-  const params2 = new URLSearchParams({
-    nit: storeNit,
+  const baseURL = testMode
+    ? 'https://catalogo-vpfe-hab.dian.gov.co/documento/consultar'
+    : 'https://catalogo-vpfe.dian.gov.co/documento/consultar'
+
+  const urlParams = new URLSearchParams({
+    nit: cleanNit(storeNit),
     numeracion: formattedNumber,
     fecha: date,
     total: String(Math.round(grandTotal)),
     uuid: cufe,
   })
 
-  return `https://catalogo-vpfe-hab.dian.gov.co/documento/consultar?${params2.toString()}`
+  return `${baseURL}?${urlParams.toString()}`
+}
+
+// ─── CUDFE (Nota Crédito / Nota Débito) ──────────────────────────────────
+
+/**
+ * Genera el CUDFE para Notas Crédito/Débito.
+ * Igual al CUFE pero el campo tipoOperación se reemplaza por el CUDE de la factura original.
+ */
+export function generateCUDFE(params: CUFEParams & { cude: string }): string {
+  const {
+    storeNit,
+    issueDate,
+    issueTime,
+    prefix,
+    consecutive,
+    customerNit,
+    subtotalBase,
+    totalTaxAmount,
+    discountAmount,
+    grandTotal,
+    currencyCode = 'COP',
+    resolutionNumber = '',
+    resolutionDate = '',
+    pinSoftware = '',
+    providerNit,
+    cude,
+  } = params
+
+  const { digits: storeDigits, dv: storeDV } = splitNitDV(storeNit)
+  const { digits: customerDigits, dv: customerDV } = splitNitDV(customerNit)
+
+  // Concatenar: igual que CUFE pero campo tipoOperación = CUDE de factura original
+  const fields = [
+    String(1),
+    storeDigits,
+    padField(storeDV, 1),
+    issueDate,
+    issueTime,
+    prefix,
+    padField(consecutive, 20),
+    String(1),
+    customerDigits,
+    padField(customerDV, 1),
+    padField(Math.round(subtotalBase), 20),
+    padField(Math.round(subtotalBase), 20),
+    padField(Math.round(totalTaxAmount), 20),
+    padField(Math.round(discountAmount), 20),
+    padField(Math.round(grandTotal), 20),
+    currencyCode,
+    cude,                                  // CUDE de la factura original (reemplaza tipoOperación)
+    resolutionNumber,
+    resolutionDate.replace(/-/g, ''),
+    pinSoftware,
+    cleanNit(providerNit),
+  ]
+
+  const rawString = fields.join('')
+  return crypto.createHash('sha384').update(rawString, 'utf8').digest('base64')
 }
 
 // ─── Calculo de factura desde orden ──────────────────────────────────────
 
 /**
  * Calcula todos los campos tributarios de una factura a partir de una orden y sus items.
- * En Colombia, los precios al público INCLUYEN IVA. Por lo tanto:
- * - order.subtotal = precio total que paga el cliente (ya incluye IVA)
- * - taxBase = porción del precio que corresponde al producto antes de IVA
- * - taxAmount = porción del precio que corresponde al IVA
- * - grandTotal = order.subtotal - descuento + propina (NO se suma IVA de nuevo)
+ * En Colombia, los precios al público INCLUYEN IVA.
  */
 export function calculateInvoiceFromOrder(
   order: {
@@ -190,7 +383,6 @@ export function calculateInvoiceFromOrder(
     taxBase: number
   }>
 ): InvoiceCalculation {
-  // Sumar bases y totales por codigo de impuesto
   const taxMap = new Map<string, TaxBreakdownItem>()
 
   for (const item of items) {
@@ -219,18 +411,13 @@ export function calculateInvoiceFromOrder(
   }
 
   const taxBreakdown = Array.from(taxMap.values())
-
   const totalTaxAmount = taxBreakdown.reduce((sum, t) => sum + t.amount, 0)
-  // Base gravable: subtotal - impuestos (porción antes de IVA)
   const subtotalBase = order.subtotal - totalTaxAmount
-  // Total con impuestos = order.subtotal (porque en Colombia, precios ya incluyen IVA)
   const totalWithTax = order.subtotal
   const discountAmount = order.discountAmount
   const tipAmount = order.tipAmount
-  // Total final = lo que paga el cliente (subtotal incluye IVA, no se suma de nuevo)
   const grandTotal = totalWithTax - discountAmount + tipAmount
 
-  // Monto exento: items con codigo 03 o 04
   const exemptBase = taxBreakdown
     .filter((t) => t.code === '03' || t.code === '04')
     .reduce((sum, t) => sum + t.base, 0)

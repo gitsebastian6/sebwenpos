@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { formatInvoiceNumber } from '@/lib/invoice-utils'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +41,9 @@ export async function GET(
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const invoice = await db.invoice.findFirst({
       where: { id: Number(id), storeId },
@@ -121,7 +126,7 @@ export async function GET(
         orderNumber: invoice.order.orderNumber,
         paymentMethod: invoice.order.paymentMethod,
         customer: invoice.order.customer,
-        orderItems: invoice.order.orderItems.map((item: any) => ({
+        orderItems: invoice.order.orderItems.map((item) => ({
           id: item.id,
           productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
           productId: item.productId,
@@ -141,7 +146,7 @@ export async function GET(
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('GET /api/invoices/[id] error:', error)
+    logger.error('GET /api/invoices/[id] error:', error)
     return NextResponse.json({ error: 'Error interno al consultar la factura' }, { status: 500 })
   }
 }
@@ -165,6 +170,9 @@ export async function PUT(
     const body = await request.json()
     const data = updateInvoiceSchema.parse(body)
 
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
+
     // Verificar que la factura existe
     const existing = await db.invoice.findFirst({
       where: { id: Number(id), storeId },
@@ -175,7 +183,7 @@ export async function PUT(
     }
 
     // Construir datos de actualizacion
-    const updateData: any = {}
+    const updateData: Record<string, unknown> = {}
 
     if (data.status !== undefined) {
       // Validar transiciones de estado
@@ -251,7 +259,7 @@ export async function PUT(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('PUT /api/invoices/[id] error:', error)
+    logger.error('PUT /api/invoices/[id] error:', error)
     return NextResponse.json({ error: 'Error interno al actualizar la factura' }, { status: 500 })
   }
 }
@@ -271,6 +279,9 @@ export async function DELETE(
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const invoice = await db.invoice.findFirst({
       where: { id: Number(id), storeId },
@@ -298,7 +309,7 @@ export async function DELETE(
       message: `Factura ${formatInvoiceNumber(invoice.prefix, invoice.consecutive)} eliminada correctamente`,
     })
   } catch (error) {
-    console.error('DELETE /api/invoices/[id] error:', error)
+    logger.error('DELETE /api/invoices/[id] error:', error)
     return NextResponse.json({ error: 'Error interno al eliminar la factura' }, { status: 500 })
   }
 }

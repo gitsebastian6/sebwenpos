@@ -88,8 +88,8 @@ export function CustomersView() {
       if (search.trim()) params.set('q', search.trim())
       const res = await fetch(`/api/customers?${params}`)
       if (!res.ok) throw new Error('Error al cargar clientes')
-      const data = await res.json()
-      setCustomers(data)
+      const json = await res.json()
+      setCustomers(Array.isArray(json) ? json : (json.data || []))
     } catch {
       toast.error('Error al cargar clientes')
     } finally {
@@ -181,8 +181,8 @@ export function CustomersView() {
       })
       const res = await fetch(`/api/orders?${params}`)
       if (!res.ok) throw new Error('Error')
-      const data = await res.json()
-      setHistoryOrders(data)
+      const json = await res.json()
+      setHistoryOrders(Array.isArray(json) ? json : (json.data || []))
     } catch {
       toast.error('Error al cargar historial')
     } finally {
@@ -249,20 +249,20 @@ export function CustomersView() {
             </p>
           </div>
         </div>
-        <Button onClick={openCreateDialog} size="sm">
+        <Button onClick={openCreateDialog} size="sm" className="active:scale-[0.98] transition-all">
           <Plus className="h-4 w-4" />
           Nuevo Cliente
         </Button>
       </div>
 
       {/* ── Search Bar ──────────────────────────────────────────── */}
-      <Card>
+      <Card className="border-border/50">
         <CardContent className="p-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar por nombre o teléfono..."
-              className="pl-9"
+              className="pl-9 focus-visible:ring-primary/20 focus-visible:border-primary/40 transition-all"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -271,7 +271,7 @@ export function CustomersView() {
       </Card>
 
       {/* ── Table ───────────────────────────────────────────────── */}
-      <Card>
+      <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
         <CardContent className="p-0">
           {loading ? (
             <div className="space-y-3 p-4">
@@ -280,10 +280,10 @@ export function CustomersView() {
               ))}
             </div>
           ) : customers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Users className="mb-3 h-12 w-12 text-muted-foreground/40" />
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <Users className="mb-3 h-16 w-16 text-muted-foreground/30 animate-pulse" />
               <p className="text-muted-foreground font-medium">No se encontraron clientes</p>
-              <p className="text-sm text-muted-foreground/70">
+              <p className="text-sm text-muted-foreground/60">
                 {search ? 'Intenta con otra búsqueda' : 'Crea tu primer cliente'}
               </p>
             </div>
@@ -302,7 +302,7 @@ export function CustomersView() {
                 </TableHeader>
                 <TableBody>
                   {customers.map((customer) => (
-                    <TableRow key={customer.id}>
+                    <TableRow key={customer.id} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-medium">
                         <span className="truncate max-w-[120px] block" title={customer.name}>{customer.name}</span>
                       </TableCell>
@@ -387,7 +387,7 @@ export function CustomersView() {
 
       {/* ── Create / Edit Dialog ────────────────────────────────── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>
               {editingCustomer ? 'Editar Cliente' : 'Nuevo Cliente'}
@@ -452,7 +452,7 @@ export function CustomersView() {
 
       {/* ── Pay Debt Dialog ──────────────────────────────────── */}
       <Dialog open={!!payingCustomer} onOpenChange={(open) => !open && setPayingCustomer(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Banknote className="h-5 w-5 text-emerald-600" />
@@ -546,7 +546,7 @@ export function CustomersView() {
         open={!!historyCustomer}
         onOpenChange={(open) => !open && setHistoryCustomer(null)}
       >
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Historial de Órdenes</DialogTitle>
             <DialogDescription>
@@ -569,8 +569,8 @@ export function CustomersView() {
               </div>
             ) : historyOrders.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Eye className="mb-2 h-10 w-10 text-muted-foreground/40" />
-                <p className="text-muted-foreground text-sm">
+                <Eye className="mb-2 h-14 w-14 text-muted-foreground/30 animate-pulse" />
+                <p className="text-muted-foreground/70 text-sm">
                   No hay órdenes registradas
                 </p>
               </div>
@@ -587,7 +587,7 @@ export function CustomersView() {
                 </TableHeader>
                 <TableBody>
                   {historyOrders.map((order: any) => (
-                    <TableRow key={order.id}>
+                    <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-mono text-xs font-medium whitespace-nowrap">
                         {order.orderNumber}
                       </TableCell>
@@ -624,22 +624,22 @@ function StatusBadge({ status }: { status: string }) {
     COMPLETED: {
       label: 'Completada',
       className:
-        'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+        'bg-emerald-500/15 text-emerald-400 dark:bg-emerald-500/15 dark:text-emerald-400 border-emerald-500/20 dark:border-emerald-500/20',
     },
     PENDING: {
       label: 'Pendiente',
       className:
-        'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+        'bg-amber-500/15 text-amber-400 dark:bg-amber-500/15 dark:text-amber-400 border-amber-500/20 dark:border-amber-500/20',
     },
     CANCELLED: {
       label: 'Cancelada',
       className:
-        'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800',
+        'bg-red-500/15 text-red-400 dark:bg-red-500/15 dark:text-red-400 border-red-500/20 dark:border-red-500/20',
     },
     CREDIT: {
       label: 'Fiado',
       className:
-        'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 border-teal-200 dark:border-teal-800',
+        'bg-teal-500/15 text-teal-400 dark:bg-teal-500/15 dark:text-teal-400 border-teal-500/20 dark:border-teal-500/20',
     },
   }
   const s = map[status] || {

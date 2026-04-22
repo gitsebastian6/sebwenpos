@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +22,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, Number(storeId))
+    if (storeAccessErr) return storeAccessErr
+
     const categories = await db.category.findMany({
       where: { storeId: Number(storeId) },
       include: {
@@ -32,7 +37,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(categories)
   } catch (error) {
-    console.error('GET /api/categories error:', error)
+    logger.error('GET /api/categories error:', error)
     return NextResponse.json({ error: 'Error al obtener categorías' }, { status: 500 })
   }
 }
@@ -42,6 +47,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const data = createCategorySchema.parse(body)
+
+    const storeAccessErr = requireStoreAccess(req, data.storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const category = await db.category.create({
       data: {
@@ -64,7 +72,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.message.includes('Unique')) {
       return NextResponse.json({ error: 'Ya existe una categoría con ese nombre' }, { status: 409 })
     }
-    console.error('POST /api/categories error:', error)
+    logger.error('POST /api/categories error:', error)
     return NextResponse.json({ error: 'Error al crear categoría' }, { status: 500 })
   }
 }

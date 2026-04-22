@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +20,10 @@ export async function POST(req: NextRequest) {
     const data = returnSchema.parse(body)
 
     // Verify product exists
+    const storeAccessErr = requireStoreAccess(req, data.storeId)
+    if (storeAccessErr) return storeAccessErr
+
+
     const product = await db.product.findFirst({
       where: { id: data.productId, storeId: data.storeId },
     })
@@ -68,7 +74,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('POST /api/inventory/returns error:', error)
+    logger.error('POST /api/inventory/returns error:', error)
     return NextResponse.json({ error: 'Error al registrar devolución' }, { status: 500 })
   }
 }

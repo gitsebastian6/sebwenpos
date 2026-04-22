@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { generateOrderNumber } from '@/lib/auth'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,6 +57,9 @@ export async function POST(
         { status: 400 },
       )
     }
+
+    const storeAccessErr = requireStoreAccess(req, data.storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // Get comanda items to pay — must be SERVED or PENDING (not already PAID or CANCELLED)
     const comandaItems = await db.comandaItem.findMany({
@@ -194,7 +199,7 @@ export async function POST(
     const orderNumber = generateOrderNumber()
     const tableLabel = session.barTable.name || `Mesa ${session.barTable.number}`
 
-    // Find open cash register shift to link this order (use client-provided or fallback)
+    // ─── Cash register validation: MUST have an open shift ──────────
     let targetCashRegisterId = data.cashRegisterId ?? null
     if (!targetCashRegisterId) {
       const openShift = await db.cashRegister.findFirst({
@@ -208,6 +213,14 @@ export async function POST(
         select: { id: true },
       })
       if (!shiftExists) targetCashRegisterId = null
+    }
+
+    // BLOCK payment if no cash register is open
+    if (!targetCashRegisterId) {
+      return NextResponse.json(
+        { error: 'Debes abrir la caja antes de procesar pagos. Ve a Contabilidad → Caja y abre un turno.' },
+        { status: 400 },
+      )
     }
 
     const order = await db.$transaction(async (tx) => {
@@ -417,7 +430,6 @@ export async function POST(
         tableSessionId: sid,
         customer: order.customer,
         cashRegisterId: targetCashRegisterId,
-        warning: !targetCashRegisterId ? 'No hay caja abierta. La venta no se registró en ningún turno de caja.' : undefined,
         orderItems: order.orderItems.map((item) => ({
           id: item.id,
           productId: item.productId ?? null,
@@ -443,7 +455,7 @@ export async function POST(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('POST /api/tables/sessions/[id]/pay error:', error)
+    logger.error('POST /api/tables/sessions/[id]/pay error:', error)
     return NextResponse.json({ error: 'Error al procesar el pago' }, { status: 500 })
   }
 }

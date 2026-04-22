@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,8 +53,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'El parámetro storeId es obligatorio' }, { status: 400 })
     }
 
+    const sid = Number(storeId)
+
+    const storeAccessErr = requireStoreAccess(req, sid)
+    if (storeAccessErr) return storeAccessErr
+
     const where: Record<string, unknown> = {
-      storeId: Number(storeId),
+      storeId: sid,
     }
 
     if (category) {
@@ -79,7 +86,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(taxRates)
   } catch (error) {
-    console.error('GET /api/taxes error:', error)
+    logger.error('GET /api/taxes error:', error)
     return NextResponse.json({ error: 'Error al obtener las tarifas de impuesto' }, { status: 500 })
   }
 }
@@ -90,6 +97,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const data = createTaxRateSchema.parse(body)
+
+    // Verify store access
+    const storeAccessErr = requireStoreAccess(req, data.storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // Verify the store exists
     const store = await db.store.findUnique({ where: { id: data.storeId } })
@@ -141,7 +152,7 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       )
     }
-    console.error('POST /api/taxes error:', error)
+    logger.error('POST /api/taxes error:', error)
     return NextResponse.json({ error: 'Error al crear la tarifa de impuesto' }, { status: 500 })
   }
 }

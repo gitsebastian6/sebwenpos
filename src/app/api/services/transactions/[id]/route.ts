@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +37,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Transacción no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, existing.service.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     const updated = await db.serviceTransaction.update({
       where: { id: sid },
       data: {
@@ -68,7 +73,7 @@ export async function PUT(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('PUT /api/services/transactions/[id] error:', error)
+    logger.error('PUT /api/services/transactions/[id] error:', error)
     return NextResponse.json({ error: 'Error al actualizar transacción' }, { status: 500 })
   }
 }
@@ -90,10 +95,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Transacción no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(_request, existing.serviceId)
+    if (storeAccessErr) return storeAccessErr
+
     await db.serviceTransaction.delete({ where: { id: sid } })
     return NextResponse.json({ message: 'Transacción eliminada' })
   } catch (error) {
-    console.error('DELETE /api/services/transactions/[id] error:', error)
+    logger.error('DELETE /api/services/transactions/[id] error:', error)
     return NextResponse.json({ error: 'Error al eliminar transacción' }, { status: 500 })
   }
 }

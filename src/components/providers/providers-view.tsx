@@ -274,21 +274,21 @@ export function ProvidersView() {
             </p>
           </div>
         </div>
-        <Button onClick={openCreateDialog} size="sm">
+        <Button onClick={openCreateDialog} size="sm" className="active:scale-[0.98] transition-all">
           <Plus className="h-4 w-4" />
           Nuevo Proveedor
         </Button>
       </div>
 
       {/* ── Search + Filter Bar ─────────────────────────────────── */}
-      <Card>
+      <Card className="border-border/50">
         <CardContent className="p-4">
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[160px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Buscar por nombre, NIT, contacto..."
-                className="pl-9"
+                className="pl-9 focus-visible:ring-primary/20 focus-visible:border-primary/40 transition-all"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -317,7 +317,7 @@ export function ProvidersView() {
       </Card>
 
       {/* ── Table ───────────────────────────────────────────────── */}
-      <Card>
+      <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
         <CardContent className="p-0">
           {loading ? (
             <div className="space-y-3 p-4">
@@ -326,10 +326,10 @@ export function ProvidersView() {
               ))}
             </div>
           ) : providers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Truck className="mb-3 h-12 w-12 text-muted-foreground/40" />
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <Truck className="mb-3 h-16 w-16 text-muted-foreground/30 animate-pulse" />
               <p className="text-muted-foreground font-medium">No se encontraron proveedores</p>
-              <p className="text-sm text-muted-foreground/70">
+              <p className="text-sm text-muted-foreground/60">
                 {search || activeFilter !== 'all'
                   ? 'Intenta con otra búsqueda o filtro'
                   : 'Crea tu primer proveedor'}
@@ -354,7 +354,7 @@ export function ProvidersView() {
                   {providers.map((provider) => (
                     <TableRow
                       key={provider.id}
-                      className={!provider.isActive ? 'opacity-60' : ''}
+                      className={`${!provider.isActive ? 'opacity-60' : ''} hover:bg-muted/30 transition-colors`}
                     >
                       <TableCell className="font-medium">
                         <span className="truncate max-w-[120px] block" title={provider.name}>{provider.name}</span>
@@ -442,7 +442,7 @@ export function ProvidersView() {
 
       {/* ── Create / Edit Dialog ────────────────────────────────── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>
               {editingProvider ? 'Editar Proveedor' : 'Nuevo Proveedor'}
@@ -620,7 +620,7 @@ function StatusToggle({
     return (
       <Badge
         variant="outline"
-        className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 cursor-pointer hover:bg-emerald-200 dark:hover:bg-emerald-900/60 transition-colors"
+        className="bg-emerald-500/15 text-emerald-400 dark:bg-emerald-500/15 dark:text-emerald-400 border-emerald-500/20 dark:border-emerald-500/20 cursor-pointer hover:bg-emerald-500/25 dark:hover:bg-emerald-500/25 transition-colors"
         onClick={onToggle}
       >
         Activo
@@ -630,7 +630,7 @@ function StatusToggle({
   return (
     <Badge
       variant="outline"
-      className="bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400 border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800/60 transition-colors"
+      className="bg-gray-500/15 text-gray-400 dark:bg-gray-500/15 dark:text-gray-400 border-gray-500/20 dark:border-gray-500/20 cursor-pointer hover:bg-gray-500/25 dark:hover:bg-gray-500/25 transition-colors"
       onClick={onToggle}
     >
       Inactivo

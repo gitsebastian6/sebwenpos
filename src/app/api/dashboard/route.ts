@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
+import { sql } from '@/lib/db-dialect'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 30
+
+const dashboardParamsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+})
 
 // GET /api/dashboard?storeId=1
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
-    const storeId = searchParams.get('storeId')
+    const params = dashboardParamsSchema.parse(Object.fromEntries(searchParams.entries()))
+    const { storeId: storeIdNum } = params
 
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId is required' }, { status: 400 })
-    }
-
-    const storeIdNum = parseInt(storeId)
+    const storeAccessErr = requireStoreAccess(request, storeIdNum)
+    if (storeAccessErr) return storeAccessErr
 
     // ── Date boundaries ──
     const now = new Date()
@@ -26,11 +33,11 @@ export async function GET(request: NextRequest) {
     const yearStart = new Date(now.getFullYear(), 0, 1)
 
     // Run queries with error isolation
-    const runSafe = async (name: string, fn: () => Promise<any>) => {
+    const runSafe = async (name: string, fn: () => Promise<unknown>) => {
       try {
         return await fn()
-      } catch (e: any) {
-        console.error(`Dashboard query [${name}] failed:`, e.message)
+      } catch (e: unknown) {
+        logger.error(`Dashboard query [${name}] failed:`, e instanceof Error ? e.message : String(e))
         return null
       }
     }
@@ -66,21 +73,22 @@ export async function GET(request: NextRequest) {
       runSafe('salesThisYear', () => db.order.aggregate({ where: { storeId: storeIdNum, status: 'COMPLETED', createdAt: { gte: yearStart, lte: todayEnd } }, _sum: { total: true, subtotal: true }, _count: { id: true } })),
       runSafe('ordersToday', () => db.order.count({ where: { storeId: storeIdNum, status: 'COMPLETED', createdAt: { gte: today, lte: todayEnd } } })),
       runSafe('ordersThisMonth', () => db.order.count({ where: { storeId: storeIdNum, status: 'COMPLETED', createdAt: { gte: monthStart, lte: todayEnd } } })),
-      runSafe('profitToday', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(oi.total_row),0) as "totalRevenue", COALESCE(SUM(p.cost_price * oi.quantity),0) as "totalCOGS", COUNT(DISTINCT oi.order_id) as "totalOrders", CASE WHEN COUNT(DISTINCT oi.order_id) > 0 THEN SUM(oi.total_row) / COUNT(DISTINCT oi.order_id) ELSE 0 END as "avgTicket" FROM order_items oi JOIN products p ON p.id = oi.product_id JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${today.getTime()} AND o.created_at <= ${todayEnd.getTime()}`)),
-      runSafe('profitMonth', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(o.subtotal),0) as "totalRevenue", COALESCE(SUM(p.cost_price * oi.quantity),0) as "totalCOGS", COALESCE(SUM(o.discount_amount),0) as "totalDiscounts", COALESCE(SUM(o.tip_amount),0) as "totalTips" FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${monthStart.getTime()} AND o.created_at <= ${todayEnd.getTime()}`)),
-      runSafe('profitYear', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(o.subtotal),0) as "totalRevenue", COALESCE(SUM(p.cost_price * oi.quantity),0) as "totalCOGS" FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${yearStart.getTime()} AND o.created_at <= ${todayEnd.getTime()}`)),
-      runSafe('inventoryCost', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(cost_price * current_stock), 0) as "totalCost" FROM products WHERE store_id = ${storeIdNum} AND is_active = 1 AND current_stock > 0`)),
-      runSafe('avgDailyCOGS', () => db.$queryRawUnsafe(`SELECT CASE WHEN COUNT(DISTINCT date(created_at / 1000, 'unixepoch')) > 0 THEN SUM(p.cost_price * oi.quantity) / COUNT(DISTINCT date(created_at / 1000, 'unixepoch')) ELSE 0 END as "avgDailyCOGS" FROM order_items oi JOIN products p ON p.id = oi.product_id JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${new Date(now.getTime() - 30 * 86400000).getTime()} AND oi.product_id IS NOT NULL GROUP BY oi.product_id`)),
+      runSafe('profitToday', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(oi.total_row),0) as "totalRevenue", COALESCE(SUM(p.cost_price * oi.quantity),0) as "totalCOGS", COUNT(DISTINCT oi.order_id) as "totalOrders", CASE WHEN COUNT(DISTINCT oi.order_id) > 0 THEN SUM(oi.total_row) / COUNT(DISTINCT oi.order_id) ELSE 0 END as "avgTicket" FROM order_items oi JOIN products p ON p.id = oi.product_id JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(today.getTime())} AND o.created_at <= ${sql.timestamp(todayEnd.getTime())}`)),
+      runSafe('profitMonth', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(o.subtotal),0) as "totalRevenue", COALESCE(SUM(p.cost_price * oi.quantity),0) as "totalCOGS", COALESCE(SUM(o.discount_amount),0) as "totalDiscounts", COALESCE(SUM(o.tip_amount),0) as "totalTips" FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(monthStart.getTime())} AND o.created_at <= ${sql.timestamp(todayEnd.getTime())}`)),
+      runSafe('profitYear', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(o.subtotal),0) as "totalRevenue", COALESCE(SUM(p.cost_price * oi.quantity),0) as "totalCOGS" FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(yearStart.getTime())} AND o.created_at <= ${sql.timestamp(todayEnd.getTime())}`)),
+      runSafe('inventoryCost', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(cost_price * current_stock), 0) as "totalCost" FROM products WHERE store_id = ${storeIdNum} AND is_active = ${sql.bool(true)} AND current_stock > 0`)),
+      // Use o.created_at / 86400000 to get day-level granularity without date() function (avoids ambiguous column in multi-table join)
+      runSafe('avgDailyCOGS', () => db.$queryRawUnsafe(`SELECT CASE WHEN COUNT(DISTINCT (o.created_at / 86400000)) > 0 THEN SUM(p.cost_price * oi.quantity) / COUNT(DISTINCT (o.created_at / 86400000)) ELSE 0 END as "avgDailyCOGS" FROM order_items oi JOIN products p ON p.id = oi.product_id JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(new Date(now.getTime() - 30 * 86400000).getTime())} AND oi.product_id IS NOT NULL`)),
       runSafe('outOfStockCount', () => db.product.count({ where: { storeId: storeIdNum, isActive: true, currentStock: 0 } })),
-      runSafe('outOfStock', () => db.$queryRawUnsafe(`SELECT id, name, salePrice as "salePrice" FROM products WHERE store_id = ${storeIdNum} AND is_active = 1 AND current_stock = 0 ORDER BY name ASC LIMIT 50`)),
-      runSafe('velocity', () => db.$queryRawUnsafe(`SELECT oi.product_id as "productId", SUM(oi.quantity) as "totalQty" FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${new Date(now.getTime() - 30 * 86400000).getTime()} AND oi.product_id IS NOT NULL GROUP BY oi.product_id`)),
+      runSafe('outOfStock', () => db.$queryRawUnsafe(`SELECT id, name, salePrice as "salePrice" FROM products WHERE store_id = ${storeIdNum} AND is_active = ${sql.bool(true)} AND current_stock = 0 ORDER BY name ASC LIMIT 50`)),
+      runSafe('velocity', () => db.$queryRawUnsafe(`SELECT oi.product_id as "productId", SUM(oi.quantity) as "totalQty" FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(new Date(now.getTime() - 30 * 86400000).getTime())} AND oi.product_id IS NOT NULL GROUP BY oi.product_id`)),
       runSafe('totalDebt', () => db.customer.aggregate({ where: { storeId: storeIdNum }, _sum: { totalDebt: true } })),
       runSafe('openTables', () => db.tableSession.findMany({ where: { storeId: storeIdNum, status: 'OPEN' }, include: { barTable: { select: { number: true, name: true, zone: true } }, customer: { select: { name: true } }, _count: { select: { comandaItems: true, orders: true } } }, orderBy: { startedAt: 'asc' } })),
-      runSafe('lowStock', () => db.$queryRawUnsafe(`SELECT id, name, current_stock as "currentStock", min_stock as "minStock" FROM products WHERE store_id = ${storeIdNum} AND is_active = 1 AND current_stock <= min_stock ORDER BY current_stock ASC LIMIT 20`)),
+      runSafe('lowStock', () => db.$queryRawUnsafe(`SELECT id, name, current_stock as "currentStock", min_stock as "minStock" FROM products WHERE store_id = ${storeIdNum} AND is_active = ${sql.bool(true)} AND current_stock <= min_stock ORDER BY current_stock ASC LIMIT 20`)),
       runSafe('recentOrders', () => db.order.findMany({ where: { storeId: storeIdNum }, include: { customer: { select: { id: true, name: true } }, tableSession: { select: { id: true, barTable: { select: { number: true, name: true } } } } }, orderBy: { createdAt: 'desc' }, take: 10 })),
       runSafe('topProducts', () => db.orderItem.groupBy({ by: ['productId'], where: { order: { storeId: storeIdNum, status: 'COMPLETED' } }, _sum: { quantity: true, totalRow: true }, orderBy: { _sum: { quantity: 'desc' } }, take: 10 })),
-      runSafe('salesByDay', () => { const sda = new Date(now.getTime() - 6 * 86400000); sda.setHours(0,0,0,0); return db.$queryRawUnsafe(`SELECT date(created_at / 1000, 'unixepoch') as day, SUM(total) as total FROM orders WHERE store_id = ${storeIdNum} AND status = 'COMPLETED' AND created_at >= ${sda.getTime()} GROUP BY date(created_at / 1000, 'unixepoch') ORDER BY day ASC`) }),
-      runSafe('expenses', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(e.amount), 0) as total FROM expenses e WHERE e.store_id = ${storeIdNum} AND e.date >= ${monthStart.getTime()} AND e.date <= ${todayEnd.getTime()}`)),
+      runSafe('salesByDay', () => { const sda = new Date(now.getTime() - 6 * 86400000); sda.setHours(0,0,0,0); return db.$queryRawUnsafe(`SELECT ${sql.dateCol('created_at')} as day, SUM(total) as total FROM orders WHERE store_id = ${storeIdNum} AND status = 'COMPLETED' AND created_at >= ${sql.timestamp(sda.getTime())} GROUP BY ${sql.dateCol('created_at')} ORDER BY day ASC`) }),
+      runSafe('expenses', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(e.amount), 0) as total FROM expenses e WHERE e.store_id = ${storeIdNum} AND e.date >= ${sql.timestamp(monthStart.getTime())} AND e.date <= ${sql.timestamp(todayEnd.getTime())}`)),
     ])
 
     // ───────────────────────────────────────────────────
@@ -148,7 +156,7 @@ export async function GET(request: NextRequest) {
 
     // Lost sales estimation: for out-of-stock products, estimate daily lost revenue
     const safeVelocity = Array.isArray(recentSalesVelocity) ? recentSalesVelocity : []
-    const velocityMap = new Map(safeVelocity.map(v => [v.productId, v.totalQty]))
+    const velocityMap = new Map(safeVelocity.map(v => [v.productId, Number(v.totalQty ?? 0)]))
     const daysForVelocity = 30
     let estimatedLostDailyRevenue = 0
     for (const oos of safeOutOfStock) {
@@ -171,15 +179,17 @@ export async function GET(request: NextRequest) {
     // ───────────────────────────────────────────────────
 
     const safeTopProducts = Array.isArray(topProductsResult) ? topProductsResult : []
-    const topProductIds = safeTopProducts.map((p) => p.productId)
+    // Filter out null productIds (items without product) to avoid Prisma "Argument 'in' is missing" error
+    const topProductIds = safeTopProducts.map((p) => p.productId).filter((id): id is number => id != null)
     const topProductData = topProductIds.length > 0
-      ? await db.product.findMany({
+      ? await runSafe('topProductData', () => db.product.findMany({
           where: { id: { in: topProductIds } },
           select: { id: true, name: true, imgUrl: true, costPrice: true, salePrice: true },
-        })
+        }))
       : []
+    const safeTopProductData = Array.isArray(topProductData) ? topProductData : []
 
-    const topProductMap = new Map(topProductData.map((p) => [p.id, p]))
+    const topProductMap = new Map(safeTopProductData.map((p) => [p.id, p]))
     const topProducts = safeTopProducts.map((item) => {
       const prod = topProductMap.get(item.productId)
       const qty = Number(item._sum.quantity ?? 0)
@@ -295,7 +305,12 @@ export async function GET(request: NextRequest) {
       })),
     })
   } catch (error) {
-    console.error('Dashboard API error:', error)
-    return NextResponse.json({ error: 'Failed to fetch dashboard stats', detail: error instanceof Error ? error.message : String(error) }, { status: 500 })
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Parámetros inválidos: ' + error.issues.map((i: z.ZodIssue) => i.message).join(', ') }, { status: 400 })
+    }
+    const errMsg = error instanceof Error ? error.message : String(error)
+    logger.error('Dashboard API error:', errMsg)
+    return NextResponse.json({ error: 'Failed to fetch dashboard stats', detail: errMsg }, { status: 500 })
   }
 }
+

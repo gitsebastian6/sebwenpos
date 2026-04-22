@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,6 +54,9 @@ export async function GET(
       return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(request, session.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     // Calculate session totals from comanda items
     const pendingItems = session.comandaItems.filter((i) => i.status === 'PENDING')
     const servedItems = session.comandaItems.filter((i) => i.status === 'SERVED')
@@ -100,7 +105,7 @@ export async function GET(
       },
     })
   } catch (error) {
-    console.error('GET /api/tables/sessions/[id] error:', error)
+    logger.error('GET /api/tables/sessions/[id] error:', error)
     return NextResponse.json({ error: 'Error al obtener la sesión' }, { status: 500 })
   }
 }
@@ -125,6 +130,9 @@ export async function PUT(
     if (!existing) {
       return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 })
     }
+
+    const storeAccessErr = requireStoreAccess(req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // If closing the session, check for pending or served items that haven't been paid
     if (data.action === 'CLOSE') {
@@ -216,7 +224,7 @@ export async function PUT(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('PUT /api/tables/sessions/[id] error:', error)
+    logger.error('PUT /api/tables/sessions/[id] error:', error)
     return NextResponse.json({ error: 'Error al actualizar la sesión' }, { status: 500 })
   }
 }
@@ -246,6 +254,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(_req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     // Only allow deletion if no comanda items and no orders
     if (existing._count.comandaItems > 0) {
       return NextResponse.json(
@@ -264,7 +275,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('DELETE /api/tables/sessions/[id] error:', error)
+    logger.error('DELETE /api/tables/sessions/[id] error:', error)
     return NextResponse.json({ error: 'Error al eliminar la sesión' }, { status: 500 })
   }
 }

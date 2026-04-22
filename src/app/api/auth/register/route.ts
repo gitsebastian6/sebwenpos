@@ -1,31 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword, sanitizeUser } from '@/lib/auth'
+import { generateToken } from '@/lib/auth-helpers'
+import { withRateLimit, REGISTER_RATE_LIMIT, attachRateLimitHeaders } from '@/lib/rate-limiter'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+
+export const dynamic = 'force-dynamic'
 
 const registerSchema = z.object({
-  phone: z.string().min(10, 'Teléfono mínimo 10 dígitos'),
+  cedula: z.string().min(5, 'Cédula mínimo 5 dígitos'),
   password: z.string().min(6, 'Contraseña mínimo 6 caracteres'),
   fullName: z.string().min(2, 'Nombre es requerido'),
   storeName: z.string().min(2, 'Nombre de tienda es requerido'),
   email: z.string().email().optional().or(z.literal('')),
+  phone: z.string().optional().or(z.literal('')),
+  nit: z.string().optional().or(z.literal('')),
+  legalName: z.string().optional().or(z.literal('')),
+  address: z.string().optional().or(z.literal('')),
 })
 
 export async function POST(req: NextRequest) {
+  // ─── Rate Limiting: 3 registros por 5 minutos por IP ───
+  const rl = withRateLimit(req, 'register', REGISTER_RATE_LIMIT)
+  if (!rl.allowed) return rl.response
+
   try {
     const body = await req.json()
     const data = registerSchema.parse(body)
 
-    const existing = await db.user.findUnique({ where: { phone: data.phone } })
+    // Verificar que la cédula no esté registrada
+    const existing = await db.user.findUnique({ where: { cedula: data.cedula } })
     if (existing) {
-      return NextResponse.json({ error: 'El teléfono ya está registrado' }, { status: 400 })
+      return NextResponse.json({ error: 'La cédula ya está registrada' }, { status: 400 })
     }
 
     const passwordHash = await hashPassword(data.password)
 
     const user = await db.user.create({
       data: {
-        phone: data.phone,
+        cedula: data.cedula,
+        phone: data.phone || null,
         email: data.email || null,
         passwordHash,
         fullName: data.fullName,
@@ -33,6 +48,9 @@ export async function POST(req: NextRequest) {
         store: {
           create: {
             name: data.storeName,
+            nit: data.nit || null,
+            legalName: data.legalName || null,
+            address: data.address || null,
             currencyCode: 'COP',
             countryCode: 'CO',
           },
@@ -58,24 +76,78 @@ export async function POST(req: NextRequest) {
 
     await db.category.createMany({
       data: [
-        { storeId, name: 'Cervezas Lager' },
-        { storeId, name: 'Cervezas Premium' },
-        { storeId, name: 'Cervezas Especiales' },
-        { storeId, name: 'Malta y Bebidas' },
-        { storeId, name: 'Promociones' },
+        { storeId, name: 'General' },
+        { storeId, name: 'Bebidas' },
+        { storeId, name: 'Alimentos' },
+        { storeId, name: 'Servicios' },
         { storeId, name: 'Otros' },
       ],
     })
 
-    const safeUser = sanitizeUser(user)
-    const token = Buffer.from(`${user.id}:${Date.now()}`).toString('base64')
+    // Crear tasa IVA 19% por defecto
+    await db.taxRate.create({
+      data: {
+        storeId,
+        name: 'IVA 19%',
+        code: '01',
+        rateType: 'PERCENTAGE',
+        rate: 19,
+        applyTo: 'BOTH',
+        category: 'SALES_TAX',
+        isActive: true,
+        isDefault: true,
+        description: 'Impuesto al Valor Agregado - Tarifa general',
+      },
+    })
 
-    return NextResponse.json({ user: safeUser, store: user.store, token })
+    // ─── Mandatory: create Trial subscription (7 days) ───
+    const trialPlan = await db.plan.findFirst({ where: { name: 'Trial' } })
+    if (!trialPlan) {
+      // Rollback: delete the user + store we just created
+      await db.user.delete({ where: { id: user.id } })
+      return NextResponse.json({
+        error: 'El sistema no está configurado para registros nuevos. Contacte al soporte.',
+      }, { status: 503 })
+    }
+
+    const now = new Date()
+    const trialEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) // +7 days
+    await db.subscription.create({
+      data: {
+        storeId,
+        planId: trialPlan.id,
+        status: 'TRIAL',
+        startDate: now,
+        endDate: trialEnd,
+        trialEndDate: trialEnd,
+        billingPeriod: 'TRIAL',
+        billingPrice: 0,
+      },
+    })
+
+    const safeUser = sanitizeUser(user)
+    const token = await generateToken({
+      userId: user.id,
+      storeId: user.store!.id,
+      role: 'OWNER',
+    })
+
+    const permissions: Record<string, boolean> = {
+      dashboard: true, pos: true, tables: true, products: true,
+      customers: true, providers: true, orders: true, invoices: true,
+      inventory: true, accounting: true, services: true, reports: true,
+      settings: true, quotations: true, manageEmployees: true,
+    }
+
+    return attachRateLimitHeaders(
+      NextResponse.json({ user: safeUser, store: user.store, token, permissions }),
+      rl.result,
+    )
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('Register error:', error)
+    logger.error('Register error:', error)
     return NextResponse.json({ error: 'Error al registrar usuario' }, { status: 500 })
   }
 }

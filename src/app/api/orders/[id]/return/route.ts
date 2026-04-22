@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import {
+  generateCUDFE,
+  generateQRCodeURL,
+  formatInvoiceNumber,
+} from '@/lib/invoice-utils'
+import { getNextCreditNoteConsecutive } from '@/lib/invoicing/credit-note-counter'
+import { decryptField } from '@/lib/field-encryption'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
+import { getSoftwareProviderNIT, DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,8 +43,8 @@ export async function POST(
     try {
       const raw = await request.json()
       body = returnSchema.parse(raw)
-    } catch (e: any) {
-      const msg = e?.issues?.[0]?.message || 'Datos inválidos'
+    } catch (e: unknown) {
+      const msg = e instanceof z.ZodError ? e.issues[0]?.message : 'Datos inválidos'
       return NextResponse.json({ error: msg }, { status: 400 })
     }
 
@@ -55,6 +65,9 @@ export async function POST(
     if (!order) {
       return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
     }
+
+    const storeAccessErr = requireStoreAccess(request, order.storeId)
+    if (storeAccessErr) return storeAccessErr
 
     if (order.status === 'CANCELLED') {
       return NextResponse.json(
@@ -137,6 +150,27 @@ export async function POST(
         returnedItems.push({ name: productName, quantity: reqItem.quantity })
       }
 
+      // If the order was CREDIT/FIADO, reduce customer's debt proportionally
+      if (order.customerId && (order.status === 'CREDIT' || order.status === 'COMPLETED')) {
+        // Check if there was originally debt (only CREDIT orders have debt)
+        const creditOrders = await tx.order.findFirst({
+          where: { id: orderId, status: 'CREDIT', customerId: order.customerId },
+          select: { id: true },
+        })
+        if (creditOrders) {
+          const returnAmount = order.orderItems
+            .filter(oi => body.items!.some(ri => ri.orderItemId === oi.id))
+            .reduce((sum, oi) => sum + Number(oi.unitPrice) * body.items!.find(ri => ri.orderItemId === oi.id)!.quantity, 0)
+          if (returnAmount > 0) {
+            await tx.customer.update({
+              where: { id: order.customerId },
+              data: { totalDebt: { decrement: returnAmount } },
+            })
+            logger.info(`Return: reduced customer ${order.customerId} debt by $${returnAmount}`)
+          }
+        }
+      }
+
       // Check if ALL items are now fully returned
       const allFullyReturned = order.orderItems.every(
         (item) => (item.returnedQuantity ?? 0) + (body.items!.find((r) => r.orderItemId === item.id)?.quantity || 0) >= item.quantity
@@ -154,6 +188,208 @@ export async function POST(
     })
 
     const itemSummary = results.returnedItems.map((i) => `${i.name} x${i.quantity}`).join(', ')
+
+    // ── Auto-generate Credit Note if order has an electronic invoice ──
+    let creditNoteResult: {
+      noteNumber: string
+      noteType: string
+      grandTotal: number
+      concept: string
+    } | null = null
+
+    try {
+      const invoice = await db.invoice.findUnique({
+        where: { orderId },
+        select: {
+          id: true,
+          prefix: true,
+          consecutive: true,
+          cufe: true,
+          customerNit: true,
+          customerName: true,
+          customerEmail: true,
+          customerPhone: true,
+          customerAddress: true,
+          customerRegime: true,
+          customerType: true,
+          grandTotal: true,
+          storeId: true,
+        },
+      })
+
+      if (invoice && invoice.cufe) {
+        // There's an electronic invoice — generate a Credit Note automatically
+        const store = await db.store.findUnique({
+          where: { id: invoice.storeId },
+          select: {
+            nit: true,
+            resolutionNumber: true,
+            resolutionStartDate: true,
+            resolutionEndDate: true,
+            resolutionStartNumber: true,
+            resolutionEndNumber: true,
+            currencyCode: true,
+            invoiceTestMode: true,
+            softwarePin: true,
+          },
+        })
+
+        // Compute amounts from returned items
+        let ncSubtotalBase = 0
+        let ncTotalTax = 0
+        let ncGrandTotal = 0
+        const ncItems: { description: string; quantity: number; unitPrice: number; taxAmount: number; taxBase: number; taxCode: string; taxRate: number }[] = []
+
+        for (const reqItem of body.items!) {
+          const item = itemMap.get(reqItem.orderItemId)!
+          const unitPrice = Number(item.unitPrice)
+          const totalRow = unitPrice * reqItem.quantity
+          const taxRate = Number(item.taxRate || 0)
+          const taxBase = taxRate > 0 ? Math.round(totalRow / (1 + taxRate / 100)) : totalRow
+          const taxAmount = totalRow - taxBase
+
+          ncSubtotalBase += taxBase
+          ncTotalTax += taxAmount
+          ncGrandTotal += totalRow
+
+          ncItems.push({
+            description: `Devolución: ${item.product?.name || 'Producto'}`,
+            quantity: reqItem.quantity,
+            unitPrice,
+            taxAmount: Math.round(taxAmount),
+            taxBase: Math.round(taxBase),
+            taxCode: String(item.taxCode || (taxRate > 0 ? '01' : '00')),
+            taxRate,
+          })
+        }
+
+        // Get next NC consecutive
+        const consecutiveResult = await getNextCreditNoteConsecutive(order.storeId, 'CREDIT')
+
+        // Generate CUDFE
+        const now = new Date()
+        const issueDate = now.toISOString().slice(0, 10).replace(/-/g, '')
+        const issueTime = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}000`
+
+        const softwarePIN = decryptField(store?.softwarePin || '') || process.env.DIAN_SOFTWARE_PIN || ''
+        const providerNit = getSoftwareProviderNIT()
+        const resolutionNumber = store?.resolutionNumber || ''
+        const resolutionDate = store?.resolutionStartDate
+          ? store.resolutionStartDate.toISOString().slice(0, 10).replace(/-/g, '')
+          : ''
+
+        const concept = results.fullyReturned
+          ? 'Devolución total'
+          : 'Devolución parcial'
+
+        let cudfe: string | null = null
+        let qrCode: string | null = null
+
+        try {
+          cudfe = generateCUDFE({
+            storeNit: store?.nit || '',
+            issueDate,
+            issueTime,
+            prefix: consecutiveResult.prefix,
+            consecutive: consecutiveResult.consecutive,
+            customerNit: invoice.customerNit || DIAN_CONSUMIDOR_FINAL_NIT,
+            subtotalBase: ncSubtotalBase,
+            totalTaxAmount: ncTotalTax,
+            discountAmount: 0,
+            grandTotal: ncGrandTotal,
+            currencyCode: store?.currencyCode || 'COP',
+            resolutionNumber,
+            resolutionDate,
+            pinSoftware: softwarePIN,
+            providerNit,
+            cude: invoice.cufe,
+          })
+
+          const testMode = store?.invoiceTestMode ?? true
+          qrCode = generateQRCodeURL({
+            storeNit: store?.nit || '',
+            prefix: consecutiveResult.prefix,
+            consecutive: consecutiveResult.consecutive,
+            date: now.toISOString().slice(0, 10),
+            grandTotal: ncGrandTotal,
+            cufe: cudfe,
+            testMode,
+          })
+        } catch (cudfeErr) {
+          logger.warn('[Return→NC] Error generando CUDFE:', cudfeErr)
+        }
+
+        // Build tax breakdown JSON
+        const taxBreakdownMap: Record<string, { code: string; name: string; base: number; rate: number; amount: number }> = {}
+        for (const ni of ncItems) {
+          if (ni.taxRate > 0 && ni.taxCode) {
+            const key = ni.taxCode
+            if (!taxBreakdownMap[key]) {
+              taxBreakdownMap[key] = { code: key, name: `Impuesto ${ni.taxCode}`, base: 0, rate: ni.taxRate, amount: 0 }
+            }
+            taxBreakdownMap[key].base += ni.taxBase
+            taxBreakdownMap[key].amount += ni.taxAmount
+          }
+        }
+        const taxBreakdown = Object.keys(taxBreakdownMap).length > 0
+          ? JSON.stringify(Object.values(taxBreakdownMap))
+          : '[]'
+
+        // Create the Credit Note
+        const creditNote = await db.creditNote.create({
+          data: {
+            storeId: order.storeId,
+            invoiceId: invoice.id,
+            prefix: consecutiveResult.prefix,
+            consecutive: consecutiveResult.consecutive,
+            resolutionNumber: store?.resolutionNumber || null,
+            resolutionDate: store?.resolutionStartDate ? new Date(store.resolutionStartDate) : null,
+            startDate: store?.resolutionStartDate || null,
+            endDate: store?.resolutionEndDate || null,
+            startNumber: store?.resolutionStartNumber,
+            endNumber: store?.resolutionEndNumber,
+            noteType: 'CREDIT',
+            concept,
+            description: `Devolución automática de venta #${order.orderNumber}${body.reason ? ` — ${body.reason}` : ''}`,
+            customerNit: invoice.customerNit || DIAN_CONSUMIDOR_FINAL_NIT,
+            customerName: invoice.customerName || 'Consumidor Final',
+            customerEmail: invoice.customerEmail || null,
+            customerPhone: invoice.customerPhone || null,
+            customerAddress: invoice.customerAddress || null,
+            customerRegime: invoice.customerRegime || 'NO_RESPONSABLE',
+            customerType: invoice.customerType || 'CC',
+            subtotalBase: ncSubtotalBase,
+            taxExemptAmount: 0,
+            taxBreakdown,
+            totalTaxAmount: ncTotalTax,
+            totalWithTax: ncSubtotalBase + ncTotalTax,
+            discountAmount: 0,
+            grandTotal: ncGrandTotal,
+            cufe: cudfe,
+            qrCode,
+            referencedInvoiceId: invoice.cufe || null,
+            referencedPrefix: invoice.prefix,
+            referencedConsec: invoice.consecutive,
+            status: 'DRAFT',
+            testMode: store?.invoiceTestMode ?? true,
+            notes: `Auto-generada por devolución de orden #${order.orderNumber}`,
+          },
+        })
+
+        creditNoteResult = {
+          noteNumber: formatInvoiceNumber(creditNote.prefix, creditNote.consecutive),
+          noteType: 'CREDIT',
+          grandTotal: ncGrandTotal,
+          concept,
+        }
+
+        logger.info(`[Return→NC] Credit Note ${creditNoteResult.noteNumber} auto-generated for order #${order.orderNumber}`)
+      }
+    } catch (ncErr) {
+      // Credit note generation failed — log but don't fail the return
+      logger.error('[Return→NC] Error auto-generating credit note:', ncErr)
+    }
+
     return NextResponse.json({
       message: results.fullyReturned
         ? `Venta #${order.orderNumber} devuelta completamente: ${itemSummary}`
@@ -162,9 +398,10 @@ export async function POST(
       orderNumber: order.orderNumber,
       fullyReturned: results.fullyReturned,
       totalReturned: results.totalReturned,
+      creditNote: creditNoteResult,
     })
   } catch (error) {
-    console.error('POST /api/orders/[id]/return error:', error)
+    logger.error('POST /api/orders/[id]/return error:', error)
     const message = error instanceof Error ? error.message : 'Error al procesar la devolución'
     return NextResponse.json({ error: message }, { status: 500 })
   }

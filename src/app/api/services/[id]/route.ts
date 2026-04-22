@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,6 +51,9 @@ export async function GET(
       return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(_request, service.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     return NextResponse.json({
       ...service,
       price: Number(service.price),
@@ -63,7 +68,7 @@ export async function GET(
       updatedAt: service.updatedAt.toISOString(),
     })
   } catch (error) {
-    console.error('GET /api/services/[id] error:', error)
+    logger.error('GET /api/services/[id] error:', error)
     return NextResponse.json({ error: 'Error al obtener servicio' }, { status: 500 })
   }
 }
@@ -88,6 +93,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     const updated = await db.service.update({
       where: { id: sid },
       data: {
@@ -105,7 +113,7 @@ export async function PUT(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('PUT /api/services/[id] error:', error)
+    logger.error('PUT /api/services/[id] error:', error)
     return NextResponse.json({ error: 'Error al actualizar servicio' }, { status: 500 })
   }
 }
@@ -127,6 +135,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Servicio no encontrado' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(_request, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     // Delete related transactions first
     await db.serviceTransaction.deleteMany({
       where: { serviceId: sid },
@@ -135,7 +146,7 @@ export async function DELETE(
     await db.service.delete({ where: { id: sid } })
     return NextResponse.json({ message: 'Servicio eliminado' })
   } catch (error) {
-    console.error('DELETE /api/services/[id] error:', error)
+    logger.error('DELETE /api/services/[id] error:', error)
     return NextResponse.json({ error: 'Error al eliminar servicio' }, { status: 500 })
   }
 }

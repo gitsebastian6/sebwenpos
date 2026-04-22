@@ -55,14 +55,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { ProductImage } from '@/components/ui/product-image'
-import { CategoryIconPicker } from '@/components/ui/category-icon-picker'
+import { CategoryIconPicker, getCategoryIconByName } from '@/components/ui/category-icon-picker'
 import { printReport, printThermal80mm } from '@/lib/print-report'
 import { KPIBar } from '@/components/shared/kpi-bar'
-import dynamic from 'next/dynamic'
-
-const PurchasesView = dynamic(() => import('@/components/purchases/purchases-view').then(m => ({ default: m.PurchasesView })), { ssr: false })
-
 import {
+  PackageSearch,
   Plus,
   Search,
   MoreHorizontal,
@@ -71,8 +68,8 @@ import {
   Power,
   Package,
   Tags,
+  Tag,
   AlertTriangle,
-  ShoppingCart,
   Truck,
   Printer,
   FileSpreadsheet,
@@ -85,6 +82,8 @@ import {
   Percent,
   X,
   Shield,
+  Upload,
+  Info,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -175,12 +174,12 @@ const emptyProductForm: ProductFormData = {
 // ─── Loss Reason Labels ────────────────────────────────────────────────────
 
 const LOSS_REASONS = [
-  { value: 'EXPIRED', label: 'Vencido' },
-  { value: 'DAMAGED', label: 'Dañado' },
-  { value: 'THEFT', label: 'Robo' },
-  { value: 'SPILL', label: 'Derrame' },
-  { value: 'COUNT_DIFF', label: 'Diferencia de inventario' },
-  { value: 'OTHER', label: 'Otro' },
+  { value: 'VENCIDO', label: 'Producto vencido' },
+  { value: 'DANADO', label: 'Producto dañado' },
+  { value: 'ROBO', label: 'Robo o hurto' },
+  { value: 'DERRAME', label: 'Derrame o rotura' },
+  { value: 'INVENTARIO', label: 'Diferencia de inventario' },
+  { value: 'OTRO', label: 'Otro motivo' },
 ]
 
 const MOV_TYPE_LABELS: Record<string, string> = {
@@ -198,10 +197,13 @@ export function ProductsView() {
   const { setView } = useAppStore()
 
   const [products, setProducts] = useState<Product[]>([])
+  const [maxProducts, setMaxProducts] = useState<number | null>(null) // Plan limit (null = unlimited)
+  const [planName, setPlanName] = useState<string | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [providers, setProviders] = useState<Provider[]>([])
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true)
   const [categoriesLoading, setCategoriesLoading] = useState(true)
 
   // Products state
@@ -260,6 +262,28 @@ export function ProductsView() {
   const [traceMovements, setTraceMovements] = useState<any[]>([])
   const [traceLoading, setTraceLoading] = useState(false)
 
+  // Import dialog
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{
+    success: boolean
+    imported: number
+    created: string[]
+    skipped: { row: number; name: string; reason: string }[]
+    totalInFile: number
+    createdCategories?: string[]
+    createdProviders?: string[]
+    subscription?: {
+      planName: string | null
+      planLimit: number | null
+      currentCount: number
+      newTotal: number
+      remainingSlots: number | null
+      limitReached: boolean
+    }
+  } | null>(null)
+
   // ─── Commission Auto-Calculation ─────────────────────────────────────────
 
   const suggestedPrice = useMemo(() => {
@@ -316,6 +340,24 @@ export function ProductsView() {
     }
   }, [store?.id])
 
+  // ─── Fetch subscription plan limits ──────────────────────────────────────
+  const fetchSubscriptionLimits = useCallback(async () => {
+    if (!store?.id) return
+    try {
+      const res = await fetch(`/api/subscription/current?storeId=${store.id}`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.planName) setPlanName(data.planName)
+      if (data.planLimits?.maxProducts != null && data.planLimits.maxProducts !== -1) {
+        setMaxProducts(data.planLimits.maxProducts)
+      }
+    } catch {
+      // If subscription check fails, no limit applied
+    } finally {
+      setSubscriptionLoading(false)
+    }
+  }, [store?.id])
+
   const fetchProducts = useCallback(async () => {
     if (!store?.id) return
     setProductsLoading(true)
@@ -328,7 +370,8 @@ export function ProductsView() {
       const res = await fetch(`/api/products?${params.toString()}`)
       if (!res.ok) throw new Error('Error cargando productos')
       const data = await res.json()
-      setProducts(data)
+      // API returns { data: [...], pagination: {...} } or [...]
+      setProducts(Array.isArray(data) ? data : (data.data || []))
     } catch {
       toast.error('Error al cargar productos')
     } finally {
@@ -340,7 +383,8 @@ export function ProductsView() {
     fetchCategories()
     fetchProviders()
     fetchTaxRates()
-  }, [fetchCategories, fetchProviders, fetchTaxRates])
+    fetchSubscriptionLimits()
+  }, [fetchCategories, fetchProviders, fetchTaxRates, fetchSubscriptionLimits])
 
   useEffect(() => {
     fetchProducts()
@@ -544,7 +588,7 @@ export function ProductsView() {
     setLossProductId(productId)
     setLossProductName(name)
     setLossQuantity('')
-    setLossReason('EXPIRED')
+    setLossReason('VENCIDO')
     setLossNotes('')
     setLossDialogOpen(true)
   }
@@ -629,6 +673,44 @@ export function ProductsView() {
     finally { setActionSubmitting(false) }
   }
 
+  // ─── Excel Import Handler ──────────────────────────────────────────
+  async function handleImportProducts() {
+    if (!store?.id || !importFile) return
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', importFile)
+      const res = await fetch('/api/products/import', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al importar productos')
+      }
+      setImportResult(data)
+      if (data.imported > 0) {
+        fetchProducts()
+        fetchCategories()
+        fetchProviders()
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al importar productos')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  function handleImportDialogClose() {
+    setImportDialogOpen(false)
+    setImportFile(null)
+    setImportResult(null)
+    // Refresh all lists when closing — import may have created new categories/providers
+    fetchCategories()
+    fetchProviders()
+  }
+
   // ─── Print Products ──────────────────────────────────────────────────
 
   function handlePrintProducts(thermal = false) {
@@ -684,15 +766,20 @@ export function ProductsView() {
 
   // ─── Filtered & Sorted Products ──────────────────────────────────────────
 
-  const filteredProducts = (() => {
+  const filteredProducts = useMemo(() => {
+    if (!Array.isArray(products)) return []
     let result = products
+    // Apply plan limit: only show maxProducts items
+    if (maxProducts !== null && result.length > maxProducts) {
+      result = result.slice(0, maxProducts)
+    }
     if (sortOrder === 'az') {
       result = [...result].sort((a, b) => a.name.localeCompare(b.name, 'es-CO'))
     } else if (sortOrder === 'za') {
       result = [...result].sort((a, b) => b.name.localeCompare(a.name, 'es-CO'))
     }
     return result
-  })()
+  }, [products, maxProducts, sortOrder])
 
   // ─── Render ────────────────────────────────────────────────────────────
 
@@ -710,10 +797,6 @@ export function ProductsView() {
             <Tags className="h-4 w-4" />
             <span>Categorías</span>
           </TabsTrigger>
-          <TabsTrigger value="purchases" className="gap-2">
-            <ShoppingCart className="h-4 w-4" />
-            <span>Compras</span>
-          </TabsTrigger>
         </TabsList>
 
         {/* ─── PRODUCTS TAB ──────────────────────────────────────────── */}
@@ -728,7 +811,7 @@ export function ProductsView() {
                   placeholder="Buscar producto..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-full"
+                  className="pl-9 w-full focus-visible:ring-primary/20 focus-visible:border-primary/40 transition-all"
                 />
               </div>
               {/* Category filter */}
@@ -783,34 +866,25 @@ export function ProductsView() {
                   Z→A
                 </Button>
               </div>
-              {/* Quick inventory actions */}
+              {/* Quick module shortcuts */}
               <div className="flex items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:hover:bg-red-950/40"
-                  onClick={() => { setView('inventory'); toast.info('Ve a Inventario para registrar pérdidas, devoluciones y ajustes') }}
+                  className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-emerald-800 dark:hover:bg-emerald-950/40"
+                  onClick={() => setView('purchases')}
                 >
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  <span>Pérdida</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-sky-600 border-sky-200 hover:bg-sky-50 hover:text-sky-700 dark:border-sky-800 dark:hover:bg-sky-950/40"
-                  onClick={() => { setView('inventory'); toast.info('Ve a Inventario para registrar devoluciones y ajustes') }}
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  <span>Devolución</span>
+                  <PackageSearch className="h-3.5 w-3.5" />
+                  <span>Compras</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   className="gap-1.5 text-amber-600 border-amber-200 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-800 dark:hover:bg-amber-950/40"
-                  onClick={() => { setView('inventory'); toast.info('Ve a Inventario para registrar ajustes de stock') }}
+                  onClick={() => setView('inventory')}
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5" />
-                  <span>Ajuste</span>
+                  <span>Inventario</span>
                 </Button>
               </div>
               {/* Spacer */}
@@ -840,7 +914,16 @@ export function ProductsView() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button onClick={openNewProductDialog} size="sm" className="gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => { setImportResult(null); setImportFile(null); setImportDialogOpen(true) }}
+                >
+                  <Upload className="h-4 w-4" />
+                  <span>Importar Excel</span>
+                </Button>
+                <Button onClick={openNewProductDialog} size="sm" className="gap-1.5 active:scale-[0.98] transition-all">
                   <Plus className="h-4 w-4" />
                   <span>Nuevo Producto</span>
                 </Button>
@@ -849,7 +932,7 @@ export function ProductsView() {
           </div>
 
           {/* Products Table */}
-          <Card>
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
@@ -885,13 +968,17 @@ export function ProductsView() {
                       ))
                     ) : filteredProducts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
-                          No se encontraron productos
+                        <TableCell colSpan={10} className="h-48 text-center">
+                          <div className="flex flex-col items-center justify-center">
+                            <Package className="h-16 w-16 text-muted-foreground/30 mb-3 animate-pulse" />
+                            <p className="text-muted-foreground font-medium">No se encontraron productos</p>
+                            <p className="text-sm text-muted-foreground/60 mt-1">Intenta con otra búsqueda o crea un nuevo producto</p>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ) : (
                       filteredProducts.map((product) => (
-                        <TableRow key={product.id} className={!product.isActive ? 'opacity-60' : ''}>
+                        <TableRow key={product.id} className={`${!product.isActive ? 'opacity-60' : ''} hover:bg-muted/30 transition-colors`}>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-3">
                               <ProductImage
@@ -950,10 +1037,10 @@ export function ProductsView() {
                                 variant="outline"
                                 className={
                                   product.taxRate.rate === 0
-                                    ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700 text-xs'
+                                    ? 'bg-gray-500/15 text-gray-400 dark:bg-gray-500/15 dark:text-gray-400 border-gray-500/20 dark:border-gray-500/20 text-xs'
                                     : product.taxRate.code === '05'
-                                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800 text-xs'
-                                      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 text-xs'
+                                      ? 'bg-orange-500/15 text-orange-400 dark:bg-orange-500/15 dark:text-orange-400 border-orange-500/20 dark:border-orange-500/20 text-xs'
+                                      : 'bg-emerald-500/15 text-emerald-400 dark:bg-emerald-500/15 dark:text-emerald-400 border-emerald-500/20 dark:border-emerald-500/20 text-xs'
                                 }
                               >
                                 <Percent className="h-2.5 w-2.5 mr-0.5" />
@@ -991,8 +1078,8 @@ export function ProductsView() {
                             <Badge
                               className={
                                 product.isActive
-                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
-                                  : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+                                  ? 'bg-emerald-500/15 text-emerald-400 dark:bg-emerald-500/15 dark:text-emerald-400 border-emerald-500/20 dark:border-emerald-500/20'
+                                  : 'bg-gray-500/15 text-gray-400 dark:bg-gray-500/15 dark:text-gray-400 border-gray-500/20 dark:border-gray-500/20'
                               }
                               variant="outline"
                             >
@@ -1053,10 +1140,71 @@ export function ProductsView() {
             </CardContent>
           </Card>
 
+          {/* Plan limit banner */}
+          {!subscriptionLoading && maxProducts !== null && (
+            <div className={`rounded-lg border p-3 flex items-center gap-3 ${
+              products.length >= maxProducts
+                ? 'border-amber-500/30 bg-amber-500/[0.06]'
+                : products.length >= maxProducts * 0.8
+                  ? 'border-sky-500/20 bg-sky-500/[0.04]'
+                  : 'border-emerald-500/20 bg-emerald-500/[0.04]'
+            }`}>
+              <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
+                products.length >= maxProducts
+                  ? 'bg-amber-500/15'
+                  : products.length >= maxProducts * 0.8
+                    ? 'bg-sky-500/15'
+                    : 'bg-emerald-500/15'
+              }`}>
+                <AlertTriangle className={`h-4 w-4 ${
+                  products.length >= maxProducts
+                    ? 'text-amber-400'
+                    : products.length >= maxProducts * 0.8
+                      ? 'text-sky-400'
+                      : 'text-emerald-400'
+                }`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-semibold ${
+                  products.length >= maxProducts
+                    ? 'text-amber-400'
+                    : products.length >= maxProducts * 0.8
+                      ? 'text-sky-400'
+                      : 'text-emerald-400'
+                }`}>
+                  {products.length >= maxProducts
+                    ? `Límite del plan alcanzado: ${maxProducts} productos`
+                    : `Plan: ${products.length}/${maxProducts} productos`
+                  }
+                </p>
+                {products.length >= maxProducts && (
+                  <p className="text-[11px] text-amber-300/60 mt-0.5">
+                    Actualiza tu plan para agregar más productos
+                  </p>
+                )}
+              </div>
+              {products.length < maxProducts && (
+                <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden shrink-0 hidden sm:block">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      products.length >= maxProducts * 0.8 ? 'bg-sky-400' : 'bg-emerald-400'
+                    }`}
+                    style={{ width: `${Math.min(100, (products.length / maxProducts) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Product count */}
           {!productsLoading && (
             <p className="text-sm text-muted-foreground text-right">
               {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''}
+              {maxProducts !== null && (
+                <span className="text-xs text-muted-foreground/60 ml-2">
+                  (límite: {maxProducts})
+                </span>
+              )}
             </p>
           )}
         </TabsContent>
@@ -1067,7 +1215,7 @@ export function ProductsView() {
             <p className="text-sm text-muted-foreground">
               {categories.length} categor{categories.length !== 1 ? 'ías' : 'ía'}
             </p>
-            <Button onClick={openNewCategoryDialog} className="gap-2">
+            <Button onClick={openNewCategoryDialog} className="gap-2 active:scale-[0.98] transition-all">
               <Plus className="h-4 w-4" />
               Nueva Categoría
             </Button>
@@ -1087,10 +1235,10 @@ export function ProductsView() {
               ))}
             </div>
           ) : categories.length === 0 ? (
-            <Card>
+            <Card className="border-border/50">
               <CardContent className="flex flex-col items-center justify-center py-12">
-                <Tags className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                <p className="text-muted-foreground">No hay categorías creadas</p>
+                <Tags className="h-16 w-16 text-muted-foreground/30 mb-4 animate-pulse" />
+                <p className="text-muted-foreground font-medium">No hay categorías creadas</p>
                 <p className="text-sm text-muted-foreground/70 mt-1">
                   Crea una categoría para organizar tus productos
                 </p>
@@ -1099,9 +1247,23 @@ export function ProductsView() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {categories.map((category) => (
-                <Card key={category.id} className="group transition-shadow hover:shadow-md">
+                <Card key={category.id} className="group hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                   <CardHeader className="flex flex-row items-start justify-between pb-2">
-                    <CardTitle className="text-base font-medium">{category.name}</CardTitle>
+                    <div className="flex items-center gap-2.5">
+                      {(() => {
+                        const IconComp = getCategoryIconByName(category.icon)
+                        return IconComp ? (
+                          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 shrink-0">
+                            <IconComp className="h-4.5 w-4.5 text-primary" />
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted shrink-0">
+                            <Tags className="h-4.5 w-4.5 text-muted-foreground" />
+                          </div>
+                        )
+                      })()}
+                      <CardTitle className="text-base font-medium">{category.name}</CardTitle>
+                    </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button
                         variant="ghost"
@@ -1138,17 +1300,13 @@ export function ProductsView() {
           )}
         </TabsContent>
 
-        {/* ─── PURCHASES TAB ─────────────────────────────────────────── */}
-        <TabsContent value="purchases" className="mt-4">
-          <PurchasesView />
-        </TabsContent>
       </Tabs>
 
       {/* ─── PRODUCT DIALOG ──────────────────────────────────────────── */}
       <Dialog open={productDialogOpen} onOpenChange={(open) => {
         if (!open) setProductDialogOpen(false)
       }}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>
               {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
@@ -1566,7 +1724,7 @@ export function ProductsView() {
       <Dialog open={categoryDialogOpen} onOpenChange={(open) => {
         if (!open) setCategoryDialogOpen(false)
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>
               {editingCategory ? 'Editar Categoría' : 'Nueva Categoría'}
@@ -1642,7 +1800,7 @@ export function ProductsView() {
       <Dialog open={adjustDialogOpen} onOpenChange={(open) => {
         if (!open) setAdjustDialogOpen(false)
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Ajustar Stock</DialogTitle>
             <DialogDescription>
@@ -1707,7 +1865,7 @@ export function ProductsView() {
       <Dialog open={lossDialogOpen} onOpenChange={(open) => {
         if (!open) setLossDialogOpen(false)
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Registrar Pérdida</DialogTitle>
             <DialogDescription>
@@ -1771,7 +1929,7 @@ export function ProductsView() {
       <Dialog open={returnDialogOpen} onOpenChange={(open) => {
         if (!open) setReturnDialogOpen(false)
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Registrar Devolución</DialogTitle>
             <DialogDescription>
@@ -1820,7 +1978,7 @@ export function ProductsView() {
       <Dialog open={traceDialogOpen} onOpenChange={(open) => {
         if (!open) setTraceDialogOpen(false)
       }}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Trazabilidad</DialogTitle>
             <DialogDescription>
@@ -1835,8 +1993,8 @@ export function ProductsView() {
             </div>
           ) : traceMovements.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <Route className="h-10 w-10 mb-3 opacity-50" />
-              <p className="text-sm">No hay movimientos registrados</p>
+              <Route className="h-14 w-14 mb-3 text-muted-foreground/30 animate-pulse" />
+              <p className="text-sm text-muted-foreground/70">No hay movimientos registrados</p>
             </div>
           ) : (
             <div className="max-h-[50vh] overflow-y-auto">
@@ -1904,6 +2062,336 @@ export function ProductsView() {
               </p>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── IMPORT EXCEL DIALOG ───────────────────────────────────── */}
+      <Dialog open={importDialogOpen} onOpenChange={(open) => {
+        if (!open) handleImportDialogClose()
+      }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl backdrop-blur-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Importar Productos desde Excel
+            </DialogTitle>
+            <DialogDescription>
+              Carga un archivo Excel (.xlsx/.xls) o CSV con tus productos para crearlos en lote.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!importResult ? (
+            <div className="space-y-5 py-2">
+              {/* Subscription Limit Info */}
+              {!subscriptionLoading && maxProducts !== null && (
+                <div className={`rounded-lg border p-3 flex items-start gap-3 ${
+                  products.length >= maxProducts
+                    ? 'border-red-500/30 bg-red-500/[0.06]'
+                    : products.length >= maxProducts * 0.8
+                      ? 'border-amber-500/30 bg-amber-500/[0.06]'
+                      : 'border-sky-500/20 bg-sky-500/[0.04]'
+                }`}>
+                  <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                    products.length >= maxProducts
+                      ? 'bg-red-500/15'
+                      : products.length >= maxProducts * 0.8
+                        ? 'bg-amber-500/15'
+                        : 'bg-sky-500/15'
+                  }`}>
+                    <Info className={`h-4 w-4 ${
+                      products.length >= maxProducts
+                        ? 'text-red-400'
+                        : products.length >= maxProducts * 0.8
+                          ? 'text-amber-400'
+                          : 'text-sky-400'
+                    }`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-semibold ${
+                      products.length >= maxProducts
+                        ? 'text-red-400'
+                        : products.length >= maxProducts * 0.8
+                          ? 'text-amber-400'
+                          : 'text-sky-400'
+                    }`}>
+                      {products.length >= maxProducts
+                        ? `Límite del plan alcanzado`
+                        : `Límite de productos — Plan ${planName || ''}`
+                      }
+                    </p>
+                    {products.length >= maxProducts ? (
+                      <p className="text-[11px] text-red-300/60 mt-0.5">
+                        Tu plan permite máximo {maxProducts} productos y ya tienes {products.length}. No se pueden importar más productos. Actualiza tu plan para agregar más.
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                        Tu plan ({planName}) permite hasta <strong>{maxProducts}</strong> productos. Actualmente tienes <strong>{products.length}</strong>. Puedes importar hasta <strong>{maxProducts - products.length}</strong> productos más. Los que excedan este límite serán omitidos automáticamente.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Instructions */}
+              <Card className="border-dashed">
+                <CardContent className="p-4 space-y-3">
+                  <h4 className="font-semibold text-sm">Formato del Excel</h4>
+                  <p className="text-xs text-muted-foreground">
+                    La primera fila debe contener los nombres de las columnas (encabezados). Las columnas se mapean automáticamente:
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-emerald-600">Obligatoria:</span>
+                      <p className="font-mono mt-0.5">Nombre</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-emerald-600">Obligatoria:</span>
+                      <p className="font-mono mt-0.5">Precio Venta</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-muted-foreground">Opcional:</span>
+                      <p className="font-mono mt-0.5">SKU</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-muted-foreground">Opcional:</span>
+                      <p className="font-mono mt-0.5">Categoría</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-muted-foreground">Opcional:</span>
+                      <p className="font-mono mt-0.5">Proveedor</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-muted-foreground">Opcional:</span>
+                      <p className="font-mono mt-0.5">Impuesto</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-muted-foreground">Opcional:</span>
+                      <p className="font-mono mt-0.5">INVIMA</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-muted-foreground">Opcional:</span>
+                      <p className="font-mono mt-0.5">Precio Compra</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-muted-foreground">Opcional:</span>
+                      <p className="font-mono mt-0.5">Comisión</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-muted-foreground">Opcional:</span>
+                      <p className="font-mono mt-0.5">Stock</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-muted-foreground">Opcional:</span>
+                      <p className="font-mono mt-0.5">Stock Mínimo</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-md p-2">
+                      <span className="font-medium text-muted-foreground">Opcional:</span>
+                      <p className="font-mono mt-0.5">Activo (Sí/No)</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-md p-2">
+                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <ul className="space-y-1 list-disc ml-1">
+                      <li>La columna <strong>Categoría</strong>, <strong>Proveedor</strong> e <strong>Impuesto</strong> se resuelven por nombre (deben existir previamente)</li>
+                      <li>Los precios van en pesos colombianos (sin símbolo $, solo el número)</li>
+                      <li>Máximo 1,000 productos por archivo, tamaño máximo 5MB</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* File Drop Zone */}
+              <div className="space-y-2">
+                <Label>Archivo Excel o CSV</Label>
+                <div
+                  className={`
+                    relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8
+                    transition-colors cursor-pointer hover:bg-muted/50
+                    ${importFile ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' : 'border-muted-foreground/25'}
+                  `}
+                  onClick={() => document.getElementById('import-file-input')?.click()}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const file = e.dataTransfer.files[0]
+                    if (file) setImportFile(file)
+                  }}
+                >
+                  <input
+                    id="import-file-input"
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) setImportFile(file)
+                    }}
+                  />
+                  {importFile ? (
+                    <>
+                      <FileSpreadsheet className="h-10 w-10 text-emerald-600 mb-2" />
+                      <p className="text-sm font-medium">{importFile.name}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {(importFile.size / 1024).toFixed(1)} KB — Click para cambiar
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-10 w-10 text-muted-foreground/40 mb-2" />
+                      <p className="text-sm text-muted-foreground">
+                        Arrastra un archivo aquí o <span className="text-primary font-medium underline">haz click para seleccionar</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">.xlsx, .xls o .csv — máx. 5MB</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Results */
+            <div className="space-y-4 py-2">
+              {/* Subscription Info Banner */}
+              {importResult.subscription && (
+                <div className={`rounded-lg border p-3 flex items-start gap-3 ${
+                  importResult.subscription.limitReached
+                    ? 'border-amber-500/30 bg-amber-500/[0.06]'
+                    : 'border-sky-500/20 bg-sky-500/[0.04]'
+                }`}>
+                  <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                    importResult.subscription.limitReached
+                      ? 'bg-amber-500/15'
+                      : 'bg-sky-500/15'
+                  }`}>
+                    <Info className={`h-4 w-4 ${
+                      importResult.subscription.limitReached
+                        ? 'text-amber-400'
+                        : 'text-sky-400'
+                    }`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-semibold ${
+                      importResult.subscription.limitReached
+                        ? 'text-amber-400'
+                        : 'text-sky-400'
+                    }`}>
+                      {importResult.subscription.limitReached
+                        ? `Límite del plan alcanzado (${importResult.subscription.planName})`
+                        : `Capacidad del plan — ${importResult.subscription.planName}`
+                      }
+                    </p>
+                    <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                      {importResult.subscription.limitReached
+                        ? <>
+                            Tu plan permite máximo <strong>{importResult.subscription.planLimit}</strong> productos.
+                            Tenías {importResult.subscription.currentCount}, se importaron {importResult.imported} y ahora tienes <strong>{importResult.subscription.newTotal}/{importResult.subscription.planLimit}</strong>.
+                            Algunos productos del archivo fueron omitidos por alcanzar el límite.
+                            {importResult.skipped.some(s => s.reason.includes('Límite del plan')) && (
+                              <span className="text-amber-500"> Los productos restantes fueron omitidos por límite del plan.</span>
+                            )}
+                          </>
+                        : <>
+                            Tu plan ({importResult.subscription.planName}) permite hasta <strong>{importResult.subscription.planLimit}</strong> productos.
+                            Tenías {importResult.subscription.currentCount}, se importaron {importResult.imported} y ahora tienes <strong>{importResult.subscription.newTotal}</strong>.
+                            Quedan <strong>{importResult.subscription.remainingSlots}</strong> cupos disponibles.
+                          </>
+                      }
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Summary */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center p-3 rounded-lg bg-muted/50">
+                  <p className="text-2xl font-bold">{importResult.totalInFile}</p>
+                  <p className="text-xs text-muted-foreground">En archivo</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20">
+                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{importResult.imported}</p>
+                  <p className="text-xs text-muted-foreground">Importados</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20">
+                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{importResult.skipped.length}</p>
+                  <p className="text-xs text-muted-foreground">Omitidos</p>
+                </div>
+              </div>
+
+              {/* Skipped details */}
+              {importResult.skipped.length > 0 && (
+                <div className="max-h-48 overflow-y-auto">
+                  <p className="text-sm font-medium mb-2">Productos omitidos:</p>
+                  <div className="space-y-1">
+                    {importResult.skipped.map((s, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs bg-muted/50 rounded-md p-2">
+                        <Badge variant="outline" className="shrink-0 font-mono">Fila {s.row}</Badge>
+                        <span className="truncate font-medium">{s.name}</span>
+                        <span className="text-muted-foreground truncate">{s.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {importResult.imported > 0 && (
+                <div className="text-sm text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 rounded-md p-3">
+                  Se importaron {importResult.imported} producto{importResult.imported !== 1 ? 's' : ''} exitosamente.
+                  {importResult.subscription && (
+                    <span className="text-xs block mt-1 text-muted-foreground">
+                      Total en el sistema: {importResult.subscription.newTotal}{importResult.subscription.planLimit ? `/${importResult.subscription.planLimit}` : ''} productos
+                      {importResult.subscription.limitReached && ' — Límite alcanzado'}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {(importResult.createdCategories && importResult.createdCategories.length > 0) && (
+                <div className="text-sm bg-sky-50 dark:bg-sky-950/20 rounded-md p-3">
+                  <p className="font-medium text-sky-700 dark:text-sky-400 mb-1">
+                    <Tag className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
+                    {importResult.createdCategories.length} categoría{importResult.createdCategories.length !== 1 ? 's' : ''} creada{importResult.createdCategories.length !== 1 ? 's' : ''}
+                  </p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {importResult.createdCategories.map(cat => (
+                      <Badge key={cat} variant="secondary" className="text-xs bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800">{cat}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(importResult.createdProviders && importResult.createdProviders.length > 0) && (
+                <div className="text-sm bg-violet-50 dark:bg-violet-950/20 rounded-md p-3">
+                  <p className="font-medium text-violet-700 dark:text-violet-400 mb-1">
+                    <Truck className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
+                    {importResult.createdProviders.length} proveedor{importResult.createdProviders.length !== 1 ? 'es' : ''} creado{importResult.createdProviders.length !== 1 ? 's' : ''}
+                  </p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {importResult.createdProviders.map(prov => (
+                      <Badge key={prov} variant="secondary" className="text-xs bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800">{prov}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            {importResult ? (
+              <Button onClick={handleImportDialogClose}>
+                Cerrar
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={handleImportDialogClose} disabled={importing}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleImportProducts} disabled={!importFile || importing || (maxProducts !== null && products.length >= maxProducts)}>
+                  {importing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {importing ? 'Importando...' : (maxProducts !== null && products.length >= maxProducts) ? 'Límite alcanzado' : `Importar ${importFile ? importFile.name : ''}`}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -13,6 +13,7 @@
 
 import { XMLParser } from 'fast-xml-parser'
 import { gzipSync } from 'node:zlib'
+import { logger } from '@/lib/logger'
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -333,7 +334,7 @@ function parseSendBillResponse(
       errorCode: 'NO_TRACK_ID',
     }
   } catch (error: unknown) {
-    console.error('[DIAN SOAP] Error parsing SendBill response:', error)
+    logger.error('[DIAN SOAP] Error parsing SendBill response:', error)
     return {
       ...base,
       errorMessage: `Error parseando respuesta SOAP: ${error instanceof Error ? error.message : 'Desconocido'}`,
@@ -444,7 +445,7 @@ function parseGetStatusResponse(
       errorCode: isRejected ? statusCode ?? 'REJECTED' : undefined,
     }
   } catch (error: unknown) {
-    console.error('[DIAN SOAP] Error parsing GetStatus response:', error)
+    logger.error('[DIAN SOAP] Error parsing GetStatus response:', error)
     return {
       ...base,
       errorMessage: `Error parseando respuesta de estado: ${error instanceof Error ? error.message : 'Desconocido'}`,
@@ -479,7 +480,7 @@ export async function sendBillAsync(
     // 2. Build SOAP envelope
     const envelope = buildSendBillEnvelope(base64GzipXml)
 
-    console.log(
+    logger.info(
       `[DIAN SOAP] Enviando factura a ${config.testMode ? 'habilitación' : 'producción'}...`,
     )
 
@@ -495,9 +496,9 @@ export async function sendBillAsync(
     const result = parseSendBillResponse(body, status)
 
     if (result.success) {
-      console.log(`[DIAN SOAP] Factura enviada. TrackId: ${result.trackId}`)
+      logger.info(`[DIAN SOAP] Factura enviada. TrackId: ${result.trackId}`)
     } else {
-      console.error(
+      logger.error(
         `[DIAN SOAP] Error al enviar factura: ${result.errorMessage} (código: ${result.errorCode})`,
       )
     }
@@ -506,7 +507,7 @@ export async function sendBillAsync(
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : 'Error desconocido al enviar a la DIAN'
-    console.error(`[DIAN SOAP] ${message}`)
+    logger.error(`[DIAN SOAP] ${message}`)
     return {
       success: false,
       statusCode: 0,
@@ -541,7 +542,7 @@ export async function getStatus(
   try {
     const envelope = buildGetStatusEnvelope(trackId)
 
-    console.log(`[DIAN SOAP] Consultando estado para TrackId: ${trackId}`)
+    logger.info(`[DIAN SOAP] Consultando estado para TrackId: ${trackId}`)
 
     const { status, body } = await sendSoapRequest(
       endpoints.getStatus,
@@ -553,7 +554,7 @@ export async function getStatus(
     const result = parseGetStatusResponse(body, status)
 
     if (result.statusCode) {
-      console.log(
+      logger.info(
         `[DIAN SOAP] Estado: ${result.statusCode} — ${result.statusMessage}`,
       )
     }
@@ -564,7 +565,7 @@ export async function getStatus(
       error instanceof Error
         ? error.message
         : 'Error desconocido al consultar estado en la DIAN'
-    console.error(`[DIAN SOAP] ${message}`)
+    logger.error(`[DIAN SOAP] ${message}`)
     return {
       success: false,
       httpStatus: 0,
@@ -597,7 +598,7 @@ export async function queryByDocumentNumber(
   try {
     const envelope = buildGetStatusByDocumentNumberEnvelope(nit, prefix, consecutive)
 
-    console.log(
+    logger.info(
       `[DIAN SOAP] Consultando documento: ${prefix}-${consecutive} (NIT: ${nit})`,
     )
 
@@ -611,7 +612,7 @@ export async function queryByDocumentNumber(
     const result = parseGetStatusResponse(body, status)
 
     if (result.statusCode) {
-      console.log(
+      logger.info(
         `[DIAN SOAP] Estado documento: ${result.statusCode} — ${result.statusMessage}`,
       )
     }
@@ -622,7 +623,7 @@ export async function queryByDocumentNumber(
       error instanceof Error
         ? error.message
         : 'Error desconocido al consultar documento en la DIAN'
-    console.error(`[DIAN SOAP] ${message}`)
+    logger.error(`[DIAN SOAP] ${message}`)
     return {
       success: false,
       httpStatus: 0,
@@ -657,7 +658,7 @@ export async function pollForStatus(
   const maxAttempts = options?.maxAttempts ?? 36 // 36 × 5s = 3 minutes
   const intervalMs = options?.intervalMs ?? 5000
 
-  console.log(
+  logger.info(
     `[DIAN SOAP] Iniciando sondeo de estado para TrackId: ${trackId} (máx ${maxAttempts} intentos, cada ${intervalMs / 1000}s)`,
   )
 
@@ -684,7 +685,7 @@ export async function pollForStatus(
     }
   }
 
-  console.warn(
+  logger.warn(
     `[DIAN SOAP] Sondeo agotado para TrackId: ${trackId}. La DIAN no respondió con estado definitivo.`,
   )
 

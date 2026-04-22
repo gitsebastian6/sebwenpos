@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +35,9 @@ export async function GET(
       return NextResponse.json({ error: 'Proveedor no encontrado' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(_request, provider.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     return NextResponse.json({
       id: provider.id,
       storeId: provider.storeId,
@@ -49,7 +54,7 @@ export async function GET(
       updatedAt: provider.updatedAt.toISOString(),
     })
   } catch (error) {
-    console.error('GET /api/providers/[id] error:', error)
+    logger.error('GET /api/providers/[id] error:', error)
     return NextResponse.json({ error: 'Error al obtener proveedor' }, { status: 500 })
   }
 }
@@ -74,6 +79,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Proveedor no encontrado' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, provider.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     const updated = await db.provider.update({
       where: { id: pid },
       data: {
@@ -94,7 +102,7 @@ export async function PUT(
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('PUT /api/providers/[id] error:', error)
+    logger.error('PUT /api/providers/[id] error:', error)
     return NextResponse.json({ error: 'Error al actualizar proveedor' }, { status: 500 })
   }
 }
@@ -116,10 +124,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Proveedor no encontrado' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(_request, provider.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     await db.provider.delete({ where: { id: pid } })
     return NextResponse.json({ message: 'Proveedor eliminado' })
   } catch (error) {
-    console.error('DELETE /api/providers/[id] error:', error)
+    logger.error('DELETE /api/providers/[id] error:', error)
     return NextResponse.json({ error: 'Error al eliminar proveedor' }, { status: 500 })
   }
 }

@@ -28,8 +28,10 @@ import {
   RotateCcw, Wallet, Percent, SlidersHorizontal, Receipt,
   PackageSearch, Tag, Route, Truck, ArrowDownUp, FileText,
   CalendarDays, DollarSign, Users, RefreshCw, ChevronRight,
-  Plus, Filter, Loader2,
+  Plus, Filter, Loader2, CheckCircle2, ClipboardList, FileCheck,
+  Download, FileSpreadsheet,
 } from 'lucide-react'
+import { exportToExcel } from '@/lib/export-excel'
 
 // ── Payment labels ──
 const PM: Record<string, string> = {
@@ -56,8 +58,8 @@ const EXP_CAT: Record<string, string> = {
 }
 
 const LOSS_REASONS: Record<string, string> = {
-  EXPIRED: 'Vencido', DAMAGED: 'Dañado', THEFT: 'Robo/Hurto', SPILL: 'Derrame',
-  COUNT_DIFF: 'Conteo diferencial', OTHER: 'Otro',
+  VENCIDO: 'Vencido', DANADO: 'Dañado', ROBO: 'Robo/Hurto', DERRAME: 'Derrame',
+  INVENTARIO: 'Conteo diferencial', OTRO: 'Otro',
 }
 
 function fdate(d: string) { return new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) }
@@ -89,11 +91,11 @@ function EmptyState({ icon: Icon, title, desc }: { icon: React.ComponentType<{ c
 // ── Stat Card ──
 function Stat({ label, value, icon: Icon, color }: { label: string; value: string | number; icon?: React.ComponentType<{ className?: string }>; color?: string }) {
   return (
-    <Card className="gap-2">
+    <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl gap-2">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground font-medium">{label}</p>
-          {Icon && <Icon className={`h-4 w-4 ${color || 'text-muted-foreground'}`} />}
+          {Icon && <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary/10 to-primary/5"><Icon className={`h-4 w-4 ${color || 'text-muted-foreground'}`} /></div>}
         </div>
         <p className={`text-lg font-bold mt-1 ${color || ''}`}>{value}</p>
       </CardContent>
@@ -197,7 +199,7 @@ export function ReportsView() {
       const res = await fetch(`/api/products?storeId=${store.id}`)
       if (res.ok) {
         const json = await res.json()
-        setProducts(Array.isArray(json) ? json : json.products || json.data || [])
+        setProducts(Array.isArray(json) ? json : (json.data || []))
       }
     } catch { /* ignore */ }
   }, [store])
@@ -298,12 +300,278 @@ export function ReportsView() {
   // Get selected product for adjust dialog
   const getSelectedProduct = (productId: string) => products.find((p: any) => p.id === productId)
 
+  // ── Export helpers ──
+  const tabLabelMap: Record<string, string> = {
+    'cifras': 'Cifras', 'ventas': 'Ventas', 'rentabilidad': 'Rentabilidad',
+    'compras': 'Compras', 'inventario': 'Inventario', 'perdidas': 'Pérdidas',
+    'punto-eq': 'Punto de Equilibrio', 'descuentos': 'Descuentos', 'cierres': 'Cierres de Caja',
+    'comisiones': 'Comisiones', 'gastos': 'Gastos', 'impuestos': 'Impuestos',
+    'devoluciones': 'Devoluciones', 'ajustes': 'Ajustes', 'trazabilidad': 'Trazabilidad',
+    'cotizaciones': 'Cotizaciones', 'facturas': 'Facturas', 'notas-credito': 'Notas Crédito/Débito', 'cxc': 'Cuentas por Cobrar',
+  }
+
+  const dateRangeStr = `${fdate(from)} - ${fdate(to)}`
+  const storeName = store?.name || 'Ventify POS'
+
+  function getExportData(): { headers: string[]; rows: (string | number)[][]; columnAligns: ('left' | 'center' | 'right')[] } | null {
+    switch (tab) {
+      case 'ventas': {
+        const headers = ['Método Pago', 'Órdenes', 'Total']
+        const rows = Object.entries(d.sales.byPayment)
+          .sort((a: any, b: any) => b[1].total - a[1].total)
+          .map(([method, info]: any) => [PM[method] || method, info.count, info.total])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'center', 'right'] }
+      }
+      case 'compras': {
+        const headers = ['Fecha', 'Proveedor', 'Factura', 'Total']
+        const rows = d.purchases.items.map((p: any) => [fdate(p.date), p.provider?.name || '—', p.invoiceNumber || '—', p.total])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'left', 'right'] }
+      }
+      case 'inventario': {
+        const headers = ['Indicador', 'Valor']
+        const rows = [
+          ['Costo Inventario', d.inventory.totalCostValue],
+          ['Valor Retail', d.inventory.totalRetailValue],
+          ['Productos Totales', d.inventory.totalProducts],
+          ['Días de Inventario', d.inventory.daysOfInventory],
+          ['Agotados', d.inventory.outOfStockCount],
+          ['Stock Bajo', d.inventory.lowStockCount],
+          ['COGS Promedio/Día', d.inventory.avgDailyCOGS],
+        ]
+        return { headers, rows, columnAligns: ['left', 'right'] }
+      }
+      case 'perdidas': {
+        const headers = ['Fecha', 'Producto', 'Precio', 'Vendidos 30d', 'Prom/Día', 'Pérdida/Día']
+        const rows = d.lostSales.map((p: any) => [
+          p.name, p.salePrice, p.sold30d, p.avgDaily,
+          Math.round(p.avgDaily * p.salePrice),
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'right', 'right', 'right', 'right', 'right'] }
+      }
+      case 'descuentos': {
+        const headers = ['Fecha', 'Cliente', 'Tipo', 'Razón', 'Descuento', 'Total']
+        const rows = d.discounts.items.map((o: any) => [
+          fdate(o.createdAt), o.customer?.name || 'General',
+          o.discountType === 'PERCENTAGE' ? '%' : 'Fijo',
+          o.discountReason || '—', o.discountAmount, o.total,
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'center', 'left', 'right', 'right'] }
+      }
+      case 'cierres': {
+        const headers = ['Apertura', 'Cierre', 'Responsable', 'Base', 'Esperado', 'Real', 'Diferencia', 'Estado']
+        const rows = d.cashRegisters.map((c: any) => [
+          fdatetime(c.openedAt), c.closedAt ? fdatetime(c.closedAt) : '—', c.user,
+          c.openingBalance, c.expectedCash ?? '—', c.closingBalance ?? '—',
+          c.difference ?? '—', c.status === 'OPEN' ? 'Abierta' : 'Cerrada',
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'left', 'right', 'right', 'right', 'right', 'center'] }
+      }
+      case 'comisiones': {
+        const headers = ['Fecha', 'Servicio', 'Cantidad', 'Unitario', 'Total']
+        const rows = d.commissions.items.map((c: any) => [
+          fdatetime(c.createdAt), c.service?.name || '—', c.quantity, c.unitPrice, c.totalAmount,
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'right', 'right', 'right'] }
+      }
+      case 'gastos': {
+        const headers = ['Fecha', 'Categoría', 'Descripción', 'Monto']
+        const rows = d.expenses.items.map((e: any) => [
+          fdate(e.date), EXP_CAT[e.category] || e.category, e.description, e.amount,
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'left', 'right'] }
+      }
+      case 'impuestos': {
+        // IVA recaudado summary
+        const headers = ['Concepto', 'Valor']
+        const rows: (string | number)[][] = [
+          ['Total IVA Recaudado', d.ivaCollected?.total || 0],
+          ['Base Gravable', d.ivaCollected?.totalBase || 0],
+          ['Órdenes con IVA', d.ivaCollected?.count || 0],
+          ['Total Gastos Impuestos', d.taxes.total || 0],
+        ]
+        return { headers, rows, columnAligns: ['left', 'right'] }
+      }
+      case 'devoluciones': {
+        const headers = ['Fecha', 'Producto', 'Cantidad', 'Notas']
+        const rows = d.returns.items.map((r: any) => [
+          fdatetime(r.createdAt), r.product?.name || 'Eliminado', r.quantity, r.notes || '—',
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'right', 'left'] }
+      }
+      case 'ajustes': {
+        const headers = ['Fecha', 'Producto', 'Cantidad', 'Stock Actual', 'Notas']
+        const rows = d.adjustments.items.map((a: any) => [
+          fdatetime(a.createdAt), a.product?.name || '—', a.quantity,
+          a.product?.currentStock ?? '—', a.notes || '—',
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'right', 'right', 'left'] }
+      }
+      case 'trazabilidad': {
+        const headers = ['Fecha', 'Tipo', 'Producto', 'Categoría', 'Cantidad', 'Notas']
+        const rows = filteredTraz.map((m: any) => [
+          fdatetime(m.createdAt), MOV_TYPE[m.movementType] || m.movementType,
+          m.product?.name || `ID ${m.productId}`, m.product?.category?.name || '—',
+          m.quantity, m.notes || '—',
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'center', 'left', 'left', 'right', 'left'] }
+      }
+      case 'cotizaciones': {
+        const headers = ['Fecha', 'Cotización', 'Cliente', 'Total', 'Items', 'Estado']
+        const rows = d.quotes.map((q: any) => [
+          fdatetime(q.createdAt), q.quotationNumber, q.customerName || q.customer?.name || 'General',
+          q.total, q.items?.length || 0,
+          q.status === 'ACTIVE' ? 'Activa' : q.status === 'CONVERTED' ? 'Convertida' : q.status === 'CANCELLED' ? 'Cancelada' : 'Expirada',
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'left', 'right', 'center', 'center'] }
+      }
+      case 'facturas': {
+        const headers = ['Fecha', 'Factura', 'Cliente', 'Total', 'Estado', 'Ambiente']
+        const rows = d.invoices.map((inv: any) => [
+          fdatetime(inv.createdAt), inv.invoiceNumber, inv.customerName, inv.grandTotal,
+          inv.status === 'VALIDATED' ? 'Validada' : inv.status === 'DELIVERED' ? 'Entregada' : inv.status === 'REJECTED' ? 'Rechazada' : inv.status === 'DRAFT' ? 'Borrador' : 'Pendiente',
+          inv.testMode ? 'Hab.' : 'Prod.',
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'left', 'right', 'center', 'center'] }
+      }
+      case 'notas-credito': {
+        const headers = ['Fecha', 'Nota', 'Tipo', 'Cliente', 'Monto', 'Estado', 'Factura Ref.']
+        const rows = d.creditNotes.map((cn: any) => [
+          fdatetime(cn.createdAt), cn.noteNumber, cn.noteType === 'CREDIT' ? 'NC' : 'ND',
+          cn.customerName, cn.totalAmount, cn.status, cn.invoiceNumber || '—',
+        ])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'center', 'left', 'right', 'center', 'left'] }
+      }
+      case 'cxc': {
+        const headers = ['Cliente', 'Teléfono', 'Deuda']
+        const rows = d.debts.map((c: any) => [c.name, c.phone || '—', c.totalDebt])
+        if (rows.length === 0) return null
+        return { headers, rows, columnAligns: ['left', 'left', 'right'] }
+      }
+      case 'cifras': {
+        const c = d.localEnCifras
+        const headers = ['Indicador', 'Valor']
+        const rows = [
+          ['Ventas Hoy', c.salesToday],
+          ['Órdenes Hoy', c.ordersToday],
+          ['Ventas del Mes', c.salesMonth],
+          ['vs Mes Anterior', `${c.monthVariance >= 0 ? '+' : ''}${c.monthVariance}%`],
+          ['Tips del Mes', c.tipsMonth],
+          ['Órdenes del Mes', c.ordersMonth],
+          ['Mesas Abiertas', c.openTables],
+          ['Cuentas por Cobrar', c.totalDebt],
+          ['Ticket Promedio Mes', c.ordersMonth > 0 ? Math.round(c.salesMonth / c.ordersMonth) : 0],
+          ['Clientes con Deuda', c.debtCount],
+          ['Ventas Mes Anterior', c.lastMonthSales],
+        ]
+        return { headers, rows, columnAligns: ['left', 'right'] }
+      }
+      case 'rentabilidad': {
+        const p = d.profitability
+        const headers = ['Indicador', 'Valor']
+        const rows = [
+          ['Ingresos Brutos', p.revenue],
+          ['Costos (COGS)', p.cogs],
+          ['Utilidad Bruta', p.grossProfit],
+          ['Margen Bruto', `${p.grossMargin}%`],
+          ['Descuentos', p.discounts],
+          ['Ingresos Netos', p.netRevenue],
+          ['Utilidad Neta', p.netProfit],
+          ['Margen Neto', `${p.netMargin}%`],
+          ['Propinas del Período', p.tips],
+        ]
+        return { headers, rows, columnAligns: ['left', 'right'] }
+      }
+      case 'punto-eq': {
+        const b = d.breakEven
+        const headers = ['Indicador', 'Valor']
+        const rows = [
+          ['Punto de Equilibrio', b.breakEvenPoint],
+          ['Ventas del Período', d.sales.total],
+          ['Distancia al Equilibrio', b.distanceToBreakEven > 0 ? b.distanceToBreakEven : '¡Superado!'],
+          ['% Alcanzado', `${b.achievedPercent}%`],
+          ['Costos Fijos', b.fixedCosts],
+          ['Costo Variable', `${(b.variableCostRatio * 100).toFixed(1)}%`],
+          ['Margen Contribución', `${(b.contributionMargin * 100).toFixed(1)}%`],
+        ]
+        return { headers, rows, columnAligns: ['left', 'right'] }
+      }
+      default:
+        return null
+    }
+  }
+
+  const handleExportExcel = () => {
+    const exportData = getExportData()
+    if (!exportData) {
+      toast.error('No hay datos para exportar en esta pestaña')
+      return
+    }
+    const label = tabLabelMap[tab] || tab
+    exportToExcel({
+      filename: `${label}_${from}_${to}`,
+      sheetName: label.slice(0, 31),
+      headers: exportData.headers,
+      rows: exportData.rows,
+      columnWidths: exportData.headers.map(() => 20),
+    })
+    toast.success('Reporte exportado a Excel')
+  }
+
+  const handleExportPDF = async () => {
+    const exportData = getExportData()
+    if (!exportData) {
+      toast.error('No hay datos para exportar en esta pestaña')
+      return
+    }
+    const label = tabLabelMap[tab] || tab
+    try {
+      const res = await fetch('/api/reports/export-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeName,
+          title: `Reporte: ${label}`,
+          subtitle: dateRangeStr,
+          headers: exportData.headers,
+          rows: exportData.rows,
+          columnAligns: exportData.columnAligns,
+        }),
+      })
+      if (!res.ok) throw new Error('Error generando PDF')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${label}_${from}_${to}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success('Reporte exportado a PDF')
+    } catch (e: any) {
+      toast.error(e.message || 'Error al exportar PDF')
+    }
+  }
+
   if (loading) return <LoadingSkeleton />
   if (error) return (
-    <Card className="border-destructive/50"><CardContent className="p-6 flex flex-col items-center gap-3">
+    <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-destructive/50"><CardContent className="p-6 flex flex-col items-center gap-3">
       <AlertTriangle className="h-8 w-8 text-destructive" />
       <p className="font-semibold text-sm">{error}</p>
-      <Button onClick={fetchReports} size="sm" variant="outline"><RefreshCw className="h-3 w-3 mr-1" />Reintentar</Button>
+      <Button className="active:scale-[0.98] transition-all" onClick={fetchReports} size="sm" variant="outline"><RefreshCw className="h-3 w-3 mr-1" />Reintentar</Button>
     </CardContent></Card>
   )
   if (!data) return null
@@ -325,7 +593,7 @@ export function ReportsView() {
       <KPIBar context="default" />
 
       {/* ── Date Selector ── */}
-      <Card>
+      <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
         <CardContent className="p-3">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
@@ -337,11 +605,19 @@ export function ReportsView() {
               <label className="text-xs font-medium text-muted-foreground">Hasta:</label>
               <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="h-8 w-36 text-xs" />
             </div>
-            <Button onClick={fetchReports} size="sm"><RefreshCw className="h-3 w-3 mr-1" />Actualizar</Button>
+            <Button className="active:scale-[0.98] transition-all" onClick={fetchReports} size="sm"><RefreshCw className="h-3 w-3 mr-1" />Actualizar</Button>
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 active:scale-[0.98] transition-all" onClick={handleExportPDF} title="Exportar PDF">
+                <Download className="h-3 w-3" /><span className="hidden sm:inline">PDF</span>
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 active:scale-[0.98] transition-all" onClick={handleExportExcel} title="Exportar Excel">
+                <FileSpreadsheet className="h-3 w-3" /><span className="hidden sm:inline">Excel</span>
+              </Button>
+            </div>
             <Separator orientation="vertical" className="h-6 hidden sm:block" />
             <div className="flex flex-wrap gap-1.5">
               {[['today', 'Hoy'], ['week', 'Semana'], ['month', 'Mes']].map(([k, l]) => (
-                <Button key={k} variant="outline" size="sm" className="h-7 text-xs" onClick={() => quickRange(k as any)}>{l}</Button>
+                <Button key={k} variant="outline" size="sm" className="h-7 text-xs active:scale-[0.98] transition-all" onClick={() => quickRange(k as any)}>{l}</Button>
               ))}
             </div>
           </div>
@@ -360,7 +636,7 @@ export function ReportsView() {
               ['comisiones', 'Comisiones', Percent], ['gastos', 'Gastos', ArrowDownUp],
               ['impuestos', 'Impuestos', Receipt], ['devoluciones', 'Devoluciones', RotateCcw],
               ['ajustes', 'Ajustes', SlidersHorizontal], ['trazabilidad', 'Trazabilidad', Route],
-              ['cotizaciones', 'Cotizaciones', FileText], ['cxc', 'CxC', Users],
+              ['cotizaciones', 'Cotizaciones', FileText], ['facturas', 'Facturas', FileCheck], ['notas-credito', 'Notas Cr/Dt', FileText], ['cxc', 'CxC', Users],
             ].map(([key, label, Icon]) => (
               <TabsTrigger key={key} value={key} className="text-xs gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-3 py-1.5 rounded-md border">
                 <Icon className="h-3.5 w-3.5" />{label}
@@ -383,7 +659,7 @@ export function ReportsView() {
             <Stat label="Mesas Abiertas" value={`${d.localEnCifras.openTables}`} icon={Package} color={d.localEnCifras.openTables > 0 ? 'text-amber-600' : ''} />
             <Stat label="Cuentas por Cobrar" value={formatCurrency(d.localEnCifras.totalDebt, cc)} icon={Users} color={d.localEnCifras.totalDebt > 0 ? 'text-red-600 dark:text-red-400' : ''} />
           </div>
-          <Card className="border-dashed"><CardContent className="p-4">
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-dashed"><CardContent className="p-4">
             <div className="flex flex-wrap gap-6 text-sm">
               <div><span className="text-muted-foreground text-xs">Ticket Prom. Mes:</span> <span className="font-bold">{formatCurrency(d.localEnCifras.ordersMonth > 0 ? Math.round(d.localEnCifras.salesMonth / d.localEnCifras.ordersMonth) : 0, cc)}</span></div>
               <div><span className="text-muted-foreground text-xs">Clientes con Deuda:</span> <span className="font-bold">{d.localEnCifras.debtCount}</span></div>
@@ -481,7 +757,7 @@ export function ReportsView() {
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Proveedor</TableHead><TableHead className="text-xs">Factura</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader><TableBody>
                 {d.purchases.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={Truck} title="Sin compras en el período" /></TableCell></TableRow> :
                 d.purchases.items.map((p: any) => (
-                  <TableRow key={p.id}><TableCell className="text-xs">{fdate(p.date)}</TableCell><TableCell className="text-xs">{p.provider?.name || '—'}</TableCell><TableCell className="text-xs font-mono">{p.invoiceNumber || '—'}</TableCell><TableCell className="text-right text-sm font-medium">{formatCurrency(p.total, cc)}</TableCell></TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={p.id}><TableCell className="text-xs">{fdate(p.date)}</TableCell><TableCell className="text-xs">{p.provider?.name || '—'}</TableCell><TableCell className="text-xs font-mono">{p.invoiceNumber || '—'}</TableCell><TableCell className="text-right text-sm font-medium">{formatCurrency(p.total, cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
             </div>
@@ -500,7 +776,7 @@ export function ReportsView() {
             <Stat label="Agotados" value={d.inventory.outOfStockCount} icon={AlertTriangle} color={d.inventory.outOfStockCount > 0 ? 'text-red-600' : ''} />
             <Stat label="Stock Bajo" value={d.inventory.lowStockCount} icon={Package} color={d.inventory.lowStockCount > 0 ? 'text-amber-600' : ''} />
           </div>
-          <Card className="border-dashed"><CardContent className="p-4">
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-dashed"><CardContent className="p-4">
             <div className="flex flex-wrap gap-6 text-sm">
               <div><span className="text-xs text-muted-foreground">COGS Promedio/Día:</span> <span className="font-bold">{formatCurrency(d.inventory.avgDailyCOGS, cc)}</span></div>
               <div><span className="text-xs text-muted-foreground">Margen Retail:</span> <span className="font-bold">{d.inventory.totalCostValue > 0 ? Math.round(((d.inventory.totalRetailValue - d.inventory.totalCostValue) / d.inventory.totalCostValue) * 100) : 0}%</span></div>
@@ -521,7 +797,7 @@ export function ReportsView() {
               <Table><TableHeader><TableRow><TableHead className="text-xs">Producto</TableHead><TableHead className="text-xs text-right">Precio</TableHead><TableHead className="text-xs text-right">Vendidos 30d</TableHead><TableHead className="text-xs text-right">Prom/Día</TableHead><TableHead className="text-xs text-right">Pérdida/Día</TableHead></TableRow></TableHeader><TableBody>
                 {d.lostSales.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={PackageSearch} title="¡Sin productos agotados! 🎉" /></TableCell></TableRow> :
                 d.lostSales.map((p: any) => (
-                  <TableRow key={p.id}><TableCell className="text-xs font-medium">{p.name}</TableCell><TableCell className="text-right text-xs">{formatCurrency(p.salePrice, cc)}</TableCell><TableCell className="text-right text-xs">{p.sold30d}</TableCell><TableCell className="text-right text-xs">{p.avgDaily}</TableCell><TableCell className="text-right text-xs font-medium text-red-600">{formatCurrency(Math.round(p.avgDaily * p.salePrice), cc)}</TableCell></TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={p.id}><TableCell className="text-xs font-medium">{p.name}</TableCell><TableCell className="text-right text-xs">{formatCurrency(p.salePrice, cc)}</TableCell><TableCell className="text-right text-xs">{p.sold30d}</TableCell><TableCell className="text-right text-xs">{p.avgDaily}</TableCell><TableCell className="text-right text-xs font-medium text-red-600">{formatCurrency(Math.round(p.avgDaily * p.salePrice), cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
             </div>
@@ -533,7 +809,7 @@ export function ReportsView() {
               <CardTitle className="text-sm flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-red-500" />Pérdidas Registradas
               </CardTitle>
-              <Button size="sm" className="h-7 text-xs gap-1.5" onClick={openLossDialog}>
+              <Button size="sm" className="h-7 text-xs gap-1.5 active:scale-[0.98] transition-all" onClick={openLossDialog}>
                 <Plus className="h-3 w-3" />Registrar Pérdida
               </Button>
             </div>
@@ -549,17 +825,25 @@ export function ReportsView() {
               </div>
             </div>
             <div className="max-h-64 overflow-y-auto">
-              <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Producto</TableHead><TableHead className="text-xs">Motivo</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
-                {registeredLosses.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={AlertTriangle} title="Sin pérdidas registradas en el período" desc="Registra mercancía perdida, vencida o dañada" /></TableCell></TableRow> :
-                registeredLosses.map((m: any, i: number) => (
-                  <TableRow key={m.id + '-' + i}>
+              <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Producto</TableHead><TableHead className="text-xs">Motivo</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs text-right">Valor</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
+                {registeredLosses.length === 0 ? <TableRow><TableCell colSpan={6}><EmptyState icon={AlertTriangle} title="Sin pérdidas registradas en el período" desc="Registra mercancía perdida, vencida o dañada" /></TableCell></TableRow> :
+                registeredLosses.map((m: any, i: number) => {
+                  // notes field contains "REASON — user notes" (reason first)
+                  const rawNotes = m.notes || ''
+                  const parts = rawNotes.includes(' — ') ? rawNotes.split(' — ') : [rawNotes, '']
+                  const reasonCode = parts[0]
+                  const userNotes = parts.slice(1).join(' — ')
+                  return (
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={m.id + '-' + i}>
                     <TableCell className="text-xs">{fdatetime(m.createdAt)}</TableCell>
                     <TableCell className="text-xs font-medium">{m.product?.name || `ID ${m.productId}`}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[10px]">{LOSS_REASONS[m.reason] || m.reason || '—'}</Badge></TableCell>
+                    <TableCell><Badge variant="outline" className="text-[10px]">{LOSS_REASONS[reasonCode] || reasonCode || '—'}</Badge></TableCell>
                     <TableCell className="text-right text-xs font-medium text-red-600">-{Math.abs(m.quantity)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">{m.notes || '—'}</TableCell>
+                    <TableCell className="text-right text-xs font-medium text-red-600">{formatCurrency((Math.abs(m.quantity) * (m.product?.costPrice || m.product?.salePrice || 0)), cc)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">{userNotes || '—'}</TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody></Table>
             </div>
           </CardContent></Card>
@@ -575,7 +859,7 @@ export function ReportsView() {
             <Stat label="Distancia al Equilibrio" value={d.breakEven.distanceToBreakEven > 0 ? formatCurrency(d.breakEven.distanceToBreakEven, cc) : '¡Superado! ✓'} color={d.breakEven.distanceToBreakEven > 0 ? 'text-amber-600' : 'text-emerald-600'} />
             <Stat label="% Alcanzado" value={`${d.breakEven.achievedPercent}%`} icon={Percent} color={d.breakEven.achievedPercent >= 100 ? 'text-emerald-600' : 'text-amber-600'} />
           </div>
-          <Card className="border-2 border-dashed"><CardContent className="p-4 space-y-4">
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-2 border-dashed"><CardContent className="p-4 space-y-4">
             <div>
               <div className="flex justify-between text-xs text-muted-foreground mb-1.5"><span>Progreso</span><span>{d.breakEven.achievedPercent}%</span></div>
               <div className="h-3 w-full rounded-full bg-muted overflow-hidden"><div className={`h-full rounded-full transition-all ${d.breakEven.achievedPercent >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, d.breakEven.achievedPercent)}%` }} /></div>
@@ -601,7 +885,7 @@ export function ReportsView() {
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs">Tipo</TableHead><TableHead className="text-xs">Razón</TableHead><TableHead className="text-xs text-right">Descuento</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader><TableBody>
                 {d.discounts.items.length === 0 ? <TableRow><TableCell colSpan={6}><EmptyState icon={Tag} title="Sin descuentos en el período" /></TableCell></TableRow> :
                 d.discounts.items.map((o: any) => (
-                  <TableRow key={o.id}><TableCell className="text-xs">{fdate(o.createdAt)}</TableCell><TableCell className="text-xs">{o.customer?.name || 'General'}</TableCell><TableCell><Badge variant="outline" className="text-[10px]">{o.discountType === 'PERCENTAGE' ? '%' : 'Fijo'}</Badge></TableCell><TableCell className="text-xs text-muted-foreground">{o.discountReason || '—'}</TableCell><TableCell className="text-right text-xs font-medium text-amber-600">-{formatCurrency(o.discountAmount, cc)}</TableCell><TableCell className="text-right text-sm">{formatCurrency(o.total, cc)}</TableCell></TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={o.id}><TableCell className="text-xs">{fdate(o.createdAt)}</TableCell><TableCell className="text-xs">{o.customer?.name || 'General'}</TableCell><TableCell><Badge variant="outline" className="text-[10px]">{o.discountType === 'PERCENTAGE' ? '%' : 'Fijo'}</Badge></TableCell><TableCell className="text-xs text-muted-foreground">{o.discountReason || '—'}</TableCell><TableCell className="text-right text-xs font-medium text-amber-600">-{formatCurrency(o.discountAmount, cc)}</TableCell><TableCell className="text-right text-sm">{formatCurrency(o.total, cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
             </div>
@@ -617,7 +901,7 @@ export function ReportsView() {
               <Table><TableHeader><TableRow><TableHead className="text-xs">Apertura</TableHead><TableHead className="text-xs">Cierre</TableHead><TableHead className="text-xs">Responsable</TableHead><TableHead className="text-xs text-right">Base</TableHead><TableHead className="text-xs text-right">Esperado</TableHead><TableHead className="text-xs text-right">Real</TableHead><TableHead className="text-xs text-right">Diferencia</TableHead><TableHead className="text-xs">Estado</TableHead></TableRow></TableHeader><TableBody>
                 {d.cashRegisters.length === 0 ? <TableRow><TableCell colSpan={8}><EmptyState icon={Wallet} title="Sin registros de caja" /></TableCell></TableRow> :
                 d.cashRegisters.map((c: any) => (
-                  <TableRow key={c.id}><TableCell className="text-xs">{fdatetime(c.openedAt)}</TableCell><TableCell className="text-xs">{c.closedAt ? fdatetime(c.closedAt) : '—'}</TableCell><TableCell className="text-xs">{c.user}</TableCell><TableCell className="text-right text-xs">{formatCurrency(c.openingBalance, cc)}</TableCell><TableCell className="text-right text-xs">{c.expectedCash ? formatCurrency(c.expectedCash, cc) : '—'}</TableCell><TableCell className="text-right text-xs">{c.closingBalance ? formatCurrency(c.closingBalance, cc) : '—'}</TableCell><TableCell className={`text-right text-xs font-medium ${c.difference !== null && c.difference !== 0 ? (c.difference > 0 ? 'text-emerald-600' : 'text-red-600') : ''}`}>{c.difference !== null ? formatCurrency(c.difference, cc) : '—'}</TableCell><TableCell><Badge className={`text-[10px] ${c.status === 'OPEN' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>{c.status === 'OPEN' ? 'Abierta' : 'Cerrada'}</Badge></TableCell></TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={c.id}><TableCell className="text-xs">{fdatetime(c.openedAt)}</TableCell><TableCell className="text-xs">{c.closedAt ? fdatetime(c.closedAt) : '—'}</TableCell><TableCell className="text-xs">{c.user}</TableCell><TableCell className="text-right text-xs">{formatCurrency(c.openingBalance, cc)}</TableCell><TableCell className="text-right text-xs">{c.expectedCash ? formatCurrency(c.expectedCash, cc) : '—'}</TableCell><TableCell className="text-right text-xs">{c.closingBalance ? formatCurrency(c.closingBalance, cc) : '—'}</TableCell><TableCell className={`text-right text-xs font-medium ${c.difference !== null && c.difference !== 0 ? (c.difference > 0 ? 'text-emerald-600' : 'text-red-600') : ''}`}>{c.difference !== null ? formatCurrency(c.difference, cc) : '—'}</TableCell><TableCell><Badge className={`text-[10px] ${c.status === 'OPEN' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>{c.status === 'OPEN' ? 'Abierta' : 'Cerrada'}</Badge></TableCell></TableRow>
                 ))}
               </TableBody></Table>
             </div>
@@ -637,7 +921,7 @@ export function ReportsView() {
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Servicio</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs text-right">Unitario</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader><TableBody>
                 {d.commissions.items.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={Percent} title="Sin servicios en el período" /></TableCell></TableRow> :
                 d.commissions.items.map((c: any) => (
-                  <TableRow key={c.id}><TableCell className="text-xs">{fdatetime(c.createdAt)}</TableCell><TableCell className="text-xs font-medium">{c.service?.name || '—'}</TableCell><TableCell className="text-right text-xs">{c.quantity}</TableCell><TableCell className="text-right text-xs">{formatCurrency(c.unitPrice, cc)}</TableCell><TableCell className="text-right text-sm font-medium">{formatCurrency(c.totalAmount, cc)}</TableCell></TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={c.id}><TableCell className="text-xs">{fdatetime(c.createdAt)}</TableCell><TableCell className="text-xs font-medium">{c.service?.name || '—'}</TableCell><TableCell className="text-right text-xs">{c.quantity}</TableCell><TableCell className="text-right text-xs">{formatCurrency(c.unitPrice, cc)}</TableCell><TableCell className="text-right text-sm font-medium">{formatCurrency(c.totalAmount, cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
             </div>
@@ -665,7 +949,7 @@ export function ReportsView() {
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Categoría</TableHead><TableHead className="text-xs">Descripción</TableHead><TableHead className="text-xs text-right">Monto</TableHead></TableRow></TableHeader><TableBody>
                 {d.expenses.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={ArrowDownUp} title="Sin gastos en el período" /></TableCell></TableRow> :
                 d.expenses.items.map((e: any) => (
-                  <TableRow key={e.id}><TableCell className="text-xs">{fdate(e.date)}</TableCell><TableCell><Badge variant="outline" className="text-[10px]">{EXP_CAT[e.category] || e.category}</Badge></TableCell><TableCell className="text-xs truncate max-w-[200px]">{e.description}</TableCell><TableCell className="text-right text-sm font-medium text-red-600">-{formatCurrency(e.amount, cc)}</TableCell></TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={e.id}><TableCell className="text-xs">{fdate(e.date)}</TableCell><TableCell><Badge variant="outline" className="text-[10px]">{EXP_CAT[e.category] || e.category}</Badge></TableCell><TableCell className="text-xs truncate max-w-[200px]">{e.description}</TableCell><TableCell className="text-right text-sm font-medium text-red-600">-{formatCurrency(e.amount, cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
             </div>
@@ -677,7 +961,7 @@ export function ReportsView() {
         {/* ═══════════════════════════════════════════════ */}
         <TabsContent value="impuestos" className="space-y-4 mt-4">
           {/* IVA Recaudado por Ventas */}
-          <Card>
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Percent className="h-5 w-5 text-emerald-600" />
@@ -740,7 +1024,7 @@ export function ReportsView() {
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
-                        <TableRow>
+                        <TableRow className="hover:bg-muted/30 transition-colors">
                           <TableHead>Fecha</TableHead>
                           <TableHead>Orden</TableHead>
                           <TableHead>Cliente</TableHead>
@@ -751,7 +1035,7 @@ export function ReportsView() {
                       </TableHeader>
                       <TableBody>
                         {d.ivaCollected.orders.slice(0, 20).map((order: any) => (
-                          <TableRow key={order.id}>
+                          <TableRow className="hover:bg-muted/30 transition-colors" key={order.id}>
                             <TableCell className="text-sm">{new Date(order.createdAt).toLocaleDateString('es-CO')}</TableCell>
                             <TableCell className="font-mono text-sm">#{order.orderNumber}</TableCell>
                             <TableCell className="text-sm">{order.customer?.name || 'General'}</TableCell>
@@ -776,7 +1060,7 @@ export function ReportsView() {
           </Card>
 
           {/* Gastos de Impuestos (existing section) */}
-          <Card>
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Receipt className="h-5 w-5 text-amber-600" />
@@ -793,7 +1077,7 @@ export function ReportsView() {
                 <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Descripción</TableHead><TableHead className="text-xs text-right">Monto</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
                   {d.taxes.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={Receipt} title="Sin impuestos registrados" desc="Registra gastos con categoría 'Impuestos' desde Contabilidad > Gastos" /></TableCell></TableRow> :
                   d.taxes.items.map((t: any) => (
-                    <TableRow key={t.id}><TableCell className="text-xs">{fdate(t.date)}</TableCell><TableCell className="text-xs">{t.description}</TableCell><TableCell className="text-right text-sm font-medium text-red-600">-{formatCurrency(t.amount, cc)}</TableCell><TableCell className="text-xs text-muted-foreground">{t.notes || '—'}</TableCell></TableRow>
+                    <TableRow className="hover:bg-muted/30 transition-colors" key={t.id}><TableCell className="text-xs">{fdate(t.date)}</TableCell><TableCell className="text-xs">{t.description}</TableCell><TableCell className="text-right text-sm font-medium text-red-600">-{formatCurrency(t.amount, cc)}</TableCell><TableCell className="text-xs text-muted-foreground">{t.notes || '—'}</TableCell></TableRow>
                   ))}
                 </TableBody></Table>
               </div>
@@ -812,7 +1096,7 @@ export function ReportsView() {
           <Card><CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Registro de Devoluciones</CardTitle>
-              <Button size="sm" className="h-7 text-xs gap-1.5" onClick={openReturnDialog}>
+              <Button size="sm" className="h-7 text-xs gap-1.5 active:scale-[0.98] transition-all" onClick={openReturnDialog}>
                 <Plus className="h-3 w-3" />Registrar Devolución
               </Button>
             </div>
@@ -821,7 +1105,7 @@ export function ReportsView() {
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Producto</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
                 {d.returns.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={RotateCcw} title="Sin devoluciones en el período" /></TableCell></TableRow> :
                 d.returns.items.map((r: any) => (
-                  <TableRow key={r.id}><TableCell className="text-xs">{fdatetime(r.createdAt)}</TableCell><TableCell className="text-xs font-medium">{r.product?.name || 'Eliminado'}</TableCell><TableCell className={`text-right text-xs font-medium ${r.quantity > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{r.quantity > 0 ? '+' : ''}{r.quantity}</TableCell><TableCell className="text-xs text-muted-foreground">{r.notes || '—'}</TableCell></TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={r.id}><TableCell className="text-xs">{fdatetime(r.createdAt)}</TableCell><TableCell className="text-xs font-medium">{r.product?.name || 'Eliminado'}</TableCell><TableCell className={`text-right text-xs font-medium ${r.quantity > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{r.quantity > 0 ? '+' : ''}{r.quantity}</TableCell><TableCell className="text-xs text-muted-foreground">{r.notes || '—'}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
             </div>
@@ -834,7 +1118,7 @@ export function ReportsView() {
         <TabsContent value="ajustes" className="space-y-4 mt-4">
           <div className="flex items-center justify-between">
             <Stat label="Ajustes Realizados" value={d.adjustments.count} icon={SlidersHorizontal} />
-            <Button size="sm" className="h-7 text-xs gap-1.5" onClick={openAdjustDialog}>
+            <Button size="sm" className="h-7 text-xs gap-1.5 active:scale-[0.98] transition-all" onClick={openAdjustDialog}>
               <Plus className="h-3 w-3" />Registrar Ajuste
             </Button>
           </div>
@@ -843,7 +1127,7 @@ export function ReportsView() {
               <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Producto</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs">Stock Actual</TableHead><TableHead className="text-xs">Notas</TableHead></TableRow></TableHeader><TableBody>
                 {d.adjustments.items.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={SlidersHorizontal} title="Sin ajustes en el período" /></TableCell></TableRow> :
                 d.adjustments.items.map((a: any) => (
-                  <TableRow key={a.id}><TableCell className="text-xs">{fdatetime(a.createdAt)}</TableCell><TableCell className="text-xs font-medium">{a.product?.name || '—'}</TableCell><TableCell className={`text-right text-xs font-medium ${a.quantity > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{a.quantity > 0 ? '+' : ''}{a.quantity}</TableCell><TableCell className="text-right text-xs">{a.product?.currentStock ?? '—'}</TableCell><TableCell className="text-xs text-muted-foreground">{a.notes || '—'}</TableCell></TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={a.id}><TableCell className="text-xs">{fdatetime(a.createdAt)}</TableCell><TableCell className="text-xs font-medium">{a.product?.name || '—'}</TableCell><TableCell className={`text-right text-xs font-medium ${a.quantity > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{a.quantity > 0 ? '+' : ''}{a.quantity}</TableCell><TableCell className="text-right text-xs">{a.product?.currentStock ?? '—'}</TableCell><TableCell className="text-xs text-muted-foreground">{a.notes || '—'}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
             </div>
@@ -891,7 +1175,7 @@ export function ReportsView() {
           </div>
 
           {/* ── Filter Buttons ── */}
-          <Card>
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
             <CardContent className="p-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <Filter className="h-3.5 w-3.5 text-muted-foreground" />
@@ -904,11 +1188,10 @@ export function ReportsView() {
                   ['RETURN', 'Devoluciones'],
                   ['LOSS', 'Pérdidas'],
                 ].map(([key, label]) => (
-                  <Button
-                    key={key}
+                  <Button key={key}
                     variant={trazFilter === key ? 'default' : 'outline'}
                     size="sm"
-                    className="h-7 text-xs"
+                    className="h-7 text-xs active:scale-[0.98] transition-all"
                     onClick={() => setTrazFilter(key)}
                   >
                     {label}
@@ -923,7 +1206,7 @@ export function ReportsView() {
 
           <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Historial Completo de Movimientos</CardTitle></CardHeader><CardContent>
             <div className="max-h-[500px] overflow-y-auto">
-              <Table><TableHeader><TableRow>
+              <Table><TableHeader><TableRow className="hover:bg-muted/30 transition-colors">
                 <TableHead className="text-xs">Fecha</TableHead>
                 <TableHead className="text-xs">Tipo</TableHead>
                 <TableHead className="text-xs">Producto</TableHead>
@@ -934,7 +1217,7 @@ export function ReportsView() {
               </TableRow></TableHeader><TableBody>
                 {filteredTraz.length === 0 ? <TableRow><TableCell colSpan={7}><EmptyState icon={Route} title="Sin movimientos para el filtro seleccionado" /></TableCell></TableRow> :
                 filteredTraz.map((m: any, i: number) => (
-                  <TableRow key={m.id + '-' + i}>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={m.id + '-' + i}>
                     <TableCell className="text-xs whitespace-nowrap">{fdatetime(m.createdAt)}</TableCell>
                     <TableCell>
                       <Badge className={`text-[10px] ${MOV_BADGE[m.movementType] || ''}`}>
@@ -959,12 +1242,115 @@ export function ReportsView() {
         {/* ── 16. COTIZACIONES ── */}
         {/* ═══════════════════════════════════════════════ */}
         <TabsContent value="cotizaciones" className="space-y-4 mt-4">
-          <Card className="border-2 border-dashed"><CardHeader><CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4" />Órdenes Pendientes (Cotizaciones)</CardTitle><CardDescription>Las órdenes en estado PENDIENTE actúan como cotizaciones</CardDescription></CardHeader><CardContent>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Stat label="Cotizaciones Activas" value={`${d.quotesSummary?.activeCount ?? 0}`} icon={FileText} color="text-emerald-600 dark:text-emerald-400" />
+            <Stat label="Valor Total Activas" value={formatCurrency(d.quotesSummary?.activeTotal ?? 0, cc)} icon={DollarSign} color="text-emerald-600 dark:text-emerald-400" />
+            <Stat label="Convertidas a Orden" value={`${d.quotesSummary?.convertedCount ?? 0}`} icon={CheckCircle2} color="text-sky-600 dark:text-sky-400" />
+            <Stat label="Total en Período" value={`${d.quotesSummary?.totalCount ?? 0}`} icon={ClipboardList} />
+          </div>
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl"><CardHeader><CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4" />Cotizaciones</CardTitle><CardDescription>Todas las cotizaciones generadas en el período</CardDescription></CardHeader><CardContent>
             <div className="max-h-96 overflow-y-auto">
-              <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Orden</TableHead><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs text-right">Total</TableHead><TableHead className="text-xs">Items</TableHead></TableRow></TableHeader><TableBody>
-                {d.quotes.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={FileText} title="Sin cotizaciones pendientes" /></TableCell></TableRow> :
+              <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Cotización</TableHead><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs text-right">Total</TableHead><TableHead className="text-xs">Items</TableHead><TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs">Válido Hasta</TableHead></TableRow></TableHeader><TableBody>
+                {d.quotes.length === 0 ? <TableRow><TableCell colSpan={7}><EmptyState icon={FileText} title="Sin cotizaciones en el período" /></TableCell></TableRow> :
                 d.quotes.map((q: any) => (
-                  <TableRow key={q.id}><TableCell className="text-xs">{fdatetime(q.createdAt)}</TableCell><TableCell className="text-xs font-mono">{q.orderNumber}</TableCell><TableCell className="text-xs">{q.customer?.name || 'General'}</TableCell><TableCell className="text-right text-sm font-medium">{formatCurrency(q.total, cc)}</TableCell><TableCell className="text-xs">{q.orderItems?.length || 0} items</TableCell></TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={q.id}>
+                    <TableCell className="text-xs">{fdatetime(q.createdAt)}</TableCell>
+                    <TableCell className="text-xs font-mono">{q.quotationNumber}</TableCell>
+                    <TableCell className="text-xs">{q.customerName || q.customer?.name || 'General'}</TableCell>
+                    <TableCell className="text-right text-sm font-medium">{formatCurrency(q.total, cc)}</TableCell>
+                    <TableCell className="text-xs">{q.items?.length || 0}</TableCell>
+                    <TableCell className="text-xs">
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+                        q.status === 'ACTIVE' ? 'border-emerald-500/30 text-emerald-400' :
+                        q.status === 'CONVERTED' ? 'border-sky-500/30 text-sky-400' :
+                        q.status === 'CANCELLED' ? 'border-red-500/30 text-red-400' :
+                        'border-amber-500/30 text-amber-400'
+                      }`}>
+                        {q.status === 'ACTIVE' ? 'Activa' : q.status === 'CONVERTED' ? 'Convertida' : q.status === 'CANCELLED' ? 'Cancelada' : 'Expirada'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{q.validUntil ? fdate(q.validUntil) : '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody></Table>
+            </div>
+          </CardContent></Card>
+        </TabsContent>
+
+        {/* ── 17. FACTURAS ELECTRÓNICAS ── */}
+        <TabsContent value="facturas" className="space-y-4 mt-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Stat label="Total Facturado" value={formatCurrency(d.invoicesSummary?.total ?? 0, cc)} icon={DollarSign} color="text-emerald-600 dark:text-emerald-400" />
+            <Stat label="Facturas Emitidas" value={`${d.invoicesSummary?.count ?? 0}`} icon={FileCheck} />
+            <Stat label="Validadas DIAN" value={`${d.invoicesSummary?.validated ?? 0}`} icon={CheckCircle2} color="text-emerald-600 dark:text-emerald-400" />
+            <Stat label="Pendientes/Rechazadas" value={`${d.invoicesSummary?.pending ?? 0}/${d.invoicesSummary?.rejected ?? 0}`} color="text-amber-600 dark:text-amber-400" />
+          </div>
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl"><CardHeader><CardTitle className="text-sm flex items-center gap-2"><FileCheck className="h-4 w-4" />Facturas Electrónicas</CardTitle><CardDescription>Historial de facturas electrónicas enviadas a la DIAN</CardDescription></CardHeader><CardContent>
+            <div className="max-h-96 overflow-y-auto">
+              <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Factura</TableHead><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs text-right">Total</TableHead><TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs">Ambiente</TableHead><TableHead className="text-xs">CUFE</TableHead></TableRow></TableHeader><TableBody>
+                {d.invoices.length === 0 ? <TableRow><TableCell colSpan={7}><EmptyState icon={FileCheck} title="Sin facturas electrónicas" /></TableCell></TableRow> :
+                d.invoices.map((inv: any) => (
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={inv.id}>
+                    <TableCell className="text-xs">{fdatetime(inv.createdAt)}</TableCell>
+                    <TableCell className="text-xs font-mono">{inv.invoiceNumber}</TableCell>
+                    <TableCell className="text-xs">{inv.customerName}</TableCell>
+                    <TableCell className="text-right text-sm font-medium">{formatCurrency(inv.grandTotal, cc)}</TableCell>
+                    <TableCell className="text-xs">
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+                        inv.status === 'VALIDATED' || inv.status === 'DELIVERED' ? 'border-emerald-500/30 text-emerald-400' :
+                        inv.status === 'REJECTED' ? 'border-red-500/30 text-red-400' :
+                        'border-amber-500/30 text-amber-400'
+                      }`}>
+                        {inv.status === 'VALIDATED' ? 'Validada' : inv.status === 'DELIVERED' ? 'Entregada' : inv.status === 'REJECTED' ? 'Rechazada' : inv.status === 'DRAFT' ? 'Borrador' : 'Pendiente'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${inv.testMode ? 'border-amber-500/30 text-amber-400' : 'border-emerald-500/30 text-emerald-400'}`}>
+                        {inv.testMode ? 'Hab.' : 'Prod.'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-[10px] text-muted-foreground font-mono max-w-[80px] truncate">{inv.cufe ? `${inv.cufe.slice(0, 8)}...` : '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody></Table>
+            </div>
+          </CardContent></Card>
+        </TabsContent>
+
+        {/* ── 18. NOTAS CRÉDITO/DÉBITO ── */}
+        <TabsContent value="notas-credito" className="space-y-4 mt-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Stat label="Total Notas" value={formatCurrency(d.creditNotesSummary?.total ?? 0, cc)} icon={DollarSign} color="text-red-600 dark:text-red-400" />
+            <Stat label="Notas Emitidas" value={`${d.creditNotesSummary?.count ?? 0}`} icon={FileText} />
+            <Stat label="Notas Crédito" value={`${d.creditNotesSummary?.creditCount ?? 0}`} color="text-red-600 dark:text-red-400" />
+            <Stat label="Notas Débito" value={`${d.creditNotesSummary?.debitCount ?? 0}`} color="text-amber-600 dark:text-amber-400" />
+          </div>
+          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl"><CardHeader><CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4" />Notas Crédito / Débito</CardTitle><CardDescription>Historial de notas crédito y débito emitidas</CardDescription></CardHeader><CardContent>
+            <div className="max-h-96 overflow-y-auto">
+              <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Nota</TableHead><TableHead className="text-xs">Tipo</TableHead><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs text-right">Monto</TableHead><TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs">Factura Ref.</TableHead></TableRow></TableHeader><TableBody>
+                {d.creditNotes.length === 0 ? <TableRow><TableCell colSpan={7}><EmptyState icon={FileText} title="Sin notas crédito/débito" /></TableCell></TableRow> :
+                d.creditNotes.map((cn: any) => (
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={cn.id}>
+                    <TableCell className="text-xs">{fdatetime(cn.createdAt)}</TableCell>
+                    <TableCell className="text-xs font-mono">{cn.noteNumber}</TableCell>
+                    <TableCell className="text-xs">
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${cn.noteType === 'CREDIT' ? 'border-red-500/30 text-red-400' : 'border-amber-500/30 text-amber-400'}`}>
+                        {cn.noteType === 'CREDIT' ? 'NC' : 'ND'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">{cn.customerName}</TableCell>
+                    <TableCell className="text-right text-sm font-medium">{formatCurrency(cn.totalAmount, cc)}</TableCell>
+                    <TableCell className="text-xs">
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+                        cn.status === 'APPROVED' || cn.status === 'VALIDATED' ? 'border-emerald-500/30 text-emerald-400' :
+                        cn.status === 'REJECTED' ? 'border-red-500/30 text-red-400' :
+                        'border-amber-500/30 text-amber-400'
+                      }`}>
+                        {cn.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{cn.invoiceNumber || '—'}</TableCell>
+                  </TableRow>
                 ))}
               </TableBody></Table>
             </div>
@@ -981,7 +1367,7 @@ export function ReportsView() {
               <Table><TableHeader><TableRow><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs">Teléfono</TableHead><TableHead className="text-xs text-right">Deuda</TableHead></TableRow></TableHeader><TableBody>
                 {d.debts.length === 0 ? <TableRow><TableCell colSpan={3}><EmptyState icon={Users} title="¡Sin deudas pendientes! 🎉" /></TableCell></TableRow> :
                 d.debts.map((c: any) => (
-                  <TableRow key={c.id}><TableCell className="text-xs font-medium">{c.name}</TableCell><TableCell className="text-xs text-muted-foreground">{c.phone || '—'}</TableCell><TableCell className="text-right text-sm font-bold text-red-600">{formatCurrency(c.totalDebt, cc)}</TableCell></TableRow>
+                  <TableRow className="hover:bg-muted/30 transition-colors" key={c.id}><TableCell className="text-xs font-medium">{c.name}</TableCell><TableCell className="text-xs text-muted-foreground">{c.phone || '—'}</TableCell><TableCell className="text-right text-sm font-bold text-red-600">{formatCurrency(c.totalDebt, cc)}</TableCell></TableRow>
                 ))}
               </TableBody></Table>
             </div>
@@ -993,7 +1379,7 @@ export function ReportsView() {
       {/* ── DIALOG: Registrar Devolución ── */}
       {/* ═══════════════════════════════════════════════ */}
       <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm">
               <RotateCcw className="h-4 w-4" />Registrar Devolución
@@ -1033,7 +1419,7 @@ export function ReportsView() {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setShowReturnDialog(false)}>Cancelar</Button>
-            <Button size="sm" onClick={handleSubmitReturn} disabled={isSubmitting} className="gap-1.5">
+            <Button size="sm" onClick={handleSubmitReturn} disabled={isSubmitting} className="gap-1.5 active:scale-[0.98] transition-all">
               {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
               Registrar
             </Button>
@@ -1045,7 +1431,7 @@ export function ReportsView() {
       {/* ── DIALOG: Registrar Ajuste ── */}
       {/* ═══════════════════════════════════════════════ */}
       <Dialog open={showAdjustDialog} onOpenChange={setShowAdjustDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm">
               <SlidersHorizontal className="h-4 w-4" />Registrar Ajuste
@@ -1075,7 +1461,7 @@ export function ReportsView() {
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Modo</Label>
               <Select value={adjustForm.mode} onValueChange={(v) => setAdjustForm(f => ({ ...f, mode: v as 'delta' | 'set' }))}>
-                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-xs focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="delta" className="text-xs">Agregar/Quitar (+/-)</SelectItem>
                   <SelectItem value="set" className="text-xs">Establecer cantidad</SelectItem>
@@ -1106,7 +1492,7 @@ export function ReportsView() {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setShowAdjustDialog(false)}>Cancelar</Button>
-            <Button size="sm" onClick={handleSubmitAdjust} disabled={isSubmitting} className="gap-1.5">
+            <Button size="sm" onClick={handleSubmitAdjust} disabled={isSubmitting} className="gap-1.5 active:scale-[0.98] transition-all">
               {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
               Registrar
             </Button>
@@ -1118,7 +1504,7 @@ export function ReportsView() {
       {/* ── DIALOG: Registrar Pérdida ── */}
       {/* ═══════════════════════════════════════════════ */}
       <Dialog open={showLossDialog} onOpenChange={setShowLossDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm">
               <AlertTriangle className="h-4 w-4 text-red-500" />Registrar Pérdida
@@ -1149,7 +1535,7 @@ export function ReportsView() {
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Motivo</Label>
               <Select value={lossForm.reason} onValueChange={(v) => setLossForm(f => ({ ...f, reason: v }))}>
-                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-xs focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(LOSS_REASONS).map(([key, label]) => (
                     <SelectItem key={key} value={key} className="text-xs">{label}</SelectItem>
@@ -1169,7 +1555,7 @@ export function ReportsView() {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setShowLossDialog(false)}>Cancelar</Button>
-            <Button size="sm" variant="destructive" onClick={handleSubmitLoss} disabled={isSubmitting} className="gap-1.5">
+            <Button size="sm" variant="destructive" onClick={handleSubmitLoss} disabled={isSubmitting} className="gap-1.5 active:scale-[0.98] transition-all">
               {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
               Registrar Pérdida
             </Button>

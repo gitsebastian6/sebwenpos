@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +23,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { storeId, note } = parsed.data
+
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // Get all products with stock > 0
     const productsWithStock = await db.product.findMany({
@@ -66,7 +71,7 @@ export async function POST(request: NextRequest) {
       totalUnitsReset,
     })
   } catch (error) {
-    console.error('POST /api/inventory/reset-stock error:', error)
+    logger.error('POST /api/inventory/reset-stock error:', error)
     return NextResponse.json({ error: 'Error al resetear inventario' }, { status: 500 })
   }
 }

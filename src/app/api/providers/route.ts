@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +35,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'storeId inválido' }, { status: 400 })
     }
 
+    const storeAccessErr = requireStoreAccess(request, sid)
+    if (storeAccessErr) return storeAccessErr
+
     const where: Record<string, unknown> = { storeId: sid }
 
     if (q) {
@@ -57,6 +62,13 @@ export async function GET(request: NextRequest) {
       address: p.address,
       city: p.city,
       nit: p.nit,
+      dv: p.dv,
+      regime: p.regime,
+      autoretainer: p.autoretainer,
+      paymentTerms: p.paymentTerms,
+      creditLimit: p.creditLimit,
+      totalDebt: p.totalDebt,
+      totalPurchases: p.totalPurchases,
       notes: p.notes,
       isActive: p.isActive,
       createdAt: p.createdAt.toISOString(),
@@ -65,7 +77,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('GET /api/providers error:', error)
+    logger.error('GET /api/providers error:', error)
     return NextResponse.json({ error: 'Error al obtener proveedores' }, { status: 500 })
   }
 }
@@ -75,6 +87,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const data = createProviderSchema.parse(body)
+
+    const storeAccessErr = requireStoreAccess(req, data.storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const provider = await db.provider.create({
       data: {
@@ -98,7 +113,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('POST /api/providers error:', error)
+    logger.error('POST /api/providers error:', error)
     return NextResponse.json({ error: 'Error al crear proveedor' }, { status: 500 })
   }
 }

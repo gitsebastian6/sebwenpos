@@ -876,12 +876,10 @@ export function AccountingView() {
         } else {
           setLastClosedShift({ shift: data.shift, summary: { totalOrders: 0, totalSales: 0, totalTips: 0, cashSales: 0, otherSales: 0, byPayment: {} } })
         }
-      } catch (printErr) {
-        console.error('Print fetch error (non-critical):', printErr)
+      } catch {
         setLastClosedShift({ shift: data.shift, summary: { totalOrders: 0, totalSales: 0, totalTips: 0, cashSales: 0, otherSales: 0, byPayment: {} } })
       }
-    } catch (e) {
-      console.error('handleCloseShift critical error:', e)
+    } catch {
       toast.error('Error de conexión al cerrar caja. Intenta de nuevo.')
     } finally {
       setIsSavingShift(false)
@@ -1069,7 +1067,7 @@ export function AccountingView() {
       const res = await fetch(`/api/products?storeId=${store.id}&active=true&limit=500`)
       if (res.ok) {
         const data = await res.json()
-        const rawProducts = Array.isArray(data) ? data : (data.products || [])
+        const rawProducts = Array.isArray(data) ? data : (data.data || [])
         const products = rawProducts.map((p: { name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }) => ({
           name: p.name,
           category: p.category?.name || 'Sin Categoría',
@@ -1186,11 +1184,10 @@ export function AccountingView() {
                   {accounts.length} cuenta{accounts.length !== 1 ? 's' : ''} registrada{accounts.length !== 1 ? 's' : ''}
                 </p>
               </div>
-              <Button
-                variant="outline"
+              <Button variant="outline"
                 size="sm"
                 onClick={fetchAccounts}
-                className="gap-1.5"
+                className="gap-1.5 active:scale-[0.98] transition-all"
               >
                 <Wallet className="h-3.5 w-3.5" />
                 Actualizar
@@ -1213,7 +1210,7 @@ export function AccountingView() {
                 ))}
               </div>
             ) : accounts.length === 0 ? (
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
                     <BookOpen className="h-6 w-6 text-muted-foreground" />
@@ -1262,10 +1259,9 @@ export function AccountingView() {
                         </p>
                       </div>
                       <Separator />
-                      <Button
-                        variant="outline"
+                      <Button variant="outline"
                         size="sm"
-                        className="w-full gap-1.5 text-xs"
+                        className="w-full gap-1.5 text-xs active:scale-[0.98] transition-all"
                         onClick={() => handleViewMovements(account.id)}
                       >
                         <Eye className="h-3.5 w-3.5" />
@@ -1283,7 +1279,7 @@ export function AccountingView() {
         <TabsContent value="movimientos">
           <div className="space-y-4">
             {/* Filter bar */}
-            <Card>
+            <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
               <CardContent className="p-4">
                 <div className="flex flex-col sm:flex-row gap-3 items-end">
                   <div className="flex-1 w-full sm:w-auto">
@@ -1291,7 +1287,7 @@ export function AccountingView() {
                       Cuenta
                     </Label>
                     <Select value={filterAccountId} onValueChange={setFilterAccountId}>
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger className="w-full focus-visible:ring-primary/20 focus-visible:border-primary/40">
                         <SelectValue placeholder="Todas las cuentas" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1327,11 +1323,10 @@ export function AccountingView() {
                     />
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    <Button
-                      variant="outline"
+                    <Button variant="outline"
                       size="sm"
                       onClick={handleClearFilters}
-                      className="h-9"
+                      className="h-9 active:scale-[0.98] transition-all"
                     >
                       Limpiar
                     </Button>
@@ -1342,7 +1337,7 @@ export function AccountingView() {
 
             {/* Table */}
             {isLoadingEntries ? (
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardContent className="p-4">
                   <div className="space-y-3">
                     {Array.from({ length: 8 }).map((_, i) => (
@@ -1358,7 +1353,7 @@ export function AccountingView() {
                 </CardContent>
               </Card>
             ) : entries.length === 0 ? (
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
                     <ArrowRightLeft className="h-6 w-6 text-muted-foreground" />
@@ -1372,12 +1367,12 @@ export function AccountingView() {
                 </CardContent>
               </Card>
             ) : (
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardContent className="p-0">
                   <div className="max-h-[500px] overflow-y-auto">
                     <Table>
                       <TableHeader>
-                        <TableRow>
+                        <TableRow className="hover:bg-muted/30 transition-colors">
                           <TableHead className="w-[120px]">Fecha</TableHead>
                           <TableHead>Cuenta</TableHead>
                           <TableHead className="w-[100px]">Tipo</TableHead>
@@ -1388,7 +1383,7 @@ export function AccountingView() {
                       </TableHeader>
                       <TableBody>
                         {entries.map((entry) => (
-                          <TableRow key={entry.id}>
+                          <TableRow className="hover:bg-muted/30 transition-colors" key={entry.id}>
                             <TableCell>
                               <div className="flex flex-col">
                                 <span className="text-xs font-medium">
@@ -1488,7 +1483,7 @@ export function AccountingView() {
             {/* Summary cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Total Ventas */}
-              <Card className="relative overflow-hidden">
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-teal-500" />
                 <CardHeader className="pb-0">
                   <div className="flex items-center gap-2">
@@ -1507,7 +1502,7 @@ export function AccountingView() {
               </Card>
 
               {/* Propinas */}
-              <Card className="relative overflow-hidden">
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-pink-500" />
                 <CardHeader className="pb-0">
                   <div className="flex items-center gap-2">
@@ -1528,7 +1523,7 @@ export function AccountingView() {
               </Card>
 
               {/* Balance de Caja */}
-              <Card className="relative overflow-hidden">
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
                 <CardHeader className="pb-0">
                   <div className="flex items-center gap-2">
@@ -1549,7 +1544,7 @@ export function AccountingView() {
               </Card>
 
               {/* Cuentas por Cobrar */}
-              <Card className="relative overflow-hidden">
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-amber-500" />
                 <CardHeader className="pb-0">
                   <div className="flex items-center gap-2">
@@ -1569,7 +1564,7 @@ export function AccountingView() {
             </div>
 
             {/* Income vs Expense comparison */}
-            <Card>
+            <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Scale className="h-5 w-5 text-muted-foreground" />
@@ -1641,7 +1636,7 @@ export function AccountingView() {
             </Card>
 
             {/* Account balances breakdown by type */}
-            <Card>
+            <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5 text-muted-foreground" />
@@ -1686,7 +1681,7 @@ export function AccountingView() {
         <TabsContent value="informes">
           <div className="space-y-6">
             {/* ─── Date Range Filter ─────────────────────────────────────── */}
-            <Card>
+            <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
               <CardContent className="p-4">
                 <div className="flex flex-col sm:flex-row gap-3 items-end">
                   <div className="flex-1 w-full sm:w-auto">
@@ -1713,10 +1708,8 @@ export function AccountingView() {
                       className="h-9"
                     />
                   </div>
-                  <Button
-                    onClick={fetchReports}
+                  <Button className="h-9 gap-1.5 active:scale-[0.98] transition-all" onClick={fetchReports}
                     disabled={isLoadingReport}
-                    className="h-9 gap-1.5"
                   >
                     {isLoadingReport ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1748,7 +1741,7 @@ export function AccountingView() {
                 {/* ─── KPI Cards Row ─────────────────────────────────────── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Total Ventas */}
-                  <Card className="relative overflow-hidden">
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-1 h-full bg-teal-500" />
                     <CardHeader className="pb-0">
                       <div className="flex items-center gap-2">
@@ -1769,7 +1762,7 @@ export function AccountingView() {
                   </Card>
 
                   {/* Contado vs Fiado */}
-                  <Card className="relative overflow-hidden">
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
                     <CardHeader className="pb-0">
                       <div className="flex items-center gap-2">
@@ -1790,7 +1783,7 @@ export function AccountingView() {
                   </Card>
 
                   {/* Propinas */}
-                  <Card className="relative overflow-hidden">
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-1 h-full bg-pink-500" />
                     <CardHeader className="pb-0">
                       <div className="flex items-center gap-2">
@@ -1811,7 +1804,7 @@ export function AccountingView() {
                   </Card>
 
                   {/* Mesas Abiertas */}
-                  <Card className="relative overflow-hidden">
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-1 h-full bg-amber-500" />
                     <CardHeader className="pb-0">
                       <div className="flex items-center gap-2">
@@ -1833,7 +1826,7 @@ export function AccountingView() {
                 </div>
 
                 {/* ─── Ventas por Método de Pago ──────────────────────────── */}
-                <Card>
+                <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                   <CardHeader>
                     <div className="flex items-center gap-2">
                       <Wallet className="h-5 w-5 text-muted-foreground" />
@@ -1881,7 +1874,7 @@ export function AccountingView() {
                 {/* ─── Ventas por Categoría + Top Productos ──────────────── */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Ventas por Categoría */}
-                  <Card>
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                     <CardHeader>
                       <div className="flex items-center gap-2">
                         <BarChart3 className="h-5 w-5 text-muted-foreground" />
@@ -1922,7 +1915,7 @@ export function AccountingView() {
                   </Card>
 
                   {/* Top 10 Productos */}
-                  <Card>
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                     <CardHeader>
                       <div className="flex items-center gap-2">
                         <TrendingUp className="h-5 w-5 text-muted-foreground" />
@@ -1933,7 +1926,7 @@ export function AccountingView() {
                       <div className="max-h-[300px] overflow-y-auto">
                         <Table>
                           <TableHeader>
-                            <TableRow>
+                            <TableRow className="hover:bg-muted/30 transition-colors">
                               <TableHead className="w-10">#</TableHead>
                               <TableHead>Producto</TableHead>
                               <TableHead className="text-right w-16">Uds</TableHead>
@@ -1944,7 +1937,7 @@ export function AccountingView() {
                             {reportData.topProducts.slice(0, 10).map((product, idx) => {
                               const maxProductTotal = reportData.topProducts[0]?.total || 1
                               return (
-                                <TableRow key={product.productId}>
+                                <TableRow className="hover:bg-muted/30 transition-colors" key={product.productId}>
                                   <TableCell className="text-xs font-bold text-muted-foreground">
                                     {idx + 1}
                                   </TableCell>
@@ -1978,7 +1971,7 @@ export function AccountingView() {
                 </div>
 
                 {/* ─── Cuentas por Cobrar ─────────────────────────────────── */}
-                <Card>
+                <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -1990,10 +1983,9 @@ export function AccountingView() {
                           </CardDescription>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
+                      <Button variant="outline"
                         size="sm"
-                        className="text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/50"
+                        className="text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/50 active:scale-[0.98] transition-all"
                         onClick={() => setShowResetDialog(true)}
                       >
                         <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
@@ -2011,7 +2003,7 @@ export function AccountingView() {
                       <div className="max-h-96 overflow-y-auto">
                         <Table>
                           <TableHeader>
-                            <TableRow>
+                            <TableRow className="hover:bg-muted/30 transition-colors">
                               <TableHead>Cliente</TableHead>
                               <TableHead className="whitespace-nowrap text-xs">Teléfono</TableHead>
                               <TableHead className="text-right w-32">Deuda</TableHead>
@@ -2019,7 +2011,7 @@ export function AccountingView() {
                           </TableHeader>
                           <TableBody>
                             {reportData.customerDebts.map((c) => (
-                              <TableRow key={c.id}>
+                              <TableRow className="hover:bg-muted/30 transition-colors" key={c.id}>
                                 <TableCell className="font-medium">{c.name}</TableCell>
                                 <TableCell className="text-xs text-muted-foreground">
                                   {c.phone || '—'}
@@ -2042,7 +2034,7 @@ export function AccountingView() {
                 </Card>
 
                 {/* ─── Productos con Stock Bajo ───────────────────────────── */}
-                <Card>
+                <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                   <CardHeader>
                     <div className="flex items-center gap-2">
                       <PackageX className="h-5 w-5 text-red-500" />
@@ -2062,7 +2054,7 @@ export function AccountingView() {
                       <div className="max-h-96 overflow-y-auto">
                         <Table>
                           <TableHeader>
-                            <TableRow>
+                            <TableRow className="hover:bg-muted/30 transition-colors">
                               <TableHead>Producto</TableHead>
                               <TableHead className="whitespace-nowrap text-xs">Categoría</TableHead>
                               <TableHead className="text-center w-20">Stock</TableHead>
@@ -2072,7 +2064,7 @@ export function AccountingView() {
                           </TableHeader>
                           <TableBody>
                             {reportData.lowStockProducts.map((p) => (
-                              <TableRow key={p.id}>
+                              <TableRow className="hover:bg-muted/30 transition-colors" key={p.id}>
                                 <TableCell className="font-medium">{p.name}</TableCell>
                                 <TableCell className="text-xs text-muted-foreground">
                                   {p.category?.name || '—'}
@@ -2114,7 +2106,7 @@ export function AccountingView() {
                 {/* ─── Inventario Valorizado + Balance Cuentas ────────────── */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Inventario Valorizado */}
-                  <Card>
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                     <CardHeader>
                       <div className="flex items-center gap-2">
                         <Scale className="h-5 w-5 text-muted-foreground" />
@@ -2156,7 +2148,7 @@ export function AccountingView() {
                   </Card>
 
                   {/* Balance de Cuentas Contables */}
-                  <Card>
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                     <CardHeader>
                       <div className="flex items-center gap-2">
                         <BookOpen className="h-5 w-5 text-muted-foreground" />
@@ -2167,7 +2159,7 @@ export function AccountingView() {
                       <div className="max-h-[300px] overflow-y-auto">
                         <Table>
                           <TableHeader>
-                            <TableRow>
+                            <TableRow className="hover:bg-muted/30 transition-colors">
                               <TableHead>Cuenta</TableHead>
                               <TableHead className="text-right w-28">Saldo</TableHead>
                             </TableRow>
@@ -2177,7 +2169,7 @@ export function AccountingView() {
                               const acc = accounts.find((a) => a.name === name)
                               const type = acc?.type || ''
                               return (
-                                <TableRow key={name}>
+                                <TableRow className="hover:bg-muted/30 transition-colors" key={name}>
                                   <TableCell className="text-sm font-medium">{name}</TableCell>
                                   <TableCell className="text-right">
                                     <span
@@ -2197,7 +2189,7 @@ export function AccountingView() {
                 </div>
 
                 {/* ─── Últimos 7 Días ─────────────────────────────────────── */}
-                <Card>
+                <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                   <CardHeader>
                     <div className="flex items-center gap-2">
                       <BarChart3 className="h-5 w-5 text-muted-foreground" />
@@ -2238,7 +2230,7 @@ export function AccountingView() {
                 </Card>
 
                 {/* ─── Ventas por Origen ──────────────────────────────── */}
-                <Card>
+                <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                   <CardHeader>
                     <div className="flex items-center gap-2">
                       <BarChart3 className="h-5 w-5 text-muted-foreground" />
@@ -2297,7 +2289,7 @@ export function AccountingView() {
                 </Card>
 
                 {/* ─── Detalle de Ventas ──────────────────────────────── */}
-                <Card>
+                <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                   <CardHeader>
                     <div className="flex items-center gap-2">
                       <Receipt className="h-5 w-5 text-muted-foreground" />
@@ -2317,7 +2309,7 @@ export function AccountingView() {
                       <div className="max-h-[500px] overflow-y-auto">
                         <Table>
                           <TableHeader>
-                            <TableRow>
+                            <TableRow className="hover:bg-muted/30 transition-colors">
                               <TableHead className="w-[120px]">Fecha</TableHead>
                               <TableHead className="w-[90px]">Orden</TableHead>
                               <TableHead className="w-[100px]">Origen</TableHead>
@@ -2330,7 +2322,7 @@ export function AccountingView() {
                           </TableHeader>
                           <TableBody>
                             {reportData.recentOrders.map((order) => (
-                              <TableRow key={order.id}>
+                              <TableRow className="hover:bg-muted/30 transition-colors" key={order.id}>
                                 <TableCell>
                                   <div className="flex flex-col">
                                     <span className="text-xs font-medium">
@@ -2410,10 +2402,9 @@ export function AccountingView() {
                                   </div>
                                 </TableCell>
                                 <TableCell>
-                                  <Button
-                                    variant="ghost"
+                                  <Button variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7"
+                                    className="h-7 w-7 active:scale-[0.98] transition-all"
                                     title="Imprimir factura"
                                     onClick={() => {
                                       const items: TicketItem[] = order.items.map((item) => ({
@@ -2485,7 +2476,7 @@ export function AccountingView() {
               {openShifts.map((shiftData, shiftIndex) => (
                 <div key={shiftData.shift.id} className="space-y-4">
                   {/* ─── Unified Turno Card ────────────────────────────────── */}
-                  <Card className="relative overflow-hidden">
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
@@ -2504,7 +2495,7 @@ export function AccountingView() {
                           <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 font-semibold">
                             ABIERTA
                           </Badge>
-                          <Button variant="outline" size="sm" onClick={fetchCurrentShift} className="gap-1 h-8">
+                          <Button variant="outline" size="sm" onClick={fetchCurrentShift} className="gap-1 h-8 active:scale-[0.98] transition-all">
                             <Loader2 className="h-3 w-3" />
                             <span className="">Actualizar</span>
                           </Button>
@@ -2600,7 +2591,7 @@ export function AccountingView() {
                       )}
 
                       <div className="flex flex-wrap gap-2 pt-1">
-                        <Button onClick={() => { setSelectedShiftId(shiftData.shift.id); setShowCloseDialog(true) }} variant="destructive" size="sm" className="gap-1.5">
+                        <Button className="gap-1.5 active:scale-[0.98] transition-all" onClick={() => { setSelectedShiftId(shiftData.shift.id); setShowCloseDialog(true) }} variant="destructive" size="sm">
                           <Wallet className="h-3.5 w-3.5" />
                           Cerrar Caja
                         </Button>
@@ -2610,7 +2601,7 @@ export function AccountingView() {
 
                   {/* ─── Últimas Ventas ────────────────────────────────────── */}
                   {shiftData.recentOrders.length > 0 && (
-                    <Card>
+                    <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                       <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
                           <CardTitle className="text-sm">Últimas Ventas del Turno #{shiftIndex + 1}</CardTitle>
@@ -2621,7 +2612,7 @@ export function AccountingView() {
                         <div className="max-h-[300px] overflow-y-auto">
                           <Table>
                             <TableHeader>
-                              <TableRow>
+                              <TableRow className="hover:bg-muted/30 transition-colors">
                                 <TableHead className="w-[100px]">Hora</TableHead>
                                 <TableHead>Orden</TableHead>
                                 <TableHead className="whitespace-nowrap text-xs">Método</TableHead>
@@ -2630,7 +2621,7 @@ export function AccountingView() {
                             </TableHeader>
                             <TableBody>
                               {shiftData.recentOrders.map((order) => (
-                                <TableRow key={order.id}>
+                                <TableRow className="hover:bg-muted/30 transition-colors" key={order.id}>
                                   <TableCell>
                                     <span className="text-xs tabular-nums">{formatTime(order.createdAt)}</span>
                                   </TableCell>
@@ -2660,7 +2651,7 @@ export function AccountingView() {
               ))}
               </>
             ) : (
-              <Card className="relative overflow-hidden">
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-amber-500" />
                 <CardHeader className="pb-0">
                   <div className="flex items-center gap-2">
@@ -2672,7 +2663,7 @@ export function AccountingView() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground mb-3">No hay un turno abierto. Abre la caja para registrar ventas en efectivo.</p>
-                  <Button onClick={() => setShowOpenDialog(true)} className="gap-1.5">
+                  <Button className="gap-1.5 active:scale-[0.98] transition-all" onClick={() => setShowOpenDialog(true)}>
                     <Wallet className="h-4 w-4" />
                     Abrir Caja
                   </Button>
@@ -2682,7 +2673,7 @@ export function AccountingView() {
 
             {/* ─── Last Closed Difference ────────────────────────────────── */}
             {lastClosedShift && (
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm">Último Cierre</CardTitle>
                 </CardHeader>
@@ -2711,7 +2702,7 @@ export function AccountingView() {
                       {formatCurrency(Math.abs(lastClosedShift.shift.difference || 0), currencyCode)}
                     </span>
                   </div>
-                  <Button variant="outline" size="sm" onClick={handlePrintClose} className="gap-1.5 mt-2">
+                  <Button variant="outline" size="sm" onClick={handlePrintClose} className="gap-1.5 mt-2 active:scale-[0.98] transition-all">
                     <Printer className="h-3.5 w-3.5" />
                     Imprimir Cierre
                   </Button>
@@ -2720,17 +2711,17 @@ export function AccountingView() {
             )}
 
             {/* ─── Print Actions ──────────────────────────────────────────── */}
-            <Card>
+            <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Acciones</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={handlePrintDailySummary} className="gap-1.5">
+                  <Button variant="outline" size="sm" onClick={handlePrintDailySummary} className="gap-1.5 active:scale-[0.98] transition-all">
                     <FileText className="h-3.5 w-3.5" />
                     Corte Z del Día
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handlePrintCatalog} className="gap-1.5">
+                  <Button variant="outline" size="sm" onClick={handlePrintCatalog} className="gap-1.5 active:scale-[0.98] transition-all">
                     <Receipt className="h-3.5 w-3.5" />
                     Imprimir Catálogo
                   </Button>
@@ -2739,7 +2730,7 @@ export function AccountingView() {
             </Card>
 
             {/* ─── Shift History ──────────────────────────────────────────── */}
-            <Card>
+            <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
               <CardHeader className="pb-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <CardTitle className="text-base">Historial de Turnos</CardTitle>
@@ -2753,7 +2744,7 @@ export function AccountingView() {
                       <Search className="h-3.5 w-3.5" />
                       Limpiar
                     </Button>
-                    <Button variant="outline" size="sm" onClick={fetchShiftHistory} className="gap-1.5">
+                    <Button variant="outline" size="sm" onClick={fetchShiftHistory} className="gap-1.5 active:scale-[0.98] transition-all">
                       <Loader2 className="h-3.5 w-3.5" />
                       Actualizar
                     </Button>
@@ -2780,7 +2771,7 @@ export function AccountingView() {
                     />
                   </div>
                   <div className="flex items-end">
-                    <Button size="sm" onClick={fetchShiftHistory} className="h-8 gap-1.5">
+                    <Button size="sm" onClick={fetchShiftHistory} className="h-8 gap-1.5 active:scale-[0.98] transition-all">
                       <Search className="h-3.5 w-3.5" />
                       Filtrar
                     </Button>
@@ -2791,7 +2782,7 @@ export function AccountingView() {
                 <div className="max-h-[400px] overflow-y-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow>
+                      <TableRow className="hover:bg-muted/30 transition-colors">
                         <TableHead className="w-[80px]">Responsable</TableHead>
                         <TableHead className="w-[85px]">Hora Apertura</TableHead>
                         <TableHead className="w-[85px]">Hora Cierre</TableHead>
@@ -2805,21 +2796,21 @@ export function AccountingView() {
                     <TableBody>
                       {isLoadingCash ? (
                         Array.from({ length: 5 }).map((_, i) => (
-                          <TableRow key={i}>
+                          <TableRow className="hover:bg-muted/30 transition-colors" key={i}>
                             {Array.from({ length: 8 }).map((_, j) => (
                               <TableCell key={j}><Skeleton className="h-4 w-16" /></TableCell>
                             ))}
                           </TableRow>
                         ))
                       ) : shiftHistory.length === 0 ? (
-                        <TableRow>
+                        <TableRow className="hover:bg-muted/30 transition-colors">
                           <TableCell colSpan={8} className="text-center py-8 text-muted-foreground text-sm">
                             No hay turnos registrados
                           </TableCell>
                         </TableRow>
                       ) : (
                         shiftHistory.map((shift) => (
-                          <TableRow key={shift.id}>
+                          <TableRow className="hover:bg-muted/30 transition-colors" key={shift.id}>
                             <TableCell>
                               <span className="text-xs font-medium truncate max-w-[90px] block">
                                 {shift.user.fullName || 'Usuario'}
@@ -2877,20 +2868,18 @@ export function AccountingView() {
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
+                                <Button variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7"
+                                  className="h-7 w-7 active:scale-[0.98] transition-all"
                                   title="Ver detalles"
                                   onClick={() => handleShowShiftDetail(shift.id)}
                                 >
                                   <ListOrdered className="h-3.5 w-3.5" />
                                 </Button>
                                 {shift.status === 'CLOSED' && (
-                                  <Button
-                                    variant="ghost"
+                                  <Button variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7"
+                                    className="h-7 w-7 active:scale-[0.98] transition-all"
                                     title="Imprimir informe"
                                     onClick={() => handlePrintShiftFromHistory(shift.id)}
                                   >
@@ -2898,10 +2887,9 @@ export function AccountingView() {
                                   </Button>
                                 )}
                                 {shift.status === 'CLOSED' && (
-                                  <Button
-                                    variant="ghost"
+                                  <Button variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/50"
+                                    className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/50 active:scale-[0.98] transition-all"
                                     title="Reabrir turno"
                                     onClick={() => handleReopenShift(shift.id)}
                                   >
@@ -2909,10 +2897,9 @@ export function AccountingView() {
                                   </Button>
                                 )}
                                 {shift.status === 'OPEN' && (
-                                  <Button
-                                    variant="ghost"
+                                  <Button variant="ghost"
                                     size="icon"
-                                    className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50"
+                                    className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50 active:scale-[0.98] transition-all"
                                     title="Eliminar turno"
                                     onClick={() => setDeleteShiftId(shift.id)}
                                   >
@@ -2943,7 +2930,7 @@ export function AccountingView() {
                   {expenses.length} gasto{expenses.length !== 1 ? 's' : ''} registrado{expenses.length !== 1 ? 's' : ''}
                 </p>
               </div>
-              <Button onClick={openCreateExpenseDialog} size="sm" className="gap-1.5">
+              <Button className="gap-1.5 active:scale-[0.98] transition-all" onClick={openCreateExpenseDialog} size="sm">
                 <Receipt className="h-3.5 w-3.5" />
                 Registrar Gasto
               </Button>
@@ -2951,7 +2938,7 @@ export function AccountingView() {
 
             {/* Stats cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-xl bg-red-100 dark:bg-red-950 flex items-center justify-center">
@@ -2966,7 +2953,7 @@ export function AccountingView() {
                   </div>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-xl bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
@@ -2981,7 +2968,7 @@ export function AccountingView() {
                   </div>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-xl bg-violet-100 dark:bg-violet-950 flex items-center justify-center">
@@ -2997,7 +2984,7 @@ export function AccountingView() {
             </div>
 
             {/* Filters */}
-            <Card>
+            <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
               <CardContent className="p-4">
                 <div className="flex flex-col sm:flex-row gap-3 items-end">
                   <div className="w-full sm:w-auto">
@@ -3080,7 +3067,7 @@ export function AccountingView() {
 
             {/* Expenses list */}
             {isLoadingExpenses ? (
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardContent className="p-4">
                   <div className="space-y-3">
                     {Array.from({ length: 5 }).map((_, i) => (
@@ -3094,7 +3081,7 @@ export function AccountingView() {
                 </CardContent>
               </Card>
             ) : expenses.length === 0 ? (
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
                     <Receipt className="h-6 w-6 text-muted-foreground" />
@@ -3106,12 +3093,12 @@ export function AccountingView() {
                 </CardContent>
               </Card>
             ) : (
-              <Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
                 <CardContent className="p-0">
                   {/* Expenses table - responsive */}
                     <Table>
                       <TableHeader>
-                        <TableRow>
+                        <TableRow className="hover:bg-muted/30 transition-colors">
                           <TableHead className="w-[80px] text-xs whitespace-nowrap">Fecha</TableHead>
                           <TableHead className="w-[100px] text-xs whitespace-nowrap">Categoría</TableHead>
                           <TableHead className="text-xs whitespace-nowrap">Descripción</TableHead>
@@ -3121,7 +3108,7 @@ export function AccountingView() {
                       </TableHeader>
                       <TableBody>
                         {expenses.map((expense) => (
-                          <TableRow key={expense.id}>
+                          <TableRow className="hover:bg-muted/30 transition-colors" key={expense.id}>
                             <TableCell className="text-xs tabular-nums whitespace-nowrap">
                               {formatDate(expense.date)}
                             </TableCell>
@@ -3146,18 +3133,16 @@ export function AccountingView() {
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center justify-center gap-1">
-                                <Button
-                                  variant="ghost"
+                                <Button variant="ghost"
                                   size="sm"
-                                  className="h-7 w-7 p-0"
+                                  className="h-7 w-7 p-0 active:scale-[0.98] transition-all"
                                   onClick={() => openEditExpenseDialog(expense)}
                                 >
                                   <Pencil className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button
-                                  variant="ghost"
+                                <Button variant="ghost"
                                   size="sm"
-                                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700 active:scale-[0.98] transition-all"
                                   onClick={() => setDeleteExpenseId(expense.id)}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -3176,7 +3161,7 @@ export function AccountingView() {
 
         {/* ─── Dialog: Open Cash ─────────────────────────────────────────── */}
         <Dialog open={showOpenDialog} onOpenChange={setShowOpenDialog}>
-          <DialogContent>
+          <DialogContent className="backdrop-blur-sm">
             <DialogHeader>
               <DialogTitle>Abrir Caja</DialogTitle>
               <DialogDescription>Registra el saldo inicial en la caja registradora</DialogDescription>
@@ -3205,7 +3190,7 @@ export function AccountingView() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowOpenDialog(false)}>Cancelar</Button>
-              <Button onClick={handleOpenShift} disabled={isSavingShift || !openBalance} className="gap-1.5">
+              <Button className="gap-1.5 active:scale-[0.98] transition-all" onClick={handleOpenShift} disabled={isSavingShift || !openBalance}>
                 {isSavingShift && <Loader2 className="h-4 w-4 animate-spin" />}
                 Abrir Caja
               </Button>
@@ -3218,7 +3203,7 @@ export function AccountingView() {
           if (!open) { setSelectedShiftId(null); setCloseCount({}) }
           setShowCloseDialog(open)
         }}>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto backdrop-blur-sm">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Scale className="h-5 w-5" />
@@ -3389,7 +3374,7 @@ export function AccountingView() {
             })()}
             <DialogFooter className="flex-col gap-2 sm:flex-row">
               <Button variant="outline" onClick={() => { setSelectedShiftId(null); setCloseCount({}); setShowCloseDialog(false) }}>Cancelar</Button>
-              <Button onClick={handleCloseShift} disabled={isSavingShift} variant="destructive" className="gap-1.5">
+              <Button className="gap-1.5 active:scale-[0.98] transition-all" onClick={handleCloseShift} disabled={isSavingShift} variant="destructive">
                 {isSavingShift && <Loader2 className="h-4 w-4 animate-spin" />}
                 <Scale className="h-4 w-4" />
                 Confirmar y Cerrar
@@ -3403,7 +3388,7 @@ export function AccountingView() {
           if (!open) { setDetailShiftId(null); setDetailShiftData(null); setDetailSearch('') }
           setShowDetailDialog(open)
         }}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto backdrop-blur-sm">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <ListOrdered className="h-5 w-5" />
@@ -3463,23 +3448,23 @@ export function AccountingView() {
 
                 {/* Summary Cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <Card className="p-3">
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl p-3">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Órdenes</p>
                     <p className="text-lg font-bold tabular-nums">{detailShiftData.orderSummary.totalOrders}</p>
                   </Card>
-                  <Card className="p-3">
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl p-3">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Ventas Totales</p>
                     <p className="text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
                       {formatCurrency(detailShiftData.orderSummary.totalSales, currencyCode)}
                     </p>
                   </Card>
-                  <Card className="p-3">
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl p-3">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Propinas</p>
                     <p className="text-lg font-bold tabular-nums text-pink-600 dark:text-pink-400">
                       {formatCurrency(detailShiftData.orderSummary.totalTips, currencyCode)}
                     </p>
                   </Card>
-                  <Card className="p-3">
+                  <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl p-3">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Efectivo</p>
                     <p className="text-lg font-bold tabular-nums">
                       {formatCurrency(detailShiftData.orderSummary.cashSales, currencyCode)}
@@ -3536,7 +3521,7 @@ export function AccountingView() {
                       <div className="max-h-[300px] overflow-y-auto rounded-lg border">
                         <Table>
                           <TableHeader>
-                            <TableRow>
+                            <TableRow className="hover:bg-muted/30 transition-colors">
                               <TableHead className="w-[40px] text-center text-[10px]">#</TableHead>
                               <TableHead className="text-[11px]">Producto/Servicio</TableHead>
                               <TableHead className="text-[11px] whitespace-nowrap w-[80px]">Categoría</TableHead>
@@ -3547,7 +3532,7 @@ export function AccountingView() {
                           </TableHeader>
                           <TableBody>
                             {filteredProducts.map((product, idx) => (
-                              <TableRow key={`${product.productId || 'svc'}-${product.serviceId || 'prd'}-${product.name}`}>
+                              <TableRow className="hover:bg-muted/30 transition-colors" key={`${product.productId || 'svc'}-${product.serviceId || 'prd'}-${product.name}`}>
                                 <TableCell className="text-center text-[10px] text-muted-foreground tabular-nums">
                                   {idx + 1}
                                 </TableCell>
@@ -3699,7 +3684,7 @@ export function AccountingView() {
 
         {/* ─── AlertDialog: Delete Shift ────────────────────────────────── */}
         <AlertDialog open={deleteShiftId !== null} onOpenChange={(open) => { if (!open) setDeleteShiftId(null) }}>
-          <AlertDialogContent>
+          <AlertDialogContent className="backdrop-blur-sm">
             <AlertDialogHeader>
               <AlertDialogTitle>¿Eliminar turno?</AlertDialogTitle>
               <AlertDialogDescription>
@@ -3720,7 +3705,7 @@ export function AccountingView() {
         </AlertDialog>
         {/* ─── Dialog: Resetear Saldos ─────────────────────────────────── */}
         <Dialog open={showResetDialog} onOpenChange={(open) => { if (!open) { setShowResetDialog(false); setResetNote('') } }}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-sm backdrop-blur-sm">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <RotateCcw className="h-5 w-5 text-destructive" />
@@ -3781,7 +3766,7 @@ export function AccountingView() {
         </Dialog>
         {/* ─── Confirmación FINAL: Resetear Saldos ─────────────────────── */}
         <AlertDialog open={showResetFinalConfirm} onOpenChange={(open) => { if (!open) setShowResetFinalConfirm(false) }}>
-          <AlertDialogContent className="max-w-sm">
+          <AlertDialogContent className="max-w-sm backdrop-blur-sm">
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
                 <ShieldAlert className="h-5 w-5" />
@@ -3822,7 +3807,7 @@ export function AccountingView() {
         </AlertDialog>
         {/* ─── Dialog: Create/Edit Expense ────────────────────────────────── */}
         <Dialog open={showExpenseDialog} onOpenChange={(open) => { if (!open) setShowExpenseDialog(false) }}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md backdrop-blur-sm">
             <DialogHeader>
               <DialogTitle>{editingExpense ? 'Editar Gasto' : 'Registrar Gasto'}</DialogTitle>
               <DialogDescription>
@@ -3833,7 +3818,7 @@ export function AccountingView() {
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Categoría</Label>
                 <Select value={expenseFormCategory} onValueChange={setExpenseFormCategory}>
-                  <SelectTrigger>
+                  <SelectTrigger className="focus-visible:ring-primary/20 focus-visible:border-primary/40">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -3886,7 +3871,7 @@ export function AccountingView() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowExpenseDialog(false)}>Cancelar</Button>
-              <Button onClick={handleSaveExpense} disabled={isSavingExpense || !expenseFormDescription.trim() || !expenseFormAmount} className="gap-1.5">
+              <Button className="gap-1.5 active:scale-[0.98] transition-all" onClick={handleSaveExpense} disabled={isSavingExpense || !expenseFormDescription.trim() || !expenseFormAmount}>
                 {isSavingExpense && <Loader2 className="h-4 w-4 animate-spin" />}
                 {editingExpense ? 'Guardar Cambios' : 'Registrar Gasto'}
               </Button>
@@ -3896,7 +3881,7 @@ export function AccountingView() {
 
         {/* ─── AlertDialog: Delete Expense ────────────────────────────────── */}
         <AlertDialog open={deleteExpenseId !== null} onOpenChange={(open) => { if (!open) setDeleteExpenseId(null) }}>
-          <AlertDialogContent>
+          <AlertDialogContent className="backdrop-blur-sm">
             <AlertDialogHeader>
               <AlertDialogTitle>¿Eliminar gasto?</AlertDialogTitle>
               <AlertDialogDescription>

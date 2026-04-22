@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import type { User } from '@prisma/client'
 
@@ -40,6 +41,6 @@ export function generateOrderNumber(): string {
   const dateStr = now.getFullYear().toString().slice(2) +
     (now.getMonth() + 1).toString().padStart(2, '0') +
     now.getDate().toString().padStart(2, '0')
-  const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+  const rand = crypto.randomInt(0, 10000).toString().padStart(4, '0')
   return `TK-${dateStr}-${rand}`
 }

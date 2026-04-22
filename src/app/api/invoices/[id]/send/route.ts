@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
 import { generateUBL21XML } from '@/lib/invoicing/xml-generator'
 import { signXMLForDIAN } from '@/lib/invoicing/certificate'
 import { sendBillAsync, pollForStatus } from '@/lib/invoicing/soap-client'
 import { formatInvoiceNumber } from '@/lib/invoice-utils'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
+import { getSoftwareProviderNIT, getSoftwareName, DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,12 +30,11 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const { searchParams } = new URL(request.url)
-    const storeId = Number(searchParams.get('storeId'))
+    const url = new URL(request.url)
+    const storeId = z.coerce.number().int().positive().parse(url.searchParams.get('storeId'))
 
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
-    }
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // 1. Obtener factura con datos completos
     const invoice = await db.invoice.findFirst({
@@ -64,6 +67,9 @@ export async function POST(
             resolutionStartNumber: true,
             resolutionEndNumber: true,
             invoiceTestMode: true,
+            softwarePin: true,
+            divipolaCode: true,
+            cityName: true,
             user: { select: { email: true } },
           },
         },
@@ -97,7 +103,7 @@ export async function POST(
     const taxBreakdown = JSON.parse(invoice.taxBreakdown || '[]')
 
     // Construir line items para el XML
-    const xmlItems = (invoice.order?.orderItems || []).map((item: any, idx: number) => ({
+    const xmlItems = (invoice.order?.orderItems || []).map((item, idx) => ({
       lineNumber: idx + 1,
       description: item.product?.name ?? item.service?.name ?? 'Eliminado',
       quantity: item.quantity,
@@ -113,8 +119,8 @@ export async function POST(
     }))
 
     // Configuracion del proveedor tecnologico (variables de entorno)
-    const softwareProviderNIT = process.env.DIAN_SOFTWARE_PROVIDER_NIT || '900987654'
-    const softwareName = process.env.DIAN_SOFTWARE_NAME || 'Facturacion Electronica'
+    const softwareProviderNIT = getSoftwareProviderNIT()
+    const softwareName = getSoftwareName()
     const softwarePIN = process.env.DIAN_SOFTWARE_PIN || ''
 
     // Nombres de metodo de pago
@@ -143,13 +149,13 @@ export async function POST(
       supplierName: store.name || '',
       supplierLegalName: store.legalName || store.name || '',
       supplierAddress: store.address || '',
-      supplierCityCode: '11001',
-      supplierCityName: store.address || 'Bogota',
+      supplierCityCode: store.divipolaCode || '',
+      supplierCityName: store.cityName || store.address || 'Sin Ciudad',
       supplierPhone: store.phone || '',
       supplierEmail: store.email || store.user?.email || '',
       supplierTaxRegime: '01',
-      supplierMunicipality: store.address || '',
-      customerNit: invoice.customerNit || '222222222222',
+      supplierMunicipality: store.cityName || store.address || '',
+      customerNit: invoice.customerNit || DIAN_CONSUMIDOR_FINAL_NIT,
       customerName: invoice.customerName || 'Consumidor Final',
       customerAddress: invoice.customerAddress || undefined,
       customerPhone: invoice.customerPhone || undefined,
@@ -166,7 +172,7 @@ export async function POST(
       softwareName,
       softwarePIN,
       items: xmlItems,
-      taxTotals: taxBreakdown.map((t: any) => ({
+      taxTotals: taxBreakdown.map((t) => ({
         taxCode: t.code,
         taxableAmount: t.base,
         taxAmount: t.amount,
@@ -182,7 +188,7 @@ export async function POST(
     try {
       xmlContent = generateUBL21XML(xmlInput)
     } catch (error) {
-      console.error('Error generando XML UBL 2.1:', error)
+      logger.error('Error generando XML UBL 2.1:', error)
       return NextResponse.json(
         {
           error: `Error al generar el XML de la factura: ${error instanceof Error ? error.message : 'Desconocido'}`,
@@ -199,7 +205,7 @@ export async function POST(
       finalXml = signResult.signedXml
       signedXml = true
     } catch (signError) {
-      console.warn(
+      logger.warn(
         'Certificado no configurado o error al firmar XML. Se enviara sin firma:',
         signError instanceof Error ? signError.message : 'Desconocido',
       )
@@ -314,7 +320,7 @@ export async function POST(
         : null,
     })
   } catch (error) {
-    console.error('POST /api/invoices/[id]/send error:', error)
+    logger.error('POST /api/invoices/[id]/send error:', error)
     return NextResponse.json(
       { error: 'Error interno al enviar la factura a la DIAN' },
       { status: 500 },

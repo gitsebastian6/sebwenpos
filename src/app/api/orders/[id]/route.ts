@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
+
+const orderDetailParamsSchema = z.object({
+  storeId: z.coerce.number().int().positive(),
+})
 
 // GET /api/orders/[id]?storeId=X
 export async function GET(
@@ -11,11 +18,11 @@ export async function GET(
   try {
     const { id } = await params
     const { searchParams } = new URL(request.url)
-    const storeId = Number(searchParams.get('storeId'))
+    const parsed = orderDetailParamsSchema.parse(Object.fromEntries(searchParams.entries()))
+    const storeId = parsed.storeId
 
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
-    }
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
 
     const order = await db.order.findFirst({
       where: { id: Number(id), storeId },
@@ -74,7 +81,7 @@ export async function GET(
       createdAt: order.createdAt.toISOString(),
       customer: order.customer,
       tableName: order.tableSession?.barTable ? `Mesa ${order.tableSession.barTable.number}` : null,
-      orderItems: order.orderItems.map((item: any) => ({
+      orderItems: order.orderItems.map((item) => ({
         id: item.id,
         productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
         productId: item.productId,
@@ -92,7 +99,10 @@ export async function GET(
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('GET /api/orders/[id] error:', error)
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Parámetros inválidos: ' + error.issues.map(i => i.message).join(', ') }, { status: 400 })
+    }
+    logger.error('GET /api/orders/[id] error:', error)
     return NextResponse.json({ error: 'Error interno' }, { status: 500 })
   }
 }

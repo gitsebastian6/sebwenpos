@@ -1,30 +1,111 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
+import { requireAuth } from '@/lib/api-auth'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
-// ─── DELETE: Clear ALL data ─────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Ventify POS — Seed Route (DEVELOPMENT ONLY)
+// ---------------------------------------------------------------------------
+// This route creates demo data for development/testing purposes.
+//
+// PROTECTION LAYERS:
+//   1. Environment variable: ALLOW_SEED must be "true"
+//   2. Auth middleware: valid token required (Edge middleware)
+//   3. Server-side: SUPER_ADMIN role required
+//
+// In production (ALLOW_SEED != "true"), both DELETE and POST return 404.
+// ---------------------------------------------------------------------------
 
-export async function DELETE() {
+const SEED_ENABLED = process.env.ALLOW_SEED === 'true'
+
+/**
+ * Helper: reject if seed is not enabled or user is not SUPER_ADMIN
+ */
+function rejectIfNotSeedable(req: NextRequest): NextResponse | null {
+  // Layer 1: Environment check
+  if (!SEED_ENABLED) {
+    return NextResponse.json(
+      { error: 'Endpoint deshabilitado en producción' },
+      { status: 404 }
+    )
+  }
+
+  // Layer 2: Auth check
+  const auth = requireAuth(req)
+  if (!('userId' in auth)) return auth
+
+  // Layer 3: SUPER_ADMIN only
+  if (auth.role !== 'SUPER_ADMIN') {
+    return NextResponse.json(
+      { error: 'Acceso restringido a Super Administrador' },
+      { status: 403 }
+    )
+  }
+
+  return null
+}
+
+/**
+ * Helper: safely delete all data using Prisma (no raw SQL)
+ */
+async function deleteAllData() {
+  // Delete in correct dependency order to avoid foreign key errors
+  await db.comandaItem.deleteMany()
+  await db.orderItem.deleteMany()
+  await db.purchaseItem.deleteMany()
+  await db.quotationItem.deleteMany()
+  await db.inventoryMovement.deleteMany()
+  await db.serviceTransaction.deleteMany()
+  await db.journalEntry.deleteMany()
+
+  await db.invoice.deleteMany()
+  await db.contingencyInvoice.deleteMany()
+  await db.creditNote.deleteMany()
+
+  await db.tableSession.deleteMany()
+  await db.order.deleteMany()
+  await db.purchase.deleteMany()
+  await db.quotation.deleteMany()
+  await db.expense.deleteMany()
+
+  await db.cashRegister.deleteMany()
+  await db.customer.deleteMany()
+  await db.provider.deleteMany()
+  await db.service.deleteMany()
+  await db.product.deleteMany()
+
+  await db.taxRate.deleteMany()
+  await db.ledgerAccount.deleteMany()
+  await db.employee.deleteMany()
+  await db.role.deleteMany()
+  await db.barTable.deleteMany()
+  await db.category.deleteMany()
+
+  await db.paymentReceipt.deleteMany()
+  await db.subscription.deleteMany()
+  await db.store.deleteMany()
+  await db.user.deleteMany()
+}
+
+// ─── DELETE: Clear ALL data (SUPER_ADMIN only, dev only) ─────────
+
+export async function DELETE(req: NextRequest) {
+  const rejection = rejectIfNotSeedable(req)
+  if (rejection) return rejection
+
   try {
-    const deleteOrder = [
-      'invoices', 'comanda_items', 'order_items', 'purchase_items',
-      'inventory_movements', 'service_transactions', 'journal_entries',
-      'table_sessions', 'orders', 'purchases',
-      'expenses', 'cash_registers', 'customers', 'providers', 'services',
-      'products', 'tax_rates', 'ledger_accounts',
-      'bar_tables', 'categories', 'stores', 'users',
-    ] as const
+    await deleteAllData()
 
-    for (const table of deleteOrder) {
-      await db.$executeRawUnsafe(`DELETE FROM ${table}`)
-    }
-
-    return NextResponse.json({ message: 'Todos los datos eliminados', cleared: true })
+    return NextResponse.json({
+      message: 'Todos los datos eliminados correctamente',
+      cleared: true,
+    })
   } catch (error) {
-    console.error('Seed delete error:', error)
+    logger.error('Seed delete error:', error)
     return NextResponse.json({ error: 'Error al eliminar datos' }, { status: 500 })
   }
 }
@@ -36,6 +117,9 @@ const resetSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  const rejection = rejectIfNotSeedable(req)
+  if (rejection) return rejection
+
   try {
     // Optionally allow force-reset
     let forceReset = false
@@ -55,24 +139,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (forceReset) {
-      const deleteOrder = [
-        'invoices', 'comanda_items', 'order_items', 'purchase_items',
-        'inventory_movements', 'service_transactions', 'journal_entries',
-        'table_sessions', 'orders', 'purchases',
-        'expenses', 'cash_registers', 'customers', 'providers', 'services',
-        'products', 'tax_rates', 'ledger_accounts',
-        'bar_tables', 'categories', 'stores', 'users',
-      ] as const
-      for (const table of deleteOrder) {
-        await db.$executeRawUnsafe(`DELETE FROM ${table}`)
-      }
+      await deleteAllData()
     }
 
     const passwordHash = await hashPassword('1234')
 
-    // ─── User + Store ─────────────────────────────────────────
+    // ─── User + Store (login por cédula) ───────────────────────
     const user = await db.user.create({
       data: {
+        cedula: '1098765432',
         phone: '3001234567',
         email: 'admin@ventify.com',
         passwordHash,
@@ -81,8 +156,19 @@ export async function POST(req: NextRequest) {
         store: {
           create: {
             name: 'Bar La Terraza',
+            nit: '901234567-8',
+            legalName: 'Bar La Terraza S.A.S',
+            address: 'Cra 15 #82-45, Bogotá',
+            phone: '6013456789',
             currencyCode: 'COP',
             countryCode: 'CO',
+            invoicePrefix: 'FE',
+            resolutionNumber: '18764',
+            resolutionStartDate: new Date('2024-01-01'),
+            resolutionEndDate: new Date('2026-12-31'),
+            resolutionStartNumber: 1,
+            resolutionEndNumber: 10000,
+            invoiceTestMode: true,
           },
         },
       },
@@ -303,13 +389,11 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── Assign Tax Rates to Products ─────────────────────────
-    // Assign default IVA 19% to all products (bar/restaurant default)
     await db.product.updateMany({
       where: { storeId },
       data: { taxRateId: defaultTaxRate.id },
     })
 
-    // Override: Agua and natural juices are tax exempt
     const exemptProducts = await db.product.findMany({
       where: { storeId, name: { contains: 'Agua' } },
       select: { id: true },
@@ -329,6 +413,53 @@ export async function POST(req: NextRequest) {
         data: { taxRateId: exemptTaxRate.id },
       })
     }
+
+    // ─── Services ─────────────────────────────────────────────
+    await db.service.createMany({
+      data: [
+        { storeId, name: 'Copa de Licor', description: 'Porción individual de cualquier licor de la casa', price: 8000, icon: 'Wine', unit: 'servicio' },
+        { storeId, name: 'Cerveza de Barril', description: 'Jarra de cerveza del barril (500ml)', price: 6000, icon: 'Beer', unit: 'jarra' },
+        { storeId, name: 'Mesa de Billar', description: 'Uso de la mesa de billar por hora', price: 15000, icon: 'Gamepad2', unit: 'hora' },
+        { storeId, name: 'Cava Privada', description: 'Uso del espacio privado con botella incluida', price: 120000, icon: 'Lock', unit: 'servicio' },
+        { storeId, name: 'Karaoke', description: 'Uso del equipo de karaoke por hora', price: 20000, icon: 'Mic', unit: 'hora' },
+        { storeId, name: 'Propina Barman', description: 'Propina voluntaria para el barman', price: 0, icon: 'Heart', unit: 'servicio' },
+      ],
+    })
+
+    // ─── Default Roles ────────────────────────────────────────
+    const adminPerms = JSON.stringify({
+      dashboard: true, pos: true, tables: true, products: true,
+      customers: true, providers: true, orders: true, invoices: true,
+      inventory: true, accounting: true, services: true, reports: true,
+      settings: true, quotations: true, manageEmployees: true, manageRoles: true,
+    })
+    const cajeroPerms = JSON.stringify({
+      dashboard: true, pos: true, tables: false, products: false,
+      customers: true, providers: false, orders: true, invoices: false,
+      inventory: false, accounting: false, services: false, reports: false,
+      settings: false, quotations: true, manageEmployees: false, manageRoles: false,
+    })
+    const meseroPerms = JSON.stringify({
+      dashboard: true, pos: false, tables: true, products: false,
+      customers: true, providers: false, orders: true, invoices: false,
+      inventory: false, accounting: false, services: false, reports: false,
+      settings: false, quotations: false, manageEmployees: false, manageRoles: false,
+    })
+    const bartenderPerms = JSON.stringify({
+      dashboard: true, pos: true, tables: true, products: false,
+      customers: true, providers: false, orders: true, invoices: false,
+      inventory: false, accounting: false, services: true, reports: false,
+      settings: false, quotations: false, manageEmployees: false, manageRoles: false,
+    })
+
+    await db.role.createMany({
+      data: [
+        { storeId, name: 'Administrador', description: 'Acceso completo a todos los módulos del sistema', permissions: adminPerms, isDefault: false, isActive: true },
+        { storeId, name: 'Cajero', description: 'Punto de venta, clientes, órdenes y cotizaciones', permissions: cajeroPerms, isDefault: true, isActive: true },
+        { storeId, name: 'Mesero', description: 'Mesas, comandas, clientes y órdenes', permissions: meseroPerms, isDefault: false, isActive: true },
+        { storeId, name: 'Bartender', description: 'POS, mesas, servicios y atención al cliente', permissions: bartenderPerms, isDefault: false, isActive: true },
+      ],
+    })
 
     // ─── Tables ────────────────────────────────────────────────
     const tableData = [
@@ -467,7 +598,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       seeded: true,
       storeId,
-      user: { phone: '3001234567', password: '1234' },
+      user: { cedula: '1098765432', password: '1234' },
       store: { name: 'Bar La Terraza', currencyCode: 'COP' },
       stats: { products: products.length, tables: tables.length, orders: 6, customers: customers.length },
     })
@@ -475,7 +606,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('Seed error:', error)
+    logger.error('Seed error:', error)
     return NextResponse.json({ error: 'Error al sembrar datos' }, { status: 500 })
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireStoreAccess } from '@/lib/api-auth'
 import { z } from 'zod'
 import {
   generateCUFE,
@@ -7,9 +8,15 @@ import {
   getDIANPaymentCode,
   formatInvoiceNumber,
   calculateInvoiceFromOrder,
+  validateNITDV,
 } from '@/lib/invoice-utils'
 import { getNextConsecutive } from '@/lib/invoicing/consecutive-counter'
 import { generateUBL21XML } from '@/lib/invoicing/xml-generator'
+import { signXMLForDIAN } from '@/lib/invoicing/certificate'
+import { sendBillAsync, pollForStatus } from '@/lib/invoicing/soap-client'
+import { logger } from '@/lib/logger'
+import { decryptField } from '@/lib/field-encryption'
+import { getSoftwareProviderNIT, getSoftwareName, DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +24,7 @@ export const dynamic = 'force-dynamic'
 
 const createInvoiceSchema = z.object({
   orderId: z.number().int().positive('El orderId es requerido y debe ser positivo'),
-  customerNit: z.string().max(20).optional().default('222222222222'),
+  customerNit: z.string().max(20).optional().default(DIAN_CONSUMIDOR_FINAL_NIT),
   customerName: z.string().max(200).optional().default('Consumidor Final'),
   customerAddress: z.string().max(300).optional(),
   customerPhone: z.string().max(30).optional(),
@@ -26,6 +33,7 @@ const createInvoiceSchema = z.object({
   customerType: z.enum(['CC', 'NIT', 'CE', 'TI', 'PP']).optional().default('CC'),
   notes: z.string().max(500).optional(),
   testMode: z.boolean().optional().default(true),
+  autoSend: z.boolean().optional().default(false),
 })
 
 // ─── GET: Listar facturas ────────────────────────────────────────────────
@@ -39,12 +47,15 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get('from')
     const to = searchParams.get('to')
     const q = searchParams.get('q')?.trim()
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '50')))
+    const skip = (page - 1) * limit
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
 
-    const where: any = { storeId }
+    const where: Record<string, unknown> = { storeId }
 
     if (status && status !== 'ALL') {
       where.status = status
@@ -74,10 +85,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const invoices = await db.invoice.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      select: {
+    const [total, invoices] = await Promise.all([
+      db.invoice.count({ where }),
+      db.invoice.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
         id: true,
         prefix: true,
         consecutive: true,
@@ -102,9 +117,10 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-    })
+    }),
+    ])
 
-    const result = invoices.map((inv: any) => ({
+    const result = invoices.map((inv) => ({
       id: inv.id,
       invoiceNumber: formatInvoiceNumber(inv.prefix, inv.consecutive),
       prefix: inv.prefix,
@@ -122,9 +138,17 @@ export async function GET(request: NextRequest) {
       validatedAt: inv.validatedAt?.toISOString() ?? null,
     }))
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      data: result,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    })
   } catch (error) {
-    console.error('GET /api/invoices error:', error)
+    logger.error('GET /api/invoices error:', error)
     return NextResponse.json({ error: 'Error interno al consultar facturas' }, { status: 500 })
   }
 }
@@ -165,6 +189,10 @@ export async function POST(req: NextRequest) {
             resolutionStartNumber: true,
             resolutionEndNumber: true,
             invoiceTestMode: true,
+            softwarePin: true,
+            divipolaCode: true,
+            cityName: true,
+            providerConfig: true,
             user: { select: { email: true } },
           },
         },
@@ -173,6 +201,22 @@ export async function POST(req: NextRequest) {
 
     if (!order) {
       return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+    }
+
+    // Auth: verify user has access to this store
+    const storeAccessError = requireStoreAccess(req, order.storeId)
+    if (storeAccessError) return storeAccessError
+
+    // Verify subscription has electronic invoicing feature enabled
+    const subscription = await db.subscription.findFirst({
+      where: { storeId: order.storeId, status: { in: ['ACTIVE', 'TRIAL'] } },
+      select: { id: true },
+    })
+    if (!subscription) {
+      return NextResponse.json(
+        { error: 'Suscripción no activa. Se requiere una suscripción activa para generar facturas electrónicas.' },
+        { status: 403 },
+      )
     }
 
     if (order.status === 'CANCELLED') {
@@ -210,7 +254,7 @@ export async function POST(req: NextRequest) {
     const nextConsecutive = consecutiveResult.consecutive
     const prefix = consecutiveResult.prefix
     if (consecutiveResult.warning) {
-      console.warn(`[Invoice] ${consecutiveResult.warning}`)
+      logger.warn(`[Invoice] ${consecutiveResult.warning}`)
     }
 
     // 5. Calcular campos tributarios desde la orden
@@ -225,8 +269,25 @@ export async function POST(req: NextRequest) {
     const seconds = String(now.getSeconds()).padStart(2, '0')
     const issueTime = `${hours}${minutes}${seconds}000` // HHmmssSSS
 
-    // 7. Generar CUFE
-    const customerNit = data.customerNit || order.customer?.nit || '222222222222'
+    // 7. Generar CUFE (DIAN v2.1 spec — sin separadores)
+    const customerNit = data.customerNit || order.customer?.nit || DIAN_CONSUMIDOR_FINAL_NIT
+
+    // Validar DV del NIT del cliente (excepto consumidor final)
+    if (customerNit !== DIAN_CONSUMIDOR_FINAL_NIT && !validateNITDV(customerNit)) {
+      return NextResponse.json(
+        { error: `El NIT del cliente "${customerNit}" tiene un dígito de verificación (DV) inválido. Verifique e intente de nuevo.` },
+        { status: 400 },
+      )
+    }
+
+    // Leer PIN del software y NIT proveedor desde la tienda
+    const providerConfig = JSON.parse(store.providerConfig || '{}')
+    const softwarePIN = decryptField(store.softwarePin) || process.env.DIAN_SOFTWARE_PIN || ''
+    const providerNit = getSoftwareProviderNIT()
+    const resolutionDate = consecutiveResult.resolutionDate
+      ? consecutiveResult.resolutionDate.toISOString().slice(0, 10).replace(/-/g, '')
+      : ''
+
     const cufe = generateCUFE({
       storeNit: store.nit,
       issueDate,
@@ -239,9 +300,16 @@ export async function POST(req: NextRequest) {
       discountAmount: calculation.discountAmount,
       grandTotal: calculation.grandTotal,
       currencyCode: store.currencyCode || 'COP',
+      resolutionNumber: consecutiveResult.resolutionNumber || '',
+      resolutionDate,
+      pinSoftware: softwarePIN,
+      providerNit,
     })
 
-    // 8. Generar URL del codigo QR
+    // 8. Determinar testMode y generar URL del codigo QR
+    const testMode = data.testMode !== undefined ? data.testMode : (store.invoiceTestMode ?? true)
+
+    // Generar URL del codigo QR
     const dateFormatted = now.toISOString().slice(0, 10) // YYYY-MM-DD
     const qrCode = generateQRCodeURL({
       storeNit: store.nit,
@@ -250,10 +318,9 @@ export async function POST(req: NextRequest) {
       date: dateFormatted,
       grandTotal: calculation.grandTotal,
       cufe,
+      testMode,
     })
 
-    // 9. Determinar estado (usar testMode de la tienda si no se especifico)
-    const testMode = data.testMode !== undefined ? data.testMode : (store.invoiceTestMode ?? true)
     const status = testMode ? 'DRAFT' : 'PENDING_VALIDATE'
 
     // 10. Crear la factura con datos de resolucion DIAN
@@ -275,7 +342,7 @@ export async function POST(req: NextRequest) {
         customerPhone: data.customerPhone || order.customer?.phone || null,
         customerEmail: (data.customerEmail && data.customerEmail !== '') ? data.customerEmail : (order.customer?.email || null),
         customerRegime: data.customerRegime || order.customer?.regime || 'NO_RESPONSABLE',
-        customerType: data.customerType || (order.customer?.documentType as any) || 'CC',
+        customerType: data.customerType || (order.customer?.documentType as string) || 'CC',
         subtotalBase: calculation.subtotalBase,
         taxExemptAmount: calculation.taxExemptAmount,
         taxBreakdown: JSON.stringify(calculation.taxBreakdown),
@@ -296,7 +363,7 @@ export async function POST(req: NextRequest) {
     // 11. Generar XML UBL 2.1 y almacenar
     try {
       const taxBreakdownForXml = JSON.parse(invoice.taxBreakdown || '[]')
-      const xmlItems = (order.orderItems || []).map((item: any, idx: number) => ({
+      const xmlItems = (order.orderItems || []).map((item, idx) => ({
         lineNumber: idx + 1,
         description: item.product?.name ?? item.service?.name ?? 'Eliminado',
         quantity: item.quantity,
@@ -311,8 +378,8 @@ export async function POST(req: NextRequest) {
         notes: item.notes || undefined,
       }))
 
-      const softwareProviderNIT = process.env.DIAN_SOFTWARE_PROVIDER_NIT || '900987654'
-      const softwareName = process.env.DIAN_SOFTWARE_NAME || 'Facturacion Electronica'
+      const softwareProviderNIT = getSoftwareProviderNIT()
+      const softwareName = getSoftwareName()
       const softwarePIN = process.env.DIAN_SOFTWARE_PIN || ''
 
       const paymentMethodNames: Record<string, string> = {
@@ -336,19 +403,19 @@ export async function POST(req: NextRequest) {
         supplierName: store.name || '',
         supplierLegalName: store.legalName || store.name || '',
         supplierAddress: store.address || '',
-        supplierCityCode: '11001',
-        supplierCityName: store.address || 'Bogota',
+        supplierCityCode: store.divipolaCode || '',
+        supplierCityName: store.cityName || store.address || 'Sin Ciudad',
         supplierPhone: store.phone || '',
         supplierEmail: store.email || store.user?.email || '',
         supplierTaxRegime: '01',
-        supplierMunicipality: store.address || '',
+        supplierMunicipality: store.cityName || store.address || '',
         customerNit,
         customerName: data.customerName || order.customer?.name || 'Consumidor Final',
         customerAddress: data.customerAddress || order.customer?.address || undefined,
         customerPhone: data.customerPhone || order.customer?.phone || undefined,
         customerEmail: (data.customerEmail && data.customerEmail !== '') ? data.customerEmail : (order.customer?.email || undefined),
         customerRegime: data.customerRegime || order.customer?.regime || undefined,
-        customerType: data.customerType || (order.customer?.documentType as any) || undefined,
+        customerType: data.customerType || (order.customer?.documentType as string) || undefined,
         lineExtensionAmount: calculation.subtotalBase,
         taxExclusiveAmount: calculation.subtotalBase,
         taxInclusiveAmount: calculation.totalWithTax,
@@ -359,7 +426,7 @@ export async function POST(req: NextRequest) {
         softwareName,
         softwarePIN,
         items: xmlItems,
-        taxTotals: taxBreakdownForXml.map((t: any) => ({
+        taxTotals: taxBreakdownForXml.map((t) => ({
           taxCode: t.code, taxableAmount: t.base, taxAmount: t.amount, taxRate: t.rate, taxName: t.name,
         })),
         paymentMethodCode: paymentMethodCode,
@@ -372,7 +439,77 @@ export async function POST(req: NextRequest) {
         data: { xmlContent },
       })
     } catch (xmlError) {
-      console.warn('[Invoice] Error generando XML UBL 2.1, factura creada sin XML:', xmlError instanceof Error ? xmlError.message : 'Desconocido')
+      logger.warn('[Invoice] Error generando XML UBL 2.1, factura creada sin XML:', xmlError instanceof Error ? xmlError.message : 'Desconocido')
+    }
+
+    // 12. Auto-send to DIAN in background (fire-and-forget)
+    if (data.autoSend) {
+      // Spawn async — don't await so POS gets fast response
+      const invoiceId = invoice.id
+      const storeTestMode = testMode
+      const autoSendPromise = (async () => {
+        try {
+          // Reload invoice with XML content
+          const inv = await db.invoice.findUnique({ where: { id: invoiceId } })
+          if (!inv || !inv.xmlContent) {
+            logger.warn(`[AutoSend] Invoice ${invoiceId}: sin XML, no se puede enviar`)
+            return
+          }
+
+          // Sign XML
+          let finalXml = inv.xmlContent
+          let signed = false
+          try {
+            const signResult = await signXMLForDIAN(inv.xmlContent)
+            finalXml = signResult.signedXml
+            signed = true
+          } catch {
+            logger.warn(`[AutoSend] Invoice ${invoiceId}: sin firma, enviando sin firmar`)
+          }
+
+          // Send to DIAN
+          const sendResult = await sendBillAsync(finalXml, {
+            testMode: storeTestMode,
+            timeout: 30000,
+          })
+
+          if (!sendResult.success || !sendResult.trackId) {
+            await db.invoice.update({
+              where: { id: invoiceId },
+              data: { dianResponse: JSON.stringify({ autoSendError: true, errorMessage: sendResult.errorMessage, errorCode: sendResult.errorCode }) },
+            })
+            logger.error(`[AutoSend] Invoice ${invoiceId}: error enviando a DIAN — ${sendResult.errorMessage}`)
+            return
+          }
+
+          // Update with TrackId
+          await db.invoice.update({
+            where: { id: invoiceId },
+            data: {
+              status: 'PENDING_VALIDATE',
+              sentAt: new Date(),
+              dianResponse: JSON.stringify({ trackId: sendResult.trackId, sentAt: new Date().toISOString(), autoSent: true, signed }),
+            },
+          })
+
+          // Poll for status (max 3 min)
+          const pollResult = await pollForStatus(sendResult.trackId, { testMode: storeTestMode }, { maxAttempts: 36, intervalMs: 5000 })
+
+          const updateData: Record<string, unknown> = {}
+          if (pollResult.statusCode === '10010' || pollResult.statusCode === '10012') {
+            updateData.status = 'VALIDATED'
+            updateData.validatedAt = new Date()
+          } else if (pollResult.statusCode === '10011') {
+            updateData.status = 'REJECTED'
+            updateData.dianErrorCode = pollResult.errorCode || pollResult.statusCode
+          }
+          await db.invoice.update({ where: { id: invoiceId }, data: updateData })
+
+          logger.info(`[AutoSend] Invoice ${invoiceId}: estado final ${pollResult.statusCode || 'PENDIENTE'}`)
+        } catch (err) {
+          logger.error(`[AutoSend] Invoice ${invoiceId}: error inesperado`, err)
+        }
+      })()
     }
 
     return NextResponse.json(
@@ -414,7 +551,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('POST /api/invoices error:', error)
+    logger.error('POST /api/invoices error:', error)
     return NextResponse.json({ error: 'Error interno al crear la factura' }, { status: 500 })
   }
 }

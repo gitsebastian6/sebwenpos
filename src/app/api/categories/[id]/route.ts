@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +31,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     const category = await db.category.update({
       where: { id: categoryId },
       data: {
@@ -50,7 +55,7 @@ export async function PUT(
     if (error instanceof Error && error.message.includes('Unique')) {
       return NextResponse.json({ error: 'Ya existe una categoría con ese nombre' }, { status: 409 })
     }
-    console.error('PUT /api/categories/[id] error:', error)
+    logger.error('PUT /api/categories/[id] error:', error)
     return NextResponse.json({ error: 'Error al actualizar categoría' }, { status: 500 })
   }
 }
@@ -76,6 +81,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 404 })
     }
 
+    const storeAccessErr = requireStoreAccess(req, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     // Remove category from products that reference it, then delete
     await db.product.updateMany({
       where: { categoryId },
@@ -88,7 +96,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('DELETE /api/categories/[id] error:', error)
+    logger.error('DELETE /api/categories/[id] error:', error)
     return NextResponse.json({ error: 'Error al eliminar categoría' }, { status: 500 })
   }
 }

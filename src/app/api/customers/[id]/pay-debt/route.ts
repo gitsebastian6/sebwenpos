@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +31,10 @@ export async function POST(
 
     const { storeId, amount, note } = parsed.data
     const customerId = Number(id)
+
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
+
 
     // Get current customer
     const customer = await db.customer.findUnique({
@@ -71,6 +77,15 @@ export async function POST(
     }> = []
 
     await db.$transaction(async (tx) => {
+      // Re-read customer inside transaction to prevent race condition
+      const freshCustomer = await tx.customer.findFirst({
+        where: { id: customerId, storeId },
+      })
+      if (!freshCustomer || freshCustomer.totalDebt <= 0) {
+        throw new Error('El cliente no tiene deuda')
+      }
+      const effectiveAmount = Math.min(amount, freshCustomer.totalDebt)
+
       for (const order of creditOrders) {
         if (remainingPayment <= 0) break
 
@@ -98,7 +113,7 @@ export async function POST(
       }
 
       // Update customer debt
-      const newDebt = customer.totalDebt - amount
+      const newDebt = freshCustomer.totalDebt - effectiveAmount
       await tx.customer.update({
         where: { id: customerId },
         data: { totalDebt: newDebt },
@@ -129,7 +144,7 @@ export async function POST(
         data: {
           storeId,
           ledgerAccountId: account.id,
-          amount: amount,
+          amount: effectiveAmount,
           direction: 'DEBIT',
           description: `Abono deuda - ${customer.name}${note ? ` (${note})` : ''} [${orderDetails}]`,
           referenceType: 'DEBT_PAYMENT',
@@ -156,7 +171,7 @@ export async function POST(
         data: {
           storeId,
           ledgerAccountId: cxcAccount.id,
-          amount: amount,
+          amount: effectiveAmount,
           direction: 'CREDIT',
           description: `Reducción CxC - Abono ${customer.name}${note ? ` (${note})` : ''} [${orderDetails}]`,
           referenceType: 'DEBT_PAYMENT',
@@ -165,7 +180,7 @@ export async function POST(
       })
     })
 
-    const newDebt = customer.totalDebt - amount
+    const newDebt = Math.max(0, customer.totalDebt - Math.min(amount, customer.totalDebt))
     const fullyPaidOrders = ordersUpdated.filter((o) => o.wasFullyPaid)
     const partiallyPaidOrders = ordersUpdated.filter((o) => !o.wasFullyPaid)
 
@@ -186,7 +201,7 @@ export async function POST(
           : `Abono de $${amount.toLocaleString('es-CO')} registrado. Deuda restante: $${newDebt.toLocaleString('es-CO')}`,
     })
   } catch (error) {
-    console.error('POST /api/customers/[id]/pay-debt error:', error)
+    logger.error('POST /api/customers/[id]/pay-debt error:', error)
     return NextResponse.json({ error: 'Error interno' }, { status: 500 })
   }
 }

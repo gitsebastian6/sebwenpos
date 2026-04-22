@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +39,14 @@ export async function PUT(
       return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 })
     }
 
+    // Check expense exists and validate store access
+    const existing = await db.expense.findUnique({ where: { id: expenseId } })
+    if (!existing) {
+      return NextResponse.json({ error: 'Gasto no encontrado' }, { status: 404 })
+    }
+    const storeAccessErr = requireStoreAccess(request, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
+
     const updateData: Record<string, unknown> = {}
     if (parsed.data.category !== undefined) updateData.category = parsed.data.category
     if (parsed.data.description !== undefined) updateData.description = parsed.data.description
@@ -45,12 +55,6 @@ export async function PUT(
     if (parsed.data.notes !== undefined) updateData.notes = parsed.data.notes
 
     const updated = await db.$transaction(async (tx) => {
-      // Check expense exists
-      const existing = await tx.expense.findUnique({ where: { id: expenseId } })
-      if (!existing) {
-        throw new Error('Gasto no encontrado')
-      }
-
       // Delete old journal entries
       await tx.journalEntry.deleteMany({
         where: { referenceType: 'EXPENSE', referenceId: expenseId },
@@ -110,7 +114,7 @@ export async function PUT(
     return NextResponse.json({ expense: updated })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error interno'
-    console.error('PUT /api/expenses/[id] error:', error)
+    logger.error('PUT /api/expenses/[id] error:', error)
     if (message === 'Gasto no encontrado') {
       return NextResponse.json({ error: message }, { status: 404 })
     }
@@ -131,12 +135,15 @@ export async function DELETE(
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
 
-    await db.$transaction(async (tx) => {
-      const existing = await tx.expense.findUnique({ where: { id: expenseId } })
-      if (!existing) {
-        throw new Error('Gasto no encontrado')
-      }
+    // Check expense exists and validate store access
+    const existing = await db.expense.findUnique({ where: { id: expenseId } })
+    if (!existing) {
+      return NextResponse.json({ error: 'Gasto no encontrado' }, { status: 404 })
+    }
+    const storeAccessErr = requireStoreAccess(request, existing.storeId)
+    if (storeAccessErr) return storeAccessErr
 
+    await db.$transaction(async (tx) => {
       // Delete journal entries first
       await tx.journalEntry.deleteMany({
         where: { referenceType: 'EXPENSE', referenceId: expenseId },
@@ -149,7 +156,7 @@ export async function DELETE(
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error interno'
-    console.error('DELETE /api/expenses/[id] error:', error)
+    logger.error('DELETE /api/expenses/[id] error:', error)
     if (message === 'Gasto no encontrado') {
       return NextResponse.json({ error: message }, { status: 404 })
     }

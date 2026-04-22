@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +18,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const data = adjustmentSchema.parse(body)
+
+    const storeAccessErr = requireStoreAccess(req, data.storeId)
+    if (storeAccessErr) return storeAccessErr
 
     // Verify product exists and belongs to store
     const product = await db.product.findFirst({
@@ -78,7 +83,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
-    console.error('POST /api/inventory/adjustments error:', error)
+    logger.error('POST /api/inventory/adjustments error:', error)
     return NextResponse.json({ error: 'Error al crear ajuste de inventario' }, { status: 500 })
   }
 }
