@@ -24,11 +24,11 @@ import {
   Download, FileSpreadsheet,
 } from 'lucide-react'
 import { exportToExcel } from '@/lib/export-excel'
-import { InventoryActionDialogs } from './inventory-action-dialogs'
+import { InventoryActionDialogs, LOSS_REASONS } from './inventory-action-dialogs'
 import type { InventoryDialogsHandle } from './inventory-action-dialogs'
 import {
   tabLabelMap, getExportData, fdate, fdatetime,
-  PM, MOV_TYPE, MOV_BADGE, EXP_CAT, LOSS_REASONS,
+  PM, MOV_TYPE, MOV_BADGE, EXP_CAT,
   type ReportsData, type ReportProduct,
   type PaymentInfoEntry, type CategoryInfoEntry,
   type TopProduct, type PurchaseItem, type LostSaleItem,

@@ -79,6 +79,14 @@ export const MOV_TYPE: Record<string, string> = {
   PURCHASE: 'Compra', SALE: 'Venta', ADJUSTMENT: 'Ajuste', RETURN: 'Devolución', LOSS: 'Pérdida',
 }
 
+export const MOV_BADGE: Record<string, string> = {
+  PURCHASE: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  SALE: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  ADJUSTMENT: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  RETURN: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+  LOSS: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+}
+
 export const EXP_CAT: Record<string, string> = {
   ARRIENDO: 'Arriendo', SERVICIOS: 'Servicios', NOMINA: 'Nómina', INSUMOS: 'Insumos',
   LICENCIAS: 'Licencias', IMPUESTOS: 'Impuestos', TRANSPORTE: 'Transporte',

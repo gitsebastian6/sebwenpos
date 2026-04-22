@@ -16,7 +16,7 @@ import { RotateCcw, SlidersHorizontal, AlertTriangle, Loader2 } from 'lucide-rea
 import type { ReportProduct } from './reports-export'
 
 // ── Loss Reasons ──
-const LOSS_REASONS: Record<string, string> = {
+export const LOSS_REASONS: Record<string, string> = {
   VENCIDO: 'Vencido', DANADO: 'Dañado', ROBO: 'Robo/Hurto', DERRAME: 'Derrame',
   INVENTARIO: 'Conteo diferencial', OTRO: 'Otro',
 }
