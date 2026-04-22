@@ -41,6 +41,7 @@ import { useTheme } from 'next-themes'
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import dynamic from 'next/dynamic'
+import { ViewErrorBoundary } from '@/components/shared/error-boundary'
 
 const DashboardView = dynamic(() => import('@/components/dashboard/dashboard-view').then(m => ({ default: m.DashboardView })), { ssr: false })
 const POSView = dynamic(() => import('@/components/pos/pos-view').then(m => ({ default: m.POSView })), { ssr: false })
@@ -114,24 +115,22 @@ const menuGroups: { title: string; items: MenuItem[] }[] = [
   },
 ]
 
-const viewLabels: Record<string, string> = {
-  pos: 'Punto de Venta',
-  tables: 'Mesas y Comandas',
-  services: 'Servicios',
-  providers: 'Proveedores',
-  purchases: 'Compras',
-  reports: 'Informes',
-  invoices: 'Facturación Electrónica',
-  settings: 'Configuración',
-  quotations: 'Cotizaciones',
-  employees: 'Empleados',
-  roles: 'Roles y Permisos',
-}
-
 export function AppShell() {
   const { user, store, logout, hasPermission, subscription, availableStores, switchStore, loadAvailableStores } = useAuthStore()
   const { currentView, setView } = useAppStore()
   const { theme, setTheme } = useTheme()
+
+  // ── Listen for error boundary navigation events ──
+  useEffect(() => {
+    function handleNavigate(e: Event) {
+      const view = (e as CustomEvent<string>).detail
+      if (view && view !== currentView) {
+        setView(view as AppView)
+      }
+    }
+    window.addEventListener('ventify:navigate', handleNavigate)
+    return () => window.removeEventListener('ventify:navigate', handleNavigate)
+  }, [currentView, setView])
 
   // ── Load available stores on mount (for multi-store/sucursal support) ──
   useEffect(() => {
@@ -511,25 +510,46 @@ export function AppShell() {
   )
 }
 
+const viewLabels: Record<string, string> = {
+  pos: 'Punto de Venta',
+  tables: 'Mesas y Comandas',
+  services: 'Servicios',
+  providers: 'Proveedores',
+  purchases: 'Compras',
+  reports: 'Informes',
+  invoices: 'Facturación Electrónica',
+  settings: 'Configuración',
+  quotations: 'Cotizaciones',
+  employees: 'Empleados',
+  roles: 'Roles y Permisos',
+  dashboard: 'Dashboard',
+  products: 'Productos',
+  customers: 'Clientes',
+  orders: 'Órdenes',
+  inventory: 'Inventario',
+  accounting: 'Contabilidad',
+}
+
 function ViewRouter({ currentView }: { currentView: AppView }) {
+  const label = viewLabels[currentView] || currentView
   switch (currentView) {
-    case 'dashboard': return <DashboardView />
-    case 'pos': return <POSView />
-    case 'tables': return <TablesView />
-    case 'products': return <ProductsView />
-    case 'customers': return <CustomersView />
-    case 'providers': return <ProvidersView />
-    case 'purchases': return <PurchasesView />
-    case 'orders': return <OrdersView />
-    case 'invoices': return <InvoicesView />
-    case 'quotations': return <QuotationsView />
-    case 'inventory': return <InventoryView />
-    case 'accounting': return <AccountingView />
-    case 'services': return <ServicesView />
-    case 'reports': return <ReportsView />
-    case 'employees': return <EmployeesView />
-    case 'roles': return <RolesView />
-    case 'settings': return <SettingsView />
-    default: return <DashboardView />
+    case 'dashboard': return <ViewErrorBoundary viewName={label}><DashboardView /></ViewErrorBoundary>
+    case 'pos': return <ViewErrorBoundary viewName={label}><POSView /></ViewErrorBoundary>
+    case 'tables': return <ViewErrorBoundary viewName={label}><TablesView /></ViewErrorBoundary>
+    case 'products': return <ViewErrorBoundary viewName={label}><ProductsView /></ViewErrorBoundary>
+    case 'customers': return <ViewErrorBoundary viewName={label}><CustomersView /></ViewErrorBoundary>
+    case 'providers': return <ViewErrorBoundary viewName={label}><ProvidersView /></ViewErrorBoundary>
+    case 'purchases': return <ViewErrorBoundary viewName={label}><PurchasesView /></ViewErrorBoundary>
+    case 'orders': return <ViewErrorBoundary viewName={label}><OrdersView /></ViewErrorBoundary>
+    case 'invoices': return <ViewErrorBoundary viewName={label}><InvoicesView /></ViewErrorBoundary>
+    case 'quotations': return <ViewErrorBoundary viewName={label}><QuotationsView /></ViewErrorBoundary>
+    case 'inventory': return <ViewErrorBoundary viewName={label}><InventoryView /></ViewErrorBoundary>
+    case 'accounting': return <ViewErrorBoundary viewName={label}><AccountingView /></ViewErrorBoundary>
+    case 'services': return <ViewErrorBoundary viewName={label}><ServicesView /></ViewErrorBoundary>
+    case 'reports': return <ViewErrorBoundary viewName={label}><ReportsView /></ViewErrorBoundary>
+    case 'employees': return <ViewErrorBoundary viewName={label}><EmployeesView /></ViewErrorBoundary>
+    case 'roles': return <ViewErrorBoundary viewName={label}><RolesView /></ViewErrorBoundary>
+    case 'settings': return <ViewErrorBoundary viewName={label}><SettingsView /></ViewErrorBoundary>
+    default: return <ViewErrorBoundary viewName="Dashboard"><DashboardView /></ViewErrorBoundary>
   }
 }

@@ -179,10 +179,13 @@ export async function POST(
     } = await import('@/lib/invoice-utils')
     const { getNextCreditNoteConsecutive } = await import('@/lib/invoicing/credit-note-counter')
 
-    // Obtener consecutivo
-    const consecutiveResult = await getNextCreditNoteConsecutive(storeId, data.noteType)
+    // Crear la nota crédito/débito dentro de transacción atómica
+    // (consecutivo + create en la misma tx para evitar race conditions)
+    const creditNote = await db.$transaction(async (tx) => {
+      // Obtener consecutivo dentro de la transacción
+      const consecutiveResult = await getNextCreditNoteConsecutive(storeId, data.noteType, tx)
 
-    // Generar CUDFE
+    // Generar CUDFE (cálculo puro, sin DB)
     const store = invoice.store
     const now = new Date()
     const issueDate = now.toISOString().slice(0, 10).replace(/-/g, '')
@@ -242,8 +245,8 @@ export async function POST(
       )
     }
 
-    // Crear en BD
-    const creditNote = await db.creditNote.create({
+    // Crear en BD (dentro de la transacción)
+    const createdNote = await tx.creditNote.create({
       data: {
         storeId,
         invoiceId: invoice.id,
@@ -282,6 +285,9 @@ export async function POST(
         notes: data.notes || null,
       },
     })
+
+      return createdNote
+    }) // fin de $transaction
 
     return NextResponse.json(
       {

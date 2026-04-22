@@ -386,6 +386,7 @@ model Invoice {
   creditNotes         CreditNote[]
   contingencyInvoices ContingencyInvoice[]
 
+  @@unique([storeId, prefix, consecutive])
   @@index([storeId, createdAt])
   @@index([storeId, status])
   @@map("invoices")
@@ -439,6 +440,7 @@ model CreditNote {
   store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
   invoice  Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
+  @@unique([storeId, prefix, consecutive])
   @@index([storeId])
   @@index([invoiceId])
   @@map("credit_notes")
@@ -483,6 +485,7 @@ model ContingencyInvoice {
   store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
   invoice  Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
+  @@unique([storeId, prefix, consecutive])
   @@index([storeId])
   @@index([invoiceId])
   @@map("contingency_invoices")
@@ -761,6 +764,7 @@ model Order {
   inventoryMovements InventoryMovement[] @relation("OrderMovements")
   invoice            Invoice?
 
+  @@unique([storeId, orderNumber])
   @@index([storeId, createdAt])
   @@index([storeId, status])
   @@index([customerId])
@@ -1073,6 +1077,7 @@ model Quotation {
   customer Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
   items    QuotationItem[]
 
+  @@unique([storeId, quotationNumber])
   @@index([storeId])
   @@index([customerId])
   @@map("quotations")

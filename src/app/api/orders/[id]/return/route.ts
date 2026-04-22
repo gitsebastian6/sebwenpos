@@ -263,8 +263,9 @@ export async function POST(
           })
         }
 
-        // Get next NC consecutive
-        const consecutiveResult = await getNextCreditNoteConsecutive(order.storeId, 'CREDIT')
+        // Get next NC consecutive + create credit note in atomic transaction
+        const creditNote = await db.$transaction(async (tx) => {
+          const consecutiveResult = await getNextCreditNoteConsecutive(order.storeId, 'CREDIT', tx)
 
         // Generate CUDFE
         const now = new Date()
@@ -335,8 +336,8 @@ export async function POST(
           ? JSON.stringify(Object.values(taxBreakdownMap))
           : '[]'
 
-        // Create the Credit Note
-        const creditNote = await db.creditNote.create({
+        // Create the Credit Note (within transaction)
+        const createdNote = await tx.creditNote.create({
           data: {
             storeId: order.storeId,
             invoiceId: invoice.id,
@@ -375,6 +376,9 @@ export async function POST(
             notes: `Auto-generada por devolución de orden #${order.orderNumber}`,
           },
         })
+
+          return createdNote
+        }) // fin de $transaction
 
         creditNoteResult = {
           noteNumber: formatInvoiceNumber(creditNote.prefix, creditNote.consecutive),

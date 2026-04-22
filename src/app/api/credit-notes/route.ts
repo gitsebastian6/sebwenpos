@@ -263,11 +263,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Obtener consecutivo NC/ND
-    const consecutiveResult = await getNextCreditNoteConsecutive(data.storeId, data.noteType)
+    // 4-7. Obtener consecutivo + crear nota crédito/débito dentro de transacción atómica
+    //    Esto previene race conditions donde dos requests obtienen el mismo consecutivo
+    const creditNote = await db.$transaction(async (tx) => {
+      // 4. Obtener consecutivo NC/ND dentro de la transacción
+      const consecutiveResult = await getNextCreditNoteConsecutive(data.storeId, data.noteType, tx)
 
-    // 5. Generar CUDFE
-    const store = invoice.store
+      // 5. Generar CUDFE (cálculo puro, sin DB)
+      const store = invoice.store
     const now = new Date()
     const issueDate = now.toISOString().slice(0, 10).replace(/-/g, '') // YYYYMMDD
     const hours = String(now.getHours()).padStart(2, '0')
@@ -335,8 +338,8 @@ export async function POST(req: NextRequest) {
     const testMode = data.testMode !== undefined ? data.testMode : (store.invoiceTestMode ?? true)
     const status = 'DRAFT'
 
-    // 7. Crear la nota crédito/débito
-    const creditNote = await db.creditNote.create({
+    // 7. Crear la nota crédito/débito (dentro de la transacción)
+    const createdNote = await tx.creditNote.create({
       data: {
         storeId: data.storeId,
         invoiceId: data.invoiceId,
@@ -377,6 +380,9 @@ export async function POST(req: NextRequest) {
         notes: data.notes || null,
       },
     })
+
+      return createdNote
+    }) // fin de $transaction
 
     return NextResponse.json(
       {

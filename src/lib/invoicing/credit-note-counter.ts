@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import type { Prisma } from '@prisma/client'
 
 // ---------------------------------------------------------------------------
 // TIPOS EXPORTADOS
@@ -32,28 +33,28 @@ export interface CreditNoteConsecutiveResult {
  *
  * @param storeId  - ID de la tienda
  * @param noteType - "CREDIT" o "DEBIT"
+ * @param tx       - (Optional) Prisma transaction client for atomic operations
  * @returns Objeto con consecutive, prefix y noteType
  */
 export async function getNextCreditNoteConsecutive(
   storeId: number,
   noteType: string,
+  tx?: Prisma.TransactionClient,
 ): Promise<CreditNoteConsecutiveResult> {
   const prefix = noteType === 'DEBIT' ? 'ND' : 'NC'
+  const client = tx || db
 
-  return await db.$transaction(async (tx) => {
-    // Buscar el último consecutivo para este tipo de nota en esta tienda
-    const lastNote = await tx.creditNote.findFirst({
-      where: { storeId, noteType },
-      orderBy: { consecutive: 'desc' },
-      select: { consecutive: true },
-    })
-
-    const nextConsecutive = (lastNote?.consecutive ?? 0) + 1
-
-    return {
-      consecutive: nextConsecutive,
-      prefix,
-      noteType,
-    }
+  const lastNote = await client.creditNote.findFirst({
+    where: { storeId, noteType },
+    orderBy: { consecutive: 'desc' },
+    select: { consecutive: true },
   })
+
+  const nextConsecutive = (lastNote?.consecutive ?? 0) + 1
+
+  return {
+    consecutive: nextConsecutive,
+    prefix,
+    noteType,
+  }
 }

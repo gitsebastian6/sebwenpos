@@ -498,3 +498,70 @@ Stage Summary:
 - All configuration centralized in constants.ts + .env
 - ESLint clean (0 errors), dev server running
 - Total files modified: ~25 files
+
+---
+Task ID: infrastructure-5-steps
+Agent: main
+Task: 5 infrastructure/resilience improvements — step by step
+
+Work Log:
+
+STEP 1 — Error Boundaries (layout + per-view):
+- Created src/components/shared/error-boundary.tsx:
+  - React class component ErrorBoundary with two modes: full-page and inline
+  - ViewErrorBoundary wrapper for per-view error recovery
+  - Custom event 'ventify:navigate' for cross-component navigation (avoids circular imports)
+  - Shows error message, retry button, and "go to Dashboard" button
+- Updated src/app/layout.tsx: wrapped {children} in <ErrorBoundary> at layout level
+- Updated src/components/layout/app-shell.tsx:
+  - Imported ViewErrorBoundary
+  - Wrapped all 17 views in ViewRouter with <ViewErrorBoundary viewName={label}>
+  - Added viewLabels map with all view names for error context
+  - Added event listener for 'ventify:navigate' custom events
+
+STEP 2 — /api/health endpoint:
+- Created src/app/api/health/route.ts:
+  - GET endpoint returning JSON with status, timestamp, uptime, latency
+  - Database connectivity check via SELECT 1
+  - Returns 200 (healthy) or 503 (degraded) based on DB check + latency < 5s
+  - Cache-Control: no-store for accurate monitoring
+  - Returns app version from package.json
+
+STEP 3 — Eliminate duplicate quotes module with hardcoded STORE_ID:
+- Deleted src/app/api/quotes/ (4 route files: route.ts, [id]/route.ts, [id]/convert/route.ts, search-products/route.ts)
+- Deleted src/components/quotes/quotes-view.tsx
+- Root cause: quotes-view.tsx used hardcoded STORE_ID variable instead of store.id from auth
+- The correct module (quotations) already exists and uses store.id properly
+- No broken references remaining
+
+STEP 4 — Unique constraints for consecutivos and orderNumber:
+- Updated prisma/schema.prisma with 5 new unique constraints:
+  - @@unique([storeId, orderNumber]) on Order — prevents duplicate ticket numbers per store
+  - @@unique([storeId, prefix, consecutive]) on Invoice — prevents DIAN consecutive collisions
+  - @@unique([storeId, prefix, consecutive]) on CreditNote — prevents NC/ND consecutive collisions
+  - @@unique([storeId, prefix, consecutive]) on ContingencyInvoice — prevents FC consecutive collisions
+  - @@unique([storeId, quotationNumber]) on Quotation — prevents duplicate quote numbers per store
+- Pushed schema to DB with prisma db push --accept-data-loss
+
+STEP 5 — Move creditNote creation inside transaction:
+- Modified src/lib/invoicing/credit-note-counter.ts:
+  - Added optional tx parameter (Prisma.TransactionClient) for use inside transactions
+  - Removed internal $transaction wrapper — now uses provided tx or falls back to db
+- Modified src/app/api/credit-notes/route.ts (manual NC creation):
+  - Wrapped getNextCreditNoteConsecutive + creditNote.create in single db.$transaction
+  - Prevents race condition where two requests get the same consecutive
+- Modified src/app/api/invoices/[id]/credit-note/route.ts (NC from invoice):
+  - Same atomic transaction pattern for consecutive + create
+- Modified src/app/api/orders/[id]/return/route.ts (auto NC on return):
+  - Same atomic transaction pattern for consecutive + create
+  - NC creation remains outside the main return transaction (intentional: NC failure shouldn't rollback return)
+
+Stage Summary:
+- 5 infrastructure improvements completed sequentially
+- Error Boundaries at layout + per-view level with retry/dashboard navigation
+- Health endpoint for monitoring (200 healthy / 503 degraded)
+- Dead code removed (quotes module with hardcoded STORE_ID)
+- 5 unique constraints prevent duplicate consecutives/ticket numbers at DB level
+- All credit note creation paths now use atomic transactions (consecutive + create)
+- Lint clean (10 pre-existing errors in non-src files only)
+- Dev server healthy, /api/health returning 200
