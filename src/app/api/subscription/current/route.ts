@@ -44,14 +44,17 @@ export async function GET(req: NextRequest) {
     }
 
     // Auto-transition: ACTIVE/TRIAL → PAST_DUE, PAST_DUE → EXPIRED
+    // Auto-heal: EXPIRED/PAST_DUE → ACTIVE when endDate is still in the future
+    //   (e.g. after a payment extends the period while status was stale)
     const GRACE_PERIOD_DAYS = 3
     const now = new Date()
+    const endDateInFuture = subscription.endDate && new Date(subscription.endDate) > now
+    const endDateInPast = subscription.endDate && new Date(subscription.endDate) <= now
 
-    // Only heal EXPIRED with no cancelReason (never override intentional cancellations)
+    // ── Step 1: Auto-heal EXPIRED or PAST_DUE when endDate is still valid ──
     if (
-      subscription.endDate &&
-      new Date(subscription.endDate) > now &&
-      subscription.status === 'EXPIRED' &&
+      endDateInFuture &&
+      (subscription.status === 'EXPIRED' || subscription.status === 'PAST_DUE') &&
       !subscription.cancelReason
     ) {
       const correctStatus = subscription.billingPeriod === 'TRIAL' ? 'TRIAL' : 'ACTIVE'
@@ -64,9 +67,9 @@ export async function GET(req: NextRequest) {
       logger.warn(`Auto-healed subscription ${subscription.id}: ${prevStatus} → ${correctStatus} (endDate in future)`)
     }
 
+    // ── Step 2: ACTIVE/TRIAL → PAST_DUE when endDate has passed ──
     if (
-      subscription.endDate &&
-      new Date(subscription.endDate) < new Date() &&
+      endDateInPast &&
       (subscription.status === 'TRIAL' || subscription.status === 'ACTIVE')
     ) {
       const graceEnd = new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000)
@@ -91,10 +94,12 @@ export async function GET(req: NextRequest) {
         metadata: { graceEndDate: graceEnd.toISOString() },
       }).catch(() => { /* non-blocking */ })
     }
+
+    // ── Step 3: PAST_DUE → EXPIRED when grace period has passed ──
     if (
       subscription.status === 'PAST_DUE' &&
       subscription.graceEndDate &&
-      new Date(subscription.graceEndDate) < new Date()
+      new Date(subscription.graceEndDate) <= now
     ) {
       await db.subscription.update({
         where: { id: subscription.id },
