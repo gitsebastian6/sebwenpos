@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
+import { useCustomers } from '@/hooks/api/use-customers'
 import { formatCurrency } from '@/lib/auth'
 import type { Customer, OrderHistoryEntry } from '@/types'
 import { paymentMethodLabel } from '@/lib/format'
@@ -52,9 +54,8 @@ import { es } from 'date-fns/locale'
 
 export function CustomersView() {
   const { store } = useAuthStore()
-  const [customers, setCustomers] = useState<Customer[]>([])
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null)
@@ -73,27 +74,12 @@ export function CustomersView() {
   const [payNote, setPayNote] = useState('')
   const [paying, setPaying] = useState(false)
 
-  const fetchCustomers = useCallback(async () => {
-    if (!store?.id) return
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ storeId: store.id.toString() })
-      if (search.trim()) params.set('q', search.trim())
-      const res = await fetch(`/api/customers?${params}`)
-      if (!res.ok) throw new Error('Error al cargar clientes')
-      const json = await res.json()
-      setCustomers(Array.isArray(json) ? json : (json.data || []))
-    } catch {
-      toast.error('Error al cargar clientes')
-    } finally {
-      setLoading(false)
-    }
-  }, [store?.id, search])
-
-  useEffect(() => {
-    const timer = setTimeout(() => fetchCustomers(), 300)
-    return () => clearTimeout(timer)
-  }, [fetchCustomers])
+  // ─── TanStack Query hooks ──────────────────────────────────────────────
+  const customersQuery = useCustomers(store?.id, {
+    search: search || undefined,
+  })
+  const customers = customersQuery.data?.data ?? []
+  const loading = customersQuery.isLoading
 
   function openCreateDialog() {
     setEditingCustomer(null)
@@ -151,7 +137,7 @@ export function CustomersView() {
         toast.success('Cliente creado')
       }
       setDialogOpen(false)
-      fetchCustomers()
+      queryClient.invalidateQueries({ queryKey: ['customers'] })
     } catch {
       toast.error(editingCustomer ? 'Error al actualizar cliente' : 'Error al crear cliente')
     } finally {
@@ -211,7 +197,7 @@ export function CustomersView() {
       setPayingCustomer(null)
       setPayAmount('')
       setPayNote('')
-      fetchCustomers()
+      queryClient.invalidateQueries({ queryKey: ['customers'] })
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al registrar abono')
     } finally {

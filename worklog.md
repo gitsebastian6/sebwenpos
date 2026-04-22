@@ -634,3 +634,117 @@ Stage Summary:
 - All business logic preserved, no UI/behavior changes
 - TypeScript strict-mode clean (0 new errors)
 - ESLint clean (0 new errors, only pre-existing require() errors in non-src files)
+---
+Task ID: 4
+Agent: main
+Task: Refactor settings-view monolithic component (3,161 lines) into smaller hooks + sub-components
+
+Work Log:
+- Read full settings-view.tsx (3,161 lines) and identified 5 logical sections:
+  1. SubscriptionPaymentPanel (lines 92-1378) — 1,287 lines
+  2. SubscriptionHistoryPanel (lines 1381-1569) — 190 lines
+  3. SecurityQuestionCard (lines 1618-1835) — 217 lines
+  4. SettingsView business/personal/invoice/taxes tab content (lines 1836-3161) — 1,325 lines
+
+- Created src/components/settings/subscription-payment-panel.tsx (1,536 lines):
+  - Extracted SubscriptionPaymentPanel + SubscriptionHistoryPanel (now in same file)
+  - Exported PlanOption interface and BILLING_PERIODS constant
+  - Self-contained: manages own state, reads store from useAuthStore, saves independently
+  - Fixed JSX: used &quot; instead of raw quotes for attribute strings
+
+- Created src/components/settings/security-question-card.tsx (251 lines):
+  - Self-contained: manages own state, reads user/token from useAuthStore
+  - Includes SECURITY_QUESTIONS constant and all CRUD operations
+
+- Created src/components/settings/business-settings-tab.tsx (153 lines):
+  - Self-contained: manages storeName, storeAddress, storePhone, storeCurrency
+  - Saves via PUT /api/stores and calls updateStore()
+
+- Created src/components/settings/personal-settings-tab.tsx (141 lines):
+  - Self-contained: manages userFullName, userEmail, userCedula
+  - Includes SecurityQuestionCard component
+  - Saves via PUT /api/users and calls updateUser()
+
+- Created src/components/settings/invoice-settings-tab.tsx (507 lines):
+  - Self-contained: manages legal name, NIT, DIVIPOLA, DIAN resolution fields
+  - 3 separate save buttons (one per section), each saves independently
+  - Uses existing EInvoicingConfig component
+  - Invoice preview reads store name/address from useAuthStore (not local state)
+
+- Created src/components/settings/tax-rates-panel.tsx (637 lines):
+  - Self-contained: manages all tax rate CRUD operations
+  - Exports shared constants: DIAN_CODES, CATEGORY_LABELS, CATEGORY_COLORS, APPLY_TO_LABELS
+  - Includes create/edit dialog with all form fields
+
+- Rewrote src/components/settings/settings-view.tsx (76 lines):
+  - Slim tab compositor importing all sub-components
+  - 5 tabs: Negocio, Personal, Facturación, Suscripción, IVA
+  - Exports SettingsView (preserved for dynamic import in app-shell.tsx)
+
+- Fixed lint error: added missing Separator import in tax-rates-panel.tsx
+
+Stage Summary:
+- settings-view.tsx reduced from 3,161 to 76 lines (97.6% reduction)
+- 6 new files created in src/components/settings/
+- All business logic preserved, no UI/behavior changes
+- Each component is self-contained (reads from useAuthStore, manages own state, saves independently)
+- Lint clean (0 new errors, only pre-existing require() errors in non-src files)
+- Total: 3,301 lines across 7 files (was 3,161 in 1 file)
+
+---
+Task ID: 6
+Agent: main
+Task: Refactor accounting-view monolithic component (3,903 lines) into smaller sub-components
+
+Work Log:
+- Read full accounting-view.tsx (3,903 lines) and identified 6 tab-based sections + shared types/constants
+- Created src/components/accounting/accounting-types.ts (292 lines):
+  - All shared types: LedgerAccount, JournalEntry, ReportData, CashShift, CashShiftSummary, Expense
+  - All shared constants: ACCOUNT_TYPE_LABELS/COLORS, DIRECTION_BADGE_CLASSES, REFERENCE_TYPE_LABELS, PAYMENT_METHOD_LABELS/COLORS, CATEGORY_COLORS, EXPENSE_CATEGORIES/LABELS/COLORS, cash register payment helpers
+  - All shared helpers: formatTime, formatBalance, getBalanceColor, formatDayLabel, normalizePaymentMethod, getCanonicalMethods, getExpectedForCanonical
+  - Re-exported formatDateShort and formatCurrency for convenience
+- Created src/components/accounting/accounts-tab.tsx (131 lines):
+  - Self-contained: renders account catalog grid with loading/empty states
+  - Props: accounts, isLoadingAccounts, currencyCode, onRefresh, onViewMovements
+- Created src/components/accounting/movements-tab.tsx (296 lines):
+  - Self-contained: manages entries state, filter state, fetches entries via useAuthStore
+  - Props: accounts, currencyCode, initialAccountId (from accounts tab navigation)
+- Created src/components/accounting/summary-tab.tsx (257 lines):
+  - Pure computed component: derives income/expense/asset calculations from accounts data
+  - Props: accounts, currencyCode
+- Created src/components/accounting/reports-tab.tsx (1,131 lines):
+  - Self-contained: manages report fetching, report state, date filters
+  - Includes: KPI cards, sales by payment/category, top products, customer debts, low stock
+  - Includes: inventory valuation, account balances, daily sales chart, sales by source
+  - Includes: detailed sales report with print per order
+  - Includes: Reset Debts dialog + Final Confirmation dialog
+  - Includes: Print handlers for daily summary (Corte Z), product catalog, kardex
+- Created src/components/accounting/cash-register-tab.tsx (1,351 lines):
+  - Self-contained: manages all cash register state (open shifts, history, detail)
+  - Includes: Open shift dialog, Close shift dialog (with payment method count breakdown)
+  - Includes: Shift detail dialog (products invoiced, orders, payment breakdown)
+  - Includes: Delete shift confirmation dialog
+  - Includes: Print actions (Corte Z, catalog)
+- Created src/components/accounting/expenses-tab.tsx (467 lines):
+  - Self-contained: manages expense CRUD, filters, stats calculations
+  - Includes: Create/Edit expense dialog, Delete expense confirmation dialog
+  - Stats: total monthly, daily, top category
+- Rewrote src/components/accounting/accounting-view.tsx (155 lines):
+  - Slim tab compositor importing all 6 tab components
+  - Manages shared state: activeTab, accounts, isLoadingAccounts, movementsFilterAccount
+  - Handles cross-tab navigation: handleViewMovements switches to movimientos tab with account filter
+  - Passes onAccountsChanged callback to reports and expenses tabs
+  - Exported AccountingView (preserved for dynamic import in app-shell.tsx)
+- Fixed TypeScript errors: added proper type assertions for JSON.parse results, optional chaining
+- Fixed ESLint parsing error: replaced invalid `type` keyword in dynamic import with static imports
+- ESLint clean (0 new errors, only pre-existing require() errors in non-src files)
+- TypeScript strict-mode clean (0 errors in accounting files)
+
+Stage Summary:
+- accounting-view.tsx reduced from 3,903 to 155 lines (96% reduction)
+- 7 new files created in src/components/accounting/
+- Total: 4,080 lines across 8 files (was 3,903 in 1 file)
+- All business logic preserved, no UI/behavior changes
+- Each component is self-contained (reads from useAuthStore, manages own state)
+- Cross-tab communication via props (onAccountsChanged, onViewMovements, initialAccountId)
+- Lint clean, TypeScript compiles successfully

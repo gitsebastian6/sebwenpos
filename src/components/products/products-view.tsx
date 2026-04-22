@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
+import { useProducts } from '@/hooks/api/use-products'
+import { useCategories } from '@/hooks/api/use-categories'
 import { useAppStore } from '@/stores/app-store'
 import { formatCurrency } from '@/lib/auth'
 import type { Product, Category, Provider, TaxRate, TraceMovement } from '@/types'
@@ -147,22 +150,32 @@ const MOV_TYPE_LABELS: Record<string, string> = {
 export function ProductsView() {
   const { store } = useAuthStore()
   const { setView } = useAppStore()
+  const queryClient = useQueryClient()
 
-  const [products, setProducts] = useState<Product[]>([])
   const [maxProducts, setMaxProducts] = useState<number | null>(null) // Plan limit (null = unlimited)
   const [planName, setPlanName] = useState<string | null>(null)
-  const [categories, setCategories] = useState<Category[]>([])
   const [providers, setProviders] = useState<Provider[]>([])
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
-  const [productsLoading, setProductsLoading] = useState(true)
   const [subscriptionLoading, setSubscriptionLoading] = useState(true)
-  const [categoriesLoading, setCategoriesLoading] = useState(true)
 
-  // Products state
+  // Products state (declared before hooks so they can be used as dependencies)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [activeFilter, setActiveFilter] = useState<string>('all')
   const [sortOrder, setSortOrder] = useState<'default' | 'az' | 'za'>('default')
+
+  // ─── TanStack Query hooks ──────────────────────────────────────────────
+  const productsQuery = useProducts(store?.id, {
+    search: searchQuery || undefined,
+    categoryId: categoryFilter,
+    active: activeFilter,
+  })
+  const categoriesQuery = useCategories(store?.id)
+
+  const products = productsQuery.data?.data ?? []
+  const productsLoading = productsQuery.isLoading
+  const categories = categoriesQuery.data ?? []
+  const categoriesLoading = categoriesQuery.isLoading
 
   // Product dialog
   const [productDialogOpen, setProductDialogOpen] = useState(false)
@@ -254,20 +267,6 @@ export function ProductsView() {
 
   // ─── Data Fetching ──────────────────────────────────────────────────────
 
-  const fetchCategories = useCallback(async () => {
-    if (!store?.id) return
-    try {
-      const res = await fetch(`/api/categories?storeId=${store.id}`)
-      if (!res.ok) throw new Error('Error cargando categorías')
-      const data = await res.json()
-      setCategories(data)
-    } catch {
-      toast.error('Error al cargar categorías')
-    } finally {
-      setCategoriesLoading(false)
-    }
-  }, [store?.id])
-
   const fetchProviders = useCallback(async () => {
     if (!store?.id) return
     try {
@@ -310,37 +309,11 @@ export function ProductsView() {
     }
   }, [store?.id])
 
-  const fetchProducts = useCallback(async () => {
-    if (!store?.id) return
-    setProductsLoading(true)
-    try {
-      const params = new URLSearchParams({ storeId: String(store.id) })
-      if (searchQuery) params.set('q', searchQuery)
-      if (categoryFilter !== 'all') params.set('categoryId', categoryFilter)
-      if (activeFilter !== 'all') params.set('active', activeFilter)
-
-      const res = await fetch(`/api/products?${params.toString()}`)
-      if (!res.ok) throw new Error('Error cargando productos')
-      const data = await res.json()
-      // API returns { data: [...], pagination: {...} } or [...]
-      setProducts(Array.isArray(data) ? data : (data.data || []))
-    } catch {
-      toast.error('Error al cargar productos')
-    } finally {
-      setProductsLoading(false)
-    }
-  }, [store?.id, searchQuery, categoryFilter, activeFilter])
-
   useEffect(() => {
-    fetchCategories()
     fetchProviders()
     fetchTaxRates()
     fetchSubscriptionLimits()
-  }, [fetchCategories, fetchProviders, fetchTaxRates, fetchSubscriptionLimits])
-
-  useEffect(() => {
-    fetchProducts()
-  }, [fetchProducts])
+  }, [fetchProviders, fetchTaxRates, fetchSubscriptionLimits])
 
   // ─── Product Handlers ──────────────────────────────────────────────────
 
@@ -417,8 +390,8 @@ export function ProductsView() {
 
       toast.success(isEditing ? 'Producto actualizado' : 'Producto creado')
       setProductDialogOpen(false)
-      fetchProducts()
-      fetchCategories()
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['categories'] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar producto')
     } finally {
@@ -435,7 +408,7 @@ export function ProductsView() {
       })
       if (!res.ok) throw new Error()
       toast.success(product.isActive ? 'Producto desactivado' : 'Producto activado')
-      fetchProducts()
+      queryClient.invalidateQueries({ queryKey: ['products'] })
     } catch {
       toast.error('Error al cambiar estado del producto')
     }
@@ -486,7 +459,7 @@ export function ProductsView() {
 
       toast.success(isEditing ? 'Categoría actualizada' : 'Categoría creada')
       setCategoryDialogOpen(false)
-      fetchCategories()
+      queryClient.invalidateQueries({ queryKey: ['categories'] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar categoría')
     } finally {
@@ -516,8 +489,8 @@ export function ProductsView() {
           : 'Categoría eliminada'
       )
       setDeleteTarget(null)
-      if (deleteTarget.type === 'product') fetchProducts()
-      fetchCategories()
+      if (deleteTarget.type === 'product') queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['categories'] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al eliminar')
     } finally {
@@ -584,7 +557,7 @@ export function ProductsView() {
       if (!res.ok) throw new Error()
       toast.success('Stock ajustado')
       setAdjustDialogOpen(false)
-      fetchProducts()
+      queryClient.invalidateQueries({ queryKey: ['products'] })
     } catch { toast.error('Error al ajustar stock') }
     finally { setActionSubmitting(false) }
   }
@@ -602,7 +575,7 @@ export function ProductsView() {
       if (!res.ok) throw new Error()
       toast.success('Pérdida registrada')
       setLossDialogOpen(false)
-      fetchProducts()
+      queryClient.invalidateQueries({ queryKey: ['products'] })
     } catch { toast.error('Error al registrar pérdida') }
     finally { setActionSubmitting(false) }
   }
@@ -620,7 +593,7 @@ export function ProductsView() {
       if (!res.ok) throw new Error()
       toast.success('Devolución registrada')
       setReturnDialogOpen(false)
-      fetchProducts()
+      queryClient.invalidateQueries({ queryKey: ['products'] })
     } catch { toast.error('Error al registrar devolución') }
     finally { setActionSubmitting(false) }
   }
@@ -643,8 +616,8 @@ export function ProductsView() {
       }
       setImportResult(data)
       if (data.imported > 0) {
-        fetchProducts()
-        fetchCategories()
+        queryClient.invalidateQueries({ queryKey: ['products'] })
+        queryClient.invalidateQueries({ queryKey: ['categories'] })
         fetchProviders()
       }
     } catch (err) {
@@ -659,7 +632,7 @@ export function ProductsView() {
     setImportFile(null)
     setImportResult(null)
     // Refresh all lists when closing — import may have created new categories/providers
-    fetchCategories()
+    queryClient.invalidateQueries({ queryKey: ['categories'] })
     fetchProviders()
   }
 

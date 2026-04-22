@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useDashboard } from '@/hooks/api/use-dashboard'
 import type { OpenTable } from '@/types'
 import { formatCurrency } from '@/lib/auth'
 import {
@@ -64,31 +64,7 @@ import {
 } from '@/components/ui/tooltip'
 
 // ── Types ───────────────────────────────────────────────
-
-interface KPIS {
-  sales: {
-    today: number; yesterday: number; variance: number
-    thisMonth: number; lastMonth: number; monthVariance: number
-    thisYear: number
-  }
-  profitability: {
-    today: { revenue: number; cogs: number; grossProfit: number; margin: number; avgTicket: number }
-    month: { revenue: number; cogs: number; grossProfit: number; margin: number; netRevenue: number; netProfit: number; discounts: number; tips: number }
-    year: { revenue: number; cogs: number; grossProfit: number; margin: number }
-  }
-  inventory: { totalCost: number; daysOfInventory: number; avgDailyCOGS: number }
-  losses: { outOfStockCount: number; outOfStockValue: number; estimatedLostDailyRevenue: number; estimatedLostMonthlyRevenue: number }
-  breakEven: { monthlyFixedCosts: number; variableCostRatio: number; contributionMargin: number; breakEvenPoint: number; distanceToBreakEven: number; achievedPercent: number }
-  operational: { ordersToday: number; ordersThisMonth: number; avgTicketMonth: number; totalDebt: number; openTablesCount: number; openTables: OpenTable[] }
-}
-
-interface DashboardData {
-  kpis: KPIS
-  salesByDay: { date: string; total: number }[]
-  topProducts: Array<{ product: { id: number; name: string; imgUrl?: string | null } | null; totalQuantity: number; totalRevenue: number; totalCOGS: number; grossProfit: number; marginPercent: number }>
-  lowStockProducts: Array<{ id: number; name: string; currentStock: number; minStock: number }>
-  recentOrders: Array<{ id: number; orderNumber: string; status: string; total: number; customerName: string | null; createdAt: string }>
-}
+// DashboardData imported from @/hooks/api/use-dashboard
 
 // ── Chart Config ────────────────────────────────────────
 
@@ -212,34 +188,15 @@ function KPICard({
 
 export function DashboardView() {
   const store = useAuthStore((s) => s.store)
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, isLoading, error, refetch } = useDashboard(store?.id)
 
-  const fetchDashboard = useCallback(async () => {
-    if (!store) return
-    try {
-      setLoading(true)
-      setError(null)
-      const res = await fetch(`/api/dashboard?storeId=${store.id}`)
-      if (!res.ok) throw new Error('Error al cargar datos')
-      setData(await res.json())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error desconocido')
-    } finally {
-      setLoading(false)
-    }
-  }, [store])
-
-  useEffect(() => { fetchDashboard() }, [fetchDashboard])
-
-  if (loading) return <DashboardSkeleton />
+  if (isLoading) return <DashboardSkeleton />
   if (error) return (
     <Card className="border-destructive/50 rounded-xl"><CardContent className="p-6">
       <div className="flex flex-col items-center gap-3 text-center">
         <AlertTriangle className="h-10 w-10 text-destructive animate-pulse" />
         <p className="font-semibold">Error al cargar</p>
-        <button onClick={fetchDashboard} className="text-sm text-primary underline">Reintentar</button>
+        <button onClick={() => refetch()} className="text-sm text-primary underline">Reintentar</button>
       </div>
     </CardContent></Card>
   )
