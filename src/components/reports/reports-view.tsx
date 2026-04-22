@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
 import { KPIBar } from '@/components/shared/kpi-bar'
@@ -11,14 +11,6 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -32,109 +24,20 @@ import {
   Download, FileSpreadsheet,
 } from 'lucide-react'
 import { exportToExcel } from '@/lib/export-excel'
-
-// ── Payment labels ──
-const PM: Record<string, string> = {
-  CASH: 'Efectivo', NEQUI: 'Nequi', CARD: 'Tarjeta', DAVIPLATA: 'Daviplata',
-  TRANSFER: 'Transferencia', MIXED: 'Mixto', CREDIT: 'Fiado',
-}
-
-const MOV_TYPE: Record<string, string> = {
-  PURCHASE: 'Compra', SALE: 'Venta', ADJUSTMENT: 'Ajuste', RETURN: 'Devolución', LOSS: 'Pérdida',
-}
-
-const MOV_BADGE: Record<string, string> = {
-  PURCHASE: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
-  SALE: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
-  ADJUSTMENT: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
-  RETURN: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400',
-  LOSS: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
-}
-
-const EXP_CAT: Record<string, string> = {
-  ARRIENDO: 'Arriendo', SERVICIOS: 'Servicios', NOMINA: 'Nómina', INSUMOS: 'Insumos',
-  LICENCIAS: 'Licencias', IMPUESTOS: 'Impuestos', TRANSPORTE: 'Transporte',
-  MANTENIMIENTO: 'Mantenimiento', OTRO: 'Otro',
-}
-
-const LOSS_REASONS: Record<string, string> = {
-  VENCIDO: 'Vencido', DANADO: 'Dañado', ROBO: 'Robo/Hurto', DERRAME: 'Derrame',
-  INVENTARIO: 'Conteo diferencial', OTRO: 'Otro',
-}
-
-// ── Report Types ──
-interface ReportProduct { id: string; name: string; sku: string | null; currentStock: number }
-interface SalesPaymentEntry { count: number; total: number }
-interface SalesCategoryEntry { qty: number; total: number }
-interface TopProduct { name: string; total: number; qty: number }
-interface PurchaseItem { id: number; date: string; provider?: { name: string } | null; invoiceNumber: string | null; total: number }
-interface LostSaleItem { id: number; name: string; salePrice: number; sold30d: number; avgDaily: number }
-interface DiscountItem { id: number; createdAt: string; customer?: { name: string } | null; discountType: string; discountReason: string | null; discountAmount: number; total: number }
-interface CashRegister { id: number; openedAt: string; closedAt: string | null; user: string; openingBalance: number; expectedCash: number | null; closingBalance: number | null; difference: number | null; status: string; notes?: string }
-interface CommissionItem { id: number; createdAt: string; service?: { name: string; price: number } | null; quantity: number; unitPrice: number; totalAmount: number }
-interface ExpenseItem { id: number; date: string; category: string; description: string; amount: number; notes?: string }
-interface ReturnItem { id: number; createdAt: string; product?: { name: string; salePrice: number } | null; quantity: number; notes: string | null }
-interface AdjustmentItem { id: number; createdAt: string; product?: { name: string; currentStock: number; salePrice: number } | null; quantity: number; notes: string | null }
-interface TraceabilityItem { id: number; createdAt: string; movementType: string; productId: number; quantity: number; notes: string | null; referenceId?: string; product?: { name: string; costPrice: number; salePrice: number; category?: { name: string } | null } | null }
-interface QuoteItem { id: number; createdAt: string; quotationNumber: string; customerName: string | null; customer?: { name: string } | null; total: number; items?: unknown[]; status: string }
-interface InvoiceItem { id: number; createdAt: string; invoiceNumber: string; customerName: string; grandTotal: number; status: string; testMode: boolean }
-interface CreditNoteItem { id: number; createdAt: string; noteNumber: string; noteType: string; customerName: string; totalAmount: number; status: string; invoiceNumber: string | null }
-interface DebtItem { id: number; name: string; phone: string | null; totalDebt: number }
-interface IvaByCode { name: string; code: string; rate: number; base: number; amount: number }
-interface IvaOrder { id: number; orderNumber: string; createdAt: string; taxAmount: number; subtotal: number; total: number; customer?: { name: string } | null }
-interface TaxItem { id: number; date: string; description: string; amount: number; notes?: string }
-interface ExpenseCategoryEntry { count: number; total: number }
-type PaymentInfoEntry = [string, SalesPaymentEntry]
-type CategoryInfoEntry = [string, SalesCategoryEntry]
-
-interface ReportsData {
-  localEnCifras: {
-    salesToday: number; ordersToday: number; salesMonth: number; ordersMonth: number;
-    lastMonthSales: number; monthVariance: number; tipsMonth: number;
-    openTables: number; totalDebt: number; debtCount: number;
-  }
-  sales: {
-    total: number; orderCount: number; avgTicket: number;
-    byPayment: Record<string, SalesPaymentEntry>; byCategory: Record<string, SalesCategoryEntry>;
-    bySource: Record<string, SalesPaymentEntry>; topProducts: TopProduct[];
-  }
-  purchases: { items: PurchaseItem[]; total: number; byProvider: Record<string, { count: number; total: number }> }
-  inventory: {
-    totalCostValue: number; totalRetailValue: number; totalProducts: number;
-    daysOfInventory: number; outOfStockCount: number; lowStockCount: number; avgDailyCOGS: number;
-  }
-  profitability: {
-    revenue: number; cogs: number; grossProfit: number; grossMargin: number;
-    netRevenue: number; netProfit: number; netMargin: number; discounts: number; tips: number;
-  }
-  breakEven: {
-    breakEvenPoint: number; distanceToBreakEven: number; achievedPercent: number;
-    fixedCosts: number; variableCostRatio: number; contributionMargin: number;
-  }
-  lostSales: LostSaleItem[]
-  returns: { items: ReturnItem[]; totalValue: number }
-  cashRegisters: CashRegister[]
-  commissions: { items: CommissionItem[]; total: number; count: number }
-  adjustments: { items: AdjustmentItem[]; count: number }
-  taxes: { items: TaxItem[]; total: number; count: number }
-  expenses: { items: ExpenseItem[]; total: number; byCategory: Record<string, ExpenseCategoryEntry> }
-  discounts: { items: DiscountItem[]; total: number; count: number }
-  traceability: TraceabilityItem[]
-  debts: DebtItem[]
-  quotes: QuoteItem[]
-  quotesSummary: { activeCount: number; activeTotal: number; convertedCount: number; totalCount: number } | null
-  invoices: InvoiceItem[]
-  invoicesSummary: { total: number; count: number; validated: number; pending: number; rejected: number }
-  creditNotes: CreditNoteItem[]
-  creditNotesSummary: { total: number; count: number; creditCount: number; debitCount: number }
-  ivaCollected: {
-    total: number; totalBase: number; count: number;
-    byCode: IvaByCode[]; orders: IvaOrder[];
-  }
-}
-
-function fdate(d: string) { return new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) }
-function fdatetime(d: string) { return new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' ' + new Date(d).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) }
+import { InventoryActionDialogs } from './inventory-action-dialogs'
+import type { InventoryDialogsHandle } from './inventory-action-dialogs'
+import {
+  tabLabelMap, getExportData, fdate, fdatetime,
+  PM, MOV_TYPE, MOV_BADGE, EXP_CAT, LOSS_REASONS,
+  type ReportsData, type ReportProduct,
+  type PaymentInfoEntry, type CategoryInfoEntry,
+  type TopProduct, type PurchaseItem, type LostSaleItem,
+  type DiscountItem, type CashRegister, type CommissionItem,
+  type ExpenseItem, type ReturnItem, type AdjustmentItem,
+  type TraceabilityItem, type QuoteItem, type InvoiceItem,
+  type CreditNoteItem, type DebtItem, type IvaByCode, type IvaOrder,
+  type TaxItem, type ExpenseCategoryEntry,
+} from './reports-export'
 
 // ── Skeleton ──
 function LoadingSkeleton() {
@@ -174,49 +77,6 @@ function Stat({ label, value, icon: Icon, color }: { label: string; value: strin
   )
 }
 
-// ── Product Search Select ──
-function ProductSearchSelect({
-  products, value, onValueChange, placeholder = 'Buscar producto...',
-}: {
-  products: ReportProduct[]; value: string; onValueChange: (v: string) => void; placeholder?: string;
-}) {
-  const [search, setSearch] = useState('')
-  const filtered = products.filter((p: ReportProduct) =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.sku?.toLowerCase().includes(search.toLowerCase())
-  )
-  return (
-    <div className="space-y-1.5">
-      <Input
-        placeholder={placeholder}
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="h-9 text-xs"
-      />
-      <div className="max-h-40 overflow-y-auto rounded-md border">
-        {filtered.length === 0 ? (
-          <div className="p-3 text-xs text-muted-foreground text-center">Sin resultados</div>
-        ) : (
-          filtered.map((p: ReportProduct) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => { onValueChange(p.id); setSearch('') }}
-              className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between ${value === p.id ? 'bg-muted' : ''}`}
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{p.name}</span>
-                {p.sku && <span className="text-muted-foreground font-mono text-[10px]">{p.sku}</span>}
-              </div>
-              <span className="text-muted-foreground">Stock: {p.currentStock ?? 0}</span>
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ── Main Component ──
 export function ReportsView() {
   const store = useAuthStore((s) => s.store)
@@ -231,27 +91,14 @@ export function ReportsView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Dialog states
-  const [showReturnDialog, setShowReturnDialog] = useState(false)
-  const [showAdjustDialog, setShowAdjustDialog] = useState(false)
-  const [showLossDialog, setShowLossDialog] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
   // Products for dialogs
   const [products, setProducts] = useState<ReportProduct[]>([])
 
-  // Return form
-  const [returnForm, setReturnForm] = useState({ productId: '', quantity: '', notes: '' })
-
-  // Adjust form
-  const [adjustForm, setAdjustForm] = useState({ productId: '', quantity: '', mode: 'delta' as 'delta' | 'set', notes: '' })
-  const [selectedProductStock, setSelectedProductStock] = useState<number | null>(null)
-
-  // Loss form
-  const [lossForm, setLossForm] = useState({ productId: '', quantity: '', reason: 'EXPIRED', notes: '' })
-
   // Trazabilidad filter
   const [trazFilter, setTrazFilter] = useState<string>('ALL')
+
+  // Ref for inventory dialogs
+  const dialogsRef = useRef<InventoryDialogsHandle>(null)
 
   const fetchReports = useCallback(async () => {
     if (!store) return
@@ -276,6 +123,7 @@ export function ReportsView() {
   }, [store])
 
   useEffect(() => { fetchReports() }, [fetchReports])
+  useEffect(() => { fetchProducts() }, [fetchProducts])
 
   const quickRange = (range: 'today' | 'week' | 'month') => {
     const d = new Date()
@@ -289,303 +137,17 @@ export function ReportsView() {
     }
   }
 
-  // ── Open dialogs and fetch products ──
-  const openReturnDialog = () => { fetchProducts(); setReturnForm({ productId: '', quantity: '', notes: '' }); setShowReturnDialog(true) }
-  const openAdjustDialog = () => { fetchProducts(); setAdjustForm({ productId: '', quantity: '', mode: 'delta', notes: '' }); setSelectedProductStock(null); setShowAdjustDialog(true) }
-  const openLossDialog = () => { fetchProducts(); setLossForm({ productId: '', quantity: '', reason: 'EXPIRED', notes: '' }); setShowLossDialog(true) }
-
-  // ── Submit handlers ──
-  const handleSubmitReturn = async () => {
-    if (!returnForm.productId || !returnForm.quantity || Number(returnForm.quantity) <= 0) {
-      toast.error('Selecciona un producto y una cantidad válida')
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      const res = await fetch('/api/inventory/returns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId: store!.id, productId: returnForm.productId, quantity: Number(returnForm.quantity), notes: returnForm.notes }),
-      })
-      if (!res.ok) throw new Error('Error al registrar devolución')
-      toast.success('Devolución registrada correctamente')
-      setShowReturnDialog(false)
-      fetchReports()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Error al registrar devolución')
-    } finally { setIsSubmitting(false) }
-  }
-
-  const handleSubmitAdjust = async () => {
-    if (!adjustForm.productId || !adjustForm.quantity || Number(adjustForm.quantity) === 0) {
-      toast.error('Selecciona un producto y una cantidad')
-      return
-    }
-    if (!adjustForm.notes.trim()) {
-      toast.error('Las notas son obligatorias para ajustes')
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      const payload: Record<string, unknown> = { storeId: store!.id, productId: adjustForm.productId, quantity: Number(adjustForm.quantity), notes: adjustForm.notes }
-      if (adjustForm.mode === 'set') {
-        payload.mode = 'set'
-      } else {
-        payload.mode = 'delta'
-      }
-      const res = await fetch('/api/inventory/adjustments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) throw new Error('Error al registrar ajuste')
-      toast.success('Ajuste registrado correctamente')
-      setShowAdjustDialog(false)
-      fetchReports()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Error al registrar ajuste')
-    } finally { setIsSubmitting(false) }
-  }
-
-  const handleSubmitLoss = async () => {
-    if (!lossForm.productId || !lossForm.quantity || Number(lossForm.quantity) <= 0) {
-      toast.error('Selecciona un producto y una cantidad válida')
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      const res = await fetch('/api/inventory/losses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId: store!.id, productId: lossForm.productId, quantity: Number(lossForm.quantity), reason: lossForm.reason, notes: lossForm.notes }),
-      })
-      if (!res.ok) throw new Error('Error al registrar pérdida')
-      toast.success('Pérdida registrada correctamente')
-      setShowLossDialog(false)
-      fetchReports()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Error al registrar pérdida')
-    } finally { setIsSubmitting(false) }
-  }
-
-  // Get selected product for adjust dialog
-  const getSelectedProduct = (productId: string) => products.find((p: ReportProduct) => p.id === productId)
+  // ── Open dialogs ──
+  const openReturnDialog = () => { fetchProducts(); setTimeout(() => dialogsRef.current?.openReturnDialog(), 0) }
+  const openAdjustDialog = () => { fetchProducts(); setTimeout(() => dialogsRef.current?.openAdjustDialog(), 0) }
+  const openLossDialog = () => { fetchProducts(); setTimeout(() => dialogsRef.current?.openLossDialog(), 0) }
 
   // ── Export helpers ──
-  const tabLabelMap: Record<string, string> = {
-    'cifras': 'Cifras', 'ventas': 'Ventas', 'rentabilidad': 'Rentabilidad',
-    'compras': 'Compras', 'inventario': 'Inventario', 'perdidas': 'Pérdidas',
-    'punto-eq': 'Punto de Equilibrio', 'descuentos': 'Descuentos', 'cierres': 'Cierres de Caja',
-    'comisiones': 'Comisiones', 'gastos': 'Gastos', 'impuestos': 'Impuestos',
-    'devoluciones': 'Devoluciones', 'ajustes': 'Ajustes', 'trazabilidad': 'Trazabilidad',
-    'cotizaciones': 'Cotizaciones', 'facturas': 'Facturas', 'notas-credito': 'Notas Crédito/Débito', 'cxc': 'Cuentas por Cobrar',
-  }
-
   const dateRangeStr = `${fdate(from)} - ${fdate(to)}`
   const storeName = store?.name || 'Ventify POS'
 
-  function getExportData(): { headers: string[]; rows: (string | number)[][]; columnAligns: ('left' | 'center' | 'right')[] } | null {
-    switch (tab) {
-      case 'ventas': {
-        const headers = ['Método Pago', 'Órdenes', 'Total']
-        const rows = Object.entries(d.sales.byPayment)
-          .sort((a: PaymentInfoEntry, b: PaymentInfoEntry) => b[1].total - a[1].total)
-          .map(([method, info]: PaymentInfoEntry) => [PM[method] || method, info.count, info.total])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'center', 'right'] }
-      }
-      case 'compras': {
-        const headers = ['Fecha', 'Proveedor', 'Factura', 'Total']
-        const rows = d.purchases.items.map((p: PurchaseItem) => [fdate(p.date), p.provider?.name || '—', p.invoiceNumber || '—', p.total])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'left', 'right'] }
-      }
-      case 'inventario': {
-        const headers = ['Indicador', 'Valor']
-        const rows = [
-          ['Costo Inventario', d.inventory.totalCostValue],
-          ['Valor Retail', d.inventory.totalRetailValue],
-          ['Productos Totales', d.inventory.totalProducts],
-          ['Días de Inventario', d.inventory.daysOfInventory],
-          ['Agotados', d.inventory.outOfStockCount],
-          ['Stock Bajo', d.inventory.lowStockCount],
-          ['COGS Promedio/Día', d.inventory.avgDailyCOGS],
-        ]
-        return { headers, rows, columnAligns: ['left', 'right'] }
-      }
-      case 'perdidas': {
-        const headers = ['Fecha', 'Producto', 'Precio', 'Vendidos 30d', 'Prom/Día', 'Pérdida/Día']
-        const rows = d.lostSales.map((p: LostSaleItem) => [
-          p.name, p.salePrice, p.sold30d, p.avgDaily,
-          Math.round(p.avgDaily * p.salePrice),
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'right', 'right', 'right', 'right', 'right'] }
-      }
-      case 'descuentos': {
-        const headers = ['Fecha', 'Cliente', 'Tipo', 'Razón', 'Descuento', 'Total']
-        const rows = d.discounts.items.map((o: DiscountItem) => [
-          fdate(o.createdAt), o.customer?.name || 'General',
-          o.discountType === 'PERCENTAGE' ? '%' : 'Fijo',
-          o.discountReason || '—', o.discountAmount, o.total,
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'center', 'left', 'right', 'right'] }
-      }
-      case 'cierres': {
-        const headers = ['Apertura', 'Cierre', 'Responsable', 'Base', 'Esperado', 'Real', 'Diferencia', 'Estado']
-        const rows = d.cashRegisters.map((c: CashRegister) => [
-          fdatetime(c.openedAt), c.closedAt ? fdatetime(c.closedAt) : '—', c.user,
-          c.openingBalance, c.expectedCash ?? '—', c.closingBalance ?? '—',
-          c.difference ?? '—', c.status === 'OPEN' ? 'Abierta' : 'Cerrada',
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'left', 'right', 'right', 'right', 'right', 'center'] }
-      }
-      case 'comisiones': {
-        const headers = ['Fecha', 'Servicio', 'Cantidad', 'Unitario', 'Total']
-        const rows = d.commissions.items.map((c: CommissionItem) => [
-          fdatetime(c.createdAt), c.service?.name || '—', c.quantity, c.unitPrice, c.totalAmount,
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'right', 'right', 'right'] }
-      }
-      case 'gastos': {
-        const headers = ['Fecha', 'Categoría', 'Descripción', 'Monto']
-        const rows = d.expenses.items.map((e: ExpenseItem) => [
-          fdate(e.date), EXP_CAT[e.category] || e.category, e.description, e.amount,
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'left', 'right'] }
-      }
-      case 'impuestos': {
-        // IVA recaudado summary
-        const headers = ['Concepto', 'Valor']
-        const rows: (string | number)[][] = [
-          ['Total IVA Recaudado', d.ivaCollected?.total || 0],
-          ['Base Gravable', d.ivaCollected?.totalBase || 0],
-          ['Órdenes con IVA', d.ivaCollected?.count || 0],
-          ['Total Gastos Impuestos', d.taxes.total || 0],
-        ]
-        return { headers, rows, columnAligns: ['left', 'right'] }
-      }
-      case 'devoluciones': {
-        const headers = ['Fecha', 'Producto', 'Cantidad', 'Notas']
-        const rows = d.returns.items.map((r: ReturnItem) => [
-          fdatetime(r.createdAt), r.product?.name || 'Eliminado', r.quantity, r.notes || '—',
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'right', 'left'] }
-      }
-      case 'ajustes': {
-        const headers = ['Fecha', 'Producto', 'Cantidad', 'Stock Actual', 'Notas']
-        const rows = d.adjustments.items.map((a: AdjustmentItem) => [
-          fdatetime(a.createdAt), a.product?.name || '—', a.quantity,
-          a.product?.currentStock ?? '—', a.notes || '—',
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'right', 'right', 'left'] }
-      }
-      case 'trazabilidad': {
-        const headers = ['Fecha', 'Tipo', 'Producto', 'Categoría', 'Cantidad', 'Notas']
-        const rows = filteredTraz.map((m: TraceabilityItem) => [
-          fdatetime(m.createdAt), MOV_TYPE[m.movementType] || m.movementType,
-          m.product?.name || `ID ${m.productId}`, m.product?.category?.name || '—',
-          m.quantity, m.notes || '—',
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'center', 'left', 'left', 'right', 'left'] }
-      }
-      case 'cotizaciones': {
-        const headers = ['Fecha', 'Cotización', 'Cliente', 'Total', 'Items', 'Estado']
-        const rows = d.quotes.map((q: QuoteItem) => [
-          fdatetime(q.createdAt), q.quotationNumber, q.customerName || q.customer?.name || 'General',
-          q.total, q.items?.length || 0,
-          q.status === 'ACTIVE' ? 'Activa' : q.status === 'CONVERTED' ? 'Convertida' : q.status === 'CANCELLED' ? 'Cancelada' : 'Expirada',
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'left', 'right', 'center', 'center'] }
-      }
-      case 'facturas': {
-        const headers = ['Fecha', 'Factura', 'Cliente', 'Total', 'Estado', 'Ambiente']
-        const rows = d.invoices.map((inv: InvoiceItem) => [
-          fdatetime(inv.createdAt), inv.invoiceNumber, inv.customerName, inv.grandTotal,
-          inv.status === 'VALIDATED' ? 'Validada' : inv.status === 'DELIVERED' ? 'Entregada' : inv.status === 'REJECTED' ? 'Rechazada' : inv.status === 'DRAFT' ? 'Borrador' : 'Pendiente',
-          inv.testMode ? 'Hab.' : 'Prod.',
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'left', 'right', 'center', 'center'] }
-      }
-      case 'notas-credito': {
-        const headers = ['Fecha', 'Nota', 'Tipo', 'Cliente', 'Monto', 'Estado', 'Factura Ref.']
-        const rows = d.creditNotes.map((cn: CreditNoteItem) => [
-          fdatetime(cn.createdAt), cn.noteNumber, cn.noteType === 'CREDIT' ? 'NC' : 'ND',
-          cn.customerName, cn.totalAmount, cn.status, cn.invoiceNumber || '—',
-        ])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'center', 'left', 'right', 'center', 'left'] }
-      }
-      case 'cxc': {
-        const headers = ['Cliente', 'Teléfono', 'Deuda']
-        const rows = d.debts.map((c: DebtItem) => [c.name, c.phone || '—', c.totalDebt])
-        if (rows.length === 0) return null
-        return { headers, rows, columnAligns: ['left', 'left', 'right'] }
-      }
-      case 'cifras': {
-        const c = d.localEnCifras
-        const headers = ['Indicador', 'Valor']
-        const rows = [
-          ['Ventas Hoy', c.salesToday],
-          ['Órdenes Hoy', c.ordersToday],
-          ['Ventas del Mes', c.salesMonth],
-          ['vs Mes Anterior', `${c.monthVariance >= 0 ? '+' : ''}${c.monthVariance}%`],
-          ['Tips del Mes', c.tipsMonth],
-          ['Órdenes del Mes', c.ordersMonth],
-          ['Mesas Abiertas', c.openTables],
-          ['Cuentas por Cobrar', c.totalDebt],
-          ['Ticket Promedio Mes', c.ordersMonth > 0 ? Math.round(c.salesMonth / c.ordersMonth) : 0],
-          ['Clientes con Deuda', c.debtCount],
-          ['Ventas Mes Anterior', c.lastMonthSales],
-        ]
-        return { headers, rows, columnAligns: ['left', 'right'] }
-      }
-      case 'rentabilidad': {
-        const p = d.profitability
-        const headers = ['Indicador', 'Valor']
-        const rows = [
-          ['Ingresos Brutos', p.revenue],
-          ['Costos (COGS)', p.cogs],
-          ['Utilidad Bruta', p.grossProfit],
-          ['Margen Bruto', `${p.grossMargin}%`],
-          ['Descuentos', p.discounts],
-          ['Ingresos Netos', p.netRevenue],
-          ['Utilidad Neta', p.netProfit],
-          ['Margen Neto', `${p.netMargin}%`],
-          ['Propinas del Período', p.tips],
-        ]
-        return { headers, rows, columnAligns: ['left', 'right'] }
-      }
-      case 'punto-eq': {
-        const b = d.breakEven
-        const headers = ['Indicador', 'Valor']
-        const rows = [
-          ['Punto de Equilibrio', b.breakEvenPoint],
-          ['Ventas del Período', d.sales.total],
-          ['Distancia al Equilibrio', b.distanceToBreakEven > 0 ? b.distanceToBreakEven : '¡Superado!'],
-          ['% Alcanzado', `${b.achievedPercent}%`],
-          ['Costos Fijos', b.fixedCosts],
-          ['Costo Variable', `${(b.variableCostRatio * 100).toFixed(1)}%`],
-          ['Margen Contribución', `${(b.contributionMargin * 100).toFixed(1)}%`],
-        ]
-        return { headers, rows, columnAligns: ['left', 'right'] }
-      }
-      default:
-        return null
-    }
-  }
-
   const handleExportExcel = () => {
-    const exportData = getExportData()
+    const exportData = getExportData(tab, data!, [])
     if (!exportData) {
       toast.error('No hay datos para exportar en esta pestaña')
       return
@@ -602,7 +164,7 @@ export function ReportsView() {
   }
 
   const handleExportPDF = async () => {
-    const exportData = getExportData()
+    const exportData = getExportData(tab, data!, [])
     if (!exportData) {
       toast.error('No hay datos para exportar en esta pestaña')
       return
@@ -1446,193 +1008,13 @@ export function ReportsView() {
         </TabsContent>
       </Tabs>
 
-      {/* ═══════════════════════════════════════════════ */}
-      {/* ── DIALOG: Registrar Devolución ── */}
-      {/* ═══════════════════════════════════════════════ */}
-      <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto backdrop-blur-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-sm">
-              <RotateCcw className="h-4 w-4" />Registrar Devolución
-            </DialogTitle>
-            <DialogDescription className="text-xs">Agrega stock devuelto a un producto</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Producto</Label>
-              <ProductSearchSelect
-                products={products}
-                value={returnForm.productId}
-                onValueChange={(v) => setReturnForm(f => ({ ...f, productId: v }))}
-                placeholder="Buscar producto para devolver..."
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Cantidad</Label>
-              <Input
-                type="number"
-                min="1"
-                placeholder="Cantidad devuelta"
-                value={returnForm.quantity}
-                onChange={(e) => setReturnForm(f => ({ ...f, quantity: e.target.value }))}
-                className="h-9 text-xs"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Notas (opcional)</Label>
-              <Textarea
-                placeholder="Razón de la devolución..."
-                value={returnForm.notes}
-                onChange={(e) => setReturnForm(f => ({ ...f, notes: e.target.value }))}
-                className="text-xs min-h-[60px]"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setShowReturnDialog(false)}>Cancelar</Button>
-            <Button size="sm" onClick={handleSubmitReturn} disabled={isSubmitting} className="gap-1.5 active:scale-[0.98] transition-all">
-              {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
-              Registrar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ═══════════════════════════════════════════════ */}
-      {/* ── DIALOG: Registrar Ajuste ── */}
-      {/* ═══════════════════════════════════════════════ */}
-      <Dialog open={showAdjustDialog} onOpenChange={setShowAdjustDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto backdrop-blur-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-sm">
-              <SlidersHorizontal className="h-4 w-4" />Registrar Ajuste
-            </DialogTitle>
-            <DialogDescription className="text-xs">Ajusta el inventario de un producto</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Producto</Label>
-              <ProductSearchSelect
-                products={products}
-                value={adjustForm.productId}
-                onValueChange={(v) => {
-                  const prod = products.find((p: ReportProduct) => p.id === v)
-                  setSelectedProductStock(prod?.currentStock ?? null)
-                  setAdjustForm(f => ({ ...f, productId: v }))
-                }}
-                placeholder="Buscar producto para ajustar..."
-              />
-            </div>
-            {selectedProductStock !== null && (
-              <div className="rounded-lg bg-muted/50 p-2.5">
-                <span className="text-[10px] text-muted-foreground">Stock actual: </span>
-                <span className="text-sm font-bold">{selectedProductStock}</span>
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Modo</Label>
-              <Select value={adjustForm.mode} onValueChange={(v) => setAdjustForm(f => ({ ...f, mode: v as 'delta' | 'set' }))}>
-                <SelectTrigger className="h-9 text-xs focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="delta" className="text-xs">Agregar/Quitar (+/-)</SelectItem>
-                  <SelectItem value="set" className="text-xs">Establecer cantidad</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">
-                {adjustForm.mode === 'set' ? 'Nueva cantidad' : 'Cantidad (+ para agregar, - para quitar)'}
-              </Label>
-              <Input
-                type="number"
-                placeholder={adjustForm.mode === 'set' ? 'Nueva cantidad total' : 'Ej: +5 o -3'}
-                value={adjustForm.quantity}
-                onChange={(e) => setAdjustForm(f => ({ ...f, quantity: e.target.value }))}
-                className="h-9 text-xs"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Notas <span className="text-red-500">*</span></Label>
-              <Textarea
-                placeholder="Motivo del ajuste (obligatorio)..."
-                value={adjustForm.notes}
-                onChange={(e) => setAdjustForm(f => ({ ...f, notes: e.target.value }))}
-                className="text-xs min-h-[60px]"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setShowAdjustDialog(false)}>Cancelar</Button>
-            <Button size="sm" onClick={handleSubmitAdjust} disabled={isSubmitting} className="gap-1.5 active:scale-[0.98] transition-all">
-              {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
-              Registrar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ═══════════════════════════════════════════════ */}
-      {/* ── DIALOG: Registrar Pérdida ── */}
-      {/* ═══════════════════════════════════════════════ */}
-      <Dialog open={showLossDialog} onOpenChange={setShowLossDialog}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto backdrop-blur-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-sm">
-              <AlertTriangle className="h-4 w-4 text-red-500" />Registrar Pérdida
-            </DialogTitle>
-            <DialogDescription className="text-xs">Registra mercancía perdida, vencida o dañada</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Producto</Label>
-              <ProductSearchSelect
-                products={products}
-                value={lossForm.productId}
-                onValueChange={(v) => setLossForm(f => ({ ...f, productId: v }))}
-                placeholder="Buscar producto con pérdida..."
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Cantidad</Label>
-              <Input
-                type="number"
-                min="1"
-                placeholder="Cantidad perdida"
-                value={lossForm.quantity}
-                onChange={(e) => setLossForm(f => ({ ...f, quantity: e.target.value }))}
-                className="h-9 text-xs"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Motivo</Label>
-              <Select value={lossForm.reason} onValueChange={(v) => setLossForm(f => ({ ...f, reason: v }))}>
-                <SelectTrigger className="h-9 text-xs focus-visible:ring-primary/20 focus-visible:border-primary/40"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(LOSS_REASONS).map(([key, label]) => (
-                    <SelectItem key={key} value={key} className="text-xs">{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Notas (opcional)</Label>
-              <Textarea
-                placeholder="Detalles adicionales..."
-                value={lossForm.notes}
-                onChange={(e) => setLossForm(f => ({ ...f, notes: e.target.value }))}
-                className="text-xs min-h-[60px]"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setShowLossDialog(false)}>Cancelar</Button>
-            <Button size="sm" variant="destructive" onClick={handleSubmitLoss} disabled={isSubmitting} className="gap-1.5 active:scale-[0.98] transition-all">
-              {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
-              Registrar Pérdida
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* ── Inventory Action Dialogs ── */}
+      <InventoryActionDialogs
+        ref={dialogsRef}
+        storeId={store!.id}
+        products={products}
+        onSuccess={fetchReports}
+      />
     </div>
   )
 }
