@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
@@ -85,32 +85,28 @@ import { format, isAfter, isBefore, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import * as XLSX from 'xlsx'
 import { printReport, printThermal80mm } from '@/lib/print-report'
+import {
+  usePurchases,
+  usePurchaseDetail,
+  usePurchaseProviders,
+  usePurchaseProducts,
+  useCreatePurchase,
+  useUpdatePurchase,
+  useDeletePurchase,
+  usePurchasePayment,
+  usePurchaseReturn,
+  useXmlImportPurchase,
+  type Purchase,
+  type PurchaseItemData,
+  type PurchasePayment,
+  type ProviderOption,
+  type ProductOption,
+  type StatusFilter,
+} from '@/hooks/api/use-purchases'
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TYPES
+// TYPES (local form-only types)
 // ══════════════════════════════════════════════════════════════════════════════
-
-interface ProviderOption {
-  id: number
-  name: string
-  nit?: string | null
-  dv?: string | null
-  regime: string
-  autoretainer: boolean
-  paymentTerms: string
-  isActive: boolean
-}
-
-interface ProductOption {
-  id: number
-  name: string
-  sku?: string | null
-  costPrice: number
-  currentStock: number
-  invima?: string | null
-  isActive: boolean
-  category?: { id: number; name: string } | null
-}
 
 interface PurchaseItemRow {
   id: string
@@ -123,66 +119,6 @@ interface PurchaseItemRow {
   expiryDate: string
   manufacturingDate: string
 }
-
-interface PurchaseItemData {
-  id: number
-  purchaseId: number
-  productId: number
-  product: { id: number; name: string; sku?: string | null; costPrice?: number; currentStock?: number; category?: { id: number; name: string } | null } | null
-  quantity: number
-  returnedQuantity: number
-  unitCost: number
-  ivaRate: number
-  ivaAmount: number
-  discountAmount: number
-  lotNumber?: string | null
-  expiryDate?: string | null
-  manufacturingDate?: string | null
-  total: number
-}
-
-interface PurchasePayment {
-  id: number
-  amount: number
-  paymentMethod: string
-  reference?: string | null
-  notes?: string | null
-  createdBy?: { id: number; fullName: string; cedula?: string | null } | null
-  createdAt: string
-}
-
-interface Purchase {
-  id: number
-  storeId: number
-  providerId: number | null
-  provider: { id: number; name: string; nit?: string | null; regime?: string; paymentTerms?: string; autoretainer?: boolean } | null
-  invoiceNumber: string | null
-  documentType: string
-  consecutiveNumber: string | null
-  date: string
-  dueDate: string | null
-  paymentTerms: string
-  paymentStatus: string
-  amountPaid: number
-  subtotal: number
-  totalIva: number
-  totalReteFuente: number
-  totalReteIca: number
-  totalReteIva: number
-  totalDiscount: number
-  notes: string | null
-  total: number
-  status: string
-  createdById?: number | null
-  itemCount: number
-  purchaseItems: PurchaseItemData[]
-  purchasePayments?: PurchasePayment[]
-  _payments?: { count: number; total: number }
-  createdAt: string
-  updatedAt: string
-}
-
-type StatusFilter = 'ALL' | 'COMPLETED' | 'PENDING' | 'CANCELLED'
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -260,18 +196,37 @@ export function PurchasesView() {
   const { store } = useAuthStore()
   const currencyCode = store?.currencyCode || 'COP'
 
-  // ─── List state ───────────────────────────────────────────────────────
-  const [purchases, setPurchases] = useState<Purchase[]>([])
-  const [loading, setLoading] = useState(true)
+  // ─── Search with debounce ────────────────────────────────────────────
+  const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput), 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  // ─── TanStack Query hooks ────────────────────────────────────────────
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
+  const { data: purchases = [], isLoading: loading } = usePurchases(store?.id, { q: search, status: statusFilter })
+
+  const { data: providers = [] } = usePurchaseProviders(store?.id, true)
+  const { data: products = [] } = usePurchaseProducts(store?.id)
+
+  const [detailId, setDetailId] = useState<number | null>(null)
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+  const { data: detailPurchase, isLoading: loadingDetail } = usePurchaseDetail(detailId)
+
+  const createPurchase = useCreatePurchase()
+  const updatePurchase = useUpdatePurchase()
+  const deletePurchase = useDeletePurchase()
+  const purchasePayment = usePurchasePayment()
+  const purchaseReturn = usePurchaseReturn()
+  const xmlImport = useXmlImportPurchase()
 
   // ─── Create / Edit dialog state ───────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [isEdit, setIsEdit] = useState(false)
-  const [providers, setProviders] = useState<ProviderOption[]>([])
-  const [products, setProducts] = useState<ProductOption[]>([])
   const [providerSearch, setProviderSearch] = useState('')
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
   const [selectedProviderId, setSelectedProviderId] = useState<string>('')
@@ -282,24 +237,17 @@ export function PurchasesView() {
   const [purchasePaymentTerms, setPurchasePaymentTerms] = useState('CONTADO')
   const [purchaseNotes, setPurchaseNotes] = useState('')
   const [purchaseItems, setPurchaseItems] = useState<PurchaseItemRow[]>([EMPTY_ITEM()])
-  const [saving, setSaving] = useState(false)
 
   // Per-item product search state
   const [itemSearches, setItemSearches] = useState<Record<string, string>>({})
   const [itemDropdowns, setItemDropdowns] = useState<Record<string, boolean>>({})
 
-  // ─── Detail dialog state ──────────────────────────────────────────────
-  const [detailPurchase, setDetailPurchase] = useState<Purchase | null>(null)
-  const [loadingDetail, setLoadingDetail] = useState(false)
-
   // ─── Cancel dialog state ──────────────────────────────────────────────
   const [cancelPurchase, setCancelPurchase] = useState<Purchase | null>(null)
-  const [cancelling, setCancelling] = useState(false)
 
   // ─── Return dialog state ──────────────────────────────────────────────
   const [showReturnDialog, setShowReturnDialog] = useState(false)
   const [returnReason, setReturnReason] = useState('')
-  const [returning, setReturning] = useState(false)
   const [returnItems, setReturnItems] = useState<Map<number, number>>(new Map())
 
   // ─── Payment dialog state ─────────────────────────────────────────────
@@ -308,11 +256,10 @@ export function PurchasesView() {
   const [paymentMethod, setPaymentMethod] = useState('CASH')
   const [paymentReference, setPaymentReference] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
-  const [paying, setPaying] = useState(false)
 
   // ─── XML import state ─────────────────────────────────────────────────
   const xmlInputRef = useRef<HTMLInputElement>(null)
-  const [xmlUploading, setXmlUploading] = useState(false)
+  const [xmlParsing, setXmlParsing] = useState(false)
   const [showXmlHelp, setShowXmlHelp] = useState(false)
   const [xmlPreview, setXmlPreview] = useState<{
     fileName: string
@@ -383,35 +330,6 @@ export function PurchasesView() {
     return Math.max(0, formSubtotal + formTotalIva - formTotalDiscount - formRetenciones.reteFuente - formRetenciones.reteIca)
   }, [formSubtotal, formTotalIva, formTotalDiscount, formRetenciones])
 
-  // ══════════════════════════════════════════════════════════════════════
-  // FETCH
-  // ══════════════════════════════════════════════════════════════════════
-
-  const fetchPurchases = useCallback(async () => {
-    if (!store?.id) return
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ storeId: store.id.toString(), limit: '200' })
-      if (search.trim()) params.set('q', search.trim())
-      if (statusFilter !== 'ALL') params.set('status', statusFilter)
-
-      const res = await fetch(`/api/purchases?${params}`)
-      if (!res.ok) throw new Error('Error al cargar compras')
-      const json = await res.json()
-      const data = Array.isArray(json) ? json : (json.data || [])
-      setPurchases(data)
-    } catch {
-      toast.error('Error al cargar compras')
-    } finally {
-      setLoading(false)
-    }
-  }, [store?.id, search, statusFilter])
-
-  useEffect(() => {
-    const timer = setTimeout(() => fetchPurchases(), 300)
-    return () => clearTimeout(timer)
-  }, [fetchPurchases])
-
   // ─── Click outside handler ────────────────────────────────────────────
 
   useEffect(() => {
@@ -448,19 +366,7 @@ export function PurchasesView() {
     setItemSearches({})
     setItemDropdowns({})
     setCreateOpen(true)
-
-    if (!store?.id) return
-    try {
-      const res = await fetch(`/api/providers?storeId=${store.id}&active=true`)
-      if (res.ok) setProviders(Array.isArray(await res.json()) ? await res.json() : [])
-    } catch { /* */ }
-    try {
-      const res = await fetch(`/api/products?storeId=${store.id}&active=true&limit=500`)
-      if (res.ok) {
-        const json = await res.json()
-        setProducts(Array.isArray(json) ? json : (json.data || []))
-      }
-    } catch { /* */ }
+    // providers and products are loaded by usePurchaseProviders/usePurchaseProducts
   }
 
   async function openEditDialog(purchase: Purchase) {
@@ -491,36 +397,14 @@ export function PurchasesView() {
     setItemSearches({})
     setItemDropdowns({})
     setCreateOpen(true)
-
-    if (!store?.id) return
-    try {
-      const res = await fetch(`/api/providers?storeId=${store.id}`)
-      if (res.ok) setProviders(Array.isArray(await res.json()) ? await res.json() : [])
-    } catch { /* */ }
-    try {
-      const res = await fetch(`/api/products?storeId=${store.id}&limit=500`)
-      if (res.ok) {
-        const json = await res.json()
-        setProducts(Array.isArray(json) ? json : (json.data || []))
-      }
-    } catch { /* */ }
+    // providers and products are loaded by usePurchaseProviders/usePurchaseProducts
   }
 
   // ─── Detail ───────────────────────────────────────────────────────────
 
   async function openDetail(purchase: Purchase) {
-    setLoadingDetail(true)
-    setDetailPurchase(purchase)
-    try {
-      const res = await fetch(`/api/purchases/${purchase.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setDetailPurchase(data)
-      }
-    } catch { /* use list data */ }
-    finally {
-      setLoadingDetail(false)
-    }
+    setDetailId(purchase.id)
+    setDetailDialogOpen(true)
   }
 
   // ─── Payment dialog ───────────────────────────────────────────────────
@@ -626,84 +510,63 @@ export function PurchasesView() {
       return
     }
 
-    setSaving(true)
-    try {
-      if (isEdit && editingId) {
-        // ─── EDIT ──────────────────────────────────────────────
-        const body: Record<string, unknown> = {
-          invoiceNumber: purchaseInvoiceNumber.trim() || null,
-          documentType: purchaseDocType,
-          date: purchaseDate,
-          notes: purchaseNotes.trim() || null,
-          providerId: selectedProviderId ? Number(selectedProviderId) : null,
-          paymentTerms: purchasePaymentTerms,
-          items: validItems.map(item => ({
-            productId: Number(item.productId),
-            quantity: Number(item.quantity),
-            unitCost: Math.round(Number(item.unitCost)),
-            ivaRate: item.ivaRate,
-            discountAmount: Number(item.discountAmount) || 0,
-            lotNumber: item.lotNumber.trim() || null,
-            expiryDate: item.expiryDate || null,
-            manufacturingDate: item.manufacturingDate || null,
-          })),
-        }
-
-        const res = await fetch(`/api/purchases/${editingId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error || 'Error al actualizar compra')
-        }
-
-        toast.success('Compra actualizada exitosamente')
-      } else {
-        // ─── CREATE ────────────────────────────────────────────
-        const body = {
-          storeId: store.id,
-          providerId: selectedProviderId ? Number(selectedProviderId) : undefined,
-          invoiceNumber: purchaseInvoiceNumber.trim() || undefined,
-          documentType: purchaseDocType,
-          date: purchaseDate,
-          paymentTerms: purchasePaymentTerms,
-          notes: purchaseNotes.trim() || undefined,
-          items: validItems.map(item => ({
-            productId: Number(item.productId),
-            quantity: Number(item.quantity),
-            unitCost: Math.round(Number(item.unitCost)),
-            ivaRate: item.ivaRate,
-            discountAmount: Number(item.discountAmount) || 0,
-            lotNumber: item.lotNumber.trim() || undefined,
-            expiryDate: item.expiryDate || undefined,
-            manufacturingDate: item.manufacturingDate || undefined,
-          })),
-        }
-
-        const res = await fetch('/api/purchases', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error || 'Error al crear compra')
-        }
-        toast.success('Compra creada exitosamente')
+    if (isEdit && editingId) {
+      const body: Record<string, unknown> = {
+        invoiceNumber: purchaseInvoiceNumber.trim() || null,
+        documentType: purchaseDocType,
+        date: purchaseDate,
+        notes: purchaseNotes.trim() || null,
+        providerId: selectedProviderId ? Number(selectedProviderId) : null,
+        paymentTerms: purchasePaymentTerms,
+        items: validItems.map(item => ({
+          productId: Number(item.productId),
+          quantity: Number(item.quantity),
+          unitCost: Math.round(Number(item.unitCost)),
+          ivaRate: item.ivaRate,
+          discountAmount: Number(item.discountAmount) || 0,
+          lotNumber: item.lotNumber.trim() || null,
+          expiryDate: item.expiryDate || null,
+          manufacturingDate: item.manufacturingDate || null,
+        })),
       }
 
-      setCreateOpen(false)
-      setEditingId(null)
-      setIsEdit(false)
-      fetchPurchases()
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Error desconocido')
-    } finally {
-      setSaving(false)
+      updatePurchase.mutate({ id: editingId, body }, {
+        onSuccess: () => {
+          toast.success('Compra actualizada exitosamente')
+          setCreateOpen(false)
+          setEditingId(null)
+          setIsEdit(false)
+        },
+        onError: (err) => toast.error(err.message),
+      })
+    } else {
+      const body = {
+        storeId: store.id,
+        providerId: selectedProviderId ? Number(selectedProviderId) : undefined,
+        invoiceNumber: purchaseInvoiceNumber.trim() || undefined,
+        documentType: purchaseDocType,
+        date: purchaseDate,
+        paymentTerms: purchasePaymentTerms,
+        notes: purchaseNotes.trim() || undefined,
+        items: validItems.map(item => ({
+          productId: Number(item.productId),
+          quantity: Number(item.quantity),
+          unitCost: Math.round(Number(item.unitCost)),
+          ivaRate: item.ivaRate,
+          discountAmount: Number(item.discountAmount) || 0,
+          lotNumber: item.lotNumber.trim() || undefined,
+          expiryDate: item.expiryDate || undefined,
+          manufacturingDate: item.manufacturingDate || undefined,
+        })),
+      }
+
+      createPurchase.mutate({ body }, {
+        onSuccess: () => {
+          toast.success('Compra creada exitosamente')
+          setCreateOpen(false)
+        },
+        onError: (err) => toast.error(err.message),
+      })
     }
   }
 
@@ -724,34 +587,13 @@ export function PurchasesView() {
       return
     }
 
-    setPaying(true)
-    try {
-      const res = await fetch(`/api/purchases/${detailPurchase.id}/payments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount,
-          paymentMethod,
-          reference: paymentReference.trim() || undefined,
-          notes: paymentNotes.trim() || undefined,
-        }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Error al registrar pago')
-      }
-      const data = await res.json()
-      toast.success(data.message)
-      setShowPaymentDialog(false)
-      // Refresh detail
-      const detailRes = await fetch(`/api/purchases/${detailPurchase.id}`)
-      if (detailRes.ok) setDetailPurchase(await detailRes.json())
-      fetchPurchases()
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Error al registrar pago')
-    } finally {
-      setPaying(false)
-    }
+    purchasePayment.mutate({ id: detailPurchase.id, body: { amount, paymentMethod, reference: paymentReference.trim() || undefined, notes: paymentNotes.trim() || undefined } }, {
+      onSuccess: (data) => {
+        toast.success(data?.message || 'Pago registrado exitosamente')
+        setShowPaymentDialog(false)
+      },
+      onError: (err) => toast.error(err.message),
+    })
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -785,29 +627,17 @@ export function PurchasesView() {
       toast.error('Selecciona al menos un producto para devolver')
       return
     }
-    setReturning(true)
-    try {
-      const items = Array.from(returnItems.entries()).map(([purchaseItemId, quantity]) => ({ purchaseItemId, quantity }))
-      const res = await fetch(`/api/purchases/${detailPurchase.id}/return`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, reason: returnReason.trim() || undefined }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al procesar devolución')
-      }
-      const data = await res.json()
-      toast.success(data.message)
-      setShowReturnDialog(false)
-      setReturnItems(new Map())
-      setDetailPurchase(null)
-      fetchPurchases()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al procesar devolución')
-    } finally {
-      setReturning(false)
-    }
+    const items = Array.from(returnItems.entries()).map(([purchaseItemId, quantity]) => ({ itemId: purchaseItemId, quantity }))
+    purchaseReturn.mutate({ id: detailPurchase.id, body: { items, reason: returnReason.trim() || undefined } }, {
+      onSuccess: (data: any) => {
+        toast.success(data?.message || 'Devolución procesada')
+        setShowReturnDialog(false)
+        setReturnItems(new Map())
+        setDetailId(null)
+        setDetailDialogOpen(false)
+      },
+      onError: (err) => toast.error(err.message),
+    })
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -816,21 +646,13 @@ export function PurchasesView() {
 
   async function handleCancel() {
     if (!cancelPurchase) return
-    setCancelling(true)
-    try {
-      const res = await fetch(`/api/purchases/${cancelPurchase.id}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Error al cancelar compra')
-      }
-      toast.success('Compra cancelada exitosamente')
-      setCancelPurchase(null)
-      fetchPurchases()
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Error desconocido')
-    } finally {
-      setCancelling(false)
-    }
+    deletePurchase.mutate({ id: cancelPurchase.id }, {
+      onSuccess: () => {
+        toast.success('Compra cancelada exitosamente')
+        setCancelPurchase(null)
+      },
+      onError: (err) => toast.error(err.message),
+    })
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -918,7 +740,7 @@ export function PurchasesView() {
     const file = e.target.files?.[0]
     if (!file || !store?.id) return
     if (!file.name.endsWith('.xml')) { toast.error('Solo se permiten archivos XML'); return }
-    setXmlUploading(true)
+    setXmlParsing(true)
     try {
       const text = await file.text()
       const parser = new DOMParser()
@@ -946,33 +768,29 @@ export function PurchasesView() {
       setXmlNotes(`Importado desde XML: ${file.name}`)
       setXmlPreview({ fileName: file.name, items: xmlItems, invoiceNumber: metadata.invoiceNumber || undefined, invoiceDate: metadata.invoiceDate || undefined, providerName: metadata.providerName || undefined, providerNit: metadata.providerNit || undefined, xmlFormat: metadata.xmlFormat })
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Error al procesar XML') }
-    finally { setXmlUploading(false); if (xmlInputRef.current) xmlInputRef.current.value = '' }
+    finally { setXmlParsing(false); if (xmlInputRef.current) xmlInputRef.current.value = '' }
   }
 
   async function confirmXmlImport() {
     if (!xmlPreview || !store?.id) return
-    setXmlUploading(true)
-    try {
-      const res = await fetch('/api/purchases/xml-import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId: store.id,
-          providerId: xmlProviderId !== 'none' ? Number(xmlProviderId) : undefined,
-          invoiceNumber: xmlPreview.invoiceNumber || undefined,
-          invoiceDate: xmlPreview.invoiceDate || undefined,
-          providerName: xmlPreview.providerName || undefined,
-          providerNit: xmlPreview.providerNit || undefined,
-          notes: xmlNotes.trim() || undefined,
-          items: xmlPreview.items.map(item => ({ productId: 0, quantity: item.quantity, unitCost: item.unitCost, name: item.name })),
-        }),
-      })
-      if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || 'Error al importar') }
-      const result = await res.json()
-      toast.success(`Factura importada: ${result.itemsCreated} producto(s)`)
-      setXmlPreview(null)
-      fetchPurchases()
-    } catch (err) { toast.error(err instanceof Error ? err.message : 'Error al importar XML') }
-    finally { setXmlUploading(false) }
+    xmlImport.mutate({
+      body: {
+        storeId: store.id,
+        providerId: xmlProviderId !== 'none' ? Number(xmlProviderId) : undefined,
+        invoiceNumber: xmlPreview.invoiceNumber || undefined,
+        invoiceDate: xmlPreview.invoiceDate || undefined,
+        providerName: xmlPreview.providerName || undefined,
+        providerNit: xmlPreview.providerNit || undefined,
+        notes: xmlNotes.trim() || undefined,
+        items: xmlPreview.items.map(item => ({ productId: 0, quantity: item.quantity, unitCost: item.unitCost, name: item.name })),
+      },
+    }, {
+      onSuccess: (result: any) => {
+        toast.success(`Factura importada: ${result?.itemsCreated} producto(s)`)
+        setXmlPreview(null)
+      },
+      onError: (err) => toast.error(err.message),
+    })
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -1132,7 +950,7 @@ export function PurchasesView() {
           <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={loading || purchases.length === 0} className="gap-1.5">
             <Download className="h-4 w-4" /><span className="text-xs hidden sm:inline">Excel</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => xmlInputRef.current?.click()} disabled={xmlUploading} className="gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => xmlInputRef.current?.click()} disabled={xmlParsing || xmlImport.isPending} className="gap-1.5">
             <Upload className="h-4 w-4" /><span className="text-xs hidden sm:inline">XML</span>
           </Button>
           <input ref={xmlInputRef} type="file" accept=".xml" className="hidden" onChange={handleXmlUpload} />
@@ -1177,7 +995,7 @@ export function PurchasesView() {
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Buscar por factura, proveedor, notas..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+              <Input placeholder="Buscar por factura, proveedor, notas..." className="pl-9" value={searchInput} onChange={e => setSearchInput(e.target.value)} />
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               {([
@@ -1558,8 +1376,8 @@ export function PurchasesView() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => { setCreateOpen(false); setIsEdit(false); setEditingId(null) }}>Cancelar</Button>
-            <Button onClick={handleSavePurchase} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            <Button onClick={handleSavePurchase} disabled={createPurchase.isPending || updatePurchase.isPending}>
+              {(createPurchase.isPending || updatePurchase.isPending) && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               {isEdit ? 'Guardar Cambios' : 'Crear Compra'}
             </Button>
           </DialogFooter>
@@ -1569,7 +1387,7 @@ export function PurchasesView() {
       {/* ═══════════════════════════════════════════════════════════════════
           DETAIL DIALOG
          ═══════════════════════════════════════════════════════════════════ */}
-      <Dialog open={!!detailPurchase} onOpenChange={open => { if (!open) setDetailPurchase(null) }}>
+      <Dialog open={detailDialogOpen} onOpenChange={open => { if (!open) { setDetailDialogOpen(false); setDetailId(null) } }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           {detailPurchase && (
             <>
@@ -1737,7 +1555,7 @@ export function PurchasesView() {
                   {/* Action buttons */}
                   <div className="flex flex-wrap gap-2 pt-2">
                     {(detailPurchase.status === 'PENDING' || detailPurchase.status === 'COMPLETED') && (
-                      <Button variant="outline" size="sm" onClick={() => { setDetailPurchase(null); openEditDialog(detailPurchase) }}>
+                      <Button variant="outline" size="sm" onClick={() => { setDetailDialogOpen(false); openEditDialog(detailPurchase) }}>
                         <Pencil className="h-3.5 w-3.5 mr-1" />Editar
                       </Button>
                     )}
@@ -1752,7 +1570,7 @@ export function PurchasesView() {
                       </Button>
                     )}
                     {detailPurchase.status !== 'CANCELLED' && (
-                      <Button variant="outline" size="sm" className="border-red-300 text-red-600" onClick={() => { setDetailPurchase(null); setCancelPurchase(detailPurchase) }}>
+                      <Button variant="outline" size="sm" className="border-red-300 text-red-600" onClick={() => { setDetailDialogOpen(false); setCancelPurchase(detailPurchase) }}>
                         <Ban className="h-3.5 w-3.5 mr-1" />Cancelar
                       </Button>
                     )}
@@ -1828,8 +1646,8 @@ export function PurchasesView() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowPaymentDialog(false)}>Cancelar</Button>
-            <Button onClick={handlePayment} disabled={paying} className="bg-emerald-600 hover:bg-emerald-700">
-              {paying && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            <Button onClick={handlePayment} disabled={purchasePayment.isPending} className="bg-emerald-600 hover:bg-emerald-700">
+              {purchasePayment.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               <DollarSign className="h-4 w-4 mr-1" />Registrar Abono
             </Button>
           </DialogFooter>
@@ -1902,8 +1720,8 @@ export function PurchasesView() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowReturnDialog(false)}>Cancelar</Button>
-            <Button variant="destructive" onClick={handleReturnPurchase} disabled={returning}>
-              {returning && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            <Button variant="destructive" onClick={handleReturnPurchase} disabled={purchaseReturn.isPending}>
+              {purchaseReturn.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               <RotateCcw className="h-4 w-4 mr-1" />Confirmar Devolución
             </Button>
           </DialogFooter>
@@ -1922,9 +1740,9 @@ export function PurchasesView() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={cancelling}>No, mantener</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCancel} disabled={cancelling} className="bg-red-600 hover:bg-red-700">
-              {cancelling && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            <AlertDialogCancel disabled={deletePurchase.isPending}>No, mantener</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancel} disabled={deletePurchase.isPending} className="bg-red-600 hover:bg-red-700">
+              {deletePurchase.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Sí, cancelar compra
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -2027,8 +1845,8 @@ export function PurchasesView() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setXmlPreview(null)}>Cancelar</Button>
-            <Button onClick={confirmXmlImport} disabled={xmlUploading}>
-              {xmlUploading && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            <Button onClick={confirmXmlImport} disabled={xmlImport.isPending}>
+              {xmlImport.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               <Upload className="h-4 w-4 mr-1" />Importar Factura
             </Button>
           </DialogFooter>
