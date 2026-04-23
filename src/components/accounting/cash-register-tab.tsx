@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   useCurrentCashRegister,
@@ -145,6 +146,8 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
   const [historyFrom, setHistoryFrom] = useState('')
   const [historyTo, setHistoryTo] = useState('')
 
+  const queryClient = useQueryClient()
+
   // ─── Query hooks ─────────────────────────────────────────────────────
   const { data: openShifts = [], refetch: refetchCurrentShift } = useCurrentCashRegister(store?.id)
   const { data: shiftHistory = [], isLoading: isLoadingCash, refetch: refetchHistory } = useCashRegisters(store?.id, {
@@ -221,15 +224,18 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
 
       // Fetch detail for printing
       try {
-        const detailRes = await fetch(`/api/cash-register/${shiftData.shift.id}`)
-        if (detailRes.ok) {
-          const detail = await detailRes.json()
-          const closedShiftData = { shift: parsedShift, summary: detail.orderSummary as CashShiftSummary }
-          setLastClosedShift(closedShiftData)
-          printShiftReport(parsedShift, detail.orderSummary as CashShiftSummary)
-        } else {
-          setLastClosedShift({ shift: parsedShift, summary: emptySummary })
-        }
+        const detail = await queryClient.fetchQuery({
+          queryKey: ['cash-register-detail', shiftData.shift.id],
+          queryFn: async () => {
+            const res = await fetch(`/api/cash-register/${shiftData.shift.id}`)
+            if (!res.ok) throw new Error('Error')
+            return res.json()
+          },
+          staleTime: 30_000,
+        })
+        const closedShiftData = { shift: parsedShift, summary: detail.orderSummary as CashShiftSummary }
+        setLastClosedShift(closedShiftData)
+        printShiftReport(parsedShift, detail.orderSummary as CashShiftSummary)
       } catch {
         setLastClosedShift({ shift: parsedShift, summary: emptySummary })
       }
@@ -267,13 +273,16 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
     setIsLoadingDetail(true)
     setDetailShiftData(null)
     try {
-      const res = await fetch(`/api/cash-register/${shiftId}?storeId=${store?.id}&includeOrders=true`)
-      if (res.ok) {
-        const data = await res.json()
-        setDetailShiftData(data)
-      } else {
-        toast.error('No se pudo obtener el detalle del turno')
-      }
+      const data = await queryClient.fetchQuery({
+        queryKey: ['cash-register-detail-orders', shiftId],
+        queryFn: async () => {
+          const res = await fetch(`/api/cash-register/${shiftId}?storeId=${store?.id}&includeOrders=true`)
+          if (!res.ok) throw new Error('Error')
+          return res.json()
+        },
+        staleTime: 30_000,
+      })
+      setDetailShiftData(data)
     } catch {
       toast.error('Error de conexión')
     } finally {
@@ -316,13 +325,16 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
   async function handlePrintShiftFromHistory(shiftId: number) {
     if (!store) return
     try {
-      const res = await fetch(`/api/cash-register/${shiftId}?storeId=${store.id}`)
-      if (res.ok) {
-        const detail = await res.json()
-        printShiftReport(detail.shift, detail.orderSummary)
-      } else {
-        toast.error('No se pudo obtener el detalle del turno')
-      }
+      const detail = await queryClient.fetchQuery({
+        queryKey: ['cash-register-detail', shiftId],
+        queryFn: async () => {
+          const res = await fetch(`/api/cash-register/${shiftId}?storeId=${store.id}`)
+          if (!res.ok) throw new Error('Error')
+          return res.json()
+        },
+        staleTime: 30_000,
+      })
+      printShiftReport(detail.shift, detail.orderSummary)
     } catch {
       toast.error('Error de conexión')
     }
@@ -586,30 +598,35 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
             <Button variant="outline" size="sm" onClick={async () => {
               if (!store?.id) return
               try {
-                const res = await fetch(`/api/reports/daily?storeId=${store.id}`)
-                if (res.ok) {
-                  const data: any = await res.json()
-                  const printData: DailySummaryData = {
-                    storeName: store.name,
-                    storeNIT: store.nit || undefined,
-                    date: data.date,
-                    totalOrders: data.orders.total,
-                    completedOrders: data.orders.completed,
-                    cancelledOrders: data.orders.cancelled,
-                    totalSales: data.sales.total,
-                    subtotal: data.sales.subtotal,
-                    tips: data.sales.tips,
-                    paymentBreakdown: Object.entries(data.byPayment).map(([method, d]: [string, any]) => ({
-                      method, count: d.count, total: d.total, tips: d.tips,
-                    })),
-                    topProducts: data.topProducts.map((p: { name: string; quantity: number; total: number }) => p),
-                    openingBalance: data.cash.openingBalance,
-                    expectedCash: data.cash.expectedCash,
-                    services: data.services,
-                    currencyCode,
-                  }
-                  printDailySummary(printData)
+                const data = await queryClient.fetchQuery({
+                  queryKey: ['daily-report-cash', store.id],
+                  queryFn: async () => {
+                    const res = await fetch(`/api/reports/daily?storeId=${store.id}`)
+                    if (!res.ok) throw new Error('Error')
+                    return res.json()
+                  },
+                  staleTime: 60_000,
+                })
+                const printData: DailySummaryData = {
+                  storeName: store.name,
+                  storeNIT: store.nit || undefined,
+                  date: data.date,
+                  totalOrders: data.orders.total,
+                  completedOrders: data.orders.completed,
+                  cancelledOrders: data.orders.cancelled,
+                  totalSales: data.sales.total,
+                  subtotal: data.sales.subtotal,
+                  tips: data.sales.tips,
+                  paymentBreakdown: Object.entries(data.byPayment).map(([method, d]: [string, any]) => ({
+                    method, count: d.count, total: d.total, tips: d.tips,
+                  })),
+                  topProducts: data.topProducts.map((p: { name: string; quantity: number; total: number }) => p),
+                  openingBalance: data.cash.openingBalance,
+                  expectedCash: data.cash.expectedCash,
+                  services: data.services,
+                  currencyCode,
                 }
+                printDailySummary(printData)
               } catch { toast.error('Error al generar corte Z') }
             }} className="gap-1.5 active:scale-[0.98] transition-all">
               <FileText className="h-3.5 w-3.5" />
@@ -618,16 +635,21 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
             <Button variant="outline" size="sm" onClick={async () => {
               if (!store?.id) return
               try {
-                const res = await fetch(`/api/products?storeId=${store.id}&active=true&limit=500`)
-                if (res.ok) {
-                  const data = await res.json()
-                  const rawProducts = Array.isArray(data) ? data : (data.data || [])
-                  const products = rawProducts.map((p: { name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }) => ({
-                    name: p.name, category: p.category?.name || 'Sin Categoría', price: p.salePrice, stock: p.currentStock, sku: p.sku,
-                  }))
-                  const printData: ProductCatalogData = { storeName: store.name, storeNIT: store.nit || undefined, products, currencyCode }
-                  printProductCatalog(printData)
-                }
+                const data = await queryClient.fetchQuery({
+                  queryKey: ['products-catalog-cash', store.id],
+                  queryFn: async () => {
+                    const res = await fetch(`/api/products?storeId=${store.id}&active=true&limit=500`)
+                    if (!res.ok) throw new Error('Error')
+                    return res.json()
+                  },
+                  staleTime: 120_000,
+                })
+                const rawProducts = Array.isArray(data) ? data : (data.data || [])
+                const products = rawProducts.map((p: { name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }) => ({
+                  name: p.name, category: p.category?.name || 'Sin Categoría', price: p.salePrice, stock: p.currentStock, sku: p.sku,
+                }))
+                const printData: ProductCatalogData = { storeName: store.name, storeNIT: store.nit || undefined, products, currencyCode }
+                printProductCatalog(printData)
               } catch { toast.error('Error al generar catálogo') }
             }} className="gap-1.5 active:scale-[0.98] transition-all">
               <Receipt className="h-3.5 w-3.5" />
