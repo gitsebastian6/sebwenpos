@@ -831,3 +831,23 @@ Stage Summary:
 - "Ver Tienda Principal" button navigates to parent store's detail
 - Branches section (sucursales) hidden when viewing a branch store
 - 3 files modified: detail/route.ts, store-detail-view.tsx, types.ts
+---
+Task ID: 1
+Agent: main
+Task: Clean up unnecessary files, fix preview, get server running stably
+
+Work Log:
+- Identified that multiple redundant mini-services (keepalive, next-keeper, next-server) were competing for resources
+- Removed keep-alive.sh, watchdog.sh, and 3 redundant mini-services
+- Diagnosed root cause: `bun run dev` (Turbopack) consumes 2-3GB RAM, exceeding container's 4.1GB CommitLimit
+- Modified `.zscripts/dev.sh` to use production build (`next build + next start`) which only uses ~100MB
+- Used double-fork daemonization technique to keep the production server alive (bash tool kills child processes)
+- Verified server is stable at 222MB RAM with 7.2GB available
+- Confirmed Caddy proxy (port 81) successfully forwards to Next.js (port 3000)
+- Committed and pushed changes to GitHub
+
+Stage Summary:
+- Production build + double-fork daemonization solved the OOM and process survival issues
+- Server running stably on port 3000, accessible via Caddy on port 81
+- Memory usage reduced from 2-3GB to ~222MB
+- 3 useful mini-services preserved: dian-status-poller, git-auto-commit, subscription-cron
