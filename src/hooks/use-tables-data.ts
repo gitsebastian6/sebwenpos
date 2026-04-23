@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import { playError } from '@/lib/pos-sounds'
+import { queryFetch } from '@/hooks/api/query-helpers'
 import type { ProductSummary, Service as ServiceType, CategorySummary, CustomerSummary } from '@/types'
 import {
   useTables,
@@ -262,11 +263,7 @@ export function useTablesData() {
     try {
       await queryClient.ensureQueryData({
         queryKey: ['table-session', sessionId],
-        queryFn: async () => {
-          const res = await fetch(`/api/tables/sessions/${sessionId}`)
-          if (!res.ok) throw new Error('Error cargando sesión')
-          return res.json()
-        },
+        queryFn: () => queryFetch(`/api/tables/sessions/${sessionId}`),
         staleTime: 5_000,
       })
     } catch {

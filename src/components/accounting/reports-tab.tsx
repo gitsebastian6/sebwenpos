@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryFetch } from '@/hooks/api/query-helpers'
 import { useResetCustomerDebts } from '@/hooks/api/use-customers'
 import { useDailyReport } from '@/hooks/api/use-reports'
 import { toast } from 'sonner'
@@ -110,13 +111,11 @@ export function ReportsTab({ accounts, currencyCode, onAccountsChanged }: Report
   const reportEnabled = !!store?.id && !!reportFrom && !!reportTo
   const { data: reportData, isLoading: isLoadingReport, refetch: fetchReports } = useQuery<ReportData>({
     queryKey: ['accounting-reports', store?.id, reportFrom, reportTo],
-    queryFn: async () => {
+    queryFn: () => {
       let url = `/api/reports?storeId=${store!.id}`
       if (reportFrom) url += `&from=${reportFrom}`
       if (reportTo) url += `&to=${reportTo}`
-      const res = await fetch(url)
-      if (!res.ok) throw new Error('Error al cargar informe')
-      return res.json()
+      return queryFetch<ReportData>(url)
     },
     enabled: reportEnabled,
     staleTime: 30_000,
@@ -147,11 +146,7 @@ export function ReportsTab({ accounts, currencyCode, onAccountsChanged }: Report
     try {
       const data = await queryClient.fetchQuery({
         queryKey: ['daily-report', store.id],
-        queryFn: async () => {
-          const res = await fetch(`/api/reports/daily?storeId=${store.id}`)
-          if (!res.ok) throw new Error('Error')
-          return res.json()
-        },
+        queryFn: () => queryFetch(`/api/reports/daily?storeId=${store.id}`),
         staleTime: 60_000,
       })
       const printData: DailySummaryData = {
@@ -185,11 +180,7 @@ export function ReportsTab({ accounts, currencyCode, onAccountsChanged }: Report
     try {
       const data = await queryClient.fetchQuery({
         queryKey: ['products-catalog', store.id],
-        queryFn: async () => {
-          const res = await fetch(`/api/products?storeId=${store.id}&active=true&limit=500`)
-          if (!res.ok) throw new Error('Error')
-          return res.json()
-        },
+        queryFn: () => queryFetch(`/api/products?storeId=${store.id}&active=true&limit=500`),
         staleTime: 120_000,
       })
       const rawProducts = Array.isArray(data) ? data : (data.data || [])
@@ -215,11 +206,7 @@ export function ReportsTab({ accounts, currencyCode, onAccountsChanged }: Report
     try {
       const data = await queryClient.fetchQuery({
         queryKey: ['kardex-print', productId, store.id],
-        queryFn: async () => {
-          const res = await fetch(`/api/inventory/kardex?storeId=${store.id}&productId=${productId}`)
-          if (!res.ok) throw new Error('Error')
-          return res.json()
-        },
+        queryFn: () => queryFetch(`/api/inventory/kardex?storeId=${store.id}&productId=${productId}`),
         staleTime: 30_000,
       })
       const printData: KardexData = {

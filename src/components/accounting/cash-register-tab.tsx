@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useQueryClient } from '@tanstack/react-query'
+import { queryFetch } from '@/hooks/api/query-helpers'
 import { toast } from 'sonner'
 import {
   useCurrentCashRegister,
@@ -226,11 +227,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
       try {
         const detail = await queryClient.fetchQuery({
           queryKey: ['cash-register-detail', shiftData.shift.id],
-          queryFn: async () => {
-            const res = await fetch(`/api/cash-register/${shiftData.shift.id}`)
-            if (!res.ok) throw new Error('Error')
-            return res.json()
-          },
+          queryFn: () => queryFetch(`/api/cash-register/${shiftData.shift.id}`),
           staleTime: 30_000,
         })
         const closedShiftData = { shift: parsedShift, summary: detail.orderSummary as CashShiftSummary }
@@ -275,11 +272,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
     try {
       const data = await queryClient.fetchQuery({
         queryKey: ['cash-register-detail-orders', shiftId],
-        queryFn: async () => {
-          const res = await fetch(`/api/cash-register/${shiftId}?storeId=${store?.id}&includeOrders=true`)
-          if (!res.ok) throw new Error('Error')
-          return res.json()
-        },
+        queryFn: () => queryFetch(`/api/cash-register/${shiftId}?storeId=${store?.id}&includeOrders=true`),
         staleTime: 30_000,
       })
       setDetailShiftData(data)
@@ -327,11 +320,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
     try {
       const detail = await queryClient.fetchQuery({
         queryKey: ['cash-register-detail', shiftId],
-        queryFn: async () => {
-          const res = await fetch(`/api/cash-register/${shiftId}?storeId=${store.id}`)
-          if (!res.ok) throw new Error('Error')
-          return res.json()
-        },
+        queryFn: () => queryFetch(`/api/cash-register/${shiftId}?storeId=${store.id}`),
         staleTime: 30_000,
       })
       printShiftReport(detail.shift, detail.orderSummary)
@@ -600,11 +589,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
               try {
                 const data = await queryClient.fetchQuery({
                   queryKey: ['daily-report-cash', store.id],
-                  queryFn: async () => {
-                    const res = await fetch(`/api/reports/daily?storeId=${store.id}`)
-                    if (!res.ok) throw new Error('Error')
-                    return res.json()
-                  },
+                  queryFn: () => queryFetch(`/api/reports/daily?storeId=${store.id}`),
                   staleTime: 60_000,
                 })
                 const printData: DailySummaryData = {
@@ -637,11 +622,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
               try {
                 const data = await queryClient.fetchQuery({
                   queryKey: ['products-catalog-cash', store.id],
-                  queryFn: async () => {
-                    const res = await fetch(`/api/products?storeId=${store.id}&active=true&limit=500`)
-                    if (!res.ok) throw new Error('Error')
-                    return res.json()
-                  },
+                  queryFn: () => queryFetch(`/api/products?storeId=${store.id}&active=true&limit=500`),
                   staleTime: 120_000,
                 })
                 const rawProducts = Array.isArray(data) ? data : (data.data || [])

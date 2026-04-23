@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useQuery } from '@tanstack/react-query'
-import { unwrapArray } from '@/hooks/api/query-helpers'
+import { unwrapArray, queryFetch } from '@/hooks/api/query-helpers'
 import { useInformes, useExportPdf } from '@/hooks/api/use-reports'
 import { formatCurrency } from '@/lib/auth'
 import { KPIBar } from '@/components/shared/kpi-bar'
@@ -103,11 +103,7 @@ export function ReportsView() {
 
   const { data: productsData, refetch: fetchProducts } = useQuery<ReportProduct[]>({
     queryKey: ['products-for-reports', store?.id],
-    queryFn: async () => {
-      return unwrapArray<ReportProduct>(
-        await fetch(`/api/products?storeId=${store?.id}`)
-      )
-    },
+    queryFn: () => unwrapArray<ReportProduct>(queryFetch(`/api/products?storeId=${store?.id}`)),
     enabled: !!store?.id,
     staleTime: 120_000,
   })

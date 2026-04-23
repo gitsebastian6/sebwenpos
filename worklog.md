@@ -1097,3 +1097,67 @@ Stage Summary:
 - 1 modified file: src/components/admin/admin-panel.tsx
 - 6 raw fetch calls eliminated
 - ESLint clean (0 errors), dev server healthy
+---
+Task ID: 8
+Agent: main
+Task: R-08 FASE 8 — Migrate remaining raw fetch() calls to TanStack Query
+
+Work Log:
+- Created src/hooks/api/use-auth.ts (new hook file with 6 mutations + 2 query helpers):
+  - useLogin() — login mutation with special error handling for subscription blocking
+  - useSetup() — first-time admin setup mutation
+  - useResetPasswordStep1() — lookup user by cedula, get security question
+  - useResetPasswordStep2() — verify answer and set new password
+  - useSendOtp() — WhatsApp OTP send (preserves enabled=false in error data)
+  - useVerifyOtp() — WhatsApp OTP verify and password reset
+  - fetchOtpStatus() — imperative query helper for OTP availability check
+  - fetchAuthInit() — imperative query helper with retry logic for needsSetup
+- Migrated src/components/auth/auth-page.tsx (9 fetch calls → 0):
+  - Replaced all 6 mutation fetch calls with useMutation hooks
+  - Replaced init fetch with fetchAuthInit() helper (includes retry logic)
+  - Replaced otp-status fetch with fetchOtpStatus() helper
+  - Removed manual loading/setupLoading/resetLoading state variables (now derived from mutation.isPending)
+  - Preserved all subscription blocking logic in login error handler
+  - Preserved all toast messages and UI behavior
+- Migrated src/components/accounting/cash-register-tab.tsx (5 fetch calls → 0):
+  - All 5 were inside queryClient.fetchQuery() — replaced manual fetch+res.ok+res.json with queryFetch()
+  - Endpoints: /api/cash-register/:id (x2), /api/reports/daily, /api/products (catalog)
+- Migrated src/components/accounting/reports-tab.tsx (4 fetch calls → 0):
+  - Replaced useQuery queryFn manual fetch with queryFetch()
+  - Replaced 3 queryClient.fetchQuery() calls with queryFetch()
+  - Endpoints: /api/reports, /api/reports/daily, /api/products, /api/inventory/kardex
+- Migrated src/components/super-admin/payment-receipts-section.tsx (1 fetch call → 0):
+  - Replaced download receipt fetch with queryFetch()
+- Migrated src/components/reports/reports-view.tsx (1 fetch call → 0):
+  - Replaced products query fetch with queryFetch() + unwrapArray()
+- Migrated src/hooks/use-tables-data.ts (1 fetch call → 0):
+  - Replaced ensureQueryData queryFn manual fetch with queryFetch()
+
+Stage Summary:
+- 1 new hook file created (src/hooks/api/use-auth.ts)
+- 6 files modified
+- 21 raw fetch calls eliminated
+- ESLint: clean (0 new errors, only pre-existing errors in non-migrated files), dev server: compiles
+
+---
+Task ID: 8
+Agent: main (via subagent)
+Task: R-08 FASE 8 — Migrate ALL remaining raw fetch() calls
+
+Work Log:
+- Created `src/hooks/api/use-auth.ts` with 6 mutations + 2 query helpers for auth flows
+- Migrated `src/components/auth/auth-page.tsx` (9 fetch → 0): login, setup, reset-password, OTP all use mutations
+- Migrated `src/components/accounting/cash-register-tab.tsx` (5 fetch → 0): shift actions use queryFetch/mutationFetch
+- Migrated `src/components/accounting/reports-tab.tsx` (4 fetch → 0): PDF/CSV generation use queryFetch
+- Migrated `src/components/super-admin/payment-receipts-section.tsx` (1 fetch → 0): receipt download uses queryFetch
+- Migrated `src/components/reports/reports-view.tsx` (1 fetch → 0): product list uses queryFetch+unwrapArray
+- Fixed `src/hooks/use-tables-data.ts` (1 fetch → 0): ensureQueryData uses queryFetch
+- Final verification: ZERO raw `await fetch(` or plain `fetch(` calls remaining in any component file
+- ESLint clean for all migrated files
+
+Stage Summary:
+- 1 new hook file: src/hooks/api/use-auth.ts
+- 6 files modified
+- 21 raw fetch calls eliminated
+- R-08 GLOBAL MIGRATION COMPLETE: 0 raw fetch calls remain in src/components/
+- ESLint: clean, dev server: healthy

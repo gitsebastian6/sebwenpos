@@ -2,6 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import {
+  useLogin, useSetup, useResetPasswordStep1, useResetPasswordStep2,
+  useSendOtp, useVerifyOtp,
+  fetchOtpStatus, fetchAuthInit,
+} from '@/hooks/api/use-auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -82,12 +87,22 @@ interface BlockedInfo {
 export function AuthPage() {
   const { login } = useAuthStore()
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [loginCedula, setLoginCedula] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
   const [initializing, setInitializing] = useState(true)
   const [needsSetup, setNeedsSetup] = useState(false)
   const [blockedInfo, setBlockedInfo] = useState<BlockedInfo | null>(null)
+
+  // ─── TanStack Query mutations ───
+  const loginMutation = useLogin()
+  const setupMutation = useSetup()
+  const resetStep1Mutation = useResetPasswordStep1()
+  const resetStep2Mutation = useResetPasswordStep2()
+  const sendOtpMutation = useSendOtp()
+  const verifyOtpMutation = useVerifyOtp()
+  const loading = loginMutation.isPending
+  const setupLoading = setupMutation.isPending
+  const resetLoading = resetStep1Mutation.isPending || resetStep2Mutation.isPending || sendOtpMutation.isPending || verifyOtpMutation.isPending
 
   // ─── Forgot password state ───
   const [showResetDialog, setShowResetDialog] = useState(false)
@@ -100,7 +115,6 @@ export function AuthPage() {
   const [resetNewPassword, setResetNewPassword] = useState('')
   const [resetConfirmPassword, setResetConfirmPassword] = useState('')
   const [resetShowPass, setResetShowPass] = useState(false)
-  const [resetLoading, setResetLoading] = useState(false)
   // ── WhatsApp OTP state ──
   const [whatsappEnabled, setWhatsappEnabled] = useState(false)
   const [otpCode, setOtpCode] = useState('')
@@ -115,32 +129,15 @@ export function AuthPage() {
   const [setupConfirm, setSetupConfirm] = useState('')
   const [setupFullName, setSetupFullName] = useState('')
   const [setupEmail, setSetupEmail] = useState('')
-  const [setupLoading, setSetupLoading] = useState(false)
   const [setupShowPass, setSetupShowPass] = useState(false)
 
   useEffect(() => {
-    fetch('/api/auth/init')
-      .then((res) => {
-        if (!res.ok) {
-          // API error (500) — server might be starting up. Retry once.
-          return new Promise<{ needsSetup?: boolean }>((resolve) => {
-            setTimeout(() => {
-              fetch('/api/auth/init')
-                .then(r => r.json())
-                .then(resolve)
-                .catch(() => resolve({ needsSetup: false }))
-            }, 2000)
-          })
-        }
-        return res.json()
-      })
-      .then((data) => {
-        if (data.needsSetup) {
-          setNeedsSetup(true)
-        }
+    fetchAuthInit()
+      .then((needsSetup) => {
+        if (needsSetup) setNeedsSetup(true)
       })
       .catch(() => {
-        // On total failure, don't lock user out — try again on next render
+        // On total failure, don't lock user out
       })
       .finally(() => setInitializing(false))
   }, [])
@@ -155,39 +152,24 @@ export function AuthPage() {
       toast.error('La contraseña debe tener al menos 8 caracteres')
       return
     }
-    setSetupLoading(true)
     try {
-      const res = await fetch('/api/auth/setup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cedula: setupCedula.trim(),
-          password: setupPassword,
-          fullName: setupFullName.trim(),
-          email: setupEmail.trim(),
-        }),
+      await setupMutation.mutateAsync({
+        cedula: setupCedula.trim(),
+        password: setupPassword,
+        fullName: setupFullName.trim(),
+        email: setupEmail.trim(),
       })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Error al crear el Super Administrador')
-        return
-      }
       toast.success('Super Administrador creado. Ya puede iniciar sesión.')
       setNeedsSetup(false)
       setLoginCedula(setupCedula.trim())
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setSetupLoading(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión')
     }
   }
 
   // ── Check WhatsApp OTP availability on mount ──
   useEffect(() => {
-    fetch('/api/auth/otp-status')
-      .then(r => r.json())
-      .then(data => setWhatsappEnabled(data.enabled === true))
-      .catch(() => setWhatsappEnabled(false))
+    fetchOtpStatus().then(setWhatsappEnabled)
     return () => { if (otpTimerRef.current) clearInterval(otpTimerRef.current) }
   }, [])
 
@@ -202,7 +184,6 @@ export function AuthPage() {
     setResetNewPassword('')
     setResetConfirmPassword('')
     setResetShowPass(false)
-    setResetLoading(false)
     setOtpCode('')
     setOtpSentTo('')
     setOtpTestCode('')
@@ -217,25 +198,13 @@ export function AuthPage() {
       toast.error('Ingresa tu número de cédula')
       return
     }
-    setResetLoading(true)
     try {
-      const res = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cedula: resetCedula.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Error al buscar cuenta')
-        return
-      }
+      const data = await resetStep1Mutation.mutateAsync({ cedula: resetCedula.trim() })
       setResetUserId(data.userId)
       setResetQuestion(data.question)
       setResetStep('question')
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setResetLoading(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión')
     }
   }
 
@@ -250,29 +219,17 @@ export function AuthPage() {
       return
     }
     if (!resetUserId) return
-    setResetLoading(true)
     try {
-      const res = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: resetUserId,
-          answer: resetAnswer,
-          newPassword: resetNewPassword,
-        }),
+      await resetStep2Mutation.mutateAsync({
+        userId: resetUserId,
+        answer: resetAnswer,
+        newPassword: resetNewPassword,
       })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Error al restablecer contraseña')
-        return
-      }
       toast.success('Contraseña restablecida correctamente')
       setShowResetDialog(false)
       setLoginCedula(resetCedula.trim())
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setResetLoading(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión')
     }
   }
 
@@ -280,23 +237,8 @@ export function AuthPage() {
   async function handleSendOTP(e: React.FormEvent) {
     e.preventDefault()
     if (!resetCedula.trim()) { toast.error('Ingresa tu número de cédula'); return }
-    setResetLoading(true)
     try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cedula: resetCedula.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        if (data.enabled === false) {
-          toast.error('WhatsApp OTP no disponible. Usa pregunta de seguridad.')
-          setResetMethod('security')
-          return
-        }
-        toast.error(data.error || 'Error al enviar código')
-        return
-      }
+      const data = await sendOtpMutation.mutateAsync({ cedula: resetCedula.trim() })
       setResetUserId(data.userId)
       setOtpSentTo(data.maskedPhone)
       setOtpTestCode(data.testCode || '')
@@ -315,10 +257,14 @@ export function AuthPage() {
       } else {
         toast.success('Código enviado por WhatsApp')
       }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setResetLoading(false)
+    } catch (err) {
+      const error = err as Error & { data?: { enabled?: boolean } }
+      if (error.data?.enabled === false) {
+        toast.error('WhatsApp OTP no disponible. Usa pregunta de seguridad.')
+        setResetMethod('security')
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Error de conexión')
+      }
     }
   }
 
@@ -328,76 +274,58 @@ export function AuthPage() {
     if (resetNewPassword.length < 8) { toast.error('La contraseña debe tener al menos 8 caracteres'); return }
     if (resetNewPassword !== resetConfirmPassword) { toast.error('Las contraseñas no coinciden'); return }
     if (!resetUserId) return
-    setResetLoading(true)
     try {
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: resetUserId, otp: otpCode, newPassword: resetNewPassword }),
-      })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al verificar código'); return }
+      await verifyOtpMutation.mutateAsync({ userId: resetUserId, otp: otpCode, newPassword: resetNewPassword })
       toast.success('Contraseña restablecida correctamente')
       if (otpTimerRef.current) clearInterval(otpTimerRef.current)
       setShowResetDialog(false)
       setLoginCedula(resetCedula.trim())
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setResetLoading(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión')
     }
   }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
     setBlockedInfo(null)
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cedula: loginCedula.trim(), password: loginPassword }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        if (data.subscriptionStatus === 'EXPIRED' || data.subscriptionStatus === 'CANCELLED' || data.subscriptionStatus === 'NO_SUBSCRIPTION') {
-          setBlockedInfo({
-            subscriptionStatus: data.subscriptionStatus,
-            planName: data.planName,
-            endDate: data.endDate,
-          })
-          if (data.subscriptionStatus === 'NO_SUBSCRIPTION') {
-            toast.error('Sin suscripción activa', {
-              description: 'Tu cuenta no tiene un plan asignado. Contacta al soporte.',
-              duration: 8000,
-            })
-          } else {
-            toast.error('Suscripción expirada', {
-              description: `Tu plan ${data.planName || ''} venció. Contacta soporte para renovar.`,
-              duration: 8000,
-            })
-          }
-        } else if (res.status === 429) {
-          const retrySec = data.retryAfter || 60
-          toast.error('Demasiados intentos', {
-            description: `Espere ${retrySec} segundos antes de intentar de nuevo.`,
-            duration: retrySec * 1000,
-          })
-        } else {
-          toast.error(data.error || 'Error al iniciar sesión')
-        }
-        return
-      }
+      const data = await loginMutation.mutateAsync({ cedula: loginCedula.trim(), password: loginPassword })
       login(data.user, data.store, data.token, data.permissions, data.isSuperAdmin, data.subscription || null, data.availableStores || null)
       if (data.isSuperAdmin) {
         toast.success('Bienvenido, Super Administrador')
       } else {
         toast.success(`¡Bienvenido${data.user.fullName ? ', ' + data.user.fullName : ''}!`)
       }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setLoading(false)
+    } catch (err) {
+      const error = err as Error & { data?: { subscriptionStatus?: string; planName?: string; endDate?: string; retryAfter?: number }; status?: number }
+      const data = error.data
+      const status = error.status || 0
+      if (data?.subscriptionStatus === 'EXPIRED' || data?.subscriptionStatus === 'CANCELLED' || data?.subscriptionStatus === 'NO_SUBSCRIPTION') {
+        setBlockedInfo({
+          subscriptionStatus: data.subscriptionStatus,
+          planName: data.planName,
+          endDate: data.endDate,
+        })
+        if (data.subscriptionStatus === 'NO_SUBSCRIPTION') {
+          toast.error('Sin suscripción activa', {
+            description: 'Tu cuenta no tiene un plan asignado. Contacta al soporte.',
+            duration: 8000,
+          })
+        } else {
+          toast.error('Suscripción expirada', {
+            description: `Tu plan ${data.planName || ''} venció. Contacta soporte para renovar.`,
+            duration: 8000,
+          })
+        }
+      } else if (status === 429) {
+        const retrySec = data?.retryAfter || 60
+        toast.error('Demasiados intentos', {
+          description: `Espere ${retrySec} segundos antes de intentar de nuevo.`,
+          duration: retrySec * 1000,
+        })
+      } else {
+        toast.error(data?.error || error.message || 'Error al iniciar sesión')
+      }
     }
   }
 

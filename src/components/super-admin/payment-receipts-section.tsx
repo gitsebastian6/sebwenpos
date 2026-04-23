@@ -18,6 +18,7 @@ import {
   Eye as EyeIcon, FileCheck2, Banknote, CircleDollarSign,
   BadgeCheck, CalendarDays, Hash, FileText, Plus, AlertTriangle, ArrowRight,
 } from 'lucide-react'
+import { queryFetch } from '@/hooks/api/query-helpers'
 import { formatCOP, formatDateTime } from './helpers'
 import type { PaymentReceiptData } from '@/hooks/api/use-super-admin'
 import {
@@ -171,9 +172,8 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
   function handleDownloadReceipt(receipt: PaymentReceiptData) {
     const download = async () => {
       try {
-        const res = await fetch(`/api/super-admin/payment-receipts/${receipt.id}`)
-        const data = await res.json()
-        if (res.ok && data.fileData) {
+        const data = await queryFetch<{ fileData: string; fileType?: string; fileName?: string }>(`/api/super-admin/payment-receipts/${receipt.id}`)
+        if (data.fileData) {
           const mime = data.fileType || 'application/octet-stream'
           const href = `data:${mime};base64,${data.fileData}`
           const a = document.createElement('a')
