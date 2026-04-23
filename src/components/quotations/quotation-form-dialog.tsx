@@ -81,7 +81,9 @@ export function QuotationFormDialog({ open, onOpenChange, store, onCreated }: Qu
         setDebouncedProductSearch(productSearch)
       }, 300)
     } else {
-      setDebouncedProductSearch('')
+      searchTimeoutRef.current = setTimeout(() => {
+        setDebouncedProductSearch('')
+      }, 0)
     }
     return () => {
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)

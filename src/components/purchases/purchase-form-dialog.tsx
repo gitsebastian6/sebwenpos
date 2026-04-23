@@ -146,10 +146,10 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
   }
 
   // ── Populate for edit (use open as trigger key) ──
-  const lastOpenRef = useRef(false)
-  if (open && !lastOpenRef.current) {
+  const [wasOpen, setWasOpen] = useState(false)
+  if (open && !wasOpen) {
     // Dialog just opened — reset form
-    lastOpenRef.current = true
+    setWasOpen(true)
     if (editingPurchase) {
       setSelectedProviderId(editingPurchase.providerId ? String(editingPurchase.providerId) : '')
       setSelectedProvider(editingPurchase.provider ? {
@@ -186,7 +186,9 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
     setItemSearches({})
     setItemDropdowns({})
   }
-  if (!open) lastOpenRef.current = false
+  if (!open && wasOpen) {
+    setWasOpen(false)
+  }
 
   // ── Save ──
 

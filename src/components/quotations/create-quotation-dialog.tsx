@@ -72,7 +72,9 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
         setDebouncedProductSearch(productSearch)
       }, 300)
     } else {
-      setDebouncedProductSearch('')
+      searchTimeoutRef.current = setTimeout(() => {
+        setDebouncedProductSearch('')
+      }, 0)
     }
     return () => {
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)

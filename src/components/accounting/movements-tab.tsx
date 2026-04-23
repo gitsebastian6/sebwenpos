@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useMovements } from '@/hooks/api/use-ledger'
 import { Card, CardContent } from '@/components/ui/card'
@@ -45,18 +45,22 @@ interface MovementsTabProps {
 
 export function MovementsTab({ accounts, currencyCode, initialAccountId }: MovementsTabProps) {
   const store = useAuthStore((s) => s.store)
-  const [filterAccountId, setFilterAccountId] = useState<string>('all')
+  const [filterAccountId, setFilterAccountId] = useState<string>(
+    () => initialAccountId !== null ? String(initialAccountId) : 'all'
+  )
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
+  const [prevAccountId, setPrevAccountId] = useState(initialAccountId)
 
-  // When initialAccountId is set from parent (via accounts tab navigation), update filter
-  useEffect(() => {
+  // Adjust state when parent navigates to a different account (React-recommended pattern)
+  if (initialAccountId !== prevAccountId) {
+    setPrevAccountId(initialAccountId)
     if (initialAccountId !== null) {
       setFilterAccountId(String(initialAccountId))
       setFilterFrom('')
       setFilterTo('')
     }
-  }, [initialAccountId])
+  }
 
   // ─── TanStack Query hook ────────────────────────────────────────────────
   const { data: response, isLoading: isLoadingEntries, refetch: fetchEntries } = useMovements(store?.id, {

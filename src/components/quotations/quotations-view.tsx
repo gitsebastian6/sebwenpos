@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCOP } from '@/lib/format'
 import { toast } from 'sonner'
@@ -78,23 +78,30 @@ export function QuotationsView() {
   }, [detailQuery.data])
   const loadingDetail = detailQuery.isLoading
 
-  // ─── Effects ────────────────────────────────────
+  // ─── React state adjustments (during render, not effects) ──────
 
-  useEffect(() => {
-    if (showDetail && detailQuery.isError && !pendingConvert) {
-      toast.error('Error al cargar detalle')
-      setShowDetail(false)
-      setSelectedId(null)
-    }
-  }, [showDetail, detailQuery.isError, pendingConvert])
+  // Close detail dialog on query error
+  const [prevDetailError, setPrevDetailError] = useState(false)
+  if (detailQuery.isError && !prevDetailError && showDetail && !pendingConvert) {
+    setPrevDetailError(true)
+    toast.error('Error al cargar detalle')
+    setShowDetail(false)
+    setSelectedId(null)
+  }
+  if (!detailQuery.isError && prevDetailError) {
+    setPrevDetailError(false)
+  }
 
   // Auto-open convert dialog when detail loads for pending convert
-  useEffect(() => {
-    if (pendingConvert && detail && !detailQuery.isLoading) {
-      setPendingConvert(false)
-      setShowConvert(true)
-    }
-  }, [pendingConvert, detail, detailQuery.isLoading])
+  const [prevDetailLoading, setPrevDetailLoading] = useState(true)
+  if (pendingConvert && detail && !detailQuery.isLoading && prevDetailLoading) {
+    setPrevDetailLoading(false)
+    setPendingConvert(false)
+    setShowConvert(true)
+  }
+  if (detailQuery.isLoading && !prevDetailLoading) {
+    setPrevDetailLoading(true)
+  }
 
   // ─── Count by status ─────────────────────────────
 
