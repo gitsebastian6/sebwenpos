@@ -891,3 +891,53 @@ Stage Summary:
 - DebitNote model created with proper relations
 - Production build successful, server running stable
 - Committed and pushed to GitHub: 6c9c676
+---
+Task ID: high-fixes
+Agent: main-orchestrator + 4 parallel sub-agents
+Task: Fix 10 HIGH severity issues identified in QA audit
+
+Work Log:
+- Launched 4 parallel audit agents: API auth/security, business logic, frontend-backend, schema/migration
+- Identified 10 HIGH severity issues across the codebase
+- Fixed all 10 in parallel using 4 sub-agents:
+
+H-01: Added requireStoreAccess to 6 unprotected API routes:
+  - /api/invoices/[id]/credit-notes (GET + POST)
+  - /api/invoices/[id]/debit-notes (GET + POST)
+  - /api/settings/electronic-invoicing (GET)
+  - /api/electronic-invoicing/test-connection (POST)
+  - /api/credit-notes/[id]/pdf (GET)
+  - /api/reports/export-pdf (POST) — also added storeId to schema
+
+H-02: Invoice consecutive race condition — wrapped getNextConsecutive + invoice.create in single $transaction
+  - Modified consecutive-counter.ts to accept optional tx client
+  - Modified invoices/route.ts to use tx for both acquire and create
+
+H-03: Debit note consecutive race condition — wrapped findFirst + create in single $transaction
+  - Modified invoices/[id]/debit-notes/route.ts
+
+H-04: Return debt reduction now proportional with discount
+  - discountRatio = order.discountAmount / order.subtotal
+  - returnAmount = sum of (unitPrice * qty * (1 - discountRatio))
+  - Prevents totalDebt going negative on discounted CREDIT orders
+
+H-05: Return validation moved inside transaction
+  - Uses tx.orderItem.findUnique() for fresh returnedQuantity
+  - Prevents over-returning via concurrent requests
+
+H-06: CREDIT/FIADO orders now require customerId (server validation, returns 400)
+
+H-07: Debt payment FIFO creditOrders fetched inside transaction using tx.order.findMany
+
+H-08: Store deletion FK cascade order fixed (employees first, then store, then users)
+
+H-09: CashRegister.userId changed to nullable + onDelete: SetNull
+
+H-10: OtpToken now has @relation to User with onDelete: Cascade, User has otpTokens back-relation
+
+Stage Summary:
+- 14 files modified, 346 insertions, 250 deletions
+- Schema changes pushed to DB (prisma db push)
+- Production build successful, server running stable
+- Git pushed: bb186b5
+- All 8 CRITICAL + 10 HIGH issues now fixed
