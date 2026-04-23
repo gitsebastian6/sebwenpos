@@ -1,4 +1,28 @@
 ---
+Task ID: R09-f2
+Agent: full-stack-developer
+Task: R-09 FASE 2 — Refactor pos-view.tsx from 1456 → ~490 lines
+
+Work Log:
+- Fixed product-grid.tsx: added onAddToCart/onAddService optional callbacks to ProductGridProps, ProductCardProps, ServiceCardProps
+- Replaced onClick={() => undefined} with proper callbacks in ProductCard and ServiceCard
+- Passed onAddToCart/onAddService props through ProductGrid to individual card components
+- Replaced inline renderProductCard, renderServiceCard, renderProductGrid with ProductGrid component
+- Replaced inline Cart Sheet (~620 lines) with CartSidebar component
+- Replaced inline Charge Confirmation Dialog (~200 lines) with PaymentDialog component
+- Removed duplicate PAYMENT_METHODS constant (already defined in cart-sidebar.tsx and payment-dialog.tsx)
+- Cleaned up ~30 unused imports (ProductImage, Card, Textarea, RadioGroup, Dialog, Sheet, Popover, Select, Skeleton, NITInput, Separator, many lucide icons, date-fns, etc.)
+- Lint: 32 errors (all pre-existing — setState-in-effect in quotations-view.tsx, require() in start-server.js)
+- Dev server compiles successfully
+
+Stage Summary:
+- pos-view.tsx: 1456 → 490 lines (66% reduction)
+- 3 existing extracted components now properly integrated (ProductGrid, CartSidebar, PaymentDialog)
+- product-grid.tsx: 219 → 225 lines (added 6 lines for callback props)
+- Zero visual or functional changes
+- All business logic preserved in hooks (usePosCart, usePosData)
+
+---
 Task ID: R09-f1
 Agent: full-stack-developer
 Task: R-09 FASE 1 — Refactor quotations-view.tsx from 1570 → ~314 lines

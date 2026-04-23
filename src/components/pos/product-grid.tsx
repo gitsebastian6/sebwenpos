@@ -19,6 +19,8 @@ interface ProductGridProps {
   selectedCategory: string
   currencyCode: string
   cart: CartItem[]
+  onAddToCart?: (product: Product) => void
+  onAddService?: (service: Service) => void
 }
 
 // ─── Component ──────────────────────────────────────────
@@ -31,6 +33,8 @@ export function ProductGrid({
   selectedCategory,
   currencyCode,
   cart,
+  onAddToCart,
+  onAddService,
 }: ProductGridProps) {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
@@ -44,7 +48,7 @@ export function ProductGrid({
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
             {filteredServices.map((service) => (
-              <ServiceCard key={service.id} service={service} currencyCode={currencyCode} cart={cart} />
+              <ServiceCard key={service.id} service={service} currencyCode={currencyCode} cart={cart} onAddService={onAddService} />
             ))}
           </div>
         )
@@ -55,7 +59,7 @@ export function ProductGrid({
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
           {filteredProducts.map((product) => (
-            <ProductCard key={product.id} product={product} currencyCode={currencyCode} cart={cart} />
+            <ProductCard key={product.id} product={product} currencyCode={currencyCode} cart={cart} onAddToCart={onAddToCart} />
           ))}
         </div>
       )}
@@ -69,9 +73,10 @@ interface ProductCardProps {
   product: Product
   currencyCode: string
   cart: CartItem[]
+  onAddToCart?: (product: Product) => void
 }
 
-function ProductCard({ product, currencyCode, cart }: ProductCardProps) {
+function ProductCard({ product, currencyCode, cart, onAddToCart }: ProductCardProps) {
   const isOutOfStock = product.currentStock <= 0
   const cartItem = cart.find((item) => item.productId === product.id)
   const inCart = !!cartItem
@@ -84,7 +89,7 @@ function ProductCard({ product, currencyCode, cart }: ProductCardProps) {
         ${isOutOfStock ? 'opacity-50 grayscale cursor-not-allowed' : ''}
         ${inCart ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-background shadow-emerald-500/10 dark:shadow-emerald-900/20' : ''}
       `}
-      onClick={() => !isOutOfStock && undefined}
+      onClick={() => !isOutOfStock && onAddToCart?.(product)}
     >
       <CardContent className="p-0">
         {/* Image area — 4:3 aspect ratio for better density */}
@@ -140,9 +145,10 @@ interface ServiceCardProps {
   service: Service
   currencyCode: string
   cart: CartItem[]
+  onAddService?: (service: Service) => void
 }
 
-function ServiceCard({ service, currencyCode, cart }: ServiceCardProps) {
+function ServiceCard({ service, currencyCode, cart, onAddService }: ServiceCardProps) {
   const cartItem = cart.find((item) => item.serviceId === service.id)
   const inCart = !!cartItem
 
@@ -153,7 +159,7 @@ function ServiceCard({ service, currencyCode, cart }: ServiceCardProps) {
         hover:shadow-md hover:border-primary/20 active:scale-[0.97]
         ${inCart ? 'ring-2 ring-violet-500 ring-offset-1 dark:ring-offset-background shadow-violet-500/10 dark:shadow-violet-900/20' : ''}
       `}
-      onClick={() => undefined}
+      onClick={() => onAddService?.(service)}
     >
       <CardContent className="p-0">
         {/* Image area — violet themed icon */}
