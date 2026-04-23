@@ -1,4 +1,32 @@
 ---
+Task ID: R09-f8
+Agent: main
+Task: R-09 FASE 8 — Refactor inventory-view.tsx from 1,114 → 168 lines
+
+Work Log:
+- Created src/components/inventory/inventory-types.tsx (72 lines): Product, InventoryMovement, LowStockAlert interfaces, ActionType type, MOVEMENT_TYPE_LABELS, MOVEMENT_TYPE_ICONS (JSX lucide icons), LOSS_REASONS constants
+- Created src/components/inventory/inventory-action-cards.tsx (80 lines): 3 big clickable action cards (Loss=red, Return=sky, Adjust=amber) with onAction callback
+- Created src/components/inventory/inventory-low-stock-card.tsx (73 lines): amber-bordered card showing low stock products grid with loading skeleton and empty state
+- Created src/components/inventory/inventory-product-table.tsx (144 lines): product inventory card with search bar, table, Reset Stock button, loading/empty states
+- Created src/components/inventory/inventory-movements-section.tsx (168 lines): movements header, filter card (type+product selects), movements table, Excel export button
+- Created src/components/inventory/inventory-action-dialog.tsx (327 lines): self-contained 2-step dialog (product search → action form) with own internal state and mutation hooks (useInventoryAdjustment, useInventoryReturn, useInventoryLoss), uses key prop pattern for clean state reset on open
+- Created src/components/inventory/inventory-reset-dialog.tsx (87 lines): self-contained confirmation dialog with own resetNote state and useResetStock mutation hook
+- Refactored inventory-view.tsx (168 lines): imports all extracted components, keeps store auth, filter/search state, query hooks (useInventory, useProducts), computed values (filteredProducts, lowStockProducts), Excel export handler, action dialog orchestration with key-based remount
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully, responds 200
+
+Stage Summary:
+- inventory-view.tsx: 1,114 → 168 lines (85% reduction)
+- 7 new files created: 1 types + 6 component files
+- Each extracted component is self-contained with its own imports and state
+- InventoryActionDialog manages its own mutation hooks internally (no prop-drilling)
+- InventoryResetDialog manages its own mutation hook internally
+- Key prop pattern used for both dialogs to force clean remount on open
+- All business logic preserved, zero visual/functional changes
+- InventoryView export name preserved
+- Zero new lint errors
+
+---
 Task ID: R09-f6
 Agent: main
 Task: R-09 FASE 6 — Refactor invoices-view.tsx from 1,273 → 452 lines
@@ -1349,3 +1377,31 @@ Stage Summary:
 - 4 new files created (hook + 3 dialogs)
 - Zero visual/functional changes
 
+
+---
+Task ID: R09-f8
+Agent: main
+Task: R-09 FASE 8 — Refactor inventory-view.tsx from 1,114 → 168 lines
+
+Work Log:
+- Created src/components/inventory/inventory-types.tsx (72 lines): Product, InventoryMovement, LowStockAlert interfaces, ActionType type, MOVEMENT_TYPE_LABELS, MOVEMENT_TYPE_ICONS (JSX), LOSS_REASONS constants
+- Created src/components/inventory/inventory-action-cards.tsx (80 lines): 3 big clickable action cards (Loss/Return/Adjust) with onAction callback
+- Created src/components/inventory/inventory-low-stock-card.tsx (73 lines): amber-bordered card with low stock products grid, loading/empty states
+- Created src/components/inventory/inventory-product-table.tsx (144 lines): product table with search bar, stock indicators, Reset Stock button, loading/empty states
+- Created src/components/inventory/inventory-movements-section.tsx (168 lines): movements header, type+product filter selects, movements table with Excel export button
+- Created src/components/inventory/inventory-action-dialog.tsx (527 lines): self-contained 2-step dialog (product search → action form), manages own mutation hooks (adjust/return/loss), key prop pattern for clean remount
+- Created src/components/inventory/inventory-reset-dialog.tsx (87 lines): self-contained reset confirmation dialog with own mutation hook, warning banner, note input
+- Refactored inventory-view.tsx (168 lines): imports all extracted components, keeps filter/search state, query hooks, actionDialog orchestration, Excel export, composes all sections
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully, responds 200
+
+Stage Summary:
+- inventory-view.tsx: 1,114 → 168 lines (85% reduction)
+- 7 new files created: 1 types + 6 component files
+- Each extracted component is self-contained with its own imports
+- InventoryActionDialog manages its own mutation hooks (no prop-drilling)
+- InventoryResetDialog manages its own mutation hook + resetNote state
+- Key prop pattern used for both dialogs (clean state reset on open)
+- All business logic preserved, zero visual/functional changes
+- InventoryView export name preserved
+- Zero new lint errors
