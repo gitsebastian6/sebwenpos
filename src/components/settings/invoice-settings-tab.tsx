@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
+import { useUpdateStore } from '@/hooks/api/use-settings'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,12 +19,13 @@ export function InvoiceSettingsTab() {
   // ── Tax data form state ──
   const [storeLegalName, setStoreLegalName] = useState(store?.legalName || '')
   const [storeNIT, setStoreNIT] = useState(store?.nit || '')
-  const [savingTaxData, setSavingTaxData] = useState(false)
+  const updateStoreMutation = useUpdateStore()
+  const savingTaxData = updateStoreMutation.isPending
 
   // ── DIVIPOLA location state ──
   const [divipolaCode, setDivipolaCode] = useState(store?.divipolaCode || '')
   const [cityName, setCityName] = useState(store?.cityName || '')
-  const [divipolaSaving, setDivipolaSaving] = useState(false)
+  const divipolaSaving = updateStoreMutation.isPending
 
   // ── DIAN Resolution form state ──
   const [invoicePrefix, setInvoicePrefix] = useState(store?.invoicePrefix || 'FE')
@@ -41,7 +43,7 @@ export function InvoiceSettingsTab() {
     store?.resolutionEndNumber?.toString() || ''
   )
   const [invoiceTestMode, setInvoiceTestMode] = useState(store?.invoiceTestMode ?? true)
-  const [savingResolution, setSavingResolution] = useState(false)
+  const savingResolution = updateStoreMutation.isPending
 
   const hasTaxDataChanges =
     storeLegalName !== (store?.legalName || '') ||
@@ -65,28 +67,22 @@ export function InvoiceSettingsTab() {
   // ── Save tax data ──
   async function handleSaveTaxData() {
     if (!store?.id) return
-    setSavingTaxData(true)
     try {
-      const res = await fetch(`/api/stores?storeId=${store.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await updateStoreMutation.mutateAsync({
+        storeId: store.id,
+        data: {
           name: store?.name,
           legalName: storeLegalName || null,
           nit: storeNIT || null,
           address: store?.address || null,
           phone: store?.phone || null,
           currencyCode: store?.currencyCode,
-        }),
+        },
       })
-      if (!res.ok) throw new Error('Error al guardar')
-      const data = await res.json()
       updateStore(data)
       toast.success('Datos Tributarios guardados correctamente')
     } catch {
       toast.error('Error al guardar los datos tributarios')
-    } finally {
-      setSavingTaxData(false)
     }
   }
 
@@ -97,36 +93,28 @@ export function InvoiceSettingsTab() {
       toast.error('El código DIVIPOLA debe ser exactamente 5 dígitos numéricos (ej: 11001)')
       return
     }
-    setDivipolaSaving(true)
     try {
-      const res = await fetch(`/api/stores?storeId=${store.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await updateStoreMutation.mutateAsync({
+        storeId: store.id,
+        data: {
           divipolaCode: divipolaCode || null,
           cityName: cityName || null,
-        }),
+        },
       })
-      if (!res.ok) throw new Error('Error al guardar')
-      const data = await res.json()
       updateStore(data)
       toast.success('Ubicación DIVIPOLA guardada correctamente')
     } catch {
       toast.error('Error al guardar la ubicación DIVIPOLA')
-    } finally {
-      setDivipolaSaving(false)
     }
   }
 
   // ── Save DIAN resolution ──
   async function handleSaveDianResolution() {
     if (!store?.id) return
-    setSavingResolution(true)
     try {
-      const res = await fetch(`/api/stores?storeId=${store.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await updateStoreMutation.mutateAsync({
+        storeId: store.id,
+        data: {
           invoicePrefix: invoicePrefix || null,
           resolutionNumber: resolutionNumber || null,
           resolutionStartDate: resolutionStartDate || null,
@@ -134,16 +122,12 @@ export function InvoiceSettingsTab() {
           resolutionStartNumber: resolutionStartNumber ? parseInt(resolutionStartNumber) : null,
           resolutionEndNumber: resolutionEndNumber ? parseInt(resolutionEndNumber) : null,
           invoiceTestMode,
-        }),
+        },
       })
-      if (!res.ok) throw new Error('Error al guardar')
-      const data = await res.json()
       updateStore(data)
       toast.success('Resolución DIAN guardada correctamente')
     } catch {
       toast.error('Error al guardar la resolución DIAN')
-    } finally {
-      setSavingResolution(false)
     }
   }
 

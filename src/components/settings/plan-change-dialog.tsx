@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,6 +26,7 @@ import {
   Send,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/format'
+import { useSubscriptionProration, useUploadPaymentReceipt } from '@/hooks/api/use-settings'
 import type { PlanOption } from '@/components/settings/subscription-payment-panel'
 import { BILLING_PERIODS } from '@/components/settings/subscription-payment-panel'
 
@@ -46,20 +47,12 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
   const [uploadMethod, setUploadMethod] = useState('NEQUI')
   const [uploadNotes, setUploadNotes] = useState('')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
 
-  // ── Proration preview state ──
-  const [prorationInfo, setProrationInfo] = useState<{
-    hasCredit: boolean
-    currentPlan: { name: string; billingPrice: number; billingPeriod: string; daysRemaining: number }
-    proration: { unusedDays: number; creditAmount: number; dailyRate: number } | null
-    pricing: Array<{ period: string; label: string; months: number; discount: number; fullPrice: number; discountedPrice: number; prorationCredit: number; adjustedPrice: number }>
-  } | null>(null)
-  const [loadingProration, setLoadingProration] = useState(false)
-
-  // Reset state when dialog opens
+  // Track previous open state to reset on open
+  const prevOpenRef = useRef(false)
   useEffect(() => {
-    if (open) {
+    if (open && !prevOpenRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset form when controlled dialog opens
       setSelectedPlanId(null)
       setSelectedBillingPeriod('MONTHLY')
       setUploadAmount('')
@@ -67,27 +60,14 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
       setUploadMethod('NEQUI')
       setUploadNotes('')
       setUploadFile(null)
-      setProrationInfo(null)
     }
+    prevOpenRef.current = open
   }, [open])
 
-  // ── Fetch proration preview when plan is selected ──
-  useEffect(() => {
-    if (!storeId || !selectedPlanId) {
-      setProrationInfo(null)
-      return
-    }
-    let cancelled = false
-    setLoadingProration(true)
-    fetch(`/api/subscription/proration?storeId=${storeId}&targetPlanId=${selectedPlanId}`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (!cancelled) setProrationInfo(data)
-      })
-      .catch(() => { /* silent */ })
-      .finally(() => { if (!cancelled) setLoadingProration(false) })
-    return () => { cancelled = true }
-  }, [storeId, selectedPlanId])
+  // ── TanStack Query hooks ──
+  const { data: prorationInfo, isLoading: loadingProration } = useSubscriptionProration(storeId, selectedPlanId)
+  const uploadMutation = useUploadPaymentReceipt()
+  const uploading = uploadMutation.isPending
 
   // ── Plan price with proration adjustment ──
   function getPlanPriceWithProration(plan: PlanOption) {
@@ -117,7 +97,6 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
       toast.error('Ingresa el monto pagado')
       return
     }
-    setUploading(true)
     try {
       const reader = new FileReader()
       const base64Promise = new Promise<string>((resolve) => {
@@ -130,10 +109,9 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
       })
       const fileData = await base64Promise
       const plan = plans.find(p => p.id === selectedPlanId)
-      const res = await fetch(`/api/payment-receipts?storeId=${storeId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await uploadMutation.mutateAsync({
+        storeId,
+        data: {
           fileData: `data:${uploadFile.type};base64,${fileData}`,
           fileName: uploadFile.name,
           fileSize: uploadFile.size,
@@ -146,20 +124,13 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
           requestedPlanId: selectedPlanId,
           requestedPlanName: plan?.name,
           requestedBillingPeriod: selectedBillingPeriod,
-        }),
+        },
       })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Error al enviar solicitud')
-        return
-      }
       toast.success(`Solicitud de cambio a ${plan?.name} enviada. El administrador revisará tu comprobante.`)
       onOpenChange(false)
       onPlanChanged()
-    } catch {
-      toast.error('Error de conexión al enviar solicitud')
-    } finally {
-      setUploading(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión al enviar solicitud')
     }
   }
 

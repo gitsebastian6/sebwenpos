@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -41,6 +42,15 @@ import {
   Clock,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/format'
+import {
+  useSubscriptionCurrent,
+  usePaymentReceipts,
+  useSubscriptionPlans,
+  useSubscriptionHistory,
+  useBillingHistory,
+  useUploadPaymentReceipt,
+  useCancelSubscription,
+} from '@/hooks/api/use-settings'
 import { SubscriptionInfoCard } from '@/components/settings/subscription-info-card'
 import type { SubInfo } from '@/components/settings/subscription-info-card'
 import { ReceiptsHistoryCard } from '@/components/settings/receipts-history-card'
@@ -65,10 +75,23 @@ export const BILLING_PERIODS = [
 
 export function SubscriptionPaymentPanel() {
   const { store } = useAuthStore()
-  const [subInfo, setSubInfo] = useState<SubInfo | null>(null)
-  const [receipts, setReceipts] = useState<ReceiptItem[]>([])
-  const [plans, setPlans] = useState<PlanOption[]>([])
-  const [loading, setLoading] = useState(true)
+  const qc = useQueryClient()
+
+  // ── TanStack Query hooks ──
+  const { data: subData } = useSubscriptionCurrent(store?.id)
+  const { data: receiptsData } = usePaymentReceipts(store?.id)
+  const { data: plansData } = useSubscriptionPlans()
+  const uploadReceiptMutation = useUploadPaymentReceipt()
+  const cancelMutation = useCancelSubscription()
+
+  const receipts = Array.isArray(receiptsData) ? receiptsData : []
+  const plans = Array.isArray(plansData) ? plansData : []
+  const subInfo: SubInfo | null = subData?.hasSubscription ? {
+    id: subData.subscriptionId, status: subData.subscriptionStatus, planName: subData.planName, planPrice: subData.planPrice,
+    startDate: subData.startDate, endDate: subData.endDate, billingPeriod: subData.billingPeriod, daysRemaining: subData.daysRemaining,
+  } : null
+
+  const loading = false // queries handle their own loading
 
   // ── Payment receipt upload state ──
   const [showUploadDialog, setShowUploadDialog] = useState(false)
@@ -78,49 +101,12 @@ export function SubscriptionPaymentPanel() {
   const [uploadMethod, setUploadMethod] = useState('NEQUI')
   const [uploadNotes, setUploadNotes] = useState('')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const uploading = uploadReceiptMutation.isPending
 
   // ── Cancel subscription state ──
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
-  const [cancelling, setCancelling] = useState(false)
-
-  const loadSubInfo = useCallback(async () => {
-    if (!store?.id) return
-    try {
-      const [subRes, receiptsRes, plansRes] = await Promise.all([
-        fetch(`/api/subscription/current?storeId=${store.id}`),
-        fetch(`/api/payment-receipts?storeId=${store.id}`),
-        fetch('/api/subscription/plans'),
-      ])
-      if (subRes.ok) {
-        const data = await subRes.json()
-        if (data.hasSubscription) {
-          setSubInfo({
-            id: data.subscriptionId, status: data.subscriptionStatus, planName: data.planName, planPrice: data.planPrice,
-            startDate: data.startDate, endDate: data.endDate, billingPeriod: data.billingPeriod, daysRemaining: data.daysRemaining,
-          })
-        }
-      }
-      if (receiptsRes.ok) {
-        const rData = await receiptsRes.json()
-        setReceipts(Array.isArray(rData) ? rData : [])
-      }
-      if (plansRes.ok) {
-        const pData = await plansRes.json()
-        setPlans(Array.isArray(pData) ? pData : [])
-      }
-    } catch { /* silent */ }
-    finally { setLoading(false) }
-  }, [store?.id])
-
-  useEffect(() => { loadSubInfo() }, [loadSubInfo])
-
-  // Auto-refresh every 30 seconds to detect admin changes
-  useEffect(() => {
-    const interval = setInterval(() => { loadSubInfo() }, 30000)
-    return () => clearInterval(interval)
-  }, [loadSubInfo])
+  const cancelling = cancelMutation.isPending
 
   // ── Upload receipt handler ──
   function resetUploadForm() {
@@ -142,7 +128,6 @@ export function SubscriptionPaymentPanel() {
       toast.error('Ingresa un monto válido')
       return
     }
-    setUploading(true)
     try {
       const reader = new FileReader()
       const base64Promise = new Promise<string>((resolve) => {
@@ -154,11 +139,9 @@ export function SubscriptionPaymentPanel() {
         reader.readAsDataURL(uploadFile)
       })
       const fileData = await base64Promise
-
-      const res = await fetch(`/api/payment-receipts?storeId=${store.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await uploadReceiptMutation.mutateAsync({
+        storeId: store.id,
+        data: {
           fileData: `data:${uploadFile.type};base64,${fileData}`,
           fileName: uploadFile.name,
           fileSize: uploadFile.size,
@@ -167,21 +150,13 @@ export function SubscriptionPaymentPanel() {
           reference: uploadReference || undefined,
           paymentMethod: uploadMethod,
           notes: uploadNotes || undefined,
-        }),
+        },
       })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Error al subir comprobante')
-        return
-      }
       toast.success('Comprobante enviado correctamente. Será revisado por el administrador.')
       setShowUploadDialog(false)
       resetUploadForm()
-      loadSubInfo()
-    } catch {
-      toast.error('Error de conexión al subir comprobante')
-    } finally {
-      setUploading(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión al subir comprobante')
     }
   }
 
@@ -191,26 +166,16 @@ export function SubscriptionPaymentPanel() {
       toast.error('Indica el motivo de cancelación (mínimo 5 caracteres)')
       return
     }
-    setCancelling(true)
     try {
-      const res = await fetch(`/api/subscription/cancel?storeId=${store.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cancelReason: cancelReason.trim() }),
+      await cancelMutation.mutateAsync({
+        storeId: store.id,
+        cancelReason: cancelReason.trim(),
       })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Error al cancelar suscripción')
-        return
-      }
       toast.success('Suscripción cancelada correctamente')
       setShowCancelDialog(false)
       setCancelReason('')
-      loadSubInfo()
-    } catch {
-      toast.error('Error de conexión al cancelar suscripción')
-    } finally {
-      setCancelling(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión al cancelar suscripción')
     }
   }
 
@@ -379,7 +344,7 @@ export function SubscriptionPaymentPanel() {
         storeId={store!.id}
         plans={plans}
         currentPlanName={subInfo?.planName}
-        onPlanChanged={loadSubInfo}
+        onPlanChanged={() => qc.invalidateQueries({ queryKey: ['subscription-current', store!.id] })}
       />
 
       {/* Upload Receipt Dialog */}
@@ -506,35 +471,14 @@ export function SubscriptionPaymentPanel() {
 function SubscriptionHistoryPanel() {
   const { store } = useAuthStore()
   const [activeTab, setActiveTab] = useState<'history' | 'billing'>('history')
-  const [history, setHistory] = useState<Array<{
-    id: number; eventType: string; eventLabel: string
-    previousStatus: string | null; newStatus: string | null
-    previousPlanName: string | null; newPlanName: string | null
-    description: string | null; metadata: Record<string, unknown>; createdAt: string
-  }>>([])
-  const [billing, setBilling] = useState<{
-    items: Array<{
-      id: number; planName: string; billingPeriod: string
-      amountFormatted: string; prorationCreditFormatted: string | null; netAmountFormatted: string
-      status: string; statusLabel: string; paymentMethod: string | null
-      periodStart: string; periodEnd: string; notes: string | null; createdAt: string
-    }>
-    summary: { totalBilledFormatted: string; totalPaidFormatted: string; totalCreditsFormatted: string; recordCount: number }
-  } | null>(null)
-  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (!store?.id) return
-    Promise.all([
-      fetch(`/api/subscription/history?storeId=${store.id}`).then(r => r.ok ? r.json() : []).catch(() => []),
-      fetch(`/api/subscription/billing-history?storeId=${store.id}`).then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([hData, bData]) => {
-      setHistory(Array.isArray(hData) ? hData : [])
-      setBilling(bData)
-    }).finally(() => setLoading(false))
-  }, [store?.id])
+  const { data: historyData, isLoading: historyLoading } = useSubscriptionHistory(store?.id)
+  const { data: billingData } = useBillingHistory(store?.id)
 
-  if (loading) {
+  const history = Array.isArray(historyData) ? historyData : []
+  const billing = billingData ?? null
+
+  if (historyLoading) {
     return (
       <Card className="border-border/50 rounded-xl">
         <CardContent className="py-8 text-center">

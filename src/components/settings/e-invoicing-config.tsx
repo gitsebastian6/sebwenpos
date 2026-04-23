@@ -1,8 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
+import {
+  useEInvoicingConfig,
+  useEInvoicingCertStatus,
+  useSaveEInvoicingConfig,
+  useUploadCertificate,
+  useDeleteCertificate,
+} from '@/hooks/api/use-settings'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -156,14 +163,19 @@ const PROVIDERS: Record<string, ProviderOption> = {
 
 export function EInvoicingConfig() {
   const { store, updateStore } = useAuthStore()
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [deletingCert, setDeletingCert] = useState(false)
-  const [showCertPassword, setShowCertPassword] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Config state
+  // ── TanStack Query hooks ──
+  const { data: configData, isLoading: configLoading } = useEInvoicingConfig(store?.id)
+  const { data: certData } = useEInvoicingCertStatus(store?.id)
+  const saveConfigMutation = useSaveEInvoicingConfig()
+  const uploadCertMutation = useUploadCertificate()
+  const deleteCertMutation = useDeleteCertificate()
+  const saving = saveConfigMutation.isPending
+  const uploading = uploadCertMutation.isPending
+  const deletingCert = deleteCertMutation.isPending
+
+  // Config state (synced from query)
   const [invoiceEnabled, setInvoiceEnabled] = useState(false)
   const [invoiceProvider, setInvoiceProvider] = useState('NONE')
   const [certificatePassword, setCertificatePassword] = useState('')
@@ -172,71 +184,31 @@ export function EInvoicingConfig() {
   const [showSoftwarePin, setShowSoftwarePin] = useState(false)
   const [providerFields, setProviderFields] = useState<Record<string, string>>({})
   const [showProviderField, setShowProviderField] = useState<Record<string, boolean>>({})
-
-  // Certificate status
-  const [certStatus, setCertStatus] = useState<{ uploaded: boolean; fileName: string | null; fileSize: number; lastModified: string | null }>({
-    uploaded: false, fileName: null, fileSize: 0, lastModified: null,
-  })
+  const [showCertPassword, setShowCertPassword] = useState(false)
 
   // Advanced settings expanded
   const [showAdvanced, setShowAdvanced] = useState(false)
 
-  // ── Load config ──
-  const loadConfig = useCallback(async () => {
-    if (!store?.id) return
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/electronic-invoicing/config?storeId=${store.id}`)
-      if (!res.ok) {
-        // If server error, use defaults — don't block the UI
-        return
-      }
-      const data = await res.json()
-
-      // If API returned an error object, ignore silently
-      if (data.error) {
-        // API error — use defaults
-        return
-      }
-
-      setInvoiceEnabled(data.invoiceEnabled ?? false)
-      setInvoiceProvider(data.invoiceProvider ?? 'NONE')
-      setSoftwareId(data.softwareId ?? '')
-      setSoftwarePin(data.softwarePin ?? '')
-
-      // Parse provider config fields safely
-      if (data.providerConfig && typeof data.providerConfig === 'object' && !Array.isArray(data.providerConfig)) {
-        const fields: Record<string, string> = {}
-        for (const [key, value] of Object.entries(data.providerConfig)) {
-          if (typeof value === 'string') fields[key] = value
-        }
-        setProviderFields(fields)
-      } else {
-        setProviderFields({})
-      }
-    } catch (err) {
-      // Silent fail — show defaults, don't toast error on load
-    } finally {
-      setLoading(false)
-    }
-  }, [store?.id])
-
-  // ── Load cert status ──
-  const loadCertStatus = useCallback(async () => {
-    if (!store?.id) return
-    try {
-      const res = await fetch(`/api/electronic-invoicing/upload-certificate?storeId=${store.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setCertStatus(data)
-      }
-    } catch { /* silent */ }
-  }, [store?.id])
-
+  // ── Sync config from query data ──
   useEffect(() => {
-    loadConfig()
-    loadCertStatus()
-  }, [loadConfig, loadCertStatus])
+    if (!configData || configData.error) return
+    setInvoiceEnabled(configData.invoiceEnabled ?? false)
+    setInvoiceProvider(configData.invoiceProvider ?? 'NONE')
+    setSoftwareId(configData.softwareId ?? '')
+    setSoftwarePin(configData.softwarePin ?? '')
+    if (configData.providerConfig && typeof configData.providerConfig === 'object' && !Array.isArray(configData.providerConfig)) {
+      const fields: Record<string, string> = {}
+      for (const [key, value] of Object.entries(configData.providerConfig)) {
+        if (typeof value === 'string') fields[key] = value
+      }
+      setProviderFields(fields)
+    } else {
+      setProviderFields({})
+    }
+  }, [configData])
+
+  // Certificate status from query
+  const certStatus = certData ?? { uploaded: false, fileName: null, fileSize: 0, lastModified: null }
 
   // ── Get selected provider info ──
   const selectedProvider = PROVIDERS[invoiceProvider] || PROVIDERS.NONE
@@ -244,7 +216,6 @@ export function EInvoicingConfig() {
   // ── Save config ──
   async function handleSave() {
     if (!store?.id) return
-    setSaving(true)
     try {
       const payload: Record<string, unknown> = {
         storeId: store.id,
@@ -255,25 +226,11 @@ export function EInvoicingConfig() {
         softwarePin: softwarePin || null,
         providerConfig: { ...providerFields },
       }
-
-      const res = await fetch('/api/electronic-invoicing/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al guardar')
-      }
-
-      const data = await res.json()
+      const data = await saveConfigMutation.mutateAsync(payload)
       updateStore(data)
       toast.success('Configuración de facturación guardada correctamente')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar configuración')
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -281,36 +238,17 @@ export function EInvoicingConfig() {
   async function handleUploadCert(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !store?.id) return
-
-    // Validate extension
     if (!file.name.toLowerCase().endsWith('.p12') && !file.name.toLowerCase().endsWith('.pfx')) {
       toast.error('El archivo debe ser .p12 o .pfx')
       return
     }
-
-    setUploading(true)
     try {
-      const formData = new FormData()
-      formData.append('storeId', store.id.toString())
-      formData.append('certificate', file)
-
-      const res = await fetch('/api/electronic-invoicing/upload-certificate', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al subir certificado')
-      }
-
+      await uploadCertMutation.mutateAsync({ storeId: store.id, file })
       toast.success(`Certificado ${file.name} cargado exitosamente`)
-      loadCertStatus()
       updateStore({ ...store, certificateUploaded: true })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al subir certificado')
     } finally {
-      setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -318,18 +256,13 @@ export function EInvoicingConfig() {
   // ── Delete certificate ──
   async function handleDeleteCert() {
     if (!store?.id) return
-    setDeletingCert(true)
     try {
-      const res = await fetch(`/api/electronic-invoicing/upload-certificate?storeId=${store.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Error al eliminar')
+      await deleteCertMutation.mutateAsync({ storeId: store.id })
       toast.success('Certificado eliminado correctamente')
-      loadCertStatus()
       updateStore({ ...store, certificateUploaded: false })
       setCertificatePassword('')
     } catch {
       toast.error('Error al eliminar certificado')
-    } finally {
-      setDeletingCert(false)
     }
   }
 
@@ -341,7 +274,7 @@ export function EInvoicingConfig() {
     setProviderFields((prev) => ({ ...prev, [key]: value }))
   }
 
-  if (loading) {
+  if (configLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

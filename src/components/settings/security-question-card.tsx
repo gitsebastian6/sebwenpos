@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +24,7 @@ import {
   Plus,
   CheckCircle2,
 } from 'lucide-react'
+import { useSecurityQuestion, useUpdateSecurityQuestion } from '@/hooks/api/use-settings'
 
 const SECURITY_QUESTIONS = [
   { value: 'petName', label: '¿Cuál es el nombre de tu primera mascota?' },
@@ -35,28 +36,15 @@ const SECURITY_QUESTIONS = [
 
 export function SecurityQuestionCard() {
   const { user, token } = useAuthStore()
-  const [hasQuestion, setHasQuestion] = useState<boolean | null>(null)
-  const [currentQuestion, setCurrentQuestion] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { data: secData, isLoading: loading } = useSecurityQuestion(user?.id)
+  const updateMutation = useUpdateSecurityQuestion()
+
   const [editing, setEditing] = useState(false)
   const [selectedQuestion, setSelectedQuestion] = useState('')
   const [answer, setAnswer] = useState('')
-  const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    if (!user?.id) return
-    setLoading(true)
-    fetch(`/api/auth/security-question?userId=${user.id}`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data) {
-          setHasQuestion(data.hasQuestion)
-          setCurrentQuestion(data.question)
-        }
-      })
-      .catch(() => { /* silent */ })
-      .finally(() => setLoading(false))
-  }, [user?.id])
+  const hasQuestion = secData?.hasQuestion ?? null
+  const currentQuestion = secData?.question ?? null
 
   function startEdit() {
     setSelectedQuestion('')
@@ -73,33 +61,16 @@ export function SecurityQuestionCard() {
       toast.error('La respuesta debe tener al menos 2 caracteres')
       return
     }
-    setSaving(true)
     try {
-      const res = await fetch('/api/auth/security-question', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          userId: user.id,
-          question: selectedQuestion,
-          answer: answer.trim(),
-        }),
+      await updateMutation.mutateAsync({
+        userId: user.id,
+        question: selectedQuestion,
+        answer: answer.trim(),
       })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Error al guardar')
-        return
-      }
       toast.success('Pregunta de seguridad guardada correctamente')
       setEditing(false)
-      setHasQuestion(true)
-      setCurrentQuestion(SECURITY_QUESTIONS.find(q => q.value === selectedQuestion)?.label || selectedQuestion)
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setSaving(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión')
     }
   }
 
@@ -156,10 +127,10 @@ export function SecurityQuestionCard() {
           <div className="flex items-center gap-2">
             <Button
               onClick={handleSave}
-              disabled={saving || !selectedQuestion || !answer.trim()}
+              disabled={updateMutation.isPending || !selectedQuestion || !answer.trim()}
               className="gap-2 active:scale-[0.98] transition-all"
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Guardar
             </Button>
             <Button

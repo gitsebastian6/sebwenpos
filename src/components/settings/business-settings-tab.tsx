@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
+import { useUpdateStore } from '@/hooks/api/use-settings'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,38 +18,33 @@ export function BusinessSettingsTab() {
   const [storeAddress, setStoreAddress] = useState(store?.address || '')
   const [storePhone, setStorePhone] = useState(store?.phone || '')
   const [storeCurrency, setStoreCurrency] = useState(store?.currencyCode || 'COP')
-  const [saving, setSaving] = useState(false)
-
   const hasChanges =
     storeName !== (store?.name || '') ||
     storeAddress !== (store?.address || '') ||
     storePhone !== (store?.phone || '') ||
     storeCurrency !== (store?.currencyCode || 'COP')
 
+  const updateStoreMutation = useUpdateStore()
+  const saving = updateStoreMutation.isPending
+
   async function handleSave() {
     if (!store?.id) return
-    setSaving(true)
     try {
-      const res = await fetch(`/api/stores?storeId=${store.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await updateStoreMutation.mutateAsync({
+        storeId: store.id,
+        data: {
           name: storeName,
           legalName: store?.legalName || null,
           nit: store?.nit || null,
           address: storeAddress || null,
           phone: storePhone || null,
           currencyCode: storeCurrency,
-        }),
+        },
       })
-      if (!res.ok) throw new Error('Error al guardar')
-      const data = await res.json()
       updateStore(data)
       toast.success('Datos del negocio actualizados')
     } catch {
       toast.error('Error al guardar los datos del negocio')
-    } finally {
-      setSaving(false)
     }
   }
 

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
+import { useUpdateUser } from '@/hooks/api/use-settings'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,34 +18,29 @@ export function PersonalSettingsTab() {
   const [userFullName, setUserFullName] = useState(user?.fullName || '')
   const [userEmail, setUserEmail] = useState(user?.email || '')
   const [userCedula, setUserCedula] = useState(user?.cedula || '')
-  const [saving, setSaving] = useState(false)
-
   const hasChanges =
     userFullName !== (user?.fullName || '') ||
     userEmail !== (user?.email || '') ||
     userCedula !== (user?.cedula || '')
 
+  const updateUserMutation = useUpdateUser()
+  const saving = updateUserMutation.isPending
+
   async function handleSave() {
     if (!user?.id) return
-    setSaving(true)
     try {
-      const res = await fetch(`/api/users?userId=${user.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await updateUserMutation.mutateAsync({
+        userId: user.id,
+        data: {
           fullName: userFullName,
           email: userEmail || null,
           cedula: userCedula || null,
-        }),
+        },
       })
-      if (!res.ok) throw new Error('Error al guardar')
-      const data = await res.json()
       updateUser(data)
       toast.success('Datos personales actualizados')
     } catch {
       toast.error('Error al guardar datos personales')
-    } finally {
-      setSaving(false)
     }
   }
 
