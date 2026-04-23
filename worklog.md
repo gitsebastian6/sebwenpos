@@ -1069,3 +1069,31 @@ Stage Summary:
 - Server-side filtering eliminates unnecessary data transfer
 - R-07 confirmed already correct (no changes needed)
 - ESLint clean (0 new errors), dev server healthy (200)
+
+---
+Task ID: 7
+Agent: main
+Task: R-08 FASE 7 — Migrate admin-panel.tsx to TanStack Query
+
+Work Log:
+- Created `src/hooks/api/use-admin-panel.ts` with:
+  - `useAdminStores()` — query for GET /api/admin/stores (returns stores + summary)
+  - `useAdminStoreDetail(id)` — query for GET /api/admin/stores/:id (enabled when id is set)
+  - `useCreateAdminStore()` — mutation POST /api/admin/stores
+  - `useUpdateAdminStore()` — mutation PUT /api/admin/stores/:id (invalidates stores + detail)
+  - Exported types: AdminStore, AdminStoreDetail, AdminSummary, CreateStoreForm
+- Migrated `src/components/admin/admin-panel.tsx` (6 fetch calls → 0):
+  - Main AdminPanel: replaced useState+useEffect+fetchStores with useAdminStores() query
+  - Main AdminPanel: replaced handleOpenDetail fetch with useAdminStoreDetail() query
+  - Main AdminPanel: replaced handleToggleActive fetch with useUpdateAdminStore() mutation
+  - ResetPasswordDialog: replaced fetch with useUpdateAdminStore() mutation
+  - CreateStoreDialog: replaced fetch with useCreateAdminStore() mutation
+  - EditStoreDialog: replaced fetch with useUpdateAdminStore() mutation
+- Fixed lint: removed useEffect in EditStoreDialog (set-state-in-effect), used key={editStore?.id} pattern instead
+- Removed unused imports (useEffect, useCallback)
+
+Stage Summary:
+- 1 new hook file: src/hooks/api/use-admin-panel.ts
+- 1 modified file: src/components/admin/admin-panel.tsx
+- 6 raw fetch calls eliminated
+- ESLint clean (0 errors), dev server healthy

@@ -1,8 +1,18 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
+import {
+  useAdminStores,
+  useAdminStoreDetail,
+  useCreateAdminStore,
+  useUpdateAdminStore,
+  type AdminStore,
+  type AdminStoreDetail,
+  type AdminSummary,
+  type CreateStoreForm,
+} from '@/hooks/api/use-admin-panel'
 import {
   Building2,
   Users,
@@ -60,86 +70,13 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 
-// ── Types ────────────────────────────────────────────────────────
+// ── Type aliases from hook ─────────────────────────────────────
 
-interface StoreOwner {
-  fullName: string
-  cedula: string
-  phone: string
-  email: string
-  isActive: boolean
-}
+type Store = AdminStore
+type StoreDetail = AdminStoreDetail
+type Summary = AdminSummary
 
-interface StoreStats {
-  totalOrders: number
-  totalStaff: number
-  totalProducts: number
-  totalCustomers: number
-  totalRoles: number
-}
-
-interface Store {
-  id: number
-  name: string
-  legalName: string | null
-  nit: string | null
-  city: string | null
-  address: string | null
-  plan: string
-  planStartDate: string | null
-  planExpiresAt: string | null
-  isActive: boolean
-  createdAt: string
-  owner: StoreOwner
-  stats: StoreStats
-  staff?: Array<{
-    id: number
-    fullName: string | null
-    cedula: string | null
-    phone: string
-    email: string | null
-    roleName: string | null
-    isActive: boolean
-    createdAt: string
-  }>
-}
-
-interface Summary {
-  totalStores: number
-  activeStores: number
-  inactiveStores: number
-  totalOrders: number
-  totalUsers: number
-}
-
-interface StoreDetail extends Store {
-  staff: Array<{
-    id: number
-    fullName: string | null
-    cedula: string | null
-    phone: string
-    email: string | null
-    roleName: string | null
-    isActive: boolean
-    createdAt: string
-  }>
-}
-
-// ── Create Store Form Type ───────────────────────────────────────
-
-interface CreateStoreForm {
-  storeName: string
-  nit: string
-  legalName: string
-  city: string
-  ownerFullName: string
-  ownerCedula: string
-  ownerDocumentType: string
-  ownerPhone: string
-  ownerEmail: string
-  ownerPassword: string
-  plan: string
-}
+// ── Create Store Form ───────────────────────────────────────────
 
 const emptyForm: CreateStoreForm = {
   storeName: '',
@@ -265,7 +202,7 @@ function ResetPasswordDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const [newPassword, setNewPassword] = useState('')
-  const [loading, setLoading] = useState(false)
+  const updateStore = useUpdateAdminStore()
 
   const handleReset = async () => {
     if (!store) return
@@ -273,26 +210,19 @@ function ResetPasswordDialog({
       toast.error('La contraseña debe tener al menos 6 caracteres')
       return
     }
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/admin/stores/${store.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ownerPassword: newPassword }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al actualizar contraseña')
+    updateStore.mutate(
+      { storeId: store.id, body: { ownerPassword: newPassword } },
+      {
+        onSuccess: () => {
+          toast.success(`Contraseña actualizada para ${store.owner.fullName}`)
+          setNewPassword('')
+          onOpenChange(false)
+        },
+        onError: (e) => {
+          toast.error(e.message)
+        },
       }
-      toast.success(`Contraseña actualizada para ${store.owner.fullName}`)
-      setNewPassword('')
-      onOpenChange(false)
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Error desconocido'
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
+    )
   }
 
   return (
@@ -318,11 +248,11 @@ function ResetPasswordDialog({
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={updateStore.isPending}>
             Cancelar
           </Button>
-          <Button onClick={handleReset} disabled={loading || newPassword.length < 6}>
-            {loading && <RefreshCw className="size-4 animate-spin" />}
+          <Button onClick={handleReset} disabled={updateStore.isPending || newPassword.length < 6}>
+            {updateStore.isPending && <RefreshCw className="size-4 animate-spin" />}
             Actualizar
           </Button>
         </DialogFooter>
@@ -546,7 +476,7 @@ function CreateStoreDialog({
 }) {
   const [form, setForm] = useState<CreateStoreForm>(emptyForm)
   const [errors, setErrors] = useState<Partial<Record<keyof CreateStoreForm, string>>>({})
-  const [loading, setLoading] = useState(false)
+  const createStore = useCreateAdminStore()
 
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof CreateStoreForm, string>> = {}
@@ -561,30 +491,20 @@ function CreateStoreDialog({
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!validate()) return
-    setLoading(true)
-    try {
-      const res = await fetch('/api/admin/stores', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al crear tienda')
-      }
-      toast.success('Tienda creada exitosamente')
-      setForm(emptyForm)
-      setErrors({})
-      onOpenChange(false)
-      onCreated()
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Error desconocido'
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
+    createStore.mutate(form, {
+      onSuccess: () => {
+        toast.success('Tienda creada exitosamente')
+        setForm(emptyForm)
+        setErrors({})
+        onOpenChange(false)
+        onCreated()
+      },
+      onError: (e) => {
+        toast.error(e.message)
+      },
+    })
   }
 
   const updateField = (field: keyof CreateStoreForm, value: string) => {
@@ -774,11 +694,11 @@ function CreateStoreDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={createStore.isPending}>
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
-            {loading && <RefreshCw className="size-4 animate-spin" />}
+          <Button onClick={handleSubmit} disabled={createStore.isPending}>
+            {createStore.isPending && <RefreshCw className="size-4 animate-spin" />}
             Crear Tienda
           </Button>
         </DialogFooter>
@@ -801,36 +721,18 @@ function EditStoreDialog({
   onSaved: () => void
 }) {
   const [form, setForm] = useState<EditStoreForm>({
-    storeName: '',
-    nit: '',
-    legalName: '',
-    city: '',
-    address: '',
-    plan: 'TRIAL',
-    ownerFullName: '',
-    ownerPhone: '',
-    ownerEmail: '',
+    storeName: store?.name || '',
+    nit: store?.nit || '',
+    legalName: store?.legalName || '',
+    city: store?.city || '',
+    address: store?.address || '',
+    plan: store?.plan || 'TRIAL',
+    ownerFullName: store?.owner.fullName || '',
+    ownerPhone: store?.owner.phone || '',
+    ownerEmail: store?.owner.email || '',
   })
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({})
-  const [loading, setLoading] = useState(false)
-
-  // Populate form when store changes
-  useEffect(() => {
-    if (store) {
-      setForm({
-        storeName: store.name || '',
-        nit: store.nit || '',
-        legalName: store.legalName || '',
-        city: store.city || '',
-        address: store.address || '',
-        plan: store.plan || 'TRIAL',
-        ownerFullName: store.owner.fullName || '',
-        ownerPhone: store.owner.phone || '',
-        ownerEmail: store.owner.email || '',
-      })
-      setErrors({})
-    }
-  }, [store])
+  const updateStore = useUpdateAdminStore()
 
   const validate = (): boolean => {
     const newErrors: Partial<Record<string, string>> = {}
@@ -843,15 +745,13 @@ function EditStoreDialog({
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!store) return
     if (!validate()) return
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/admin/stores/${store.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    updateStore.mutate(
+      {
+        storeId: store.id,
+        body: {
           storeName: form.storeName,
           nit: form.nit || null,
           legalName: form.legalName || null,
@@ -861,21 +761,19 @@ function EditStoreDialog({
           ownerFullName: form.ownerFullName,
           ownerPhone: form.ownerPhone,
           ownerEmail: form.ownerEmail || null,
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al actualizar tienda')
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success(`Tienda "${form.storeName}" actualizada exitosamente`)
+          onOpenChange(false)
+          onSaved()
+        },
+        onError: (e) => {
+          toast.error(e.message)
+        },
       }
-      toast.success(`Tienda "${form.storeName}" actualizada exitosamente`)
-      onOpenChange(false)
-      onSaved()
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Error desconocido'
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
+    )
   }
 
   const updateField = (field: keyof EditStoreForm, value: string) => {
@@ -1059,11 +957,11 @@ function EditStoreDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={updateStore.isPending}>
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
-            {loading && <RefreshCw className="size-4 animate-spin" />}
+          <Button onClick={handleSubmit} disabled={updateStore.isPending}>
+            {updateStore.isPending && <RefreshCw className="size-4 animate-spin" />}
             Guardar Cambios
           </Button>
         </DialogFooter>
@@ -1078,85 +976,50 @@ export function AdminPanel() {
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
 
-  const [stores, setStores] = useState<Store[]>([])
-  const [summary, setSummary] = useState<Summary | null>(null)
-  const [loading, setLoading] = useState(true)
+  // TanStack Query hooks
+  const { data: storesData, isLoading: loading } = useAdminStores()
+  const stores = storesData?.stores ?? []
+  const summary = storesData?.summary ?? null
+
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
   // Dialog states
   const [createOpen, setCreateOpen] = useState(false)
-  const [detailStore, setDetailStore] = useState<StoreDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailStoreId, setDetailStoreId] = useState<number | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [resetStore, setResetStore] = useState<Store | null>(null)
   const [resetOpen, setResetOpen] = useState(false)
   const [editStore, setEditStore] = useState<Store | null>(null)
   const [editOpen, setEditOpen] = useState(false)
 
-  // Toggle loading state
-  const [togglingId, setTogglingId] = useState<number | null>(null)
+  // Store detail query (only enabled when dialog is open with a storeId)
+  const { data: detailStore, isLoading: detailLoading } = useAdminStoreDetail(detailStoreId)
 
-  const fetchStores = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/admin/stores')
-      if (!res.ok) throw new Error('Error al cargar tiendas')
-      const data = await res.json()
-      setStores(data.stores || [])
-      setSummary(data.summary || null)
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Error desconocido'
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // Toggle active mutation
+  const updateStore = useUpdateAdminStore()
 
-  useEffect(() => {
-    fetchStores()
-  }, [fetchStores])
-
-  const handleToggleActive = async (store: Store) => {
-    setTogglingId(store.id)
-    try {
-      const res = await fetch(`/api/admin/stores/${store.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !store.isActive }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al cambiar estado')
+  const handleToggleActive = (store: Store) => {
+    updateStore.mutate(
+      { storeId: store.id, body: { isActive: !store.isActive } },
+      {
+        onSuccess: () => {
+          toast.success(
+            store.isActive
+              ? `Tienda "${store.name}" desactivada`
+              : `Tienda "${store.name}" activada`
+          )
+        },
+        onError: (e) => {
+          toast.error(e.message)
+        },
       }
-      toast.success(
-        store.isActive
-          ? `Tienda "${store.name}" desactivada`
-          : `Tienda "${store.name}" activada`
-      )
-      fetchStores()
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Error desconocido'
-      toast.error(message)
-    } finally {
-      setTogglingId(null)
-    }
+    )
   }
 
-  const handleOpenDetail = async (storeId: number) => {
-    setDetailStore(null)
-    setDetailLoading(true)
+  const handleOpenDetail = (storeId: number) => {
+    setDetailStoreId(storeId)
     setDetailOpen(true)
-    try {
-      const res = await fetch(`/api/admin/stores/${storeId}`)
-      if (!res.ok) throw new Error('Error al cargar detalle')
-      const data = await res.json()
-      setDetailStore(data.store || data)
-    } catch {
-      toast.error('Error al cargar detalle de tienda')
-    } finally {
-      setDetailLoading(false)
-    }
   }
 
   const handleOpenReset = (store: Store) => {
@@ -1403,11 +1266,11 @@ export function AdminPanel() {
                               size="icon"
                               className="size-8"
                               onClick={() => handleToggleActive(store)}
-                              disabled={togglingId === store.id}
+                              disabled={updateStore.isPending}
                               title={store.isActive ? 'Desactivar' : 'Activar'}
                               aria-label="Activar o desactivar tienda"
                             >
-                              {togglingId === store.id ? (
+                              {updateStore.isPending ? (
                                 <RefreshCw className="size-4 animate-spin" />
                               ) : store.isActive ? (
                                 <PowerOff className="size-4 text-red-500" />
@@ -1431,7 +1294,7 @@ export function AdminPanel() {
       <CreateStoreDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={fetchStores}
+        onCreated={() => {}}
       />
       <StoreDetailDialog
         store={detailStore}
@@ -1440,10 +1303,11 @@ export function AdminPanel() {
         onOpenChange={setDetailOpen}
       />
       <EditStoreDialog
+        key={editStore?.id}
         store={editStore}
         open={editOpen}
         onOpenChange={setEditOpen}
-        onSaved={fetchStores}
+        onSaved={() => {}}
       />
       <ResetPasswordDialog
         store={resetStore}
