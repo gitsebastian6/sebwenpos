@@ -5,35 +5,11 @@ import { generateToken } from '@/lib/auth-helpers'
 import { getAuthUser } from '@/lib/api-auth'
 import { withRateLimit } from '@/lib/rate-limiter'
 import { logger } from '@/lib/logger'
-import { transitionSingleSubscription, buildSubInfo } from '@/lib/subscription-helpers'
+import { getSubscriptionInfo } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
 const SWITCH_STORE_RATE_LIMIT: { maxRequests: number; windowSeconds: number } = { maxRequests: 30, windowSeconds: 60 }
-
-async function getSubscriptionInfo(storeId: number) {
-  const subscription = await db.subscription.findUnique({
-    where: { storeId },
-    include: { plan: true },
-  })
-
-  if (!subscription) {
-    return {
-      hasSubscription: false,
-      subscriptionStatus: null,
-      planName: null,
-      planLimits: null,
-      currentUsage: null,
-    }
-  }
-
-  const updated = await transitionSingleSubscription(subscription)
-  if (updated) {
-    return buildSubInfo(updated)
-  }
-
-  return buildSubInfo(subscription)
-}
 
 /** Full OWNER permissions (same as login) */
 function buildOwnerPermissions(isPastDue: boolean): Record<string, boolean> {

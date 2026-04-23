@@ -5,7 +5,7 @@ import { generateToken } from '@/lib/auth-helpers'
 import { withRateLimit, LOGIN_RATE_LIMIT, attachRateLimitHeaders } from '@/lib/rate-limiter'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
-import { transitionOverdueSubscriptions, transitionSingleSubscription, buildSubInfo } from '@/lib/subscription-helpers'
+import { transitionOverdueSubscriptions, getSubscriptionInfo } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,34 +13,6 @@ const loginSchema = z.object({
   cedula: z.string().min(3, 'Identificación mínimo 3 caracteres'),
   password: z.string().min(1, 'Contraseña es requerida'),
 })
-
-/**
- * Get subscription info for a store, using shared transition logic.
- */
-async function getSubscriptionInfo(storeId: number) {
-  const subscription = await db.subscription.findUnique({
-    where: { storeId },
-    include: { plan: true },
-  })
-
-  if (!subscription) {
-    return {
-      hasSubscription: false,
-      subscriptionStatus: null,
-      planName: null,
-      planLimits: null,
-      currentUsage: null,
-    }
-  }
-
-  // Use shared transition logic
-  const updated = await transitionSingleSubscription(subscription)
-  if (updated) {
-    return buildSubInfo(updated)
-  }
-
-  return buildSubInfo(subscription)
-}
 
 export async function POST(req: NextRequest) {
   // ─── Rate Limiting: 5 intentos por minuto por IP ───

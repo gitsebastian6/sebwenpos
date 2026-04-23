@@ -1,28 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
-import { logSubscriptionHistory } from '@/lib/subscription-helpers'
+import {
+  logSubscriptionHistory,
+  transitionOverdueSubscriptions,
+  GRACE_PERIOD_DAYS,
+  SUB_STATUS,
+} from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
-const GRACE_PERIOD_DAYS = 3
-
 /**
  * POST /api/super-admin/subscriptions/check-expired
- * Finds all subscriptions that have expired (endDate < now) and are still in TRIAL or ACTIVE status,
- * then marks them as PAST_DUE (grace period) or EXPIRED (after grace).
- * Same logic as login transitionOverdueSubscriptions.
+ * Runs the shared transition logic and logs each transition for audit trail.
+ * Uses the centralized transitionOverdueSubscriptions() from subscription-helpers.
  */
 export async function POST(_req: NextRequest) {
   try {
-    const now = new Date()
-
-    // ── Step 1: Mark as PAST_DUE: expired but within grace window ──
-    const pastDueSubs = await db.subscription.findMany({
+    // ── Capture before-state for logging ──
+    const before = await db.subscription.findMany({
       where: {
-        endDate: { lt: now },
-        status: { in: ['TRIAL', 'ACTIVE'] },
-        graceEndDate: null,
+        OR: [
+          { endDate: { lt: new Date() }, status: { in: ['TRIAL', 'ACTIVE', 'PAST_DUE'] } },
+          { endDate: { gt: new Date() }, status: { in: ['EXPIRED', 'PAST_DUE'] }, cancelReason: null },
+        ],
       },
       include: {
         store: { select: { id: true, name: true } },
@@ -30,133 +31,87 @@ export async function POST(_req: NextRequest) {
       },
     })
 
-    let pastDueCount = 0
-    for (const sub of pastDueSubs) {
-      const graceEnd = new Date(now.getTime() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000)
-      const prevStatus = sub.status
+    const beforeMap = new Map(before.map(s => [s.id, s]))
 
-      await db.subscription.update({
-        where: { id: sub.id },
-        data: { status: 'PAST_DUE', graceEndDate: graceEnd },
-      })
+    // ── Run shared transition logic (single source of truth) ──
+    await transitionOverdueSubscriptions()
 
-      await logSubscriptionHistory({
-        storeId: sub.storeId,
-        subscriptionId: sub.id,
-        eventType: 'GRACE_STARTED',
-        previousStatus: prevStatus,
-        newStatus: 'PAST_DUE',
-        previousPlanId: sub.plan.id,
-        newPlanId: sub.plan.id,
-        previousPlanName: sub.plan.name,
-        newPlanName: sub.plan.name,
-        description: `Período de gracia de ${GRACE_PERIOD_DAYS} días iniciado`,
-        metadata: { graceEndDate: graceEnd.toISOString(), triggeredBy: 'check-expired' },
-      }).catch(() => { /* non-blocking */ })
-
-      pastDueCount++
-    }
-
-    // ── Step 2: Mark as EXPIRED: grace period ended AND endDate is still past ──
-    const expiredSubs = await db.subscription.findMany({
-      where: {
-        graceEndDate: { lt: now },
-        status: 'PAST_DUE',
-        endDate: { lt: now },
-      },
+    // ── Capture after-state and log transitions ──
+    const after = await db.subscription.findMany({
+      where: { id: { in: before.map(s => s.id) } },
       include: {
         store: { select: { id: true, name: true } },
         plan: { select: { id: true, name: true } },
       },
     })
 
-    let expiredCount = 0
-    for (const sub of expiredSubs) {
-      await db.subscription.update({
-        where: { id: sub.id },
-        data: { status: 'EXPIRED' },
-      })
+    const transitions: Array<{
+      id: number; storeId: number; storeName: string;
+      planName: string; previousStatus: string; newStatus: string;
+      endDate: Date | null; autoHealed?: boolean;
+    }> = []
+
+    for (const sub of after) {
+      const prev = beforeMap.get(sub.id)
+      if (!prev || prev.status === sub.status) continue
+
+      const eventType = sub.status === 'PAST_DUE' ? 'GRACE_STARTED'
+        : sub.status === 'EXPIRED' ? 'EXPIRED'
+        : 'REACTIVATED'
+
+      const description = eventType === 'GRACE_STARTED'
+        ? `Período de gracia de ${GRACE_PERIOD_DAYS} días iniciado`
+        : eventType === 'EXPIRED'
+          ? 'Suscripción expirada después del período de gracia'
+          : `Auto-corrección: suscripción estaba ${prev.status} con endDate en el futuro. Restaurada a ${sub.status}.`
 
       await logSubscriptionHistory({
         storeId: sub.storeId,
         subscriptionId: sub.id,
-        eventType: 'EXPIRED',
-        previousStatus: 'PAST_DUE',
-        newStatus: 'EXPIRED',
-        previousPlanId: sub.plan.id,
-        newPlanId: sub.plan.id,
-        previousPlanName: sub.plan.name,
+        eventType: eventType as 'GRACE_STARTED' | 'EXPIRED' | 'REACTIVATED',
+        previousStatus: prev.status,
+        newStatus: sub.status,
+        previousPlanId: prev.planId,
+        newPlanId: sub.planId,
+        previousPlanName: prev.plan.name,
         newPlanName: sub.plan.name,
-        description: 'Suscripción expirada después del período de gracia',
-        metadata: { triggeredBy: 'check-expired' },
+        description,
+        metadata: {
+          graceEndDate: sub.graceEndDate?.toISOString(),
+          triggeredBy: 'check-expired',
+          autoHealed: eventType === 'REACTIVATED',
+          endDate: sub.endDate?.toISOString(),
+        },
       }).catch(() => { /* non-blocking */ })
 
-      expiredCount++
-    }
+      if (eventType === 'REACTIVATED') {
+        logger.warn(
+          `Auto-healed subscription ${sub.id} for store "${sub.store.name}": ${prev.status} → ${sub.status} (endDate in future)`
+        )
+      }
 
-    // ── Step 3: Self-heal — fix inconsistent subscriptions (endDate in future but EXPIRED/PAST_DUE, no cancelReason) ──
-    const healedSubs = await db.subscription.findMany({
-      where: {
-        endDate: { gt: now },
-        status: { in: ['EXPIRED', 'PAST_DUE'] },
-        cancelReason: null,
-      },
-      include: {
-        store: { select: { id: true, name: true } },
-        plan: { select: { id: true, name: true } },
-      },
-    })
-
-    let healedCount = 0
-    for (const sub of healedSubs) {
-      const prevStatus = sub.status
-      const newStatus = sub.billingPeriod === 'TRIAL' ? 'TRIAL' : 'ACTIVE'
-
-      await db.subscription.update({
-        where: { id: sub.id },
-        data: { status: newStatus, graceEndDate: null },
-      })
-
-      await logSubscriptionHistory({
+      transitions.push({
+        id: sub.id,
         storeId: sub.storeId,
-        subscriptionId: sub.id,
-        eventType: 'REACTIVATED',
-        previousStatus: prevStatus,
-        newStatus: newStatus,
-        previousPlanId: sub.plan.id,
-        newPlanId: sub.plan.id,
-        previousPlanName: sub.plan.name,
-        newPlanName: sub.plan.name,
-        description: `Auto-corrección: suscripción estaba ${prevStatus} con endDate en el futuro. Restaurada a ${newStatus}.`,
-        metadata: { triggeredBy: 'check-expired self-heal', endDate: sub.endDate?.toISOString() },
-      }).catch(() => { /* non-blocking */ })
-
-      logger.warn(`Auto-healed subscription ${sub.id} for store "${sub.store.name}": ${prevStatus} → ${newStatus} (endDate in future)`)
-      healedCount++
+        storeName: sub.store.name,
+        planName: sub.plan.name,
+        previousStatus: prev.status,
+        newStatus: sub.status,
+        endDate: sub.endDate,
+        autoHealed: eventType === 'REACTIVATED',
+      })
     }
+
+    const pastDueCount = transitions.filter(t => t.newStatus === 'PAST_DUE').length
+    const expiredCount = transitions.filter(t => t.newStatus === 'EXPIRED').length
+    const healedCount = transitions.filter(t => t.autoHealed).length
 
     return NextResponse.json({
       message: `Verificación completada: ${pastDueCount} a PAST_DUE, ${expiredCount} a EXPIRED, ${healedCount} auto-corregidas`,
       pastDueCount,
       expiredCount,
       healedCount,
-      transitions: [
-        ...pastDueSubs.map(s => ({
-          id: s.id, storeId: s.storeId, storeName: s.store.name,
-          planName: s.plan.name, previousStatus: s.status, newStatus: 'PAST_DUE',
-          endDate: s.endDate,
-        })),
-        ...expiredSubs.map(s => ({
-          id: s.id, storeId: s.storeId, storeName: s.store.name,
-          planName: s.plan.name, previousStatus: s.status, newStatus: 'EXPIRED',
-          endDate: s.endDate,
-        })),
-        ...healedSubs.map(s => ({
-          id: s.id, storeId: s.storeId, storeName: s.store.name,
-          planName: s.plan.name, previousStatus: s.status, newStatus: 'ACTIVE',
-          endDate: s.endDate, autoHealed: true,
-        })),
-      ],
+      transitions,
     })
   } catch (error) {
     logger.error('Error checking expired subscriptions:', error)

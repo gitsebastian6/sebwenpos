@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { parsePlanFeatures } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,10 +27,7 @@ export async function GET() {
 
     const formatted = plans.map(plan => ({
       ...plan,
-      features: (() => {
-        try { return JSON.parse(plan.features) }
-        catch { return {} }
-      })(),
+      features: parsePlanFeatures(plan.features),
     }))
 
     return NextResponse.json(formatted)

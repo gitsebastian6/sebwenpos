@@ -123,7 +123,8 @@ export async function getStoreSubscription(storeId: number) {
 export async function storeHasFeature(storeId: number, featureKey: PlanFeatureKey): Promise<boolean> {
   const sub = await getStoreSubscription(storeId)
   if (!sub) return false
-  if (sub.status !== 'ACTIVE' && sub.status !== 'TRIAL') return false
+  // R-02 FIX: Allow PAST_DUE (grace period) — user still has feature access during grace
+  if (!['ACTIVE', 'TRIAL', 'PAST_DUE'].includes(sub.status)) return false
   return !!sub.features[featureKey]
 }
 
@@ -340,6 +341,36 @@ export async function transitionSingleSubscription(subscription: {
 }
 
 /**
+ * Get subscription info for a store, running auto-transition and building response.
+ * Centralized so login, switch-store, and other routes use identical logic.
+ * Returns null-subscription shape when no subscription exists.
+ */
+export async function getSubscriptionInfo(storeId: number) {
+  const subscription = await db.subscription.findUnique({
+    where: { storeId },
+    include: { plan: true },
+  })
+
+  if (!subscription) {
+    return {
+      hasSubscription: false,
+      subscriptionStatus: null,
+      planName: null,
+      planLimits: null,
+      currentUsage: null,
+    }
+  }
+
+  // Use shared transition logic
+  const updated = await transitionSingleSubscription(subscription)
+  if (updated) {
+    return buildSubInfo(updated)
+  }
+
+  return buildSubInfo(subscription)
+}
+
+/**
  * Build subscription info object for API responses.
  * Centralized so login, switch-store, and subscription routes use identical shape.
  */
@@ -404,8 +435,8 @@ export async function checkFeatureAccess(
   if (!sub) {
     return { allowed: false, feature: PLAN_FEATURES[featureKey], planName: 'Sin suscripción' }
   }
-  // M-02 FIX: Block access for non-active subscriptions
-  if (sub.status !== 'ACTIVE' && sub.status !== 'TRIAL') {
+  // R-02 FIX: Block EXPIRED/CANCELLED but allow PAST_DUE (grace period access)
+  if (!['ACTIVE', 'TRIAL', 'PAST_DUE'].includes(sub.status)) {
     return { allowed: false, feature: PLAN_FEATURES[featureKey], planName: sub.plan.name }
   }
   if (!sub.features[featureKey]) {

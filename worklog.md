@@ -966,3 +966,32 @@ Stage Summary:
 - 13 files modified, 1 schema migration (prisma db push)
 - Build successful, server running on port 3000
 - Lint clean on modified files
+
+---
+Task ID: R-01-R-02-R-03
+Agent: main
+Task: Fix 3 MEDIUM severity bugs — R-01 subscription dedup, R-02 feature access EXPIRED, R-03 JSON.parse safety
+
+Work Log:
+- R-01: Extracted duplicated getSubscriptionInfo() from login/route.ts and switch-store/route.ts into shared subscription-helpers.ts
+  - Both files now import getSubscriptionInfo from @/lib/subscription-helpers (identical logic, single source of truth)
+  - Rewrote super-admin/subscriptions/check-expired/route.ts to use shared transitionOverdueSubscriptions() instead of 165 lines of inline transition logic
+  - New check-expired route captures before/after state and logs each transition for audit trail
+  - Reduced check-expired from 165 lines to ~120 lines, using centralized logic
+
+- R-02: Fixed checkFeatureAccess() and storeHasFeature() to allow PAST_DUE (grace period) status
+  - Previously blocked all non-ACTIVE/TRIAL subscriptions, including PAST_DUE during 3-day grace
+  - Now uses ['ACTIVE', 'TRIAL', 'PAST_DUE'].includes(sub.status) — only EXPIRED/CANCELLED blocked
+  - Consistent with isSubscriptionActive() which already included PAST_DUE
+
+- R-03: Replaced inline JSON.parse IIFE in subscription/plans/route.ts with shared parsePlanFeatures()
+  - Added import: parsePlanFeatures from @/lib/subscription-helpers
+  - Removed inline try/catch IIFE: (() => { try { return JSON.parse(plan.features) } catch { return {} } })()
+  - Login and switch-store routes already used buildSubInfo() which internally uses parsePlanFeatures()
+
+Stage Summary:
+- 5 files modified: subscription-helpers.ts, login/route.ts, switch-store/route.ts, check-expired/route.ts, plans/route.ts
+- getSubscriptionInfo() is now the single source of truth (no more duplicate copies)
+- Feature access correctly allows PAST_DUE during grace period (3 days)
+- All JSON.parse(plan.features) calls go through parsePlanFeatures() with try/catch
+- ESLint clean (0 new errors), dev server healthy (200)
