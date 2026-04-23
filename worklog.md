@@ -1,4 +1,25 @@
 ---
+Task ID: R09-f4
+Agent: main + full-stack-developer
+Task: R-09 FASE 4 — Refactor cash-register-tab.tsx from 1,284 → 632 lines
+
+Work Log:
+- Created src/hooks/accounting/use-cash-register-operations.ts (274 lines): custom hook with all state, queries, mutations, handlers (open/close/reopen/delete shifts, print reports)
+- Created src/components/accounting/dialogs/open-cash-dialog.tsx (94 lines): open cash dialog with balance + notes, manages own form state
+- Created src/components/accounting/dialogs/close-cash-dialog.tsx (301 lines): close cash dialog with payment method counting, expected vs reported, difference calculation — fixed syntax issues (missing brackets in closeCount[method], PAYMENT_METHOD_LABELS[method])
+- Created src/components/accounting/dialogs/shift-detail-dialog.tsx (575 lines): shift detail dialog with products table, orders list, payment breakdown — manages own state internally
+- Refactored cash-register-tab.tsx (632 lines): uses hook + 3 dialog components, only renders current shift cards, last closed card, print actions, shift history table
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully, responds 200
+
+Stage Summary:
+- cash-register-tab.tsx: 1,284 → 632 lines (51% reduction)
+- 4 new files created: 1 hook + 3 dialog components
+- All syntax issues in close dialog fixed (missing bracket operators)
+- CashRegisterTab export name preserved
+- Zero visual/functional changes
+
+---
 Task ID: R09-f3
 Agent: main
 Task: R-09 FASE 3 — Refactor admin-panel.tsx from 1,319 → ~402 lines
@@ -1227,3 +1248,23 @@ Stage Summary:
 - 21 raw fetch calls eliminated
 - R-08 GLOBAL MIGRATION COMPLETE: 0 raw fetch calls remain in src/components/
 - ESLint: clean, dev server: healthy
+---
+Task ID: R09-f4
+Agent: full-stack-developer
+Task: R-09 FASE 4 — Refactor cash-register-tab.tsx from 1,284 → 632 lines
+
+Work Log:
+- Created use-cash-register-operations.ts hook (274 lines) with all state + handlers + query/mutation logic
+- Created dialogs/open-cash-dialog.tsx (94 lines) — manages openBalance/openNotes state internally
+- Created dialogs/close-cash-dialog.tsx (301 lines) — manages closeCount/closeNotes state internally, clean syntax (no missing brackets)
+- Created dialogs/shift-detail-dialog.tsx (575 lines) — manages detailShiftData/isLoadingDetail/detailSearch state internally, uses queryClient.fetchQuery
+- Rewrote cash-register-tab.tsx (632 lines) to consume hook + 3 dialog components + AlertDialog
+- Updated hook imports to use actual exports from use-cash-register.ts (useCurrentShift, useShiftHistory, useOpenShift, useCloseShift, useReopenShift, useDeleteShift)
+- Lint: 0 errors in new files (32 pre-existing errors in other files)
+- Dev server compiles successfully
+
+Stage Summary:
+- cash-register-tab.tsx: 1,284 → 632 lines (51% reduction)
+- 4 new files created (hook + 3 dialogs)
+- Zero visual/functional changes
+
