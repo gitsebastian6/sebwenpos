@@ -13,35 +13,7 @@ import { formatCurrency } from '@/lib/auth'
 import type { Product, Category, TraceMovement } from '@/types'
 import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
-import { ProductImage } from '@/components/ui/product-image'
-import { getCategoryIconByName } from '@/components/ui/category-icon-picker'
+import { Package, Tags } from 'lucide-react'
 import { printReport, printThermal80mm } from '@/lib/print-report'
 import { KPIBar } from '@/components/shared/kpi-bar'
 import { ProductFormDialog } from './product-form-dialog'
@@ -55,27 +27,8 @@ import {
   CategoryFormDialog,
   DeleteConfirmDialog,
 } from './products-action-dialogs'
-import {
-  PackageSearch,
-  Plus,
-  Search,
-  MoreHorizontal,
-  Pencil,
-  Trash2,
-  Power,
-  Package,
-  Tags,
-  AlertTriangle,
-  Truck,
-  Printer,
-  FileSpreadsheet,
-  SlidersHorizontal,
-  RotateCcw,
-  Route,
-  Percent,
-  Shield,
-  Upload,
-} from 'lucide-react'
+import { ProductsTableSection } from './products-table-section'
+import { CategoriesSection } from './categories-section'
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
@@ -428,505 +381,45 @@ export function ProductsView() {
 
         {/* ─── PRODUCTS TAB ──────────────────────────────────────────── */}
         <TabsContent value="products" className="mt-4 space-y-4">
-          {/* Toolbar */}
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              {/* Search */}
-              <div className="relative flex-1 min-w-[200px] sm:min-w-0 sm:flex-none sm:w-56">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar producto..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-full focus-visible:ring-primary/20 focus-visible:border-primary/40 transition-all"
-                />
-              </div>
-              {/* Category filter */}
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-full sm:w-auto sm:min-w-[160px]">
-                  <SelectValue placeholder="Todas las categorías" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las categorías</SelectItem>
-                  {categories.filter(c => c.id && c.name).map((cat) => (
-                    <SelectItem key={cat.id} value={String(cat.id)}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {/* Active filter */}
-              <Select value={activeFilter} onValueChange={setActiveFilter}>
-                <SelectTrigger className="w-full sm:w-auto sm:min-w-[120px]">
-                  <SelectValue placeholder="Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="true">Activos</SelectItem>
-                  <SelectItem value="false">Inactivos</SelectItem>
-                </SelectContent>
-              </Select>
-              {/* Sort toggle */}
-              <div className="flex items-center gap-1">
-                <Button
-                  variant={sortOrder === 'default' ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-9 px-2.5 text-xs"
-                  onClick={() => setSortOrder('default')}
-                >
-                  Recientes
-                </Button>
-                <Button
-                  variant={sortOrder === 'az' ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-9 px-2.5 text-xs"
-                  onClick={() => setSortOrder('az')}
-                >
-                  A→Z
-                </Button>
-                <Button
-                  variant={sortOrder === 'za' ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-9 px-2.5 text-xs"
-                  onClick={() => setSortOrder('za')}
-                >
-                  Z→A
-                </Button>
-              </div>
-              {/* Quick module shortcuts */}
-              <div className="flex items-center gap-1.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-emerald-800 dark:hover:bg-emerald-950/40"
-                  onClick={() => setView('purchases')}
-                >
-                  <PackageSearch className="h-3.5 w-3.5" />
-                  <span>Compras</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-amber-600 border-amber-200 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-800 dark:hover:bg-amber-950/40"
-                  onClick={() => setView('inventory')}
-                >
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  <span>Inventario</span>
-                </Button>
-              </div>
-              {/* Spacer */}
-              <div className="hidden sm:block flex-1" />
-              {/* Actions */}
-              <div className="flex items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={productsLoading || filteredProducts.length === 0}
-                      className="gap-1.5"
-                    >
-                      <Printer className="h-4 w-4" />
-                      <span>Imprimir</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handlePrintProducts(false)}>
-                      <FileSpreadsheet className="h-4 w-4 mr-2" />
-                      Impresora Normal
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handlePrintProducts(true)}>
-                      <Printer className="h-4 w-4 mr-2" />
-                      Térmica 80mm
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => setImportDialogOpen(true)}
-                >
-                  <Upload className="h-4 w-4" />
-                  <span>Importar Excel</span>
-                </Button>
-                <Button onClick={openNewProductDialog} size="sm" className="gap-1.5 active:scale-[0.98] transition-all">
-                  <Plus className="h-4 w-4" />
-                  <span>Nuevo Producto</span>
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Products Table */}
-          <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-[140px]">Nombre</TableHead>
-                      <TableHead className="min-w-[80px]">SKU</TableHead>
-                      <TableHead className="min-w-[100px]">INVIMA</TableHead>
-                      <TableHead className="min-w-[80px]">Proveedor</TableHead>
-                      <TableHead className="min-w-[80px]">Categoría</TableHead>
-                      <TableHead className="text-right min-w-[80px]">P. Compra</TableHead>
-                      <TableHead className="text-right min-w-[80px]">P. Venta</TableHead>
-                      <TableHead className="min-w-[60px]">IVA</TableHead>
-                      <TableHead className="text-right min-w-[60px]">Comisión</TableHead>
-                      <TableHead className="text-right min-w-[50px]">Stock</TableHead>
-                      <TableHead className="min-w-[60px]">Estado</TableHead>
-                      <TableHead className="text-center w-[50px] sticky right-0 bg-background z-10">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {productsLoading ? (
-                      Array.from({ length: 6 }).map((_, i) => (
-                        <TableRow key={i}>
-                          <TableCell><Skeleton className="h-5 w-36" /></TableCell>
-                          <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                          <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                          <TableCell><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
-                          <TableCell><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
-                          <TableCell><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
-                          <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                          <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
-                        </TableRow>
-                      ))
-                    ) : filteredProducts.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={10} className="h-48 text-center">
-                          <div className="flex flex-col items-center justify-center">
-                            <Package className="h-16 w-16 text-muted-foreground/30 mb-3 animate-pulse" />
-                            <p className="text-muted-foreground font-medium">No se encontraron productos</p>
-                            <p className="text-sm text-muted-foreground/60 mt-1">Intenta con otra búsqueda o crea un nuevo producto</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredProducts.map((product) => (
-                        <TableRow key={product.id} className={`${!product.isActive ? 'opacity-60' : ''} hover:bg-muted/30 transition-colors`}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-3">
-                              <ProductImage
-                                src={product.imgUrl}
-                                alt={product.name}
-                                categoryName={product.category?.name}
-                                categoryIcon={product.category?.icon}
-                              />
-                              <div className="min-w-0">
-                                <p className="truncate">{product.name}</p>
-                                {product.description && (
-                                  <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                    {product.description}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground text-xs font-mono">
-                            {product.sku || '—'}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground text-xs font-mono">
-                            {product.invima ? (
-                              <span className="flex items-center gap-1">
-                                <Shield className="h-3 w-3 shrink-0" />
-                                <span className="truncate max-w-[90px]" title={product.invima}>{product.invima}</span>
-                              </span>
-                            ) : '—'}
-                          </TableCell>
-                          <TableCell>
-                            {product.provider ? (
-                              <div className="flex items-center gap-1">
-                                <Truck className="h-3 w-3 text-muted-foreground shrink-0" />
-                                <span className="text-xs truncate max-w-[100px]" title={product.provider.name}>{product.provider.name}</span>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {product.category ? (
-                              <Badge variant="secondary" className="text-xs">{product.category.name}</Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {product.costPrice ? formatCurrency(product.costPrice, store?.currencyCode) : '—'}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatCurrency(product.salePrice, store?.currencyCode)}
-                          </TableCell>
-                          <TableCell>
-                            {product.taxRate ? (
-                              <Badge
-                                variant="outline"
-                                className={
-                                  product.taxRate.rate === 0
-                                    ? 'bg-gray-500/15 text-gray-400 dark:bg-gray-500/15 dark:text-gray-400 border-gray-500/20 dark:border-gray-500/20 text-xs'
-                                    : product.taxRate.code === '05'
-                                      ? 'bg-orange-500/15 text-orange-400 dark:bg-orange-500/15 dark:text-orange-400 border-orange-500/20 dark:border-orange-500/20 text-xs'
-                                      : 'bg-emerald-500/15 text-emerald-400 dark:bg-emerald-500/15 dark:text-emerald-400 border-emerald-500/20 dark:border-emerald-500/20 text-xs'
-                                }
-                              >
-                                <Percent className="h-2.5 w-2.5 mr-0.5" />
-                                {product.taxRate.name}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">Sin imp.</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {product.commission > 0 ? (
-                              <span className="text-xs">{product.commission}%</span>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span
-                              className={
-                                product.currentStock <= product.minStock
-                                  ? 'text-red-600 dark:text-red-400 font-semibold'
-                                  : ''
-                              }
-                            >
-                              {product.currentStock}
-                            </span>
-                            {product.currentStock <= product.minStock && product.currentStock > 0 && (
-                              <AlertTriangle className="inline-block h-3.5 w-3.5 ml-1 text-amber-500" />
-                            )}
-                            {product.currentStock === 0 && (
-                              <AlertTriangle className="inline-block h-3.5 w-3.5 ml-1 text-red-500" />
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              className={
-                                product.isActive
-                                  ? 'bg-emerald-500/15 text-emerald-400 dark:bg-emerald-500/15 dark:text-emerald-400 border-emerald-500/20 dark:border-emerald-500/20'
-                                  : 'bg-gray-500/15 text-gray-400 dark:bg-gray-500/15 dark:text-gray-400 border-gray-500/20 dark:border-gray-500/20'
-                              }
-                              variant="outline"
-                            >
-                              {product.isActive ? 'Activo' : 'Inactivo'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center sticky right-0 bg-background">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Más opciones">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                  <span className="sr-only">Acciones</span>
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openEditProductDialog(product)}>
-                                  <Pencil className="h-4 w-4 mr-2" />
-                                  Editar
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleToggleProduct(product)}>
-                                  <Power className="h-4 w-4 mr-2" />
-                                  {product.isActive ? 'Desactivar' : 'Activar'}
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => openAdjustStockDialog(product.id, product.name, product.currentStock)}>
-                                  <SlidersHorizontal className="h-4 w-4 mr-2" />
-                                  Ajustar Stock
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => openLossDialog(product.id, product.name)}>
-                                  <AlertTriangle className="h-4 w-4 mr-2" />
-                                  Registrar Pérdida
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => openReturnDialog(product.id, product.name)}>
-                                  <RotateCcw className="h-4 w-4 mr-2" />
-                                  Registrar Devolución
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => openTraceDialog(product.id, product.name)}>
-                                  <Route className="h-4 w-4 mr-2" />
-                                  Ver Trazabilidad
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={() => setDeleteTarget({ type: 'product', item: product })}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Eliminar
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Plan limit banner */}
-          {!subscriptionLoading && maxProducts !== null && (
-            <div className={`rounded-lg border p-3 flex items-center gap-3 ${
-              products.length >= maxProducts
-                ? 'border-amber-500/30 bg-amber-500/[0.06]'
-                : products.length >= maxProducts * 0.8
-                  ? 'border-sky-500/20 bg-sky-500/[0.04]'
-                  : 'border-emerald-500/20 bg-emerald-500/[0.04]'
-            }`}>
-              <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
-                products.length >= maxProducts
-                  ? 'bg-amber-500/15'
-                  : products.length >= maxProducts * 0.8
-                    ? 'bg-sky-500/15'
-                    : 'bg-emerald-500/15'
-              }`}>
-                <AlertTriangle className={`h-4 w-4 ${
-                  products.length >= maxProducts
-                    ? 'text-amber-400'
-                    : products.length >= maxProducts * 0.8
-                      ? 'text-sky-400'
-                      : 'text-emerald-400'
-                }`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-xs font-semibold ${
-                  products.length >= maxProducts
-                    ? 'text-amber-400'
-                    : products.length >= maxProducts * 0.8
-                      ? 'text-sky-400'
-                      : 'text-emerald-400'
-                }`}>
-                  {products.length >= maxProducts
-                    ? `Límite del plan alcanzado: ${maxProducts} productos`
-                    : `Plan: ${products.length}/${maxProducts} productos`
-                  }
-                </p>
-                {products.length >= maxProducts && (
-                  <p className="text-[11px] text-amber-300/60 mt-0.5">
-                    Actualiza tu plan para agregar más productos
-                  </p>
-                )}
-              </div>
-              {products.length < maxProducts && (
-                <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden shrink-0 hidden sm:block">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      products.length >= maxProducts * 0.8 ? 'bg-sky-400' : 'bg-emerald-400'
-                    }`}
-                    style={{ width: `${Math.min(100, (products.length / maxProducts) * 100)}%` }}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Product count */}
-          {!productsLoading && (
-            <p className="text-sm text-muted-foreground text-right">
-              {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''}
-              {maxProducts !== null && (
-                <span className="text-xs text-muted-foreground/60 ml-2">
-                  (límite: {maxProducts})
-                </span>
-              )}
-            </p>
-          )}
+          <ProductsTableSection
+            products={products}
+            filteredProducts={filteredProducts}
+            productsLoading={productsLoading}
+            categories={categories}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            categoryFilter={categoryFilter}
+            setCategoryFilter={setCategoryFilter}
+            activeFilter={activeFilter}
+            setActiveFilter={setActiveFilter}
+            sortOrder={sortOrder}
+            setSortOrder={setSortOrder}
+            maxProducts={maxProducts}
+            subscriptionLoading={subscriptionLoading}
+            onNewProduct={openNewProductDialog}
+            onEditProduct={openEditProductDialog}
+            onToggleProduct={handleToggleProduct}
+            onAdjustStock={openAdjustStockDialog}
+            onLoss={openLossDialog}
+            onReturn={openReturnDialog}
+            onTrace={openTraceDialog}
+            onDelete={(p) => setDeleteTarget({ type: 'product', item: p })}
+            onPrint={handlePrintProducts}
+            onImport={() => setImportDialogOpen(true)}
+            onSetView={setView}
+            currencyCode={store?.currencyCode}
+          />
         </TabsContent>
 
         {/* ─── CATEGORIES TAB ────────────────────────────────────────── */}
         <TabsContent value="categories" className="mt-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              {categories.length} categor{categories.length !== 1 ? 'ías' : 'ía'}
-            </p>
-            <Button onClick={openNewCategoryDialog} className="gap-2 active:scale-[0.98] transition-all">
-              <Plus className="h-4 w-4" />
-              Nueva Categoría
-            </Button>
-          </div>
-
-          {categoriesLoading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Card key={i}>
-                  <CardHeader className="pb-2">
-                    <Skeleton className="h-5 w-32" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-4 w-20" />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : categories.length === 0 ? (
-            <Card className="border-border/50">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Tags className="h-16 w-16 text-muted-foreground/30 mb-4 animate-pulse" />
-                <p className="text-muted-foreground font-medium">No hay categorías creadas</p>
-                <p className="text-sm text-muted-foreground/70 mt-1">
-                  Crea una categoría para organizar tus productos
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {categories.map((category) => (
-                <Card key={category.id} className="group hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
-                  <CardHeader className="flex flex-row items-start justify-between pb-2">
-                    <div className="flex items-center gap-2.5">
-                      {(() => {
-                        const IconComp = getCategoryIconByName(category.icon)
-                        return IconComp ? (
-                          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 shrink-0">
-                            <IconComp className="h-4.5 w-4.5 text-primary" />
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted shrink-0">
-                            <Tags className="h-4.5 w-4.5 text-muted-foreground" />
-                          </div>
-                        )
-                      })()}
-                      <CardTitle className="text-base font-medium">{category.name}</CardTitle>
-                    </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => openEditCategoryDialog(category)}
-                        aria-label="Editar categoría"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        <span className="sr-only">Editar</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget({ type: 'category', item: category })}
-                        aria-label="Eliminar categoría"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span className="sr-only">Eliminar</span>
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Package className="h-4 w-4" />
-                      <span>
-                        {category._count?.products || 0} producto
-                        {(category._count?.products || 0) !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+          <CategoriesSection
+            categories={categories}
+            categoriesLoading={categoriesLoading}
+            onNewCategory={openNewCategoryDialog}
+            onEditCategory={openEditCategoryDialog}
+            onDeleteCategory={(c) => setDeleteTarget({ type: 'category', item: c })}
+          />
         </TabsContent>
 
       </Tabs>

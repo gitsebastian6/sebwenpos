@@ -1,4 +1,59 @@
 ---
+Task ID: R09-f11a
+Agent: main
+Task: R-09 FASE 11a — Refactor reports-view.tsx from 1,002 → 246 lines
+
+Work Log:
+- Created src/components/reports/report-shared.tsx (40 lines): extracted LoadingSkeleton, EmptyState, Stat helper components
+- Created src/components/reports/report-tabs-overview.tsx (134 lines): extracted CifrasTab, VentasTab, RentabilidadTab, PuntoEqTab — purely financial/overview tabs using Stat + EmptyState from report-shared
+- Created src/components/reports/report-tabs-inventory.tsx (137 lines): extracted ComprasTab, InventarioTab, PerdidasTab — inventory/purchase/loss tabs with LOSS_REASONS import from inventory-action-dialogs
+- Created src/components/reports/report-tabs-transactions.tsx (105 lines): extracted DescuentosTab, CierresTab, ComisionesTab, GastosTab — transaction-related tabs with tables
+- Created src/components/reports/report-tabs-operations.tsx (314 lines): extracted ImpuestosTab (largest, IVA collected + tax expenses), DevolucionesTab, AjustesTab, TrazabilidadTab (with filter buttons + summary badges)
+- Created src/components/reports/report-tabs-documents.tsx (161 lines): extracted CotizacionesTab, FacturasTab, NotasCreditoTab, CxcTab — document/invoice tabs with status badges
+- Refactored src/components/reports/reports-view.tsx (246 lines): imports all 19 tab components from new files, keeps state (from/to/tab/trazFilter), query hooks (useInformes, useQuery products, useExportPdf), export helpers (Excel/PDF), computed data (trazabilidad, registered losses), date selector card, tab list config, tabs wrapper, InventoryActionDialogs
+- Cleaned unused imports: formatCurrency, Badge, DollarSign no longer needed in main file
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully, responds 200
+
+Stage Summary:
+- reports-view.tsx: 1,002 → 246 lines (75% reduction)
+- 6 new files created: 1 shared + 5 tab component files (991 lines total)
+- Each tab component is self-contained with its own imports from ./reports-export, UI components, and lucide icons
+- Tab components inherit client boundary from parent (no 'use client' needed in extracted files)
+- All 19 TabsContent blocks replaced with imported tab components
+- PerdidasTab receives registeredLosses + totalLossesValue + openLossDialog callback props
+- DevolucionesTab receives openReturnDialog callback, AjustesTab receives openAdjustDialog callback
+- TrazabilidadTab receives trazFilter + setTrazFilter + filteredTraz + trazCounts props
+- All business logic preserved, zero visual/functional changes
+- ReportsView export name preserved
+- Zero new lint errors
+
+---
+Task ID: R09-f11b
+Agent: main
+Task: R-09 FASE 11b — Refactor products-view.tsx from 1,000 → ~493 lines
+
+Work Log:
+- Created src/components/products/products-table-section.tsx (528 lines): extracted ProductsTableSection with all toolbar controls (search, category filter, active filter, sort toggle, module shortcuts, print dropdown, import/new buttons), full products table (headers, loading skeleton, empty state, product rows with all 12 columns and dropdown actions), plan limit banner, and product count
+- Created src/components/products/categories-section.tsx (122 lines): extracted CategoriesSection with category count, new category button, loading skeleton, empty state, category cards grid with icon rendering, edit/delete hover actions, and product count per category
+- Refactored src/components/products/products-view.tsx (493 lines): imports extracted components, keeps all state (28 useState), mutation/query hooks, handler functions (product, category, delete, adjust, loss, return, trace, import, print), filteredProducts useMemo, KPIBar, Tabs wrapper, dialog wiring (8 dialogs)
+- ProductsTableSection receives all filter/sort state + handler callbacks as props; onDelete maps to setDeleteTarget with type 'product'
+- CategoriesSection receives categories data + handler callbacks; onDeleteCategory maps to setDeleteTarget with type 'category'
+- currencyCode passed from parent (store?.currencyCode) to ProductsTableSection for formatCurrency in table cells
+- All 12 table columns preserved exactly: Name (with ProductImage + description), SKU, INVIMA (with Shield icon), Provider (with Truck icon), Category (Badge), P. Compra, P. Venta, IVA (colored Badge with Percent icon), Comisión, Stock (with low-stock alerts), Estado (colored Badge), Acciones (dropdown menu)
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully, responds 200
+
+Stage Summary:
+- products-view.tsx: 1,000 → 493 lines (51% reduction)
+- 2 new files created: products-table-section.tsx (528 lines), categories-section.tsx (122 lines)
+- ProductsTableSection is fully presentational — all state and handlers remain in parent
+- CategoriesSection is fully presentational — all state and handlers remain in parent
+- ProductsView export name preserved
+- All business logic preserved, zero visual/functional changes
+- Zero new lint errors
+
+---
 Task ID: R09-f10
 Agent: main
 Task: R-09 FASE 10 — Refactor print-ticket.ts + certificate.ts
