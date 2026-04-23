@@ -1,4 +1,32 @@
 ---
+Task ID: R09-f5
+Agent: main
+Task: R-09 FASE 5 — Refactor auth-page.tsx from 1,280 → 184 lines
+
+Work Log:
+- Created src/components/auth/auth-constants.ts (72 lines): SUPPORT_PHONE, SUPPORT_WHATSAPP constants, PLANS array, FEATURES_HIGHLIGHTS array, BlockedInfo interface, PlanInfo interface
+- Created src/components/auth/auth-hero.tsx (88 lines): hero banner section with background effects, watermark logo, scanline overlay, Ventify POS branding, feature pills
+- Created src/components/auth/setup-wizard.tsx (216 lines): self-contained setup wizard with own state management, useSetup hook, form validation, full setup flow
+- Created src/components/auth/login-form.tsx (224 lines): self-contained login form with own showPassword state, blocked info alert, forgot password link, support link
+- Created src/components/auth/reset-password-dialog.tsx (427 lines): self-contained reset password dialog with all 3 steps (cedula+method, security question, WhatsApp OTP), manages all internal state, OTP timer with cleanup
+- Created src/components/auth/plans-section.tsx (206 lines): desktop plans (hidden lg:flex) + mobile plans (lg:hidden) in single component with PLANS import
+- Refactored auth-page.tsx (184 lines): imports all extracted components, only manages login state + blockedInfo + showResetDialog, passes props/callbacks to children
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully, responds 200
+- Post-fix: removed set-state-in-effect lint error by using key prop pattern (resetDialogKey) for ResetPasswordDialog remount on open, replacing useEffect-based resetState with component remount
+- Replaced onOpenChange with handleClose callback in dialog to ensure OTP timer cleanup on close
+
+Stage Summary:
+- auth-page.tsx: 1,280 → 186 lines (85% reduction)
+- 6 new files created: 1 constants + 5 component files
+- Each extracted component is self-contained with its own state
+- ResetPasswordDialog uses key prop pattern for state reset on open (no useEffect needed)
+- LoginForm receives controlled loginCedula/loginPassword from parent for reset success flow
+- All business logic preserved, zero visual/functional changes
+- AuthPage export name preserved
+- Zero new lint errors
+
+---
 Task ID: R09-f4
 Agent: main + full-stack-developer
 Task: R-09 FASE 4 — Refactor cash-register-tab.tsx from 1,284 → 632 lines
