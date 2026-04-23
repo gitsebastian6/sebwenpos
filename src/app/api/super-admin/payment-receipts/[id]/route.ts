@@ -150,8 +150,9 @@ export async function PUT(
           endDate: newEndDate,
           nextBillingAt: newNextBillingAt,
           lastBilledAt: now,
-          // M-04 FIX: Reset startDate for any reactivation (EXPIRED, CANCELLED, TRIAL)
-          startDate: (sub.status === 'EXPIRED' || sub.status === 'CANCELLED' || sub.status === 'TRIAL') ? now : sub.startDate,
+          // R-04 FIX: Preserve original startDate on reactivation (don't reset customer tenure)
+          // Only reset startDate if there's no existing startDate (data integrity edge case)
+          startDate: sub.startDate || now,
           billingPeriod: effectiveBillingPeriod,
           billingPrice: periodPrice,
           cancelReason: null,

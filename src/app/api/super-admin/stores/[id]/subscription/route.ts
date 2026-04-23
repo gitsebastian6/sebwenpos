@@ -87,7 +87,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Plan no encontrado' }, { status: 404 })
     }
 
-    const startDate = new Date()
+    // R-04 FIX: Preserve original startDate on reactivation (don't reset customer tenure)
+    const isReactivation = existingSubscription?.status === 'CANCELLED' || existingSubscription?.status === 'EXPIRED'
+    const startDate = (isReactivation && existingSubscription?.startDate) ? new Date(existingSubscription.startDate) : new Date()
     let endDate: Date | null = null
     let trialEndDate: Date | null = null
     let billingPrice: number
@@ -146,7 +148,6 @@ export async function PUT(
     // Determine the new status
     // When Super Admin changes a plan, automatically reactivate from EXPIRED/CANCELLED
     // IMPORTANT: If endDate is in the future, status MUST be ACTIVE/TRIAL, never EXPIRED/CANCELLED
-    const isReactivation = existingSubscription?.status === 'CANCELLED' || existingSubscription?.status === 'EXPIRED'
     let newStatus: string
     if (data.billingPeriod === 'TRIAL') {
       newStatus = 'TRIAL'

@@ -995,3 +995,27 @@ Stage Summary:
 - Feature access correctly allows PAST_DUE during grace period (3 days)
 - All JSON.parse(plan.features) calls go through parsePlanFeatures() with try/catch
 - ESLint clean (0 new errors), dev server healthy (200)
+
+---
+Task ID: R-04-R-05
+Agent: main
+Task: Fix R-04 (startDate resets on reactivation) and R-05 (maxStores missing from plan table)
+
+Work Log:
+- R-04: Fixed startDate preservation on subscription reactivation in 2 files:
+  - super-admin/stores/[id]/subscription/route.ts (PUT): Moved isReactivation check BEFORE startDate assignment. Now preserves original startDate when reactivating from EXPIRED/CANCELLED: `const startDate = (isReactivation && existingSubscription?.startDate) ? new Date(existingSubscription.startDate) : new Date()`
+  - super-admin/payment-receipts/[id]/route.ts (PUT): Changed from conditional reset (which was resetting for EXPIRED/CANCELLED/TRIAL) to always preserving: `startDate: sub.startDate || now`. Only falls back to now if no startDate exists (data integrity edge case).
+  - Business rationale: startDate represents customer tenure — reactivating should NOT reset this.
+
+- R-05: Added maxStores display to plans table:
+  - plans-view.tsx table now shows 3 limit rows: Empleados, Productos, Sucursales
+  - Uses inline SVG house icon for Sucursales (consistent with lucide icon style)
+  - The edit dialog already had maxStores field (was already working)
+  - The API already accepted maxStores in PUT (was already working)
+  - Only the table display was missing this info
+
+Stage Summary:
+- 3 files modified: subscription/route.ts, payment-receipts/[id]/route.ts, plans-view.tsx
+- startDate now preserved on all reactivation paths (super-admin + receipt approval)
+- maxStores now visible in plans table alongside employees and products limits
+- ESLint clean (0 new errors), dev server healthy (200)
