@@ -250,6 +250,16 @@ export async function POST(req: NextRequest) {
 
     const orderNumber = generateOrderNumber()
 
+    // ── IDOR check: verify customer belongs to this store before creating credit order ──
+    if (data.customerId) {
+      const customerBelongsToStore = await db.customer.findFirst({
+        where: { id: data.customerId, storeId: data.storeId },
+      })
+      if (!customerBelongsToStore) {
+        return NextResponse.json({ error: 'Cliente no encontrado en esta tienda' }, { status: 400 })
+      }
+    }
+
     // ─── Cash register validation: MUST have an open shift ──────────
     let targetCashRegisterId = data.cashRegisterId ?? null
     if (!targetCashRegisterId) {

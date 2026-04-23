@@ -28,13 +28,29 @@ export async function POST(req: NextRequest) {
       where: { cedula: data.cedula },
       include: {
         store: {
-          include: {
+          select: {
+            id: true, name: true, legalName: true, nit: true, address: true, phone: true,
+            currencyCode: true, countryCode: true, invoiceEnabled: true, invoiceTestMode: true,
+            invoicePrefix: true, resolutionNumber: true, parentStoreId: true,
             subscription: {
-              include: { plan: true },
+              select: {
+                id: true, status: true, planId: true, endDate: true, trialEndDate: true,
+                plan: { select: { id: true, name: true, price: true, maxProducts: true, maxEmployees: true, maxStores: true } },
+              },
             },
           },
         },
-        employee: { include: { store: { include: { subscription: { include: { plan: true } } } }, role: true } },
+        employee: { include: { store: { select: {
+            id: true, name: true, legalName: true, nit: true, address: true, phone: true,
+            currencyCode: true, countryCode: true, invoiceEnabled: true, invoiceTestMode: true,
+            invoicePrefix: true, resolutionNumber: true, parentStoreId: true,
+            subscription: {
+              select: {
+                id: true, status: true, planId: true, endDate: true, trialEndDate: true,
+                plan: { select: { id: true, name: true, price: true, maxProducts: true, maxEmployees: true, maxStores: true } },
+              },
+            },
+          } }, role: true } },
       },
     })
 

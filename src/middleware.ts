@@ -19,6 +19,19 @@ const INTERNAL_SECRET = (() => {
   return secret
 })()
 
+// Constant-time string comparison (Edge-compatible) to prevent timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  const encoder = new TextEncoder()
+  const aBuf = encoder.encode(a)
+  const bBuf = encoder.encode(b)
+  const result = new Uint8Array(aBuf.length)
+  for (let i = 0; i < aBuf.length; i++) {
+    result[i] = aBuf[i] ^ bBuf[i]
+  }
+  return result.every(byte => byte === 0)
+}
+
 // CORS configuration — restricted to known origins
 const ALLOWED_ORIGINS = [
   process.env.APP_URL,
@@ -61,10 +74,10 @@ export async function middleware(request: NextRequest) {
     return withCORS(NextResponse.next(), origin)
   }
 
-  // 2. Internal cron routes — check internal secret header
+  // 2. Internal cron routes — check internal secret header (constant-time comparison)
   if (isInternalPath(pathname)) {
     const internalHeader = request.headers.get('x-internal-secret')
-    if (internalHeader !== INTERNAL_SECRET) {
+    if (!internalHeader || !timingSafeEqual(internalHeader, INTERNAL_SECRET)) {
       return corsError('Acceso no autorizado', 401)
     }
     return withCORS(NextResponse.next(), origin)

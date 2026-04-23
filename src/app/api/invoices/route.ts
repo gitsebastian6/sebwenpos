@@ -55,6 +55,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
 
+    // Auth: verify user has access to this store
+    const storeAccessError = requireStoreAccess(request, storeId)
+    if (storeAccessError) return storeAccessError
+
     const where: Record<string, unknown> = { storeId }
 
     if (status && status !== 'ALL') {
@@ -303,7 +307,7 @@ export async function POST(req: NextRequest) {
         })
 
         // 8. Determinar testMode y generar URL del codigo QR
-        testMode = data.testMode !== undefined ? data.testMode : (store.invoiceTestMode ?? true)
+        testMode = store.invoiceTestMode ?? true
 
         // Generar URL del codigo QR
         const dateFormatted = now.toISOString().slice(0, 10) // YYYY-MM-DD

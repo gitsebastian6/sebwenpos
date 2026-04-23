@@ -22,10 +22,12 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl
     const daysBefore = parseInt(searchParams.get('daysBefore') || '3', 10)
 
-    // Auth: internal secret via header (set by cron service)
+    // Auth: internal secret via header (set by cron service) — constant-time comparison
     const internalSecret = req.headers.get('x-internal-secret')
     const expectedSecret = process.env.INTERNAL_SECRET
-    if (!expectedSecret || !internalSecret || internalSecret !== expectedSecret) {
+    const secretsMatch = internalSecret && expectedSecret && internalSecret.length === expectedSecret.length &&
+      Buffer.from(internalSecret).compare(Buffer.from(expectedSecret)) === 0
+    if (!secretsMatch) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

@@ -42,7 +42,31 @@ const createStoreSchema = z.object({
 export async function GET() {
   try {
     const stores = await db.store.findMany({
-      include: {
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        legalName: true,
+        nit: true,
+        address: true,
+        phone: true,
+        currencyCode: true,
+        countryCode: true,
+        invoicePrefix: true,
+        resolutionNumber: true,
+        resolutionStartDate: true,
+        resolutionEndDate: true,
+        resolutionStartNumber: true,
+        resolutionEndNumber: true,
+        invoiceTestMode: true,
+        invoiceProvider: true,
+        invoiceEnabled: true,
+        certificateUploaded: true,
+        divipolaCode: true,
+        cityName: true,
+        parentStoreId: true,
+        createdAt: true,
+        updatedAt: true,
         parentStore: {
           select: {
             name: true,

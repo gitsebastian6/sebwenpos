@@ -146,8 +146,8 @@ export const PUBLIC_PATHS = [
   '/api/auth/otp-status',
   '/api/health',
   '/api/subscription/plans',
-  // DEV-ONLY: Test endpoints (remove before production)
-  '/api/test',
+  // DEV-ONLY: Test endpoints (only accessible in development mode)
+  ...(process.env.NODE_ENV === 'development' ? ['/api/test'] : []),
   // NOTE: /api/auth/register is NOT public — user creation is ONLY
   // allowed through the Super Admin panel (/api/super-admin/stores).
   // This prevents self-service account creation with store access.
