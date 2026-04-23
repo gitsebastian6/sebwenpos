@@ -1,4 +1,30 @@
 ---
+Task ID: PROD-F6
+Agent: main
+Task: Fase 6 — Integrar Sentry para monitoreo de errores en produccion
+
+Work Log:
+- Installed @sentry/nextjs v10.50.0 via bun
+- Created sentry.client.config.ts: browser-side config with tracing (10% prod sampling), session replay (on error), error filtering (extensions, NetworkError ignored)
+- Created sentry.server.config.ts: Node.js server-side error capture
+- Created sentry.edge.config.ts: Edge runtime support
+- Created instrumentation.ts: Sentry SDK loader that imports correct config per runtime (nodejs/edge)
+- Created src/app/global-error.tsx: Next.js app-level error boundary with Sentry.captureException + recovery UI
+- Updated src/components/shared/error-boundary.tsx: Added Sentry.withScope + Sentry.captureException in componentDidCatch, tags with viewName
+- Updated next.config.ts: Wrapped with withSentryConfig, disabled automatic source map uploads (CI handles)
+- Updated .env.example: Added NEXT_PUBLIC_SENTRY_DSN + NEXT_PUBLIC_SENTRY_RELEASE documentation
+- Sentry is DISABLED when DSN is empty (zero performance impact in development)
+- Lint: 0 errors, dev server compiles successfully
+
+Stage Summary:
+- Sentry fully integrated: client + server + edge + error boundaries
+- 6 new files: 3 sentry configs + instrumentation.ts + global-error.tsx + error-boundary update
+- Zero-impact design: DSN empty = Sentry disabled (no network calls, no overhead)
+- Production-ready sampling: 10% traces, session replay only on errors
+- Privacy-preserving: maskAllText + blockAllMedia in replay
+- Git pushed: 61d61da
+
+---
 Task ID: PROD-F5
 Agent: main
 Task: Fase 5 — Variables de entorno y seguridad de secrets
