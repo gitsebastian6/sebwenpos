@@ -1,7 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useResetCustomerDebts } from '@/hooks/api/use-customers'
+import { useDailyReport } from '@/hooks/api/use-reports'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -89,70 +92,51 @@ interface ReportsTabProps {
 
 export function ReportsTab({ accounts, currencyCode, onAccountsChanged }: ReportsTabProps) {
   const store = useAuthStore((s) => s.store)
+  const queryClient = useQueryClient()
 
   // Report state
-  const [reportData, setReportData] = useState<ReportData | null>(null)
-  const [isLoadingReport, setIsLoadingReport] = useState(false)
   const [reportFrom, setReportFrom] = useState('')
   const [reportTo, setReportTo] = useState('')
 
   // Reset debts state
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [resetNote, setResetNote] = useState('')
-  const [isResetting, setIsResetting] = useState(false)
   const [showResetFinalConfirm, setShowResetFinalConfirm] = useState(false)
+  const resetDebtsMut = useResetCustomerDebts()
+  const isResetting = resetDebtsMut.isPending
 
-  // ─── Fetch reports ────────────────────────────────────────────────────────
+  // ─── TanStack Query for reports ─────────────────────────────────────────
 
-  const fetchReports = useCallback(async () => {
-    if (!store?.id) return
-    setIsLoadingReport(true)
-    try {
-      let url = `/api/reports?storeId=${store.id}`
+  const reportEnabled = !!store?.id && !!reportFrom && !!reportTo
+  const { data: reportData, isLoading: isLoadingReport, refetch: fetchReports } = useQuery<ReportData>({
+    queryKey: ['accounting-reports', store?.id, reportFrom, reportTo],
+    queryFn: async () => {
+      let url = `/api/reports?storeId=${store!.id}`
       if (reportFrom) url += `&from=${reportFrom}`
       if (reportTo) url += `&to=${reportTo}`
       const res = await fetch(url)
-      if (res.ok) {
-        const data = await res.json()
-        setReportData(data)
-      }
-    } catch {
-      // silent fail
-    } finally {
-      setIsLoadingReport(false)
-    }
-  }, [store?.id, reportFrom, reportTo])
+      if (!res.ok) throw new Error('Error al cargar informe')
+      return res.json()
+    },
+    enabled: reportEnabled,
+    staleTime: 30_000,
+  })
 
-  useEffect(() => {
-    fetchReports()
-  }, [fetchReports])
+  const dailyReportQuery = useDailyReport(store?.id)
 
   // ─── Reset debts handler ──────────────────────────────────────────────────
 
   async function handleResetDebts() {
     if (!store?.id) return
-    setIsResetting(true)
     try {
-      const res = await fetch('/api/customers/reset-debts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId: store.id, note: resetNote.trim() || undefined }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        toast.success(data.message)
-        setShowResetDialog(false)
-        setResetNote('')
-        fetchReports()
-        onAccountsChanged()
-      } else {
-        const err = await res.json().catch(() => ({ error: 'Error' }))
-        toast.error(err.error || 'No se pudo resetear saldos')
-      }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setIsResetting(false)
+      const data = await resetDebtsMut.mutateAsync({ body: { storeId: store.id, note: resetNote.trim() || undefined } })
+      toast.success(data.message)
+      setShowResetDialog(false)
+      setResetNote('')
+      fetchReports()
+      onAccountsChanged()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo resetear saldos')
     }
   }
 
@@ -161,77 +145,92 @@ export function ReportsTab({ accounts, currencyCode, onAccountsChanged }: Report
   async function handlePrintDailySummary() {
     if (!store?.id) return
     try {
-      const res = await fetch(`/api/reports/daily?storeId=${store.id}`)
-      if (res.ok) {
-        const data: any = await res.json()
-        const printData: DailySummaryData = {
-          storeName: store.name,
-          storeNIT: store.nit || undefined,
-          date: data.date,
-          totalOrders: data.orders.total,
-          completedOrders: data.orders.completed,
-          cancelledOrders: data.orders.cancelled,
-          totalSales: data.sales.total,
-          subtotal: data.sales.subtotal,
-          tips: data.sales.tips,
-          paymentBreakdown: Object.entries(data.byPayment).map(([method, d]: [string, any]) => ({
-            method,
-            count: d.count,
-            total: d.total,
-            tips: d.tips,
-          })),
-          topProducts: data.topProducts.map((p: { name: string; quantity: number; total: number }) => p),
-          openingBalance: data.cash.openingBalance,
-          expectedCash: data.cash.expectedCash,
-          services: data.services,
-          currencyCode,
-        }
-        printDailySummary(printData)
+      const data = await queryClient.fetchQuery({
+        queryKey: ['daily-report', store.id],
+        queryFn: async () => {
+          const res = await fetch(`/api/reports/daily?storeId=${store.id}`)
+          if (!res.ok) throw new Error('Error')
+          return res.json()
+        },
+        staleTime: 60_000,
+      })
+      const printData: DailySummaryData = {
+        storeName: store.name,
+        storeNIT: store.nit || undefined,
+        date: data.date,
+        totalOrders: data.orders.total,
+        completedOrders: data.orders.completed,
+        cancelledOrders: data.orders.cancelled,
+        totalSales: data.sales.total,
+        subtotal: data.sales.subtotal,
+        tips: data.sales.tips,
+        paymentBreakdown: Object.entries(data.byPayment).map(([method, d]: [string, any]) => ({
+          method,
+          count: d.count,
+          total: d.total,
+          tips: d.tips,
+        })),
+        topProducts: data.topProducts.map((p: { name: string; quantity: number; total: number }) => p),
+        openingBalance: data.cash.openingBalance,
+        expectedCash: data.cash.expectedCash,
+        services: data.services,
+        currencyCode,
       }
+      printDailySummary(printData)
     } catch { toast.error('Error al generar corte Z') }
   }
 
   async function handlePrintCatalog() {
     if (!store?.id) return
     try {
-      const res = await fetch(`/api/products?storeId=${store.id}&active=true&limit=500`)
-      if (res.ok) {
-        const data = await res.json()
-        const rawProducts = Array.isArray(data) ? data : (data.data || [])
-        const products = rawProducts.map((p: { name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }) => ({
-          name: p.name,
-          category: p.category?.name || 'Sin Categoría',
-          price: p.salePrice,
-          stock: p.currentStock,
-          sku: p.sku,
-        }))
-        const printData: ProductCatalogData = {
-          storeName: store.name,
-          storeNIT: store.nit || undefined,
-          products,
-          currencyCode,
-        }
-        printProductCatalog(printData)
+      const data = await queryClient.fetchQuery({
+        queryKey: ['products-catalog', store.id],
+        queryFn: async () => {
+          const res = await fetch(`/api/products?storeId=${store.id}&active=true&limit=500`)
+          if (!res.ok) throw new Error('Error')
+          return res.json()
+        },
+        staleTime: 120_000,
+      })
+      const rawProducts = Array.isArray(data) ? data : (data.data || [])
+      const products = rawProducts.map((p: { name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }) => ({
+        name: p.name,
+        category: p.category?.name || 'Sin Categoría',
+        price: p.salePrice,
+        stock: p.currentStock,
+        sku: p.sku,
+      }))
+      const printData: ProductCatalogData = {
+        storeName: store.name,
+        storeNIT: store.nit || undefined,
+        products,
+        currencyCode,
       }
+      printProductCatalog(printData)
     } catch { toast.error('Error al generar catálogo') }
   }
 
   async function handlePrintKardex(productId: number, productName: string, category: string, sku?: string | null) {
     if (!store?.id) return
     try {
-      const res = await fetch(`/api/inventory/kardex?storeId=${store.id}&productId=${productId}`)
-      if (res.ok) {
-        const data = await res.json()
-        const printData: KardexData = {
-          storeName: store.name,
-          productName,
-          category,
-          sku,
-          movements: data.movements,
-          currencyCode,
-        }
-        printKardex(printData)
+      const data = await queryClient.fetchQuery({
+        queryKey: ['kardex-print', productId, store.id],
+        queryFn: async () => {
+          const res = await fetch(`/api/inventory/kardex?storeId=${store.id}&productId=${productId}`)
+          if (!res.ok) throw new Error('Error')
+          return res.json()
+        },
+        staleTime: 30_000,
+      })
+      const printData: KardexData = {
+        storeName: store.name,
+        productName,
+        category,
+        sku,
+        movements: data.movements,
+        currencyCode,
       }
+      printKardex(printData)
     } catch { toast.error('Error al generar kardex') }
   }
 

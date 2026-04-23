@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useState, forwardRef, useImperativeHandle } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,6 +14,7 @@ import {
 import { toast } from 'sonner'
 import { RotateCcw, SlidersHorizontal, AlertTriangle, Loader2 } from 'lucide-react'
 import type { ReportProduct } from './reports-export'
+import { useInventoryReturn, useInventoryAdjustment, useInventoryLoss } from '@/hooks/api/use-inventory'
 
 // ── Loss Reasons ──
 export const LOSS_REASONS: Record<string, string> = {
@@ -83,7 +84,11 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
     const [showReturnDialog, setShowReturnDialog] = useState(false)
     const [showAdjustDialog, setShowAdjustDialog] = useState(false)
     const [showLossDialog, setShowLossDialog] = useState(false)
-    const [isSubmitting, setIsSubmitting] = useState(false)
+    // ── TanStack Query mutations ──
+    const returnMut = useInventoryReturn()
+    const adjustMut = useInventoryAdjustment()
+    const lossMut = useInventoryLoss()
+    const isSubmitting = returnMut.isPending || adjustMut.isPending || lossMut.isPending
 
     // ── Return form ──
     const [returnForm, setReturnForm] = useState({ productId: '', quantity: '', notes: '' })
@@ -118,20 +123,14 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
         toast.error('Selecciona un producto y una cantidad válida')
         return
       }
-      setIsSubmitting(true)
       try {
-        const res = await fetch('/api/inventory/returns', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ storeId, productId: returnForm.productId, quantity: Number(returnForm.quantity), notes: returnForm.notes }),
-        })
-        if (!res.ok) throw new Error('Error al registrar devolución')
+        await returnMut.mutateAsync({ body: { storeId, productId: returnForm.productId, quantity: Number(returnForm.quantity), notes: returnForm.notes } })
         toast.success('Devolución registrada correctamente')
         setShowReturnDialog(false)
         onSuccess()
       } catch (e: unknown) {
         toast.error(e instanceof Error ? e.message : 'Error al registrar devolución')
-      } finally { setIsSubmitting(false) }
+      }
     }
 
     const handleSubmitAdjust = async () => {
@@ -143,26 +142,14 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
         toast.error('Las notas son obligatorias para ajustes')
         return
       }
-      setIsSubmitting(true)
       try {
-        const payload: Record<string, unknown> = { storeId, productId: adjustForm.productId, quantity: Number(adjustForm.quantity), notes: adjustForm.notes }
-        if (adjustForm.mode === 'set') {
-          payload.mode = 'set'
-        } else {
-          payload.mode = 'delta'
-        }
-        const res = await fetch('/api/inventory/adjustments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        if (!res.ok) throw new Error('Error al registrar ajuste')
+        await adjustMut.mutateAsync({ body: { storeId, productId: adjustForm.productId, quantity: Number(adjustForm.quantity), mode: adjustForm.mode, notes: adjustForm.notes } })
         toast.success('Ajuste registrado correctamente')
         setShowAdjustDialog(false)
         onSuccess()
       } catch (e: unknown) {
         toast.error(e instanceof Error ? e.message : 'Error al registrar ajuste')
-      } finally { setIsSubmitting(false) }
+      }
     }
 
     const handleSubmitLoss = async () => {
@@ -170,20 +157,14 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
         toast.error('Selecciona un producto y una cantidad válida')
         return
       }
-      setIsSubmitting(true)
       try {
-        const res = await fetch('/api/inventory/losses', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ storeId, productId: lossForm.productId, quantity: Number(lossForm.quantity), reason: lossForm.reason, notes: lossForm.notes }),
-        })
-        if (!res.ok) throw new Error('Error al registrar pérdida')
+        await lossMut.mutateAsync({ body: { storeId, productId: lossForm.productId, quantity: Number(lossForm.quantity), reason: lossForm.reason, notes: lossForm.notes } })
         toast.success('Pérdida registrada correctamente')
         setShowLossDialog(false)
         onSuccess()
       } catch (e: unknown) {
         toast.error(e instanceof Error ? e.message : 'Error al registrar pérdida')
-      } finally { setIsSubmitting(false) }
+      }
     }
 
     return (
