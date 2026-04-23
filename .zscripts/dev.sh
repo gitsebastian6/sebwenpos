@@ -137,15 +137,21 @@ echo "[BUN] Setting up database..."
 bun run db:push
 log_step_end "bun run db:push"
 
-log_step_start "Starting Next.js dev server"
-echo "[BUN] Starting development server..."
-bun run dev &
-DEV_PID=$!
-log_step_end "Starting Next.js dev server"
+log_step_start "Building Next.js production bundle"
+echo "[BUN] Building for production (low memory mode)..."
+cd "$PROJECT_DIR"
+npx next build 2>&1 | tail -5
+log_step_end "Building Next.js production bundle"
 
-log_step_start "Waiting for Next.js dev server"
-wait_for_service "localhost" "3000" "Next.js dev server"
-log_step_end "Waiting for Next.js dev server"
+log_step_start "Starting Next.js production server"
+echo "[BUN] Starting production server (~100MB vs 2-3GB dev mode)..."
+NODE_ENV=production npx next start -p 3000 &
+DEV_PID=$!
+log_step_end "Starting Next.js production server"
+
+log_step_start "Waiting for Next.js server"
+wait_for_service "localhost" "3000" "Next.js server"
+log_step_end "Waiting for Next.js server"
 
 log_step_start "Health check"
 echo "[BUN] Performing health check..."
@@ -159,16 +165,15 @@ echo "Next.js dev server is running in background (PID: $DEV_PID)."
 echo "Use 'kill $DEV_PID' to stop it."
 disown "$DEV_PID" 2>/dev/null || true
 
-# Keep script alive - restart dev server if it dies
+# Keep script alive - restart production server if it dies
 while true; do
   if ! kill -0 "$DEV_PID" 2>/dev/null; then
-    echo "[BUN] Dev server died, restarting..."
+    echo "[BUN] Production server died, restarting..."
     cd "$PROJECT_DIR"
-    rm -f "$PROJECT_DIR/.config"
-    bun run dev &
+    NODE_ENV=production npx next start -p 3000 &
     DEV_PID=$!
     disown "$DEV_PID" 2>/dev/null || true
-    echo "[BUN] Restarted dev server (PID: $DEV_PID)"
+    echo "[BUN] Restarted production server (PID: $DEV_PID)"
   fi
   sleep 5
 done

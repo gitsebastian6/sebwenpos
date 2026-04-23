@@ -1,6 +1,0 @@
-{
-  "name": "ventify-keepalive",
-  "scripts": {
-    "start": "node index.js"
-  }
-}
