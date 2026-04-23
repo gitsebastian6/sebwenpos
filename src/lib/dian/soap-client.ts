@@ -11,6 +11,7 @@
 
 import { XMLParser } from 'fast-xml-parser'
 import zlib from 'zlib'
+import { logger } from '@/lib/logger'
 
 // ─── DIAN Endpoints ─────────────────────────────────────────────────────────
 
@@ -303,7 +304,7 @@ export async function sendBillToDIAN(
     const testSetId = config.testMode ? 'false' : 'false'
     const soapEnvelope = buildSendBillEnvelope(contentBase64, testSetId)
 
-    console.log(`[DIAN] Sending invoice to ${config.testMode ? 'HABILITACIÓN' : 'PRODUCCIÓN'} endpoint...`)
+    logger.info(`[DIAN] Sending invoice to ${config.testMode ? 'HABILITACIÓN' : 'PRODUCCIÓN'} endpoint...`)
 
     // 3. Send request
     const result = await soapRequest(endpoint, soapEnvelope, timeout)
@@ -321,9 +322,9 @@ export async function sendBillToDIAN(
     const parsed = parseSendBillResponse(result.xml)
 
     if (parsed.success) {
-      console.log(`[DIAN] Invoice sent successfully. TrackId: ${parsed.trackId}`)
+      logger.info(`[DIAN] Invoice sent successfully. TrackId: ${parsed.trackId}`)
     } else {
-      console.error(`[DIAN] Send failed: ${parsed.errorMessage}`)
+      logger.error(`[DIAN] Send failed: ${parsed.errorMessage}`)
     }
 
     return parsed
@@ -359,7 +360,7 @@ export async function getDIANStatus(
   try {
     const soapEnvelope = buildGetStatusEnvelope(trackId)
 
-    console.log(`[DIAN] Checking status for TrackId: ${trackId}`)
+    logger.info(`[DIAN] Checking status for TrackId: ${trackId}`)
 
     const result = await soapRequest(endpoint, soapEnvelope, timeout)
 
@@ -373,7 +374,7 @@ export async function getDIANStatus(
     const parsed = parseGetStatusResponse(result.xml)
 
     if (parsed.statusCode) {
-      console.log(`[DIAN] Status: ${parsed.statusCode} - ${parsed.statusMessage}`)
+      logger.info(`[DIAN] Status: ${parsed.statusCode} - ${parsed.statusMessage}`)
     }
 
     return parsed
@@ -406,7 +407,7 @@ export async function getStatusByDocument(
   try {
     const soapEnvelope = buildGetStatusByDocumentEnvelope(nit, prefix, consecutive)
 
-    console.log(`[DIAN] Checking status for document: ${prefix}-${String(consecutive).padStart(8, '0')}`)
+    logger.info(`[DIAN] Checking status for document: ${prefix}-${String(consecutive).padStart(8, '0')}`)
 
     const result = await soapRequest(endpoint, soapEnvelope, timeout)
 
