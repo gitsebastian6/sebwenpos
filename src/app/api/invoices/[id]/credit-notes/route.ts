@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { requireStoreAccess } from '@/lib/api-auth'
 import {
   formatInvoiceNumber,
   generateCUFE,
@@ -127,6 +128,9 @@ export async function GET(
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
 
+    const authError = requireStoreAccess(request, storeId)
+    if (authError) return authError
+
     // Verificar que la factura existe
     const invoice = await db.invoice.findFirst({
       where: { id: Number(id), storeId },
@@ -189,6 +193,9 @@ export async function POST(
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const authError = requireStoreAccess(request, storeId)
+    if (authError) return authError
 
     // Parse y validar body
     let body: {

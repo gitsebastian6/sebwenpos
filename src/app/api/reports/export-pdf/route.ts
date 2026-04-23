@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import PDFDocument from 'pdfkit'
+import { requireStoreAccess } from '@/lib/api-auth'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,14 +13,25 @@ const CELL_PADDING = 4
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { storeName, title, subtitle, headers, rows, columnAligns } = body as {
-      storeName: string
-      title: string
-      subtitle?: string
-      headers: string[]
-      rows: (string | number)[][]
-      columnAligns?: ('left' | 'center' | 'right')[]
+
+    const parsed = z.object({
+      storeId: z.number().int().positive(),
+      storeName: z.string().optional(),
+      title: z.string(),
+      subtitle: z.string().optional(),
+      headers: z.array(z.string()),
+      rows: z.array(z.array(z.union([z.string(), z.number()]))),
+      columnAligns: z.array(z.enum(['left', 'center', 'right'])).optional(),
+    }).safeParse(body)
+
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
+
+    const { storeId, storeName, title, subtitle, headers, rows, columnAligns } = parsed.data
+
+    const authError = requireStoreAccess(req, storeId)
+    if (authError) return authError
 
     const doc = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true })
     const buffers: Buffer[] = []

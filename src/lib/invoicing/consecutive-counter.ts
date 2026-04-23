@@ -222,10 +222,19 @@ async function getTotalInvoices(storeId: number): Promise<number> {
  * @throws Error descriptivo en español si la resolución no está configurada,
  *         ha expirado, o el rango está agotado.
  */
-export async function getNextConsecutive(storeId: number): Promise<ConsecutiveResult> {
-  return await db.$transaction(async (tx) => {
+/** Cliente con acceso a los modelos necesarios para calcular consecutivos */
+type ConsecutiveClient = {
+  store: typeof db.store
+  invoice: typeof db.invoice
+}
+
+export async function getNextConsecutive(
+  storeId: number,
+  client?: ConsecutiveClient,
+): Promise<ConsecutiveResult> {
+  const acquire = async (c: ConsecutiveClient): Promise<ConsecutiveResult> => {
     // 1. Obtener resolución de la tienda dentro de la transacción
-    const store = await tx.store.findUniqueOrThrow({
+    const store = await c.store.findUniqueOrThrow({
       where: { id: storeId },
       select: {
         invoicePrefix: true,
@@ -280,7 +289,7 @@ export async function getNextConsecutive(storeId: number): Promise<ConsecutiveRe
     }
 
     // 4. Obtener el último consecutivo usado (dentro de la transacción para atomicidad)
-    const lastInvoice = await tx.invoice.findFirst({
+    const lastInvoice = await c.invoice.findFirst({
       where: { storeId },
       orderBy: { consecutive: 'desc' },
       select: { consecutive: true },
@@ -327,7 +336,12 @@ export async function getNextConsecutive(storeId: number): Promise<ConsecutiveRe
       endNumber,
       warning,
     }
-  })
+  }
+
+  if (client) {
+    return acquire(client)
+  }
+  return db.$transaction(async (tx) => acquire({ store: tx.store, invoice: tx.invoice }))
 }
 
 /**

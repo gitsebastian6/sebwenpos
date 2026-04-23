@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +19,9 @@ export async function POST(req: NextRequest) {
     if (isNaN(sid)) {
       return NextResponse.json({ error: 'storeId inválido' }, { status: 400 })
     }
+
+    const authError = requireStoreAccess(req, sid)
+    if (authError) return authError
 
     const store = await db.store.findUnique({
       where: { id: sid },

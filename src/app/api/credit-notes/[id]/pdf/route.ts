@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireStoreAccess } from '@/lib/api-auth'
 import { formatInvoiceNumber, getAppBaseUrl } from '@/lib/invoice-utils'
 import QRCode from 'qrcode'
 
@@ -26,6 +27,9 @@ export async function GET(
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const authError = requireStoreAccess(request, storeId)
+    if (authError) return authError
 
     const creditNote = await db.creditNote.findFirst({
       where: { id: Number(id), storeId },

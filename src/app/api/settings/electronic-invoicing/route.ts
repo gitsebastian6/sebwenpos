@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +16,9 @@ export async function GET(request: NextRequest) {
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const authError = requireStoreAccess(request, parseInt(storeId))
+    if (authError) return authError
 
     const store = await db.store.findUnique({
       where: { id: parseInt(storeId) },

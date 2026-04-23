@@ -242,122 +242,124 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 4. Obtener consecutivo y datos de resolucion de forma atomica
-    let consecutiveResult
+    // 4. Obtener consecutivo y crear factura de forma atomica en una sola transaccion
+    //    para prevenir race conditions en la asignacion de consecutivos (H-02)
+    let invoice, consecutiveResult, nextConsecutive, prefix, testMode
+    let hours, minutes, seconds, paymentMethodCode, cufe, now, customerNit, calculation
     try {
-      consecutiveResult = await getNextConsecutive(store.id)
+      await db.$transaction(async (tx) => {
+        // 4a. Obtener consecutivo usando el cliente de transaccion
+        consecutiveResult = await getNextConsecutive(store.id, { store: tx.store, invoice: tx.invoice })
+        if (consecutiveResult.warning) {
+          logger.warn(`[Invoice] ${consecutiveResult.warning}`)
+        }
+        nextConsecutive = consecutiveResult.consecutive
+        prefix = consecutiveResult.prefix
+
+        // 5. Calcular campos tributarios desde la orden
+        calculation = calculateInvoiceFromOrder(order, order.orderItems)
+        paymentMethodCode = getDIANPaymentCode(order.paymentMethod)
+
+        // 6. Generar fecha/hora para CUFE
+        now = new Date()
+        const issueDate = now.toISOString().slice(0, 10).replace(/-/g, '') // YYYYMMDD
+        hours = String(now.getHours()).padStart(2, '0')
+        minutes = String(now.getMinutes()).padStart(2, '0')
+        seconds = String(now.getSeconds()).padStart(2, '0')
+        const issueTime = `${hours}${minutes}${seconds}000` // HHmmssSSS
+
+        // 7. Generar CUFE (DIAN v2.1 spec — sin separadores)
+        customerNit = data.customerNit || order.customer?.nit || DIAN_CONSUMIDOR_FINAL_NIT
+
+        // Validar DV del NIT del cliente (excepto consumidor final)
+        if (customerNit !== DIAN_CONSUMIDOR_FINAL_NIT && !validateNITDV(customerNit)) {
+          throw new Error(`El NIT del cliente "${customerNit}" tiene un dígito de verificación (DV) inválido. Verifique e intente de nuevo.`)
+        }
+
+        // Leer PIN del software y NIT proveedor desde la tienda
+        const providerConfig = JSON.parse(store.providerConfig || '{}')
+        const softwarePIN = decryptField(store.softwarePin) || process.env.DIAN_SOFTWARE_PIN || ''
+        const providerNit = getSoftwareProviderNIT()
+        const resolutionDate = consecutiveResult.resolutionDate
+          ? consecutiveResult.resolutionDate.toISOString().slice(0, 10).replace(/-/g, '')
+          : ''
+
+        cufe = generateCUFE({
+          storeNit: store.nit,
+          issueDate,
+          issueTime,
+          prefix,
+          consecutive: nextConsecutive,
+          customerNit,
+          subtotalBase: calculation.subtotalBase,
+          totalTaxAmount: calculation.totalTaxAmount,
+          discountAmount: calculation.discountAmount,
+          grandTotal: calculation.grandTotal,
+          currencyCode: store.currencyCode || 'COP',
+          resolutionNumber: consecutiveResult.resolutionNumber || '',
+          resolutionDate,
+          pinSoftware: softwarePIN,
+          providerNit,
+        })
+
+        // 8. Determinar testMode y generar URL del codigo QR
+        testMode = data.testMode !== undefined ? data.testMode : (store.invoiceTestMode ?? true)
+
+        // Generar URL del codigo QR
+        const dateFormatted = now.toISOString().slice(0, 10) // YYYY-MM-DD
+        const qrCode = generateQRCodeURL({
+          storeNit: store.nit,
+          prefix,
+          consecutive: nextConsecutive,
+          date: dateFormatted,
+          grandTotal: calculation.grandTotal,
+          cufe,
+          testMode,
+        })
+
+        const status = testMode ? 'DRAFT' : 'PENDING_VALIDATE'
+
+        // 10. Crear la factura dentro de la misma transaccion
+        invoice = await tx.invoice.create({
+          data: {
+            storeId: store.id,
+            orderId: data.orderId,
+            prefix,
+            consecutive: nextConsecutive,
+            resolutionNumber: consecutiveResult.resolutionNumber || null,
+            resolutionDate: consecutiveResult.resolutionDate ? new Date(consecutiveResult.resolutionDate) : null,
+            startDate: consecutiveResult.startDate || null,
+            endDate: consecutiveResult.endDate || null,
+            startNumber: consecutiveResult.startNumber,
+            endNumber: consecutiveResult.endNumber,
+            customerNit: customerNit,
+            customerName: data.customerName || order.customer?.name || 'Consumidor Final',
+            customerAddress: data.customerAddress || order.customer?.address || null,
+            customerPhone: data.customerPhone || order.customer?.phone || null,
+            customerEmail: (data.customerEmail && data.customerEmail !== '') ? data.customerEmail : (order.customer?.email || null),
+            customerRegime: data.customerRegime || order.customer?.regime || 'NO_RESPONSABLE',
+            customerType: data.customerType || (order.customer?.documentType as string) || 'CC',
+            subtotalBase: calculation.subtotalBase,
+            taxExemptAmount: calculation.taxExemptAmount,
+            taxBreakdown: JSON.stringify(calculation.taxBreakdown),
+            totalTaxAmount: calculation.totalTaxAmount,
+            totalWithTax: calculation.totalWithTax,
+            discountAmount: calculation.discountAmount,
+            tipAmount: calculation.tipAmount,
+            grandTotal: calculation.grandTotal,
+            paymentMethod: paymentMethodCode,
+            cufe,
+            qrCode,
+            notes: data.notes || null,
+            status,
+            testMode,
+          },
+        })
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error desconocido'
       return NextResponse.json({ error: message }, { status: 400 })
     }
-    const nextConsecutive = consecutiveResult.consecutive
-    const prefix = consecutiveResult.prefix
-    if (consecutiveResult.warning) {
-      logger.warn(`[Invoice] ${consecutiveResult.warning}`)
-    }
-
-    // 5. Calcular campos tributarios desde la orden
-    const calculation = calculateInvoiceFromOrder(order, order.orderItems)
-    const paymentMethodCode = getDIANPaymentCode(order.paymentMethod)
-
-    // 6. Generar fecha/hora para CUFE
-    const now = new Date()
-    const issueDate = now.toISOString().slice(0, 10).replace(/-/g, '') // YYYYMMDD
-    const hours = String(now.getHours()).padStart(2, '0')
-    const minutes = String(now.getMinutes()).padStart(2, '0')
-    const seconds = String(now.getSeconds()).padStart(2, '0')
-    const issueTime = `${hours}${minutes}${seconds}000` // HHmmssSSS
-
-    // 7. Generar CUFE (DIAN v2.1 spec — sin separadores)
-    const customerNit = data.customerNit || order.customer?.nit || DIAN_CONSUMIDOR_FINAL_NIT
-
-    // Validar DV del NIT del cliente (excepto consumidor final)
-    if (customerNit !== DIAN_CONSUMIDOR_FINAL_NIT && !validateNITDV(customerNit)) {
-      return NextResponse.json(
-        { error: `El NIT del cliente "${customerNit}" tiene un dígito de verificación (DV) inválido. Verifique e intente de nuevo.` },
-        { status: 400 },
-      )
-    }
-
-    // Leer PIN del software y NIT proveedor desde la tienda
-    const providerConfig = JSON.parse(store.providerConfig || '{}')
-    const softwarePIN = decryptField(store.softwarePin) || process.env.DIAN_SOFTWARE_PIN || ''
-    const providerNit = getSoftwareProviderNIT()
-    const resolutionDate = consecutiveResult.resolutionDate
-      ? consecutiveResult.resolutionDate.toISOString().slice(0, 10).replace(/-/g, '')
-      : ''
-
-    const cufe = generateCUFE({
-      storeNit: store.nit,
-      issueDate,
-      issueTime,
-      prefix,
-      consecutive: nextConsecutive,
-      customerNit,
-      subtotalBase: calculation.subtotalBase,
-      totalTaxAmount: calculation.totalTaxAmount,
-      discountAmount: calculation.discountAmount,
-      grandTotal: calculation.grandTotal,
-      currencyCode: store.currencyCode || 'COP',
-      resolutionNumber: consecutiveResult.resolutionNumber || '',
-      resolutionDate,
-      pinSoftware: softwarePIN,
-      providerNit,
-    })
-
-    // 8. Determinar testMode y generar URL del codigo QR
-    const testMode = data.testMode !== undefined ? data.testMode : (store.invoiceTestMode ?? true)
-
-    // Generar URL del codigo QR
-    const dateFormatted = now.toISOString().slice(0, 10) // YYYY-MM-DD
-    const qrCode = generateQRCodeURL({
-      storeNit: store.nit,
-      prefix,
-      consecutive: nextConsecutive,
-      date: dateFormatted,
-      grandTotal: calculation.grandTotal,
-      cufe,
-      testMode,
-    })
-
-    const status = testMode ? 'DRAFT' : 'PENDING_VALIDATE'
-
-    // 10. Crear la factura con datos de resolucion DIAN
-    const invoice = await db.invoice.create({
-      data: {
-        storeId: store.id,
-        orderId: data.orderId,
-        prefix,
-        consecutive: nextConsecutive,
-        resolutionNumber: consecutiveResult.resolutionNumber || null,
-        resolutionDate: consecutiveResult.resolutionDate ? new Date(consecutiveResult.resolutionDate) : null,
-        startDate: consecutiveResult.startDate || null,
-        endDate: consecutiveResult.endDate || null,
-        startNumber: consecutiveResult.startNumber,
-        endNumber: consecutiveResult.endNumber,
-        customerNit: customerNit,
-        customerName: data.customerName || order.customer?.name || 'Consumidor Final',
-        customerAddress: data.customerAddress || order.customer?.address || null,
-        customerPhone: data.customerPhone || order.customer?.phone || null,
-        customerEmail: (data.customerEmail && data.customerEmail !== '') ? data.customerEmail : (order.customer?.email || null),
-        customerRegime: data.customerRegime || order.customer?.regime || 'NO_RESPONSABLE',
-        customerType: data.customerType || (order.customer?.documentType as string) || 'CC',
-        subtotalBase: calculation.subtotalBase,
-        taxExemptAmount: calculation.taxExemptAmount,
-        taxBreakdown: JSON.stringify(calculation.taxBreakdown),
-        totalTaxAmount: calculation.totalTaxAmount,
-        totalWithTax: calculation.totalWithTax,
-        discountAmount: calculation.discountAmount,
-        tipAmount: calculation.tipAmount,
-        grandTotal: calculation.grandTotal,
-        paymentMethod: paymentMethodCode,
-        cufe,
-        qrCode,
-        notes: data.notes || null,
-        status,
-        testMode,
-      },
-    })
 
     // 11. Generar XML UBL 2.1 y almacenar
     try {

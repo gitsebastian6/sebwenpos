@@ -240,6 +240,14 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Validate CREDIT/FIADO requires customer
+    if ((data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO') && !data.customerId) {
+      return NextResponse.json(
+        { error: 'Las ventas fiadas requieren un cliente asociado' },
+        { status: 400 }
+      )
+    }
+
     const orderNumber = generateOrderNumber()
 
     // ─── Cash register validation: MUST have an open shift ──────────

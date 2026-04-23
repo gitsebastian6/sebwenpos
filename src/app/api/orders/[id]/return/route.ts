@@ -79,25 +79,12 @@ export async function POST(
     // Build a map of order items for quick lookup
     const itemMap = new Map(order.orderItems.map((item) => [item.id, item]))
 
-    // Validate items
+    // Basic validation: items must belong to this order and have a product
     for (const reqItem of body.items!) {
       const item = itemMap.get(reqItem.orderItemId)
       if (!item) {
         return NextResponse.json(
           { error: `Item #${reqItem.orderItemId} no pertenece a esta orden` },
-          { status: 400 }
-        )
-      }
-      const available = item.quantity - (item.returnedQuantity ?? 0)
-      if (available <= 0) {
-        return NextResponse.json(
-          { error: `"${item.product?.name || 'Producto'}" ya fue devuelto completamente` },
-          { status: 400 }
-        )
-      }
-      if (reqItem.quantity > available) {
-        return NextResponse.json(
-          { error: `Solo se pueden devolver ${available} unidad(es) de "${item.product?.name || 'Producto'}". Ya se devolvieron ${item.returnedQuantity ?? 0}.` },
           { status: 400 }
         )
       }
@@ -111,6 +98,24 @@ export async function POST(
 
     // Process return in transaction
     const results = await db.$transaction(async (tx) => {
+      // Re-validate quantities INSIDE transaction to prevent race conditions
+      for (const reqItem of body.items!) {
+        const freshItem = await tx.orderItem.findUnique({
+          where: { id: reqItem.orderItemId },
+          select: { quantity: true, returnedQuantity: true },
+        })
+        if (!freshItem) {
+          throw new Error(`Item #${reqItem.orderItemId} no encontrado`)
+        }
+        const available = freshItem.quantity - (freshItem.returnedQuantity ?? 0)
+        if (available <= 0) {
+          throw new Error(`"${itemMap.get(reqItem.orderItemId)?.product?.name || 'Producto'}" ya fue devuelto completamente`)
+        }
+        if (reqItem.quantity > available) {
+          throw new Error(`Solo se pueden devolver ${available} unidad(es) de "${itemMap.get(reqItem.orderItemId)?.product?.name || 'Producto'}". Ya se devolvieron ${freshItem.returnedQuantity ?? 0}.`)
+        }
+      }
+
       let totalReturned = 0
       const returnedItems: { name: string; quantity: number }[] = []
 
@@ -158,9 +163,21 @@ export async function POST(
           select: { id: true },
         })
         if (creditOrders) {
+          // Calculate proportional discount ratio
+          const discountRatio = order.discountAmount > 0 && order.subtotal > 0
+            ? order.discountAmount / order.subtotal
+            : 0
+
           const returnAmount = order.orderItems
             .filter(oi => body.items!.some(ri => ri.orderItemId === oi.id))
-            .reduce((sum, oi) => sum + Number(oi.unitPrice) * body.items!.find(ri => ri.orderItemId === oi.id)!.quantity, 0)
+            .reduce((sum, oi) => {
+              const returnItem = body.items!.find(ri => ri.orderItemId === oi.id)!
+              const itemTotal = Number(oi.unitPrice) * returnItem.quantity
+              const discountedTotal = Math.round(itemTotal * (1 - discountRatio))
+              return sum + discountedTotal
+            }, 0)
+
+          // Only reduce debt if returnAmount > 0
           if (returnAmount > 0) {
             await tx.customer.update({
               where: { id: order.customerId },

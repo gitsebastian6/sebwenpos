@@ -113,15 +113,28 @@ export async function DELETE(
     const storeName = store.name
 
     await db.$transaction(async (tx) => {
-      const employees = await tx.employee.findMany({
+      // 1. Collect all user IDs to delete (before removing FK references)
+      const employeeUsers = await tx.employee.findMany({
         where: { storeId },
         select: { userId: true },
       })
-      for (const emp of employees) {
-        await tx.user.delete({ where: { id: emp.userId } })
-      }
+      const userIdsToDelete = [
+        ...employeeUsers.map((e) => e.userId),
+        store.userId, // store owner
+      ]
+
+      // 2. Delete all Employees first (removes Employee→User FK references,
+      //    avoiding Restrict errors from Employee and CashRegister FKs)
+      await tx.employee.deleteMany({
+        where: { storeId },
+      })
+      // 3. Delete the Store (cascades to its own children via Store FKs)
       await tx.store.delete({ where: { id: storeId } })
-      await tx.user.delete({ where: { id: store.userId } })
+      // 4. Now safe to delete the Users (Employee records are gone,
+      //    CashRegister userId is SetNull so it won't block)
+      for (const userId of userIdsToDelete) {
+        await tx.user.delete({ where: { id: userId } })
+      }
     })
 
     return NextResponse.json({ message: `Tienda "${storeName}" eliminada exitosamente` })

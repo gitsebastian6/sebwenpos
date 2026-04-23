@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { requireStoreAccess } from '@/lib/api-auth'
 import {
   formatInvoiceNumber,
   generateCUFE,
@@ -35,6 +36,9 @@ export async function GET(
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const authError = requireStoreAccess(request, storeId)
+    if (authError) return authError
 
     const invoice = await db.invoice.findFirst({
       where: { id: Number(id), storeId },
@@ -97,6 +101,9 @@ export async function POST(
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const authError = requireStoreAccess(request, storeId)
+    if (authError) return authError
 
     // Parse y validar body
     let body: {
@@ -168,106 +175,110 @@ export async function POST(
     const taxAmount = body.amount - taxBase
     const grandTotal = body.amount
 
-    // 4. Get next consecutive for ND prefix
-    const lastDebitNote = await db.debitNote.findFirst({
-      where: { storeId },
-      orderBy: { consecutive: 'desc' },
-      select: { consecutive: true },
-    })
+    // 4-7. Get consecutive, validate, generate CUFE/QR and create debit note
+    //     atomically in a single transaction to prevent race conditions (H-03)
+    let debitNote
+    try {
+      debitNote = await db.$transaction(async (tx) => {
+        // 4. Get next consecutive within transaction
+        const lastDebitNote = await tx.debitNote.findFirst({
+          where: { storeId },
+          orderBy: { consecutive: 'desc' },
+          select: { consecutive: true },
+        })
 
-    const nextConsecutive = (lastDebitNote?.consecutive ?? 0) + 1
+        const nextConsecutive = (lastDebitNote?.consecutive ?? 0) + 1
 
-    if (store.resolutionStartNumber != null && nextConsecutive < store.resolutionStartNumber) {
-      return NextResponse.json(
-        { error: `El consecutivo calculado (${nextConsecutive}) es menor al inicio del rango autorizado (${store.resolutionStartNumber}).` },
-        { status: 400 },
-      )
+        if (store.resolutionStartNumber != null && nextConsecutive < store.resolutionStartNumber) {
+          throw new Error(`El consecutivo calculado (${nextConsecutive}) es menor al inicio del rango autorizado (${store.resolutionStartNumber}).`)
+        }
+        if (store.resolutionEndNumber != null && nextConsecutive > store.resolutionEndNumber) {
+          throw new Error(`Se ha agotado el rango de numeración autorizado por la resolución ${store.resolutionNumber}.`)
+        }
+
+        // 5. Generate CUFE
+        const now = new Date()
+        const issueDate = now.toISOString().slice(0, 10).replace(/-/g, '')
+        const issueTime = now.toTimeString().slice(0, 8).replace(/:/g, '') + '000'
+
+        const cufe = generateCUFE({
+          storeNit: store.nit ?? '',
+          issueDate,
+          issueTime,
+          prefix: 'ND',
+          consecutive: nextConsecutive,
+          customerNit: invoice.customerNit ?? '222222222222',
+          subtotalBase: taxBase,
+          totalTaxAmount: taxAmount,
+          discountAmount: 0,
+          grandTotal,
+        })
+
+        // 6. Generate QR code URL
+        const appBaseUrl = getAppBaseUrl(request)
+        const qrCode = generateQRCodeURL({
+          storeNit: store.nit ?? '',
+          prefix: 'ND',
+          consecutive: nextConsecutive,
+          date: now.toISOString().slice(0, 10),
+          grandTotal,
+          cufe,
+          appBaseUrl,
+        })
+
+        // 7. Create debit note within the same transaction
+        return tx.debitNote.create({
+          data: {
+            storeId,
+            invoiceId,
+            // Numeración DIAN
+            prefix: 'ND',
+            consecutive: nextConsecutive,
+            resolutionNumber: store.resolutionNumber,
+            resolutionDate: store.resolutionStartDate ? new Date(store.resolutionStartDate) : null,
+            startDate: store.resolutionStartDate,
+            endDate: store.resolutionEndDate,
+            startNumber: store.resolutionStartNumber,
+            endNumber: store.resolutionEndNumber,
+            // Emisor
+            supplierNit: store.nit,
+            supplierName: store.legalName || store.name,
+            supplierAddress: store.address,
+            supplierPhone: store.phone,
+            supplierEmail: store.user?.email || '',
+            // Cliente (copiado de factura original)
+            customerNit: invoice.customerNit,
+            customerName: invoice.customerName,
+            customerAddress: invoice.customerAddress,
+            customerPhone: invoice.customerPhone,
+            customerEmail: invoice.customerEmail,
+            customerRegime: invoice.customerRegime,
+            customerType: invoice.customerType,
+            // Desglose tributario
+            subtotalBase: taxBase,
+            taxBreakdown: taxRate > 0
+              ? JSON.stringify([{ code: '01', name: 'IVA 19%', base: taxBase, rate: taxRate, amount: taxAmount }])
+              : null,
+            totalTaxAmount: taxAmount,
+            totalWithTax: grandTotal,
+            grandTotal,
+            // Motivo
+            reason: body.reason ?? null,
+            debitCode: body.debitCode ?? '01',
+            // DIAN
+            cufe,
+            qrCode,
+            notes: body.notes ?? null,
+            // Estado
+            status: store.invoiceTestMode ? 'DRAFT' : 'PENDING_VALIDATE',
+            testMode: store.invoiceTestMode,
+          },
+        })
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error al crear la nota débito'
+      return NextResponse.json({ error: message }, { status: 400 })
     }
-    if (store.resolutionEndNumber != null && nextConsecutive > store.resolutionEndNumber) {
-      return NextResponse.json(
-        { error: `Se ha agotado el rango de numeración autorizado por la resolución ${store.resolutionNumber}.` },
-        { status: 400 },
-      )
-    }
-
-    // 5. Generate CUFE
-    const now = new Date()
-    const issueDate = now.toISOString().slice(0, 10).replace(/-/g, '')
-    const issueTime = now.toTimeString().slice(0, 8).replace(/:/g, '') + '000'
-
-    const cufe = generateCUFE({
-      storeNit: store.nit ?? '',
-      issueDate,
-      issueTime,
-      prefix: 'ND',
-      consecutive: nextConsecutive,
-      customerNit: invoice.customerNit ?? '222222222222',
-      subtotalBase: taxBase,
-      totalTaxAmount: taxAmount,
-      discountAmount: 0,
-      grandTotal,
-    })
-
-    // 6. Generate QR code URL
-    const appBaseUrl = getAppBaseUrl(request)
-    const qrCode = generateQRCodeURL({
-      storeNit: store.nit ?? '',
-      prefix: 'ND',
-      consecutive: nextConsecutive,
-      date: now.toISOString().slice(0, 10),
-      grandTotal,
-      cufe,
-      appBaseUrl,
-    })
-
-    // 7. Create debit note
-    const debitNote = await db.debitNote.create({
-      data: {
-        storeId,
-        invoiceId,
-        // Numeración DIAN
-        prefix: 'ND',
-        consecutive: nextConsecutive,
-        resolutionNumber: store.resolutionNumber,
-        resolutionDate: store.resolutionStartDate ? new Date(store.resolutionStartDate) : null,
-        startDate: store.resolutionStartDate,
-        endDate: store.resolutionEndDate,
-        startNumber: store.resolutionStartNumber,
-        endNumber: store.resolutionEndNumber,
-        // Emisor
-        supplierNit: store.nit,
-        supplierName: store.legalName || store.name,
-        supplierAddress: store.address,
-        supplierPhone: store.phone,
-        supplierEmail: store.user?.email || '',
-        // Cliente (copiado de factura original)
-        customerNit: invoice.customerNit,
-        customerName: invoice.customerName,
-        customerAddress: invoice.customerAddress,
-        customerPhone: invoice.customerPhone,
-        customerEmail: invoice.customerEmail,
-        customerRegime: invoice.customerRegime,
-        customerType: invoice.customerType,
-        // Desglose tributario
-        subtotalBase: taxBase,
-        taxBreakdown: taxRate > 0
-          ? JSON.stringify([{ code: '01', name: 'IVA 19%', base: taxBase, rate: taxRate, amount: taxAmount }])
-          : null,
-        totalTaxAmount: taxAmount,
-        totalWithTax: grandTotal,
-        grandTotal,
-        // Motivo
-        reason: body.reason ?? null,
-        debitCode: body.debitCode ?? '01',
-        // DIAN
-        cufe,
-        qrCode,
-        notes: body.notes ?? null,
-        // Estado
-        status: store.invoiceTestMode ? 'DRAFT' : 'PENDING_VALIDATE',
-        testMode: store.invoiceTestMode,
-      },
-    })
 
     return NextResponse.json(
       {

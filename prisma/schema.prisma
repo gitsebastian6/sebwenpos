@@ -69,7 +69,8 @@ model User {
   store    Store?    @relation("UserStore")
   employee Employee? @relation("EmployeeStore")
 
-  cashRegisters    CashRegister[]
+  otpTokens         OtpToken[]
+  cashRegisters     CashRegister[]
   purchases        Purchase[]       @relation("UserPurchases")
   purchasePaymentRecords PurchasePayment[] @relation("UserPurchasePayments")
 
@@ -88,6 +89,8 @@ model OtpToken {
   verified  Boolean  @default(false)
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("otp_tokens")
@@ -1025,7 +1028,7 @@ model ServiceTransaction {
 model CashRegister {
   id              Int       @id @default(autoincrement())
   storeId         Int       @map("store_id")
-  userId          Int       @map("user_id")
+  userId          Int?      @map("user_id")
   openedAt        DateTime  @default(now()) @map("opened_at")
   closedAt        DateTime? @map("closed_at")
   openingBalance  Int       @default(0) @map("opening_balance")
@@ -1037,7 +1040,7 @@ model CashRegister {
   notes           String?
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
   orders Order[]
 
   @@index([storeId, status])

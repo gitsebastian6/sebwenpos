@@ -56,16 +56,6 @@ export async function POST(
       )
     }
 
-    // ── FIFO: Get all CREDIT (fiado) orders for this customer, oldest first ──
-    const creditOrders = await db.order.findMany({
-      where: {
-        customerId,
-        storeId,
-        status: 'CREDIT',
-      },
-      orderBy: { createdAt: 'asc' },
-    })
-
     // ── Process payment allocation (FIFO) ──
     let remainingPayment = amount
     const ordersUpdated: Array<{
@@ -85,6 +75,12 @@ export async function POST(
         throw new Error('El cliente no tiene deuda')
       }
       const effectiveAmount = Math.min(amount, freshCustomer.totalDebt)
+
+      // Re-fetch credit orders INSIDE transaction to prevent stale data
+      const creditOrders = await tx.order.findMany({
+        where: { customerId, storeId, status: 'CREDIT' },
+        orderBy: { createdAt: 'asc' },
+      })
 
       for (const order of creditOrders) {
         if (remainingPayment <= 0) break
