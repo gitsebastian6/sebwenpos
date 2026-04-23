@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic'
 const updateProductSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   sku: z.string().max(100).nullable().optional(),
+  barcode: z.string().max(100).nullable().optional(),
   categoryId: z.number().int().positive().nullable().optional(),
   providerId: z.number().int().positive().nullable().optional(),
   taxRateId: z.number().int().positive().nullable().optional(),
@@ -81,6 +82,7 @@ export async function PUT(
       data: {
         ...(data.name !== undefined && { name: data.name }),
         ...(data.sku !== undefined && { sku: data.sku }),
+        ...(data.barcode !== undefined && { barcode: data.barcode }),
         ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
         ...(data.providerId !== undefined && { providerId: data.providerId }),
         ...(data.description !== undefined && { description: data.description }),

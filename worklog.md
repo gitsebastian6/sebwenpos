@@ -1019,3 +1019,27 @@ Stage Summary:
 - startDate now preserved on all reactivation paths (super-admin + receipt approval)
 - maxStores now visible in plans table alongside employees and products limits
 - ESLint clean (0 new errors), dev server healthy (200)
+
+---
+Task ID: R-09
+Agent: main
+Task: Fix R-09 — Add barcode field to product update schema and frontend form
+
+Work Log:
+- POST create schema (products/route.ts) already had barcode — no changes needed
+- PUT update schema (products/[id]/route.ts) was missing barcode:
+  - Added `barcode: z.string().max(100).nullable().optional()` to updateProductSchema
+  - Added `...(data.barcode !== undefined && { barcode: data.barcode })` to update data spread
+- Frontend product-form-dialog.tsx was missing barcode entirely:
+  - Added `barcode: string` to ProductFormData interface
+  - Added `barcode: ''` to emptyProductForm
+  - Added `barcode: editingProduct.barcode || ''` to form sync (useEffect)
+  - Added `barcode: productForm.barcode.trim() || undefined` to submit body
+  - Changed Name + SKU row from 2-col to 3-col grid, adding Barcode input field
+  - Barcode input uses font-mono, maxLength=100, placeholder "EAN, UPC, etc."
+- Product type in types/index.ts already had barcode field — no changes needed
+
+Stage Summary:
+- 2 files modified: products/[id]/route.ts, product-form-dialog.tsx
+- barcode now fully supported: create (POST) ✅, update (PUT) ✅, frontend form ✅, type ✅
+- ESLint clean (0 new errors), dev server healthy (200)

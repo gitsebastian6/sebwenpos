@@ -39,6 +39,7 @@ import {
 export interface ProductFormData {
   name: string
   sku: string
+  barcode: string
   categoryId: string
   providerId: string
   taxRateId: string
@@ -55,6 +56,7 @@ export interface ProductFormData {
 export const emptyProductForm: ProductFormData = {
   name: '',
   sku: '',
+  barcode: '',
   categoryId: 'none',
   providerId: 'none',
   taxRateId: 'none',
@@ -103,6 +105,7 @@ export function ProductFormDialog({
       setProductForm({
         name: editingProduct.name,
         sku: editingProduct.sku || '',
+        barcode: editingProduct.barcode || '',
         categoryId: editingProduct.categoryId ? String(editingProduct.categoryId) : 'none',
         providerId: editingProduct.providerId ? String(editingProduct.providerId) : 'none',
         taxRateId: editingProduct.taxRateId ? String(editingProduct.taxRateId) : 'none',
@@ -154,6 +157,7 @@ export function ProductFormDialog({
         storeId: store?.id,
         name: productForm.name.trim(),
         sku: productForm.sku.trim() || undefined,
+        barcode: productForm.barcode.trim() || undefined,
         categoryId: productForm.categoryId !== 'none' ? Number(productForm.categoryId) : undefined,
         providerId: productForm.providerId !== 'none' ? Number(productForm.providerId) : undefined,
         taxRateId: productForm.taxRateId !== 'none' ? Number(productForm.taxRateId) : undefined,
@@ -196,8 +200,8 @@ export function ProductFormDialog({
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
-          {/* Row: Name + SKU */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* Row: Name + SKU + Barcode */}
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="prod-name">
                 Nombre <span className="text-destructive">*</span>
@@ -217,6 +221,17 @@ export function ProductFormDialog({
                 value={productForm.sku}
                 onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })}
                 className="font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prod-barcode">Código de Barras</Label>
+              <Input
+                id="prod-barcode"
+                placeholder="EAN, UPC, etc."
+                value={productForm.barcode}
+                onChange={(e) => setProductForm({ ...productForm, barcode: e.target.value })}
+                className="font-mono"
+                maxLength={100}
               />
             </div>
           </div>
