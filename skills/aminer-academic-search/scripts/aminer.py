@@ -42,8 +42,7 @@ ACTIONS: dict[str, dict[str, Any]] = {
     # ── Paper ────────────────────────────────────────────────────────────
     "paper_search": {
         "function": "aminer_paper_search",
-        "price": 0.0,
-        "help": "Free. Locate a paper_id by (partial) title.",
+        "help": "Locate a paper_id by (partial) title.",
         "args": [
             ("--title", "title", "str", "Paper title keyword (required)"),
             ("--page", "page", "int", "Page number, default 1"),
@@ -52,7 +51,6 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "paper_search_pro": {
         "function": "aminer_paper_search_pro",
-        "price": 0.01,
         "help": "Multi-condition paper search (author/org/venue/keyword).",
         "args": [
             ("--title", "title", "str", "Title keyword"),
@@ -68,7 +66,6 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "paper_qa_search": {
         "function": "aminer_paper_qa_search",
-        "price": 0.05,
         "help": "AI Q&A-style search. 'query' and 'topic_*' are mutually exclusive.",
         "args": [
             ("--query", "query", "str", "Natural language question"),
@@ -94,15 +91,13 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "paper_info": {
         "function": "aminer_paper_info",
-        "price": 0.0,
-        "help": "Free. Batch retrieve papers by ID list.",
+        "help": "Batch retrieve papers by ID list.",
         "args": [
             ("--ids", "ids", "json", "JSON array of paper_id strings (required)"),
         ],
     },
     "paper_detail": {
         "function": "aminer_paper_detail",
-        "price": 0.01,
         "help": "Full paper info for a single paper_id.",
         "args": [
             ("--id", "id", "str", "paper_id (required)"),
@@ -110,7 +105,6 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "paper_relation": {
         "function": "aminer_paper_relation",
-        "price": 0.10,
         "help": "Citation chain (cited papers) for a paper_id.",
         "args": [
             ("--id", "id", "str", "paper_id (required)"),
@@ -118,7 +112,6 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "paper_list_by_keywords": {
         "function": "aminer_paper_list_by_keywords",
-        "price": 0.10,
         "help": "Batch keyword retrieval returning abstracts + metadata.",
         "args": [
             ("--keywords", "keywords", "json", "JSON array of keyword strings (required)"),
@@ -128,7 +121,6 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "paper_detail_by_condition": {
         "function": "aminer_paper_detail_by_condition",
-        "price": 0.20,
         "help": "Year + venue dimension lookup. Year + venue_id both required.",
         "args": [
             ("--year", "year", "int", "Year (required)"),
@@ -138,8 +130,7 @@ ACTIONS: dict[str, dict[str, Any]] = {
     # ── Scholar ──────────────────────────────────────────────────────────
     "person_search": {
         "function": "aminer_person_search",
-        "price": 0.0,
-        "help": "Free. Search scholars by name and/or org.",
+        "help": "Search scholars by name and/or org.",
         "args": [
             ("--name", "name", "str", "Scholar name"),
             ("--org", "org", "str", "Organization name"),
@@ -150,50 +141,42 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "person_detail": {
         "function": "aminer_person_detail",
-        "price": 1.00,
         "help": "Full scholar profile (bio/education/honors).",
         "args": [("--id", "id", "str", "person_id (required)")],
     },
     "person_figure": {
         "function": "aminer_person_figure",
-        "price": 0.50,
         "help": "Scholar portrait (interests, work history).",
         "args": [("--id", "id", "str", "person_id (required)")],
     },
     "person_paper_relation": {
         "function": "aminer_person_paper_relation",
-        "price": 1.50,
         "help": "List of papers by this scholar.",
         "args": [("--id", "id", "str", "person_id (required)")],
     },
     "person_patent_relation": {
         "function": "aminer_person_patent_relation",
-        "price": 1.50,
         "help": "List of patents by this scholar.",
         "args": [("--id", "id", "str", "person_id (required)")],
     },
     "person_project": {
         "function": "aminer_person_project",
-        "price": 1.50,
         "help": "Research projects (funding, dates, source).",
         "args": [("--id", "id", "str", "person_id (required)")],
     },
     # ── Organization ─────────────────────────────────────────────────────
     "org_search": {
         "function": "aminer_org_search",
-        "price": 0.0,
-        "help": "Free. Search institutions by name keyword.",
+        "help": "Search institutions by name keyword.",
         "args": [("--orgs", "orgs", "json", "JSON array of org name strings (required)")],
     },
     "org_detail": {
         "function": "aminer_org_detail",
-        "price": 0.01,
         "help": "Org details by ID list.",
         "args": [("--ids", "ids", "json", "JSON array of org_id strings (required)")],
     },
     "org_person_relation": {
         "function": "aminer_org_person_relation",
-        "price": 0.50,
         "help": "Affiliated scholars (10 per call).",
         "args": [
             ("--org-id", "org_id", "str", "org_id (required)"),
@@ -202,7 +185,6 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "org_paper_relation": {
         "function": "aminer_org_paper_relation",
-        "price": 0.10,
         "help": "Papers authored by org members (10 per call).",
         "args": [
             ("--org-id", "org_id", "str", "org_id (required)"),
@@ -211,7 +193,6 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "org_patent_relation": {
         "function": "aminer_org_patent_relation",
-        "price": 0.10,
         "help": "Org patent list (max page_size 10,000).",
         "args": [
             ("--id", "id", "str", "org_id (required)"),
@@ -221,32 +202,27 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "org_disambiguate": {
         "function": "aminer_org_disambiguate",
-        "price": 0.01,
         "help": "Normalize raw org string.",
         "args": [("--org", "org", "str", "Raw org string (required)")],
     },
     "org_disambiguate_pro": {
         "function": "aminer_org_disambiguate_pro",
-        "price": 0.05,
         "help": "Extract primary/secondary org IDs.",
         "args": [("--org", "org", "str", "Raw org string (required)")],
     },
     # ── Venue ────────────────────────────────────────────────────────────
     "venue_search": {
         "function": "aminer_venue_search",
-        "price": 0.0,
-        "help": "Free. Search journals/conferences by name.",
+        "help": "Search journals/conferences by name.",
         "args": [("--name", "name", "str", "Venue name (required)")],
     },
     "venue_detail": {
         "function": "aminer_venue_detail",
-        "price": 0.20,
         "help": "Venue details (ISSN, abbreviation, type).",
         "args": [("--id", "id", "str", "venue_id (required)")],
     },
     "venue_paper_relation": {
         "function": "aminer_venue_paper_relation",
-        "price": 0.10,
         "help": "Papers published in a venue, optionally filtered by year.",
         "args": [
             ("--id", "id", "str", "venue_id (required)"),
@@ -258,8 +234,7 @@ ACTIONS: dict[str, dict[str, Any]] = {
     # ── Patent ───────────────────────────────────────────────────────────
     "patent_search": {
         "function": "aminer_patent_search",
-        "price": 0.0,
-        "help": "Free. Search patents by name/keyword.",
+        "help": "Search patents by name/keyword.",
         "args": [
             ("--query", "query", "str", "Search query (required)"),
             ("--page", "page", "int", "Page number, default 0"),
@@ -268,13 +243,11 @@ ACTIONS: dict[str, dict[str, Any]] = {
     },
     "patent_info": {
         "function": "aminer_patent_info",
-        "price": 0.0,
-        "help": "Free. Basic patent info.",
+        "help": "Basic patent info.",
         "args": [("--id", "id", "str", "patent_id (required)")],
     },
     "patent_detail": {
         "function": "aminer_patent_detail",
-        "price": 0.01,
         "help": "Full patent details (abstract, IPC, claims).",
         "args": [("--id", "id", "str", "patent_id (required)")],
     },
@@ -378,9 +351,8 @@ def build_parser() -> argparse.ArgumentParser:
     for name, meta in ACTIONS.items():
         p = sub.add_parser(
             name,
-            help=f"{meta['help']} (¥{meta['price']:.2f})",
-            description=f"{meta['help']}  Price: ¥{meta['price']:.2f}  "
-            f"function_name: {meta['function']}",
+            help=meta["help"],
+            description=f"{meta['help']}  function_name: {meta['function']}",
         )
         for flag, dest, kind, help_text in meta["args"]:
             if kind == "bool":
