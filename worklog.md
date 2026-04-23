@@ -1,4 +1,25 @@
 ---
+Task ID: R09-f3
+Agent: main
+Task: R-09 FASE 3 — Refactor admin-panel.tsx from 1,319 → ~402 lines
+
+Work Log:
+- Created admin-panel-helpers.tsx (127 lines): type aliases (Store, StoreDetail, Summary), emptyForm constant, EditStoreForm interface, planBadgeVariant(), planLabel() helpers, PlanStatusBadge component, StatCard component
+- Created reset-password-dialog.tsx (88 lines): extracted ResetPasswordDialog — self-contained password reset with validation
+- Created store-detail-dialog.tsx (235 lines): extracted StoreDetailDialog — full store detail with owner info, stats, staff list
+- Created create-store-dialog.tsx (269 lines): extracted CreateStoreDialog — form validation, store+owner fields, plan selector
+- Created edit-store-dialog.tsx (290 lines): extracted EditStoreDialog — edit form with plan status info, owner fields
+- Refactored admin-panel.tsx (402 lines): imports extracted components, only AdminPanel main component remains (header, stats cards, search/filter, table, dialog orchestration)
+- Lint: 32 errors (all pre-existing)
+- Dev server compiles successfully, responds 200
+
+Stage Summary:
+- admin-panel.tsx: 1,319 → 402 lines (70% reduction)
+- 5 new files created: helpers + 4 dialog components
+- All business logic preserved, zero visual/functional changes
+- Clean separation: each dialog manages its own state independently
+
+---
 Task ID: R09-f2
 Agent: full-stack-developer
 Task: R-09 FASE 2 — Refactor pos-view.tsx from 1456 → ~490 lines
