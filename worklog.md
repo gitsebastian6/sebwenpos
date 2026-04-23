@@ -1,4 +1,30 @@
 ---
+Task ID: R09-f6
+Agent: main
+Task: R-09 FASE 6 — Refactor invoices-view.tsx from 1,273 → 452 lines
+
+Work Log:
+- Created src/components/invoices/invoices-types.tsx (139 lines): STATUS_BADGES, STATUS_FILTERS, PAYMENT_LABELS constants, InvoiceSummary, InvoiceDetail, OrderForInvoice, ResolutionStatus interfaces, InvoiceStatusBadge and ResolutionStatusBadge components
+- Created src/components/invoices/create-invoice-dialog.tsx (365 lines): self-contained 2-step dialog with own state, hooks (useOrders, useInvoices, useCreateInvoice), form management (NIT, name, email, address, contingency type, notes), order search/filter, consumidor final toggle
+- Created src/components/invoices/invoice-detail-dialog.tsx (455 lines): self-contained detail dialog with own mutation hooks (useInvoicePdf, useSendInvoice, useEmailInvoice, useInvoiceStatus), includes header info, emisor/receptor cards, items table, tax breakdown, totals, CUFE section, QR code, resolution info, DIAN status, notes, action buttons
+- Refactored invoices-view.tsx (452 lines): imports all extracted components, keeps filter state, KPI cards, filters card, invoices table with dropdown actions, resolution status card, dialog orchestration
+- Detail dialog manages its OWN mutation hooks internally (no prop-drilling of action handlers)
+- Main view keeps handleAction only for table row dropdown actions (own mutation instances)
+- Renamed invoices-types.ts → invoices-types.tsx (JSX in badge components requires tsx extension)
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully, responds 200
+
+Stage Summary:
+- invoices-view.tsx: 1,273 → 452 lines (64% reduction)
+- 3 new files created: 1 types + 2 dialog components
+- Each extracted component is self-contained with its own state and hooks
+- CreateInvoiceDialog: manages all form state, order selection, and create mutation internally
+- InvoiceDetailDialog: manages its own mutation hooks for print/pdf/send/status/email actions
+- All business logic preserved, zero visual/functional changes
+- InvoicesView export name preserved
+- Zero new lint errors
+
+---
 Task ID: R09-f5
 Agent: main
 Task: R-09 FASE 5 — Refactor auth-page.tsx from 1,280 → 184 lines
