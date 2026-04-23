@@ -11,6 +11,7 @@ import {
   BookOpen,
   Receipt,
 } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { KPIBar } from '@/components/shared/kpi-bar'
 import type { LedgerAccount } from './accounting-types'
 import { AccountsTab } from './accounts-tab'
