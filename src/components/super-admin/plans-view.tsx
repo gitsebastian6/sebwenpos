@@ -29,7 +29,7 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
   const [savingPlan, setSavingPlan] = useState(false)
   const [planForm, setPlanForm] = useState({
     name: '', description: '', price: 0,
-    maxEmployees: 5, maxProducts: 100,
+    maxEmployees: 5, maxProducts: 100, maxStores: 1,
     sortOrder: 0, isActive: true,
   })
 
@@ -41,6 +41,7 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
       price: plan.price,
       maxEmployees: plan.maxEmployees,
       maxProducts: plan.maxProducts,
+      maxStores: plan.maxStores,
       sortOrder: plan.sortOrder,
       isActive: plan.isActive,
     })
@@ -208,6 +209,10 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
                   <div className="space-y-1">
                     <Label htmlFor="pf-prod" className="text-xs text-muted-foreground">Max Productos</Label>
                     <Input id="pf-prod" className="focus-visible:ring-primary/20 focus-visible:border-primary/40" type="number" min={-1} value={planForm.maxProducts} onChange={(e) => setPlanForm(p => ({ ...p, maxProducts: parseInt(e.target.value) || 0 }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="pf-stores" className="text-xs text-muted-foreground">Max Sucursales</Label>
+                    <Input id="pf-stores" className="focus-visible:ring-primary/20 focus-visible:border-primary/40" type="number" min={1} value={planForm.maxStores} onChange={(e) => setPlanForm(p => ({ ...p, maxStores: parseInt(e.target.value) || 1 }))} />
                   </div>
                 </div>
               </div>

@@ -263,8 +263,16 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 13. Profit calculation
-    const profit = totalSales > 0 ? totalSales - Math.round(totalSales * 0.4) : 0
+    // 13. Profit calculation — uses actual COGS from order items joined with products
+    const cogsRaw = await db.$queryRawUnsafe<Array<{ total_cogs: number | bigint }>>(`
+      SELECT COALESCE(SUM(oi.quantity * p.cost_price), 0) as total_cogs
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      LEFT JOIN products p ON p.id = oi.product_id
+      WHERE ${baseWhere}
+    `)
+    const totalCOGS = N(cogsRaw[0]?.total_cogs)
+    const profit = totalSales > 0 ? totalSales - totalCOGS : 0
 
     return NextResponse.json({
       period: { from, to },

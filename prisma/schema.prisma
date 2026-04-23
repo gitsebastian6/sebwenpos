@@ -187,6 +187,9 @@ model Plan {
   updatedAt   DateTime @updatedAt
 
   subscriptions Subscription[]
+  subscriptionHistoriesPrevious SubscriptionHistory[] @relation("HistoryPreviousPlan")
+  subscriptionHistoriesNew SubscriptionHistory[] @relation("HistoryNewPlan")
+  billingRecords BillingRecord[] @relation("BillingPlan")
 
   @@unique([name])
   @@map("plans")
@@ -248,6 +251,9 @@ model SubscriptionHistory {
 
   store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
   subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  // M-10: FK references for plan history tracking (denormalized for historical integrity)
+  previousPlan Plan?       @relation("HistoryPreviousPlan", fields: [previousPlanId], references: [id], onDelete: SetNull)
+  newPlan      Plan?       @relation("HistoryNewPlan", fields: [newPlanId], references: [id], onDelete: SetNull)
 
   @@index([storeId])
   @@index([subscriptionId])
@@ -276,6 +282,8 @@ model BillingRecord {
   store        Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
   subscription Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   receipt     PaymentReceipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+  // M-10: FK reference to plan (denormalized planName kept for historical records)
+  plan        Plan            @relation("BillingPlan", fields: [planId], references: [id], onDelete: Restrict)
 
   @@index([storeId])
   @@index([subscriptionId])

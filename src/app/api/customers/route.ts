@@ -11,6 +11,10 @@ const createCustomerSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(200),
   phone: z.string().max(30).optional().nullable().default(null),
   email: z.string().email('Email inválido').max(200).optional().nullable().default(null),
+  nit: z.string().max(30).optional().nullable().default(null),
+  documentType: z.string().max(20).optional().nullable().default(null),
+  address: z.string().max(300).optional().nullable().default(null),
+  regime: z.string().max(50).optional().nullable().default(null),
 })
 
 // GET /api/customers?storeId=X&q=search
@@ -91,6 +95,10 @@ export async function POST(request: NextRequest) {
         name: data.name.trim(),
         phone: data.phone?.trim() || null,
         email: data.email?.trim() || null,
+        nit: data.nit?.trim() || null,
+        documentType: data.documentType || null,
+        address: data.address?.trim() || null,
+        regime: data.regime || null,
       },
     })
 

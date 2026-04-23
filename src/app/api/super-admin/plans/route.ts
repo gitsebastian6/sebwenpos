@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
+import { parsePlanFeatures } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,7 +49,7 @@ export async function GET() {
 
     const formatted = plans.map(plan => ({
       ...plan,
-      features: JSON.parse(plan.features),
+      features: parsePlanFeatures(plan.features),
       subscriptionCount: plan._count.subscriptions,
     }))
 
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ...plan,
-      features: JSON.parse(plan.features),
+      features: parsePlanFeatures(plan.features),
       message: `Plan "${data.name}" creado exitosamente`,
     }, { status: 201 })
   } catch (error: unknown) {

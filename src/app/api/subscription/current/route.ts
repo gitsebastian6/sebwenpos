@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
-import { logSubscriptionHistory } from '@/lib/subscription-helpers'
+import { logSubscriptionHistory, transitionSingleSubscription, parsePlanFeatures, GRACE_PERIOD_DAYS } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,91 +43,33 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Auto-transition: ACTIVE/TRIAL → PAST_DUE, PAST_DUE → EXPIRED
-    // Auto-heal: EXPIRED/PAST_DUE → ACTIVE when endDate is still in the future
-    //   (e.g. after a payment extends the period while status was stale)
-    const GRACE_PERIOD_DAYS = 3
-    const now = new Date()
-    const endDateInFuture = subscription.endDate && new Date(subscription.endDate) > now
-    const endDateInPast = subscription.endDate && new Date(subscription.endDate) <= now
-
-    // ── Step 1: Auto-heal EXPIRED or PAST_DUE when endDate is still valid ──
-    if (
-      endDateInFuture &&
-      (subscription.status === 'EXPIRED' || subscription.status === 'PAST_DUE') &&
-      !subscription.cancelReason
-    ) {
-      const correctStatus = subscription.billingPeriod === 'TRIAL' ? 'TRIAL' : 'ACTIVE'
+    // Auto-transition: use shared logic
+    const updated = await transitionSingleSubscription(subscription)
+    if (updated) {
       const prevStatus = subscription.status
-      await db.subscription.update({
-        where: { id: subscription.id },
-        data: { status: correctStatus, graceEndDate: null },
-      })
-      subscription.status = correctStatus
-      logger.warn(`Auto-healed subscription ${subscription.id}: ${prevStatus} → ${correctStatus} (endDate in future)`)
-    }
-
-    // ── Step 2: ACTIVE/TRIAL → PAST_DUE when endDate has passed ──
-    if (
-      endDateInPast &&
-      (subscription.status === 'TRIAL' || subscription.status === 'ACTIVE')
-    ) {
-      const graceEnd = new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000)
-      const prevStatus = subscription.status
-      await db.subscription.update({
-        where: { id: subscription.id },
-        data: { status: 'PAST_DUE', graceEndDate: graceEnd },
-      })
-      subscription.status = 'PAST_DUE'
-      // Log grace period start
-      await logSubscriptionHistory({
-        storeId,
-        subscriptionId: subscription.id,
-        eventType: 'GRACE_STARTED',
-        previousStatus: prevStatus,
-        newStatus: 'PAST_DUE',
-        previousPlanId: subscription.planId,
-        newPlanId: subscription.planId,
-        previousPlanName: subscription.plan.name,
-        newPlanName: subscription.plan.name,
-        description: `Período de gracia de ${GRACE_PERIOD_DAYS} días iniciado`,
-        metadata: { graceEndDate: graceEnd.toISOString() },
-      }).catch(() => { /* non-blocking */ })
-    }
-
-    // ── Step 3: PAST_DUE → EXPIRED when grace period has passed ──
-    if (
-      subscription.status === 'PAST_DUE' &&
-      subscription.graceEndDate &&
-      new Date(subscription.graceEndDate) <= now
-    ) {
-      await db.subscription.update({
-        where: { id: subscription.id },
-        data: { status: 'EXPIRED' },
-      })
-      subscription.status = 'EXPIRED'
-      // Log expiration
-      await logSubscriptionHistory({
-        storeId,
-        subscriptionId: subscription.id,
-        eventType: 'EXPIRED',
-        previousStatus: 'PAST_DUE',
-        newStatus: 'EXPIRED',
-        previousPlanId: subscription.planId,
-        newPlanId: subscription.planId,
-        previousPlanName: subscription.plan.name,
-        newPlanName: subscription.plan.name,
-        description: 'Suscripción expirada después del período de gracia',
-      }).catch(() => { /* non-blocking */ })
-    }
-
-    const features: Record<string, boolean> = (() => {
-      try {
-        return JSON.parse(subscription.plan.features)
-      } catch {
-        return {}
+      subscription.status = updated.status
+      // Log grace/expiry events
+      if (updated.status === 'PAST_DUE' && prevStatus !== 'PAST_DUE') {
+        await logSubscriptionHistory({
+          storeId, subscriptionId: subscription.id,
+          eventType: 'GRACE_STARTED', previousStatus: prevStatus, newStatus: 'PAST_DUE',
+          previousPlanId: subscription.planId, newPlanId: subscription.planId,
+          previousPlanName: subscription.plan.name, newPlanName: subscription.plan.name,
+          description: `Período de gracia de ${GRACE_PERIOD_DAYS} días iniciado`,
+          metadata: { graceEndDate: updated.graceEndDate?.toISOString() },
+        }).catch(() => {})
+      } else if (updated.status === 'EXPIRED' && prevStatus !== 'EXPIRED') {
+        await logSubscriptionHistory({
+          storeId, subscriptionId: subscription.id,
+          eventType: 'EXPIRED', previousStatus: prevStatus, newStatus: 'EXPIRED',
+          previousPlanId: subscription.planId, newPlanId: subscription.planId,
+          previousPlanName: subscription.plan.name, newPlanName: subscription.plan.name,
+          description: 'Suscripción expirada después del período de gracia',
+        }).catch(() => {})
       }
-    })()
+    }
+
+    const features = parsePlanFeatures(subscription.plan.features)
 
     const graceEndDate = subscription.graceEndDate
     const graceDaysRemaining = (graceEndDate && subscription.status === 'PAST_DUE')

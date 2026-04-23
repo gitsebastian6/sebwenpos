@@ -4,6 +4,7 @@ import { hashPassword } from '@/lib/auth'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { logStoreEvent } from '@/lib/event-logger'
+import { parsePlanFeatures } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,9 +55,8 @@ export async function GET(
       orderBy: { createdAt: 'desc' },
     })
 
-    // Centralized subscription: branches inherit parent's subscription
     const planFeatures = parentStore.subscription?.plan
-      ? JSON.parse(parentStore.subscription?.plan.features || '{}')
+      ? parsePlanFeatures(parentStore.subscription?.plan.features)
       : {}
 
     return NextResponse.json({
@@ -114,7 +114,7 @@ export async function POST(
 
     // ── GATE 1: Check multiStore feature ──
     const planFeatures = parentStore.subscription?.plan
-      ? JSON.parse(parentStore.subscription?.plan.features || '{}')
+      ? parsePlanFeatures(parentStore.subscription?.plan.features)
       : {}
 
     if (planFeatures.multiStore !== true) {

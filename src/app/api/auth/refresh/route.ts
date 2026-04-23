@@ -1,60 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateToken, verifyToken, extractTokenFromRequest } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
+import { transitionOverdueSubscriptions, GRACE_PERIOD_DAYS } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
 // Grace period: accept tokens expired up to 1 hour ago for refresh
 const REFRESH_GRACE_MS = 1 * 60 * 60 * 1000
-
-// Grace period before fully expiring a subscription
-const GRACE_PERIOD_DAYS = 3
-
-/**
- * Transition overdue subscriptions (same logic as login route).
- * Kept in sync so subscription status is consistent across the app.
- */
-async function transitionOverdueSubscriptions() {
-  const now = new Date()
-
-  // ── Step 1: Auto-heal EXPIRED or PAST_DUE when endDate is still in the future ──
-  const healed = await db.subscription.findMany({
-    where: {
-      endDate: { gt: now },
-      status: { in: ['EXPIRED', 'PAST_DUE'] },
-      cancelReason: null,
-    },
-  })
-  for (const sub of healed) {
-    const correctStatus = sub.billingPeriod === 'TRIAL' ? 'TRIAL' : 'ACTIVE'
-    await db.subscription.update({
-      where: { id: sub.id },
-      data: { status: correctStatus, graceEndDate: null },
-    })
-  }
-
-  // ── Step 2: ACTIVE/TRIAL → PAST_DUE when endDate has passed ──
-  await db.subscription.updateMany({
-    where: {
-      endDate: { lt: now },
-      status: { in: ['TRIAL', 'ACTIVE'] },
-    },
-    data: {
-      status: 'PAST_DUE',
-      graceEndDate: new Date(now.getTime() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000),
-    },
-  })
-
-  // ── Step 3: PAST_DUE → EXPIRED when grace period ended AND endDate is still past ──
-  await db.subscription.updateMany({
-    where: {
-      graceEndDate: { lt: now },
-      status: 'PAST_DUE',
-      endDate: { lt: now },
-    },
-    data: { status: 'EXPIRED' },
-  })
-}
 
 interface RefreshResponse {
   token: string

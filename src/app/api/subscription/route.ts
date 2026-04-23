@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { parsePlanFeatures } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
         maxEmployees: subscription.plan.maxEmployees,
         maxProducts: subscription.plan.maxProducts,
         maxStores: subscription.plan.maxStores,
-        features: JSON.parse(subscription.plan.features || '{}'),
+        features: parsePlanFeatures(subscription.plan.features),
       },
     })
   } catch (error) {

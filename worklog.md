@@ -941,3 +941,28 @@ Stage Summary:
 - Production build successful, server running stable
 - Git pushed: bb186b5
 - All 8 CRITICAL + 10 HIGH issues now fixed
+---
+Task ID: M-01 to M-12
+Agent: Main Agent
+Task: Fix 12 MEDIUM severity bugs from QA audit
+
+Work Log:
+- M-01: Extracted duplicated subscription transition logic from 4 files (login, refresh, switch-store, subscription/current) into shared `transitionOverdueSubscriptions()` and `transitionSingleSubscription()` in subscription-helpers.ts
+- M-01: Extracted duplicated `buildSubInfo()` into shared module
+- M-02: Fixed `checkFeatureAccess()` to reject EXPIRED/CANCELLED subscriptions (was only checking feature existence, not status)
+- M-03: Replaced 8 bare `JSON.parse(plan.features)` calls with safe `parsePlanFeatures()` helper across: login, switch-store, subscription, plans, plans/[id], branches routes
+- M-04: Fixed startDate reset on CANCELLED reactivation in payment-receipts/[id] and payment-receipts (auto-approve) — now resets for EXPIRED, CANCELLED, and TRIAL
+- M-05: Added `maxStores` field to Plan edit form in plans-view.tsx (form state, open handler, and UI input)
+- M-06: Added server-side filtering by `storeId` and `status` query params to GET /api/super-admin/payment-receipts
+- M-07: Replaced hardcoded `totalSales * 0.4` profit calculation with actual COGS query (SUM of quantity * cost_price from order_items JOIN products)
+- M-08: Extended customer create schema with `nit`, `documentType`, `address`, `regime` fields
+- M-09: Added `barcode` field to product create schema and db create call
+- M-10: Added @relation from SubscriptionHistory (previousPlanId, newPlanId) and BillingRecord (planId) to Plan model with appropriate onDelete policies
+- M-11: Added deleteMany for BillingRecord, SubscriptionHistory, CostHistory, PurchasePayment to seed.ts
+- M-12: Verified OtpToken.userId already has @relation — no change needed
+
+Stage Summary:
+- All 12 MEDIUM bugs fixed
+- 13 files modified, 1 schema migration (prisma db push)
+- Build successful, server running on port 3000
+- Lint clean on modified files

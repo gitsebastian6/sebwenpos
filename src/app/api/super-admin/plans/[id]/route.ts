@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
+import { parsePlanFeatures } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,7 +62,7 @@ export async function GET(
 
     return NextResponse.json({
       ...plan,
-      features: JSON.parse(plan.features),
+      features: parsePlanFeatures(plan.features),
       subscriptionCount: plan._count.subscriptions,
     })
   } catch (error) {
@@ -119,7 +120,7 @@ export async function PUT(
 
     return NextResponse.json({
       ...plan,
-      features: JSON.parse(plan.features),
+      features: parsePlanFeatures(plan.features),
       message: `Plan "${plan.name}" actualizado exitosamente`,
     })
   } catch (error: unknown) {

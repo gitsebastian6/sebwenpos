@@ -63,11 +63,20 @@ function calculateNewEndDate(sub: { billingPeriod: string; endDate: Date | strin
 
 /**
  * GET /api/super-admin/payment-receipts
- * Lista todos los comprobantes de pago con info de tienda, para el super admin
+ * Lista comprobantes de pago con info de tienda. Soporta filtro opcional storeId.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url)
+    const storeIdFilter = searchParams.get('storeId')
+    const statusFilter = searchParams.get('status')
+
+    const where: Record<string, unknown> = {}
+    if (storeIdFilter) where.storeId = parseInt(storeIdFilter, 10)
+    if (statusFilter) where.status = statusFilter
+
     const receipts = await db.paymentReceipt.findMany({
+      where: Object.keys(where).length > 0 ? where : undefined,
       orderBy: { createdAt: 'desc' },
       include: {
         store: {
@@ -220,7 +229,7 @@ export async function POST(req: NextRequest) {
           endDate: newEndDate,
           nextBillingAt: newNextBillingAt,
           lastBilledAt: now,
-          startDate: (sub.status === 'EXPIRED' || sub.status === 'TRIAL') ? now : sub.startDate,
+          startDate: (sub.status === 'EXPIRED' || sub.status === 'CANCELLED' || sub.status === 'TRIAL') ? now : sub.startDate,
           billingPeriod: sub.billingPeriod === 'TRIAL' ? 'MONTHLY' : sub.billingPeriod,
           // Reset alert flags on renewal
           alertSentAt3d: null,

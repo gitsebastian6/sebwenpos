@@ -5,63 +5,11 @@ import { generateToken } from '@/lib/auth-helpers'
 import { getAuthUser } from '@/lib/api-auth'
 import { withRateLimit } from '@/lib/rate-limiter'
 import { logger } from '@/lib/logger'
+import { transitionSingleSubscription, buildSubInfo } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
 const SWITCH_STORE_RATE_LIMIT: { maxRequests: number; windowSeconds: number } = { maxRequests: 30, windowSeconds: 60 }
-
-/** Grace period: 3 calendar days after endDate before fully expiring. */
-const GRACE_PERIOD_DAYS = 3
-
-// ── Subscription info builder (mirrors login route) ──
-
-interface SubRow {
-  id: number; status: string; planId: number
-  endDate: Date | string | null; graceEndDate: Date | string | null
-  trialEndDate: Date | string | null; billingPeriod: string; startDate: Date | string
-  plan: { id: number; name: string; price: number; maxEmployees: number; maxProducts: number; features: string }
-}
-
-function buildSubInfo(sub: SubRow) {
-  const now = new Date()
-  const endDate = sub.endDate ? new Date(sub.endDate) : null
-  const graceEndDate = sub.graceEndDate ? new Date(sub.graceEndDate) : null
-  let daysRemaining: number | null = null
-  let graceDaysRemaining: number | null = null
-
-  if (endDate) {
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
-    daysRemaining = Math.ceil((endDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  }
-
-  if (graceEndDate && sub.status === 'PAST_DUE') {
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const graceEnd = new Date(graceEndDate.getFullYear(), graceEndDate.getMonth(), graceEndDate.getDate())
-    graceDaysRemaining = Math.ceil((graceEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  }
-
-  return {
-    hasSubscription: true,
-    subscriptionStatus: sub.status,
-    subscriptionId: sub.id,
-    planId: sub.planId,
-    planName: sub.plan.name,
-    planPrice: sub.plan.price,
-    endDate: sub.endDate,
-    startDate: sub.startDate,
-    trialEndDate: sub.trialEndDate,
-    billingPeriod: sub.billingPeriod,
-    daysRemaining,
-    graceEndDate: sub.graceEndDate,
-    graceDaysRemaining,
-    planLimits: {
-      maxEmployees: sub.plan.maxEmployees,
-      maxProducts: sub.plan.maxProducts,
-      features: JSON.parse(sub.plan.features),
-    },
-  }
-}
 
 async function getSubscriptionInfo(storeId: number) {
   const subscription = await db.subscription.findUnique({
@@ -79,53 +27,8 @@ async function getSubscriptionInfo(storeId: number) {
     }
   }
 
-  // Auto-transition based on dates
-  const now = new Date()
-  const endDateInFuture = subscription.endDate && new Date(subscription.endDate) > now
-  const endDateInPast = subscription.endDate && new Date(subscription.endDate) <= now
-
-  // Auto-heal: EXPIRED or PAST_DUE → ACTIVE when endDate is still valid
-  if (
-    endDateInFuture &&
-    (subscription.status === 'EXPIRED' || subscription.status === 'PAST_DUE') &&
-    !subscription.cancelReason
-  ) {
-    const correctStatus = subscription.billingPeriod === 'TRIAL' ? 'TRIAL' : 'ACTIVE'
-    const updated = await db.subscription.update({
-      where: { id: subscription.id },
-      data: { status: correctStatus, graceEndDate: null },
-      include: { plan: true },
-    })
-    logger.warn(`Auto-healed subscription ${subscription.id}: ${subscription.status} → ${correctStatus} (endDate in future)`)
-    return buildSubInfo(updated)
-  }
-
-  // ACTIVE/TRIAL → PAST_DUE when endDate has passed
-  if (
-    endDateInPast &&
-    (subscription.status === 'TRIAL' || subscription.status === 'ACTIVE')
-  ) {
-    const graceEnd = new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000)
-    const updated = await db.subscription.update({
-      where: { id: subscription.id },
-      data: { status: 'PAST_DUE', graceEndDate: graceEnd },
-      include: { plan: true },
-    })
-    return buildSubInfo(updated)
-  }
-
-  // PAST_DUE → EXPIRED when grace period ended AND endDate is still past
-  if (
-    subscription.status === 'PAST_DUE' &&
-    subscription.graceEndDate &&
-    new Date(subscription.graceEndDate) <= now &&
-    endDateInPast
-  ) {
-    const updated = await db.subscription.update({
-      where: { id: subscription.id },
-      data: { status: 'EXPIRED' },
-      include: { plan: true },
-    })
+  const updated = await transitionSingleSubscription(subscription)
+  if (updated) {
     return buildSubInfo(updated)
   }
 
