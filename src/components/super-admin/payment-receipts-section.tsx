@@ -62,12 +62,13 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
   const loadReceipts = useCallback(async () => {
     try {
       setReceiptsLoading(true)
-      const res = await fetch('/api/super-admin/payment-receipts')
+      // R-06 FIX: Server-side filtering by storeId instead of fetching ALL receipts
+      const params = new URLSearchParams({ storeId: String(storeId) })
+      const res = await fetch(`/api/super-admin/payment-receipts?${params}`)
       if (!res.ok) { return }
       const data = await res.json()
-      const filtered = (data || []).filter((r: PaymentReceiptData) => r.storeId === storeId)
-      setReceipts(filtered)
-      onCountChange?.(filtered.length)
+      setReceipts(data || [])
+      onCountChange?.((data || []).length)
     } catch { /* non-critical */ }
     finally { setReceiptsLoading(false) }
   }, [storeId, onCountChange])

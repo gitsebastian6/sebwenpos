@@ -1043,3 +1043,29 @@ Stage Summary:
 - 2 files modified: products/[id]/route.ts, product-form-dialog.tsx
 - barcode now fully supported: create (POST) ✅, update (PUT) ✅, frontend form ✅, type ✅
 - ESLint clean (0 new errors), dev server healthy (200)
+
+---
+Task ID: R-06-R-07
+Agent: main
+Task: Fix R-06 (client-side receipt filtering) and verify R-07 (profit calculation)
+
+Work Log:
+- R-06: Fixed PaymentReceiptsSection performance issue
+  - Before: fetch('/api/super-admin/payment-receipts') → fetched ALL receipts across ALL stores, then filtered client-side by storeId
+  - After: fetch('/api/super-admin/payment-receipts?storeId=N') → server-side filtering via WHERE clause
+  - The API already supported ?storeId= and ?status= query params (lines 70-76 of payment-receipts/route.ts)
+  - The frontend just wasn't using them
+  - Impact: O(N) network transfer reduced to O(1) per store
+
+- R-07: Verified profit calculation uses real costPrice
+  - Checked ALL locations: dashboard/route.ts, reports/route.ts, reports/informes/route.ts, inventory-view.tsx
+  - All SQL queries use `p.cost_price * oi.quantity` for COGS calculation
+  - No hardcoded 40% or 0.6 multipliers found anywhere in the codebase
+  - The frontend commission calculator uses actual costPrice for margin display
+  - Conclusion: R-07 was either already fixed in a previous session or was a false positive in the audit
+
+Stage Summary:
+- 1 file modified: payment-receipts-section.tsx
+- Server-side filtering eliminates unnecessary data transfer
+- R-07 confirmed already correct (no changes needed)
+- ESLint clean (0 new errors), dev server healthy (200)
