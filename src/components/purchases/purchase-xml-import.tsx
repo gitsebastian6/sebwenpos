@@ -19,6 +19,7 @@ import {
 import { Loader2, Upload, Info } from 'lucide-react'
 import { toast } from 'sonner'
 import { useXmlImportPurchase, type ProviderOption } from '@/hooks/api/use-purchases'
+import { useProviders } from '@/hooks/api/use-providers'
 
 // ── XML Parsing ──
 
@@ -172,6 +173,7 @@ export function PurchaseXmlImport({
   const { store } = useAuthStore()
   const currencyCode = store?.currencyCode || 'COP'
   const xmlImport = useXmlImportPurchase()
+  const { data: providersForMatch = [] } = useProviders(store?.id, { active: true })
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -187,19 +189,15 @@ export function PurchaseXmlImport({
       const metadata = parseXmlMetadata(xmlDoc)
       if (items.length === 0) { toast.error('No se pudieron extraer productos del XML.'); return }
       try {
-        const res = await fetch(`/api/providers?storeId=${store.id}&active=true`)
-        if (res.ok) {
-          const data = await res.json()
-          const provs: ProviderOption[] = Array.isArray(data) ? data : []
-          if (metadata.providerNit) {
-            const nit = metadata.providerNit.replace(/[^0-9kK]/g, '').toLowerCase()
-            const match = provs.find((p: ProviderOption) => (p.nit || '').replace(/[^0-9kK]/g, '').toLowerCase() === nit)
-            if (match) setXmlProviderId(String(match.id))
-          } else if (metadata.providerName) {
-            const name = metadata.providerName.toLowerCase().trim()
-            const match = provs.find((p: ProviderOption) => p.name.toLowerCase().includes(name))
-            if (match) setXmlProviderId(String(match.id))
-          }
+        const provs: ProviderOption[] = providersForMatch
+        if (metadata.providerNit) {
+          const nit = metadata.providerNit.replace(/[^0-9kK]/g, '').toLowerCase()
+          const match = provs.find((p: ProviderOption) => (p.nit || '').replace(/[^0-9kK]/g, '').toLowerCase() === nit)
+          if (match) setXmlProviderId(String(match.id))
+        } else if (metadata.providerName) {
+          const name = metadata.providerName.toLowerCase().trim()
+          const match = provs.find((p: ProviderOption) => p.name.toLowerCase().includes(name))
+          if (match) setXmlProviderId(String(match.id))
         }
       } catch { /* */ }
       setXmlNotes(`Importado desde XML: ${file.name}`)

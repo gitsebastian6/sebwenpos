@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useImperativeHandle, forwardRef } from 'react'
+import { useState, useEffect, useImperativeHandle, forwardRef } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import type { ReturnOrderDetail } from '@/types'
+import { useOrderDetail, useReturnOrder } from '@/hooks/api/use-orders'
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -35,9 +36,26 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
     const [returnReason, setReturnReason] = useState('')
     const [returning, setReturning] = useState(false)
     const [returningOrderId, setReturningOrderId] = useState<number | null>(null)
-    const [returnOrderDetail, setReturnOrderDetail] = useState<ReturnOrderDetail | null>(null)
     const [returnItems, setReturnItems] = useState<Map<number, number>>(new Map())
-    const [loadingReturnDetail, setLoadingReturnDetail] = useState(false)
+
+    // ─── TanStack Query hooks ────────────────────────
+    const orderDetailQuery = useOrderDetail(returningOrderId, storeId)
+    const returnOrderDetail: ReturnOrderDetail | null = returningOrderId ? orderDetailQuery.data : null
+    const loadingReturnDetail = orderDetailQuery.isLoading
+    const returnOrderMut = useReturnOrder()
+
+    // Pre-select all returnable items when detail loads
+    useEffect(() => {
+      if (orderDetailQuery.data) {
+        const items = new Map<number, number>()
+        for (const item of orderDetailQuery.data.orderItems || []) {
+          if (item.productId && item.quantity > (item.returnedQuantity || 0)) {
+            items.set(item.id, item.quantity - (item.returnedQuantity || 0))
+          }
+        }
+        setReturnItems(items)
+      }
+    }, [orderDetailQuery.data])
 
     // ─── Expose openReturnDialog via ref ────────────
     useImperativeHandle(ref, () => ({
@@ -46,36 +64,9 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
         setReturningOrderId(orderId)
         setReturnReason('')
         setReturnItems(new Map())
-        setReturnOrderDetail(null)
-        setLoadingReturnDetail(true)
         setShowDialog(true)
-        fetchOrderDetail(orderId)
       },
     }), [storeId])
-
-    // ─── Fetch order detail ────────────────────────
-    const fetchOrderDetail = useCallback(async (orderId: number) => {
-      if (!storeId) return
-      try {
-        const res = await fetch(`/api/orders/${orderId}?storeId=${storeId}`)
-        if (!res.ok) throw new Error('Error')
-        const data = await res.json()
-        setReturnOrderDetail(data)
-        // Pre-select all returnable items
-        const items = new Map<number, number>()
-        for (const item of data.orderItems || []) {
-          if (item.productId && item.quantity > (item.returnedQuantity || 0)) {
-            items.set(item.id, item.quantity - (item.returnedQuantity || 0))
-          }
-        }
-        setReturnItems(items)
-      } catch {
-        toast.error('Error al cargar detalle de la venta')
-        setShowDialog(false)
-      } finally {
-        setLoadingReturnDetail(false)
-      }
-    }, [storeId])
 
     // ─── Toggle return item selection ──────────────
     function toggleReturnItem(itemId: number, maxQty: number) {
@@ -111,16 +102,10 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
           orderItemId,
           quantity,
         }))
-        const res = await fetch(`/api/orders/${returningOrderId}/return`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items, reason: returnReason.trim() || undefined }),
+        const data = await returnOrderMut.mutateAsync({
+          id: returningOrderId,
+          body: { items, reason: returnReason.trim() || undefined },
         })
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err.error || 'Error al procesar devolución')
-        }
-        const data = await res.json()
         toast.success(data.message)
         // Show credit note notification if auto-generated
         if (data.creditNote) {
@@ -132,7 +117,6 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
         setShowDialog(false)
         onReturnSuccess(returningOrderId)
         setReturningOrderId(null)
-        setReturnOrderDetail(null)
         setReturnItems(new Map())
         setReturnReason('')
       } catch (e) {
@@ -145,7 +129,7 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
     // ─── Close handler ─────────────────────────────
     function handleClose() {
       setShowDialog(false)
-      setReturnOrderDetail(null)
+      setReturningOrderId(null)
       setReturnItems(new Map())
     }
 

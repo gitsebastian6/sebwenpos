@@ -1,7 +1,8 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Product } from '@/types'
+import { throwIfNotOk } from './query-helpers'
 
 interface UseProductsParams {
   search?: string
@@ -19,6 +20,10 @@ interface ProductsResponse {
     totalPages: number
   }
 }
+
+// ---------------------------------------------------------------------------
+// Query hooks
+// ---------------------------------------------------------------------------
 
 export function useProducts(
   storeId: number | undefined | null,
@@ -39,5 +44,85 @@ export function useProducts(
     },
     enabled: !!storeId,
     staleTime: 30_000,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Mutation hooks
+// ---------------------------------------------------------------------------
+
+export function useCreateProduct() {
+  const queryClient = useQueryClient()
+
+  return useMutation<Product, Error, { body: Record<string, unknown> }>({
+    mutationFn: async ({ body }) => {
+      return throwIfNotOk(
+        await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      )
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['categories'] })
+    },
+  })
+}
+
+export function useUpdateProduct() {
+  const queryClient = useQueryClient()
+
+  return useMutation<Product, Error, { id: number; body: Record<string, unknown> }>({
+    mutationFn: async ({ id, body }) => {
+      return throwIfNotOk(
+        await fetch(`/api/products/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      )
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['categories'] })
+    },
+  })
+}
+
+export function useDeleteProduct() {
+  const queryClient = useQueryClient()
+
+  return useMutation<void, Error, { id: number }>({
+    mutationFn: async ({ id }) => {
+      await throwIfNotOk(await fetch(`/api/products/${id}`, { method: 'DELETE' }))
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['categories'] })
+    },
+  })
+}
+
+export function useImportProducts() {
+  const queryClient = useQueryClient()
+
+  return useMutation<any, Error, { file: File }>({
+    mutationFn: async ({ file }) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/products/import', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al importar productos')
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['categories'] })
+    },
   })
 }

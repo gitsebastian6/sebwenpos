@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -40,6 +41,8 @@ import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { KPIBar } from '@/components/shared/kpi-bar'
+import { useInventory, useResetStock, useInventoryAdjustment, useInventoryReturn, useInventoryLoss } from '@/hooks/api/use-inventory'
+import { useProducts } from '@/hooks/api/use-products'
 import * as XLSX from 'xlsx'
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -108,14 +111,7 @@ type ActionType = 'loss' | 'return' | 'adjust'
 export function InventoryView() {
   const { store } = useAuthStore()
   const storeId = store?.id
-
-  // Data state
-  const [lowStockProducts, setLowStockProducts] = useState<LowStockAlert[]>([])
-  const [movements, setMovements] = useState<InventoryMovement[]>([])
-  const [products, setProducts] = useState<Product[]>([])
-  const [isLoadingMovements, setIsLoadingMovements] = useState(true)
-  const [isLoadingAlerts, setIsLoadingAlerts] = useState(true)
-  const [isLoadingProducts, setIsLoadingProducts] = useState(false)
+  const queryClient = useQueryClient()
 
   // Search & filter for product list
   const [productSearch, setProductSearch] = useState('')
@@ -127,7 +123,6 @@ export function InventoryView() {
   // ─── Action Dialog State ────────────────────────────
   const [actionDialogOpen, setActionDialogOpen] = useState(false)
   const [actionType, setActionType] = useState<ActionType>('loss')
-  const [actionSubmitting, setActionSubmitting] = useState(false)
 
   // Product search inside dialog
   const [dialogProductSearch, setDialogProductSearch] = useState('')
@@ -150,7 +145,37 @@ export function InventoryView() {
   // Reset stock state
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [resetNote, setResetNote] = useState('')
-  const [isResetting, setIsResetting] = useState(false)
+
+  // ─── Query hooks ──────────────────────────────────────
+  const { data: movements = [], isLoading: isLoadingMovements } = useInventory(storeId, {
+    type: filterType,
+    productId: filterProduct,
+  })
+
+  // Products list (from products API via TanStack Query)
+  const { data: productsResponse, isLoading: isLoadingProducts } = useProducts(storeId, { limit: 500 })
+  const products = (productsResponse?.data ?? []) as Product[]
+
+  // Low stock computed from products
+  const lowStockProducts = useMemo<LowStockAlert[]>(() => {
+    return products
+      .filter((p) => p.currentStock <= p.minStock)
+      .map((p) => ({
+        id: p.id, name: p.name, currentStock: p.currentStock,
+        minStock: p.minStock, salePrice: p.salePrice,
+        category: p.category?.name ?? null,
+      }))
+  }, [products])
+
+  const isLoadingAlerts = isLoadingProducts
+
+  // ─── Mutation hooks ──────────────────────────────────
+  const resetStock = useResetStock()
+  const adjustment = useInventoryAdjustment()
+  const invReturn = useInventoryReturn()
+  const invLoss = useInventoryLoss()
+  const actionSubmitting = adjustment.isPending || invReturn.isPending || invLoss.isPending
+  const isResetting = resetStock.isPending
 
   // ─── Computed: filtered products for list ──────────────────────
   const filteredProducts = useMemo(() => {
@@ -176,108 +201,26 @@ export function InventoryView() {
     )
   }, [products, dialogProductSearch])
 
-  // ─── Fetch functions ──────────────────────────────────────
-
-  const fetchLowStock = useCallback(async () => {
-    if (!storeId) return
-    setIsLoadingAlerts(true)
-    try {
-      const res = await fetch(`/api/products?storeId=${storeId}&limit=500`)
-      if (!res.ok) throw new Error()
-      const json = await res.json()
-      const allProducts: Product[] = Array.isArray(json) ? json : (json.data || [])
-      const alerts: LowStockAlert[] = allProducts
-        .filter((p) => p.currentStock <= p.minStock)
-        .map((p) => ({
-          id: p.id,
-          name: p.name,
-          currentStock: p.currentStock,
-          minStock: p.minStock,
-          salePrice: p.salePrice,
-          category: p.category?.name ?? null,
-        }))
-      setLowStockProducts(alerts)
-    } catch {
-      toast.error('Error al cargar alertas de stock')
-    } finally {
-      setIsLoadingAlerts(false)
-    }
-  }, [storeId])
-
-  const fetchMovements = useCallback(async () => {
-    if (!storeId) return
-    setIsLoadingMovements(true)
-    try {
-      const params = new URLSearchParams({ storeId: String(storeId) })
-      if (filterType !== 'ALL') params.set('type', filterType)
-      if (filterProduct !== 'ALL') params.set('productId', filterProduct)
-      const res = await fetch(`/api/inventory?${params.toString()}`)
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      setMovements(data)
-    } catch {
-      toast.error('Error al cargar movimientos')
-    } finally {
-      setIsLoadingMovements(false)
-    }
-  }, [storeId, filterType, filterProduct])
-
-  const fetchProducts = useCallback(async () => {
-    if (!storeId) return
-    setIsLoadingProducts(true)
-    try {
-      const res = await fetch(`/api/products?storeId=${storeId}&limit=500`)
-      if (!res.ok) throw new Error()
-      const json = await res.json()
-      setProducts(Array.isArray(json) ? json : (json.data || []))
-    } catch {
-      toast.error('Error al cargar productos')
-    } finally {
-      setIsLoadingProducts(false)
-    }
-  }, [storeId])
-
-  // ─── Effects ──────────────────────────────────────────────
-
-  useEffect(() => {
-    fetchLowStock()
-    fetchMovements()
-    fetchProducts()
-  }, [fetchLowStock, fetchMovements, fetchProducts])
-
-  // ─── Helpers ────────────────────────────────────────────
-
-  function refreshAll() {
-    fetchLowStock()
-    fetchMovements()
-    fetchProducts()
+  // ─── Fetch products + low stock (via TanStack Query) ──
+  // After inventory mutations, invalidate products to refresh stock values
+  function invalidateProducts() {
+    queryClient.invalidateQueries({ queryKey: ['products'] })
   }
 
   // ─── Reset Stock ────────────────────────────────────────
 
   async function handleResetStock() {
     if (!storeId) return
-    setIsResetting(true)
     try {
-      const res = await fetch('/api/inventory/reset-stock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, note: resetNote.trim() || undefined }),
+      const data = await resetStock.mutateAsync({
+        body: { storeId, note: resetNote.trim() || undefined },
       })
-      if (res.ok) {
-        const data = await res.json()
-        toast.success(data.message)
-        setShowResetDialog(false)
-        setResetNote('')
-        refreshAll()
-      } else {
-        const err = await res.json().catch(() => ({ error: 'Error' }))
-        toast.error(err.error || 'No se pudo resetear inventario')
-      }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setIsResetting(false)
+      toast.success(data.message)
+      setShowResetDialog(false)
+      setResetNote('')
+      invalidateProducts()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo resetear inventario')
     }
   }
 
@@ -333,29 +276,20 @@ export function InventoryView() {
       return
     }
 
-    setActionSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/adjustments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await adjustment.mutateAsync({
+        body: {
           storeId,
           productId: selectedProduct.id,
           quantity: finalQuantity,
           notes: adjustNotes || undefined,
-        }),
+        },
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al ajustar stock')
-      }
       toast.success('Stock ajustado correctamente')
       setActionDialogOpen(false)
-      refreshAll()
+      invalidateProducts()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al ajustar stock')
-    } finally {
-      setActionSubmitting(false)
     }
   }
 
@@ -367,29 +301,20 @@ export function InventoryView() {
       return
     }
 
-    setActionSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/returns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await invReturn.mutateAsync({
+        body: {
           storeId,
           productId: selectedProduct.id,
           quantity: qty,
           notes: returnNotes || undefined,
-        }),
+        },
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al registrar devolución')
-      }
       toast.success('Devolución registrada correctamente')
       setActionDialogOpen(false)
-      refreshAll()
+      invalidateProducts()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al registrar devolución')
-    } finally {
-      setActionSubmitting(false)
     }
   }
 
@@ -405,30 +330,21 @@ export function InventoryView() {
       return
     }
 
-    setActionSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/losses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await invLoss.mutateAsync({
+        body: {
           storeId,
           productId: selectedProduct.id,
           quantity: qty,
           reason: lossReason,
           notes: lossNotes || undefined,
-        }),
+        },
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al registrar pérdida')
-      }
       toast.success('Pérdida registrada correctamente')
       setActionDialogOpen(false)
-      refreshAll()
+      invalidateProducts()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al registrar pérdida')
-    } finally {
-      setActionSubmitting(false)
     }
   }
 

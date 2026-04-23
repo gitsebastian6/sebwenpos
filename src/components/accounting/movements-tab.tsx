@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useMovements } from '@/hooks/api/use-ledger'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -44,9 +45,6 @@ interface MovementsTabProps {
 
 export function MovementsTab({ accounts, currencyCode, initialAccountId }: MovementsTabProps) {
   const store = useAuthStore((s) => s.store)
-  const [entries, setEntries] = useState<JournalEntry[]>([])
-  const [totals, setTotals] = useState({ debits: 0, credits: 0 })
-  const [isLoadingEntries, setIsLoadingEntries] = useState(false)
   const [filterAccountId, setFilterAccountId] = useState<string>('all')
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
@@ -60,32 +58,14 @@ export function MovementsTab({ accounts, currencyCode, initialAccountId }: Movem
     }
   }, [initialAccountId])
 
-  const fetchEntries = useCallback(async () => {
-    if (!store?.id) return
-    setIsLoadingEntries(true)
-    try {
-      let url = `/api/ledger?storeId=${store.id}&type=entries`
-      if (filterAccountId && filterAccountId !== 'all') {
-        url += `&accountId=${filterAccountId}`
-      }
-      if (filterFrom) url += `&from=${filterFrom}`
-      if (filterTo) url += `&to=${filterTo}`
-      const res = await fetch(url)
-      if (res.ok) {
-        const data = await res.json()
-        setEntries(data.entries || [])
-        setTotals(data.totals || { debits: 0, credits: 0 })
-      }
-    } catch {
-      // silent fail
-    } finally {
-      setIsLoadingEntries(false)
-    }
-  }, [store?.id, filterAccountId, filterFrom, filterTo])
-
-  useEffect(() => {
-    fetchEntries()
-  }, [fetchEntries])
+  // ─── TanStack Query hook ────────────────────────────────────────────────
+  const { data: response, isLoading: isLoadingEntries, refetch: fetchEntries } = useMovements(store?.id, {
+    accountId: filterAccountId,
+    from: filterFrom || undefined,
+    to: filterTo || undefined,
+  })
+  const entries = response?.entries || []
+  const totals = response?.totals || { debits: 0, credits: 0 }
 
   function handleClearFilters() {
     setFilterAccountId('all')

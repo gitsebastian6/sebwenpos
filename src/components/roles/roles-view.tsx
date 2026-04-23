@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import {
@@ -45,20 +45,16 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
-// ─── Types ───────────────────────────────────────────────────────────────
+import {
+  useRoles,
+  useCreateRole,
+  useUpdateRole,
+  useDeleteRole,
+  type Role,
+} from '@/hooks/api/use-roles'
 
-interface Role {
-  id: number
-  storeId: number
-  name: string
-  description: string | null
-  permissions: string
-  isDefault: boolean
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-  _count: { employees: number }
-}
+// ─── Types ───────────────────────────────────────────────────────────────
+// Role type imported from @/hooks/api/use-roles
 
 // ─── Constants ───────────────────────────────────────────────────────────
 
@@ -172,9 +168,16 @@ function getPermissionCount(permissionsStr: string): number {
 export function RolesView() {
   const { store } = useAuthStore()
 
-  // ── Data state ────────────────────────────────────────────────────────
-  const [roles, setRoles] = useState<Role[]>([])
-  const [loading, setLoading] = useState(true)
+  // ── Data fetching with TanStack Query ──────────────────────────────────
+  const { data: roles = [], isLoading: loading } = useRoles(store?.id)
+
+  // ── Mutations ─────────────────────────────────────────────────────────
+  const createRoleMutation = useCreateRole()
+  const updateRoleMutation = useUpdateRole()
+  const deleteRoleMutation = useDeleteRole()
+  const saving = createRoleMutation.isPending || updateRoleMutation.isPending
+
+  // ── Local state ───────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
 
   // ── Create/Edit dialog state ──────────────────────────────────────────
@@ -184,34 +187,12 @@ export function RolesView() {
   const [formDescription, setFormDescription] = useState('')
   const [formPermissions, setFormPermissions] = useState<Record<string, boolean>>({ ...ALL_PERMISSIONS })
   const [formIsDefault, setFormIsDefault] = useState(false)
-  const [saving, setSaving] = useState(false)
 
   // ── Delete dialog state ───────────────────────────────────────────────
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deletingRole, setDeletingRole] = useState<Role | null>(null)
-  const [deleting, setDeleting] = useState(false)
+  const deleting = deleteRoleMutation.isPending
   const [deleteError, setDeleteError] = useState<string | null>(null)
-
-  // ── Data fetching ─────────────────────────────────────────────────────
-
-  const fetchRoles = useCallback(async () => {
-    if (!store?.id) return
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/roles?storeId=${store.id}`)
-      if (!res.ok) throw new Error('Error al cargar roles')
-      const data = await res.json()
-      setRoles(data)
-    } catch {
-      toast.error('Error al cargar los roles')
-    } finally {
-      setLoading(false)
-    }
-  }, [store?.id])
-
-  useEffect(() => {
-    fetchRoles()
-  }, [fetchRoles])
 
   // ── Permission helpers ────────────────────────────────────────────────
 
@@ -268,50 +249,35 @@ export function RolesView() {
       return
     }
 
-    setSaving(true)
     try {
       if (editingRole) {
         // Update
-        const res = await fetch(`/api/roles/${editingRole.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        await updateRoleMutation.mutateAsync({
+          id: editingRole.id,
+          body: {
             name: formName.trim(),
             description: formDescription.trim() || null,
             permissions: formPermissions,
             isDefault: formIsDefault,
-          }),
+          },
         })
-        if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error || 'Error al actualizar el rol')
-        }
         toast.success('Rol actualizado correctamente')
       } else {
         // Create
-        const res = await fetch('/api/roles', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        await createRoleMutation.mutateAsync({
+          body: {
             storeId: store.id,
             name: formName.trim(),
             description: formDescription.trim() || null,
             permissions: formPermissions,
             isDefault: formIsDefault,
-          }),
+          },
         })
-        if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error || 'Error al crear el rol')
-        }
         toast.success('Rol creado correctamente')
       }
       setShowFormDialog(false)
-      fetchRoles()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar el rol')
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -321,17 +287,11 @@ export function RolesView() {
     const newStatus = !role.isActive
     const action = newStatus ? 'activar' : 'desactivar'
     try {
-      const res = await fetch(`/api/roles/${role.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: newStatus }),
+      await updateRoleMutation.mutateAsync({
+        id: role.id,
+        body: { isActive: newStatus },
       })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || `Error al ${action} el rol`)
-      }
       toast.success(`Rol ${newStatus ? 'activado' : 'desactivado'}`)
-      fetchRoles()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Error al ${action} el rol`)
     }
@@ -347,27 +307,14 @@ export function RolesView() {
 
   async function handleDelete() {
     if (!deletingRole) return
-    setDeleting(true)
     setDeleteError(null)
     try {
-      const res = await fetch(`/api/roles/${deletingRole.id}`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        // Show error in dialog instead of toast
-        setDeleteError(data.error || 'Error al eliminar el rol')
-        setDeleting(false)
-        return
-      }
+      await deleteRoleMutation.mutateAsync({ id: deletingRole.id })
       toast.success('Rol eliminado correctamente')
       setShowDeleteDialog(false)
       setDeletingRole(null)
-      fetchRoles()
-    } catch {
-      setDeleteError('Error de conexión al eliminar el rol')
-    } finally {
-      setDeleting(false)
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Error de conexión al eliminar el rol')
     }
   }
 

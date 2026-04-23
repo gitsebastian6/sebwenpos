@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
-import { useCustomers } from '@/hooks/api/use-customers'
+import { useCustomers, useCreateCustomer, useUpdateCustomer, usePayCustomerDebt } from '@/hooks/api/use-customers'
+import { useOrders } from '@/hooks/api/use-orders'
 import { formatCurrency } from '@/lib/auth'
 import type { Customer, OrderHistoryEntry } from '@/types'
 import { paymentMethodLabel } from '@/lib/format'
@@ -47,20 +47,15 @@ import { format } from 'date-fns'
 import { KPIBar } from '@/components/shared/kpi-bar'
 import { es } from 'date-fns/locale'
 
-// ── Types ──────────────────────────────────────────────────────────────────
-// Customer, OrderHistoryEntry imported from @/types
-
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function CustomersView() {
   const { store } = useAuthStore()
-  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null)
-  const [historyOrders, setHistoryOrders] = useState<OrderHistoryEntry[]>([])
-  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyCustomerId, setHistoryCustomerId] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   // Form state
@@ -80,6 +75,15 @@ export function CustomersView() {
   })
   const customers = customersQuery.data?.data ?? []
   const loading = customersQuery.isLoading
+
+  const historyOrdersQuery = useOrders(store?.id, {
+    customerId: historyCustomerId ?? undefined,
+  })
+
+  // ─── Mutation hooks ──────────────────────────────────────────────────
+  const createCustomerMut = useCreateCustomer()
+  const updateCustomerMut = useUpdateCustomer()
+  const payDebtMut = usePayCustomerDebt()
 
   function openCreateDialog() {
     setEditingCustomer(null)
@@ -117,27 +121,14 @@ export function CustomersView() {
       if (formEmail.trim()) body.email = formEmail.trim()
 
       if (editingCustomer) {
-        // Update
         delete body.storeId
-        const res = await fetch(`/api/customers/${editingCustomer.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        if (!res.ok) throw new Error('Error al actualizar')
+        await updateCustomerMut.mutateAsync({ id: editingCustomer.id, body })
         toast.success('Cliente actualizado')
       } else {
-        // Create
-        const res = await fetch('/api/customers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        if (!res.ok) throw new Error('Error al crear')
+        await createCustomerMut.mutateAsync({ body })
         toast.success('Cliente creado')
       }
       setDialogOpen(false)
-      queryClient.invalidateQueries({ queryKey: ['customers'] })
     } catch {
       toast.error(editingCustomer ? 'Error al actualizar cliente' : 'Error al crear cliente')
     } finally {
@@ -145,28 +136,13 @@ export function CustomersView() {
     }
   }
 
-  async function viewOrderHistory(customer: Customer) {
+  function viewOrderHistory(customer: Customer) {
     if (!store?.id) {
       toast.error('Tienda no disponible')
       return
     }
     setHistoryCustomer(customer)
-    setHistoryOrders([])
-    setHistoryLoading(true)
-    try {
-      const params = new URLSearchParams({
-        storeId: store.id.toString(),
-        customerId: customer.id.toString(),
-      })
-      const res = await fetch(`/api/orders?${params}`)
-      if (!res.ok) throw new Error('Error')
-      const json = await res.json()
-      setHistoryOrders(Array.isArray(json) ? json : (json.data || []))
-    } catch {
-      toast.error('Error al cargar historial')
-    } finally {
-      setHistoryLoading(false)
-    }
+    setHistoryCustomerId(customer.id)
   }
 
   async function handlePayDebt(e: React.FormEvent) {
@@ -179,25 +155,18 @@ export function CustomersView() {
     }
     setPaying(true)
     try {
-      const res = await fetch(`/api/customers/${payingCustomer.id}/pay-debt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await payDebtMut.mutateAsync({
+        id: payingCustomer.id,
+        body: {
           storeId: store.id,
           amount,
           note: payNote.trim() || undefined,
-        }),
+        },
       })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al registrar abono')
-      }
-      const data = await res.json()
       toast.success(data.message)
       setPayingCustomer(null)
       setPayAmount('')
       setPayNote('')
-      queryClient.invalidateQueries({ queryKey: ['customers'] })
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al registrar abono')
     } finally {
@@ -210,6 +179,9 @@ export function CustomersView() {
     setPayAmount('')
     setPayNote('')
   }
+
+  const historyOrders = historyOrdersQuery.data?.data ?? []
+  const historyLoading = historyOrdersQuery.isLoading
 
   return (
     <div className="space-y-6">
@@ -525,7 +497,7 @@ export function CustomersView() {
       {/* ── Order History Dialog ────────────────────────────────── */}
       <Dialog
         open={!!historyCustomer}
-        onOpenChange={(open) => !open && setHistoryCustomer(null)}
+        onOpenChange={(open) => { if (!open) { setHistoryCustomer(null); setHistoryCustomerId(null) } }}
       >
         <DialogContent className="sm:max-w-2xl rounded-xl backdrop-blur-sm">
           <DialogHeader>
@@ -633,5 +605,3 @@ function StatusBadge({ status }: { status: string }) {
     </Badge>
   )
 }
-
-

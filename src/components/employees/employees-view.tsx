@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
@@ -60,51 +60,17 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
-// ─── Types ───────────────────────────────────────────────────────────────
-
-interface EmployeeUser {
-  id: number
-  cedula: string
-  fullName: string | null
-  phone: string | null
-  email: string | null
-  role: string
-  createdAt: string
-}
-
-interface EmployeeRole {
-  id: number
-  name: string
-  description: string | null
-  permissions: string
-}
-
-interface Employee {
-  id: number
-  storeId: number
-  userId: number
-  roleId: number | null
-  position: string | null
-  permissions: string
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-  user: EmployeeUser
-  role: EmployeeRole | null
-}
-
-interface Role {
-  id: number
-  storeId: number
-  name: string
-  description: string | null
-  permissions: string
-  isDefault: boolean
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-  _count: { employees: number }
-}
+import {
+  useEmployees,
+  useCreateEmployee,
+  useUpdateEmployee,
+  useDeleteEmployee,
+  type Employee,
+} from '@/hooks/api/use-employees'
+import {
+  useRoles,
+  type Role,
+} from '@/hooks/api/use-roles'
 
 // ─── Constants ───────────────────────────────────────────────────────────
 
@@ -159,11 +125,16 @@ function getRoleBadgeVariant(roleName: string | null): 'default' | 'secondary' |
 export function EmployeesView() {
   const { store } = useAuthStore()
 
-  // Data state
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [roles, setRoles] = useState<Role[]>([])
-  const [loading, setLoading] = useState(true)
-  const [rolesLoading, setRolesLoading] = useState(true)
+  // ─── Data fetching with TanStack Query ────────────────────────────────
+  const { data: employees = [], isLoading: employeesLoading } = useEmployees(store?.id)
+  const { data: allRoles = [], isLoading: rolesLoading } = useRoles(store?.id)
+  const roles = allRoles.filter((r) => r.isActive)
+
+  // ─── Mutations ───────────────────────────────────────────────────────
+  const createEmployee = useCreateEmployee()
+  const updateEmployee = useUpdateEmployee()
+  const deleteEmployee = useDeleteEmployee()
+
   const [search, setSearch] = useState('')
 
   // Create dialog state
@@ -177,7 +148,6 @@ export function EmployeesView() {
     phone: '',
     email: '',
   })
-  const [creating, setCreating] = useState(false)
 
   // Edit dialog state
   const [showEditDialog, setShowEditDialog] = useState(false)
@@ -190,50 +160,10 @@ export function EmployeesView() {
     fullName: '',
   })
   const [editActive, setEditActive] = useState(true)
-  const [saving, setSaving] = useState(false)
 
   // Delete dialog state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null)
-  const [deleting, setDeleting] = useState(false)
-
-  // ─── Data fetching ───────────────────────────────────────────────────
-
-  const fetchRoles = useCallback(async () => {
-    if (!store?.id) return
-    setRolesLoading(true)
-    try {
-      const res = await fetch(`/api/roles?storeId=${store.id}`)
-      if (!res.ok) throw new Error('Error al cargar roles')
-      const data = await res.json()
-      const activeRoles = data.filter((r: Role) => r.isActive)
-      setRoles(activeRoles)
-    } catch {
-      toast.error('Error al cargar roles')
-    } finally {
-      setRolesLoading(false)
-    }
-  }, [store?.id])
-
-  const fetchEmployees = useCallback(async () => {
-    if (!store?.id) return
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/employees?storeId=${store.id}`)
-      if (!res.ok) throw new Error('Error al cargar empleados')
-      const data = await res.json()
-      setEmployees(data)
-    } catch {
-      toast.error('Error al cargar empleados')
-    } finally {
-      setLoading(false)
-    }
-  }, [store?.id])
-
-  useEffect(() => {
-    fetchRoles()
-    fetchEmployees()
-  }, [fetchRoles, fetchEmployees])
 
   // ─── Default role ────────────────────────────────────────────────────
 
@@ -264,7 +194,6 @@ export function EmployeesView() {
       toast.error('La contraseña debe tener mínimo 6 caracteres')
       return
     }
-    setCreating(true)
     try {
       const body: Record<string, unknown> = {
         storeId: store.id,
@@ -278,23 +207,12 @@ export function EmployeesView() {
       if (roleId) {
         body.roleId = parseInt(roleId)
       }
-      const res = await fetch('/api/employees', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al crear empleado')
-      }
+      await createEmployee.mutateAsync({ body })
       toast.success('Empleado creado correctamente')
       setShowCreateDialog(false)
       resetCreateForm()
-      fetchEmployees()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al crear empleado')
-    } finally {
-      setCreating(false)
     }
   }
 
@@ -315,7 +233,6 @@ export function EmployeesView() {
 
   async function handleSaveEdit() {
     if (!editingEmployee) return
-    setSaving(true)
     try {
       const body: Record<string, unknown> = {
         position: editForm.position || null,
@@ -330,23 +247,12 @@ export function EmployeesView() {
         // Explicitly set to null to unassign role
         body.roleId = null
       }
-      const res = await fetch(`/api/employees/${editingEmployee.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al actualizar empleado')
-      }
+      await updateEmployee.mutateAsync({ id: editingEmployee.id, body })
       toast.success('Empleado actualizado correctamente')
       setShowEditDialog(false)
       setEditingEmployee(null)
-      fetchEmployees()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al actualizar empleado')
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -356,17 +262,8 @@ export function EmployeesView() {
     const newStatus = !employee.isActive
     const action = newStatus ? 'activar' : 'desactivar'
     try {
-      const res = await fetch(`/api/employees/${employee.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: newStatus }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || `Error al ${action} empleado`)
-      }
+      await updateEmployee.mutateAsync({ id: employee.id, body: { isActive: newStatus } })
       toast.success(`Empleado ${newStatus ? 'activado' : 'desactivado'}`)
-      fetchEmployees()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : `Error al ${action} empleado`)
     }
@@ -381,23 +278,13 @@ export function EmployeesView() {
 
   async function handleDelete() {
     if (!deletingEmployee) return
-    setDeleting(true)
     try {
-      const res = await fetch(`/api/employees/${deletingEmployee.id}`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al eliminar empleado')
-      }
+      await deleteEmployee.mutateAsync({ id: deletingEmployee.id })
       toast.success('Empleado eliminado correctamente')
       setShowDeleteDialog(false)
       setDeletingEmployee(null)
-      fetchEmployees()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al eliminar empleado')
-    } finally {
-      setDeleting(false)
     }
   }
 
@@ -452,7 +339,7 @@ export function EmployeesView() {
       {/* Employees Table */}
       <Card className="border-border/50 hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl">
         <CardContent className="p-0">
-          {loading ? (
+          {employeesLoading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -697,8 +584,8 @@ export function EmployeesView() {
             <Button variant="outline" onClick={() => { setShowCreateDialog(false); resetCreateForm() }} className="active:scale-[0.98] transition-all">
               Cancelar
             </Button>
-            <Button onClick={handleCreate} disabled={creating} className="active:scale-[0.98] transition-all">
-              {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            <Button onClick={handleCreate} disabled={createEmployee.isPending} className="active:scale-[0.98] transition-all">
+              {createEmployee.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Crear Empleado
             </Button>
           </DialogFooter>
@@ -871,8 +758,8 @@ export function EmployeesView() {
             <Button variant="outline" onClick={() => { setShowEditDialog(false); setEditingEmployee(null) }} className="active:scale-[0.98] transition-all">
               Cancelar
             </Button>
-            <Button onClick={handleSaveEdit} disabled={saving} className="active:scale-[0.98] transition-all">
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            <Button onClick={handleSaveEdit} disabled={updateEmployee.isPending} className="active:scale-[0.98] transition-all">
+              {updateEmployee.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Guardar Cambios
             </Button>
           </DialogFooter>
@@ -897,13 +784,13 @@ export function EmployeesView() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteEmployee.isPending}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              disabled={deleting}
+              disabled={deleteEmployee.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90 active:scale-[0.98] transition-all"
             >
-              {deleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {deleteEmployee.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>

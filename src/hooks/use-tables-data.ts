@@ -1,10 +1,23 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import { playError } from '@/lib/pos-sounds'
 import type { ProductSummary, Service as ServiceType, CategorySummary, CustomerSummary } from '@/types'
+import {
+  useTables,
+  useTableSession,
+  useCashRegisters,
+  useCreateTable,
+  useUpdateTable,
+  useDeleteTable,
+} from '@/hooks/api/use-tables'
+import { useProducts } from '@/hooks/api/use-products'
+import { useCategories } from '@/hooks/api/use-categories'
+import { useServices } from '@/hooks/api/use-services'
+import { useCustomers } from '@/hooks/api/use-customers'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -160,28 +173,14 @@ export interface OpenCashRegister {
 export function useTablesData() {
   const { store } = useAuthStore()
   const storeId = store?.id
+  const queryClient = useQueryClient()
 
-  // ── Tables state ──
-  const [tables, setTables] = useState<BarTable[]>([])
-  const [tablesLoading, setTablesLoading] = useState(true)
+  // ── Session tracking state ──
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null)
 
-  // ── Session detail state ──
-  const [session, setSession] = useState<TableSession | null>(null)
-  const [sessionLoading, setSessionLoading] = useState(false)
-
-  // ── Products / services / categories for comanda ──
-  const [products, setProducts] = useState<Product[]>([])
-  const [services, setServices] = useState<Service[]>([])
-  const [productsLoading, setProductsLoading] = useState(false)
-  const [categories, setCategories] = useState<Category[]>([])
-
-  // ── Customers ──
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [customersLoading, setCustomersLoading] = useState(false)
-
-  // ── Open cash registers ──
-  const [openCashRegisters, setOpenCashRegisters] = useState<OpenCashRegister[]>([])
-  const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('auto')
+  // ── Product search state ──
+  const [productSearchQuery, setProductSearchQuery] = useState<string>('')
+  const [productCategoryId, setProductCategoryId] = useState<string>('')
 
   // ── Table management state ──
   const [togglingTableId, setTogglingTableId] = useState<number | null>(null)
@@ -189,128 +188,122 @@ export function useTablesData() {
   const [deleteTableSaving, setDeleteTableSaving] = useState(false)
   const [addTableSaving, setAddTableSaving] = useState(false)
 
-  // ─── Data Fetching ──────────────────────────────────────────────────────
+  // ── Open cash register selection ──
+  const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('auto')
 
-  const fetchTables = useCallback(async () => {
-    if (!storeId) return
-    setTablesLoading(true)
-    try {
-      const res = await fetch(`/api/tables?storeId=${storeId}`)
-      if (!res.ok) throw new Error('Error cargando mesas')
-      const data = await res.json()
-      setTables(data)
-    } catch {
-      toast.error('Error al cargar mesas')
-    } finally {
-      setTablesLoading(false)
-    }
-  }, [storeId])
+  // ───────────── TanStack Query ────────────────────────────────────────
+
+  // Tables
+  const tablesQuery = useTables(storeId)
+  const tables = (tablesQuery.data ?? []) as BarTable[]
+  const tablesLoading = tablesQuery.isLoading
+
+  // Session (reactive — enables when activeSessionId is set)
+  const sessionQuery = useTableSession(activeSessionId)
+  const session = (sessionQuery.data ?? null) as TableSession | null
+  const sessionLoading = sessionQuery.isLoading
+
+  // Products (reactive — updates when search/categoryId changes)
+  const productsQuery = useProducts(storeId, {
+    active: 'true',
+    search: productSearchQuery || undefined,
+    categoryId: productCategoryId && productCategoryId !== 'all' ? productCategoryId : undefined,
+  })
+  const productsRaw = productsQuery.data
+  const products = Array.isArray(productsRaw)
+    ? (productsRaw as Product[])
+    : ((productsRaw as any)?.data ?? []) as Product[]
+  const productsLoading = productsQuery.isLoading
+
+  // Categories
+  const categoriesQuery = useCategories(storeId)
+  const categories = (categoriesQuery.data ?? []) as Category[]
+
+  // Services
+  const servicesQuery = useServices(storeId)
+  const servicesRaw = servicesQuery.data ?? []
+  const services = (Array.isArray(servicesRaw) ? servicesRaw : []).filter((s: Service) => s.isActive) as Service[]
+
+  // Customers
+  const customersQuery = useCustomers(storeId, { limit: 200 })
+  const customersRaw = customersQuery.data
+  const customers = Array.isArray(customersRaw)
+    ? (customersRaw as Customer[])
+    : ((customersRaw as any)?.data ?? []) as Customer[]
+  const customersLoading = customersQuery.isLoading
+
+  // Cash registers
+  const cashRegQuery = useCashRegisters(storeId)
+  const cashRegData = cashRegQuery.data
+  const shifts = cashRegData?.shifts ?? []
+  const openCashRegisters = shifts.map(
+    (s: any) => ({
+      id: s.shift.id,
+      user: s.shift.user,
+      openingBalance: s.shift.openingBalance,
+    }) as OpenCashRegister
+  )
+
+  // ───────────── Mutations ─────────────────────────────────────────────
+
+  const createTableMutation = useCreateTable()
+  const updateTableMutation = useUpdateTable()
+  const deleteTableMutation = useDeleteTable()
+
+  // ───────────── Imperative fetch functions (backward compat) ──────────
+
+  const fetchTables = useCallback(() => {
+    tablesQuery.refetch()
+  }, [tablesQuery])
 
   const fetchSession = useCallback(async (sessionId: number) => {
-    setSessionLoading(true)
+    setActiveSessionId(sessionId)
+    // Prefetch and await so the caller can await the data
     try {
-      const res = await fetch(`/api/tables/sessions/${sessionId}`)
-      if (!res.ok) throw new Error('Error cargando sesión')
-      const data = await res.json()
-      setSession(data)
+      await queryClient.ensureQueryData({
+        queryKey: ['table-session', sessionId],
+        queryFn: async () => {
+          const res = await fetch(`/api/tables/sessions/${sessionId}`)
+          if (!res.ok) throw new Error('Error cargando sesión')
+          return res.json()
+        },
+        staleTime: 5_000,
+      })
     } catch {
       toast.error('Error al cargar la sesión')
-    } finally {
-      setSessionLoading(false)
+    }
+  }, [queryClient])
+
+  const setSession = useCallback((s: TableSession | null) => {
+    if (s) {
+      setActiveSessionId(s.id)
+    } else {
+      setActiveSessionId(null)
     }
   }, [])
 
-  const fetchCustomers = useCallback(async () => {
-    if (!storeId) return
-    setCustomersLoading(true)
-    try {
-      const res = await fetch(`/api/customers?storeId=${storeId}`)
-      if (!res.ok) throw new Error('Error')
-      const json = await res.json()
-      setCustomers(Array.isArray(json) ? json : (json.data || []))
-    } catch {
-      // silently fail - customers are optional
-    } finally {
-      setCustomersLoading(false)
-    }
-  }, [storeId])
+  const fetchCustomers = useCallback(() => {
+    customersQuery.refetch()
+  }, [customersQuery])
 
-  const fetchProducts = useCallback(async (query?: string, categoryId?: string) => {
-    if (!storeId) return
-    setProductsLoading(true)
-    try {
-      const params = new URLSearchParams({
-        storeId: String(storeId),
-        active: 'true',
-      })
-      if (query) params.set('q', query)
-      if (categoryId && categoryId !== 'all') params.set('categoryId', categoryId)
-      const res = await fetch(`/api/products?${params.toString()}`)
-      if (!res.ok) throw new Error('Error')
-      const json = await res.json()
-      setProducts(Array.isArray(json) ? json : (json.data || []))
-    } catch {
-      toast.error('Error al cargar productos')
-    } finally {
-      setProductsLoading(false)
-    }
-  }, [storeId])
+  const fetchProducts = useCallback((query?: string, categoryId?: string) => {
+    setProductSearchQuery(query ?? '')
+    setProductCategoryId(categoryId ?? '')
+  }, [])
 
-  const fetchCategories = useCallback(async () => {
-    if (!storeId) return
-    try {
-      const res = await fetch(`/api/categories?storeId=${storeId}`)
-      if (!res.ok) throw new Error('Error')
-      const data = await res.json()
-      setCategories(data)
-    } catch {
-      // silently fail
-    }
-  }, [storeId])
+  const fetchCategories = useCallback(() => {
+    categoriesQuery.refetch()
+  }, [categoriesQuery])
 
-  const fetchServices = useCallback(async () => {
-    if (!storeId) return
-    try {
-      const res = await fetch(`/api/services?storeId=${storeId}`)
-      if (!res.ok) throw new Error('Error')
-      const data = await res.json()
-      setServices(data.filter((s: Service) => s.isActive))
-    } catch {
-      // silently fail
-    }
-  }, [storeId])
+  const fetchServices = useCallback(() => {
+    servicesQuery.refetch()
+  }, [servicesQuery])
 
-  const fetchOpenCashRegisters = useCallback(async () => {
-    if (!storeId) return
-    try {
-      const res = await fetch(`/api/cash-register/current?storeId=${storeId}`)
-      if (res.ok) {
-        const data = await res.json()
-        const shifts = data.shifts || []
-        setOpenCashRegisters(shifts.map((s: { shift: { id: number; user: { fullName: string | null }; openedAt: string; openingBalance: number } }) => ({
-          id: s.shift.id,
-          user: s.shift.user,
-          openingBalance: s.shift.openingBalance,
-        })))
-      }
-    } catch { /* silent */ }
-  }, [storeId])
+  const fetchOpenCashRegisters = useCallback(() => {
+    cashRegQuery.refetch()
+  }, [cashRegQuery])
 
-  // ─── Effects ──────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    fetchTables()
-  }, [fetchTables])
-
-  useEffect(() => {
-    fetchCategories()
-  }, [fetchCategories])
-
-  useEffect(() => {
-    fetchOpenCashRegisters()
-  }, [fetchOpenCashRegisters])
-
-  // ─── Table Management ─────────────────────────────────────────────────
+  // ───────────── Table Management ──────────────────────────────────────
 
   async function handleToggleTableActive(table: BarTable, e: React.MouseEvent) {
     e.stopPropagation()
@@ -320,17 +313,8 @@ export function useTablesData() {
     }
     setTogglingTableId(table.id)
     try {
-      const res = await fetch(`/api/tables/${table.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !table.isActive }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al actualizar mesa')
-      }
+      await updateTableMutation.mutateAsync({ id: table.id, isActive: !table.isActive })
       toast.success(table.isActive ? 'Mesa desactivada' : 'Mesa activada')
-      fetchTables()
     } catch (err) {
       playError()
       toast.error(err instanceof Error ? err.message : 'Error al actualizar mesa')
@@ -343,15 +327,8 @@ export function useTablesData() {
     if (!deletingTableId) return
     setDeleteTableSaving(true)
     try {
-      const res = await fetch(`/api/tables/${deletingTableId}`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al eliminar mesa')
-      }
+      await deleteTableMutation.mutateAsync(deletingTableId)
       toast.success('Mesa eliminada exitosamente')
-      fetchTables()
     } catch (err) {
       playError()
       toast.error(err instanceof Error ? err.message : 'Error al eliminar mesa')
@@ -390,19 +367,8 @@ export function useTablesData() {
         body.name = input.name.trim()
       }
 
-      const res = await fetch('/api/tables', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al crear mesa')
-      }
-
+      await createTableMutation.mutateAsync(body)
       toast.success('Mesa creada exitosamente')
-      fetchTables()
       return true
     } catch (err) {
       playError()

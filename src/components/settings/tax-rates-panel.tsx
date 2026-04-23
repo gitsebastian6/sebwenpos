@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
+import { useTaxes, useCreateTax, useUpdateTax, useDeleteTax } from '@/hooks/api/use-taxes'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -76,11 +77,8 @@ export const APPLY_TO_LABELS: Record<string, string> = {
 
 export function TaxRatesPanel() {
   const { store } = useAuthStore()
-  const [taxRates, setTaxRates] = useState<TaxRate[]>([])
-  const [loadingTaxes, setLoadingTaxes] = useState(false)
   const [showTaxDialog, setShowTaxDialog] = useState(false)
   const [editingTax, setEditingTax] = useState<TaxRate | null>(null)
-  const [savingTax, setSavingTax] = useState(false)
   const [deletingTaxId, setDeletingTaxId] = useState<number | null>(null)
 
   // ── Tax form state ──
@@ -94,25 +92,14 @@ export function TaxRatesPanel() {
   const [taxIsActive, setTaxIsActive] = useState(true)
   const [taxDescription, setTaxDescription] = useState('')
 
-  // ── Fetch tax rates ──
-  const fetchTaxRates = useCallback(async () => {
-    if (!store?.id) return
-    setLoadingTaxes(true)
-    try {
-      const res = await fetch(`/api/taxes?storeId=${store.id}`)
-      if (!res.ok) throw new Error('Error al cargar impuestos')
-      const data = await res.json()
-      setTaxRates(data)
-    } catch {
-      toast.error('Error al cargar las tarifas de impuesto')
-    } finally {
-      setLoadingTaxes(false)
-    }
-  }, [store?.id])
+  // ── Query hooks ──
+  const { data: taxRates = [], isLoading: loadingTaxes } = useTaxes(store?.id)
 
-  useEffect(() => {
-    fetchTaxRates()
-  }, [fetchTaxRates])
+  // ── Mutation hooks ──
+  const createTax = useCreateTax()
+  const updateTax = useUpdateTax()
+  const deleteTax = useDeleteTax()
+  const savingTax = createTax.isPending || updateTax.isPending || deleteTax.isPending
 
   // ── Reset tax form ──
   function resetTaxForm() {
@@ -155,14 +142,12 @@ export function TaxRatesPanel() {
       toast.error('El nombre del impuesto es obligatorio')
       return
     }
-    setSavingTax(true)
     try {
       if (editingTax) {
         // Update
-        const res = await fetch(`/api/taxes/${editingTax.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        await updateTax.mutateAsync({
+          id: editingTax.id,
+          body: {
             name: taxName,
             code: taxCode,
             rateType: taxRateType,
@@ -172,19 +157,13 @@ export function TaxRatesPanel() {
             isDefault: taxIsDefault,
             isActive: taxIsActive,
             description: taxDescription || null,
-          }),
+          },
         })
-        if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error || 'Error al actualizar')
-        }
         toast.success('Tarifa de impuesto actualizada')
       } else {
         // Create
-        const res = await fetch('/api/taxes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        await createTax.mutateAsync({
+          body: {
             storeId: store.id,
             name: taxName,
             code: taxCode,
@@ -195,51 +174,36 @@ export function TaxRatesPanel() {
             isDefault: taxIsDefault,
             isActive: taxIsActive,
             description: taxDescription || null,
-          }),
+          },
         })
-        if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error || 'Error al crear')
-        }
         toast.success('Tarifa de impuesto creada')
       }
       setShowTaxDialog(false)
       resetTaxForm()
-      fetchTaxRates()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar el impuesto')
-    } finally {
-      setSavingTax(false)
     }
   }
 
   // ── Toggle tax active ──
   async function handleToggleTaxActive(tax: TaxRate) {
     try {
-      const res = await fetch(`/api/taxes/${tax.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !tax.isActive }),
+      await updateTax.mutateAsync({
+        id: tax.id,
+        body: { isActive: !tax.isActive },
       })
-      if (!res.ok) throw new Error('Error al cambiar estado')
       toast.success(tax.isActive ? 'Impuesto desactivado' : 'Impuesto activado')
-      fetchTaxRates()
-    } catch {
-      toast.error('Error al cambiar el estado del impuesto')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al cambiar el estado del impuesto')
     }
   }
 
   // ── Delete tax rate ──
   async function handleDeleteTax(id: number) {
     try {
-      const res = await fetch(`/api/taxes/${id}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al eliminar')
-      }
+      await deleteTax.mutateAsync({ id })
       toast.success('Tarifa de impuesto eliminada')
       setDeletingTaxId(null)
-      fetchTaxRates()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al eliminar el impuesto')
       setDeletingTaxId(null)

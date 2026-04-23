@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useAccounts } from '@/hooks/api/use-ledger'
 import {
   Wallet,
   ArrowRightLeft,
@@ -19,6 +19,7 @@ import { SummaryTab } from './summary-tab'
 import { ReportsTab } from './reports-tab'
 import { CashRegisterTab } from './cash-register-tab'
 import { ExpensesTab } from './expenses-tab'
+import { useQueryClient } from '@tanstack/react-query'
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -27,34 +28,20 @@ export function AccountingView() {
   const currencyCode = store?.currencyCode || 'COP'
   const [activeTab, setActiveTab] = useState('cuentas')
 
-  // Shared state
-  const [accounts, setAccounts] = useState<LedgerAccount[]>([])
-  const [isLoadingAccounts, setIsLoadingAccounts] = useState(true)
+  // ─── Shared state ───────────────────────────────────────────────────────
   const [movementsFilterAccount, setMovementsFilterAccount] = useState<number | null>(null)
 
   // Track if movements tab has consumed the filter to avoid infinite re-triggers
   const movementsFilterConsumed = useRef(false)
 
-  // ─── Fetch accounts ──────────────────────────────────────────────────────
+  // ─── TanStack Query hooks ──────────────────────────────────────────────
+  const { data: accounts = [], isLoading: isLoadingAccounts, refetch: fetchAccounts } = useAccounts(store?.id)
+  const queryClient = useQueryClient()
 
-  const fetchAccounts = useCallback(async () => {
-    if (!store?.id) return
-    setIsLoadingAccounts(true)
-    try {
-      const res = await fetch(`/api/ledger?storeId=${store.id}&type=accounts`)
-      if (res.ok) {
-        const data = await res.json()
-        setAccounts(data.accounts || [])
-      }
-    } catch {
-      // silent fail
-    } finally {
-      setIsLoadingAccounts(false)
-    }
-  }, [store?.id])
-
-  // Fetch accounts on mount
-  fetchAccounts()
+  const handleAccountsChanged = () => {
+    queryClient.invalidateQueries({ queryKey: ['accounts'] })
+    fetchAccounts()
+  }
 
   // ─── Cross-tab navigation ────────────────────────────────────────────────
 
@@ -131,7 +118,7 @@ export function AccountingView() {
           <ReportsTab
             accounts={accounts}
             currencyCode={currencyCode}
-            onAccountsChanged={fetchAccounts}
+            onAccountsChanged={handleAccountsChanged}
           />
         </TabsContent>
 
@@ -146,7 +133,7 @@ export function AccountingView() {
         <TabsContent value="gastos">
           <ExpensesTab
             currencyCode={currencyCode}
-            onAccountsChanged={fetchAccounts}
+            onAccountsChanged={handleAccountsChanged}
           />
         </TabsContent>
       </Tabs>

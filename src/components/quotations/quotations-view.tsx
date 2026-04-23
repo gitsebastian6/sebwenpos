@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import type { TaxBreakdownEntry } from '@/types'
-import { formatCOP, paymentMethodLabel } from '@/lib/format'
+import { formatCOP } from '@/lib/format'
 import { toast } from 'sonner'
 import {
   Plus, Search, Eye, Pencil, ArrowRightLeft, XCircle, Printer,
@@ -39,6 +39,9 @@ import {
 import { Calendar } from '@/components/ui/calendar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
+import { useQuotations, useQuotationDetail, useCreateQuotation, useUpdateQuotation, useConvertQuotation } from '@/hooks/api/use-quotations'
+import { useProducts } from '@/hooks/api/use-products'
+import { useCreateInvoice } from '@/hooks/api/use-invoices'
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -139,10 +142,79 @@ export function QuotationsView() {
   const store = useAuthStore((s) => s.store)
 
   // List state
-  const [quotations, setQuotations] = useState<QuotationListItem[]>([])
-  const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [searchQuery, setSearchQuery] = useState('')
+
+  // ─── TanStack Query hooks ──────────────────────
+  const quotationsQuery = useQuotations(store?.id, { q: searchQuery, status: statusFilter })
+
+  // Product search with debounce
+  const [productSearch, setProductSearch] = useState('')
+  const [debouncedProductSearch, setDebouncedProductSearch] = useState('')
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const productsSearchQuery = useProducts(store?.id, { search: debouncedProductSearch, active: 'true' })
+
+  useEffect(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    if (productSearch.trim()) {
+      searchTimeoutRef.current = setTimeout(() => {
+        setDebouncedProductSearch(productSearch)
+      }, 300)
+    } else {
+      setDebouncedProductSearch('')
+    }
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    }
+  }, [productSearch])
+
+  // Detail query
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [pendingConvert, setPendingConvert] = useState(false)
+  const detailQuery = useQuotationDetail(selectedId, store?.id)
+
+  // Mutation hooks
+  const createQuotationMut = useCreateQuotation()
+  const updateQuotationMut = useUpdateQuotation()
+  const convertQuotationMut = useConvertQuotation()
+  const createInvoiceMut = useCreateInvoice()
+
+  // ─── Derived state ──────────────────────────────
+  const quotations = useMemo(() => {
+    const data = quotationsQuery.data ?? []
+    const now = new Date()
+    return data.map(q => {
+      if (q.status === 'ACTIVE' && q.validUntil && isAfter(now, parseISO(q.validUntil))) {
+        return { ...q, status: 'EXPIRED' }
+      }
+      return q
+    })
+  }, [quotationsQuery.data])
+  const loading = quotationsQuery.isLoading
+
+  const searchResults = useMemo(() => {
+    if (!debouncedProductSearch.trim()) return []
+    return (productsSearchQuery.data?.data ?? []).slice(0, 15) as ProductSearchResult[]
+  }, [debouncedProductSearch, productsSearchQuery.data])
+  const searchingProducts = !!debouncedProductSearch.trim() && productsSearchQuery.isFetching
+
+  // Enrich detail with expired check
+  const detail = useMemo(() => {
+    if (!detailQuery.data) return null
+    const d = detailQuery.data
+    if (d.status === 'ACTIVE' && d.validUntil && isAfter(new Date(), parseISO(d.validUntil))) {
+      return { ...d, status: 'EXPIRED' }
+    }
+    return d
+  }, [detailQuery.data])
+  const loadingDetail = detailQuery.isLoading
+
+  const saving = createQuotationMut.isPending
+  const converting = convertQuotationMut.isPending
+  const creatingInvoice = createInvoiceMut.isPending
+
+  // Detail error handling
+  const [showDetail, setShowDetail] = useState(false)
 
   // Create dialog
   const [showCreate, setShowCreate] = useState(false)
@@ -154,26 +226,14 @@ export function QuotationsView() {
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerAddress, setCustomerAddress] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
-  const [productSearch, setProductSearch] = useState('')
-  const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([])
-  const [searchingProducts, setSearchingProducts] = useState(false)
   const [discountType, setDiscountType] = useState<'NONE' | 'PERCENTAGE' | 'FIXED'>('NONE')
   const [discountAmount, setDiscountAmount] = useState('0')
   const [validUntil, setValidUntil] = useState<Date | undefined>(undefined)
   const [quotationNotes, setQuotationNotes] = useState('')
-  const [saving, setSaving] = useState(false)
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  // Detail dialog
-  const [showDetail, setShowDetail] = useState(false)
-  const [detail, setDetail] = useState<QuotationDetail | null>(null)
-  const [loadingDetail, setLoadingDetail] = useState(false)
 
   // Convert dialog
   const [showConvert, setShowConvert] = useState(false)
   const [convertMethod, setConvertMethod] = useState('')
-  const [converting, setConverting] = useState(false)
-  const [convertingQuotation, setConvertingQuotation] = useState<QuotationDetail | null>(null)
 
   // ── Invoice mode ──
   const isEInvEnabled = !!store?.invoiceEnabled && !!store?.nit
@@ -184,74 +244,33 @@ export function QuotationsView() {
   const [invoiceCustomerName, setInvoiceCustomerName] = useState('')
   const [invoiceCustomerEmail, setInvoiceCustomerEmail] = useState('')
   const [nitDvError, setNitDvError] = useState('')
-  const [creatingInvoice, setCreatingInvoice] = useState(false)
 
   // Print ref
   const printRef = useRef<HTMLDivElement>(null)
 
-  // ─── Fetch quotations ────────────────────────────
-
-  const fetchQuotations = useCallback(async () => {
-    if (!store) return
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ storeId: store.id.toString() })
-      if (statusFilter !== 'ALL') params.set('status', statusFilter)
-      if (searchQuery.trim()) params.set('q', searchQuery.trim())
-      const res = await fetch(`/api/quotations?${params}`)
-      if (!res.ok) throw new Error('Error al cargar cotizaciones')
-      const data = await res.json()
-      // Mark expired quotations
-      const now = new Date()
-      const enriched = data.map((q: QuotationListItem) => {
-        if (q.status === 'ACTIVE' && q.validUntil && isAfter(now, parseISO(q.validUntil))) {
-          return { ...q, status: 'EXPIRED' }
-        }
-        return q
-      })
-      setQuotations(enriched)
-    } catch {
-      toast.error('Error al cargar cotizaciones')
-    } finally {
-      setLoading(false)
-    }
-  }, [store, statusFilter, searchQuery])
+  // ─── Effects ────────────────────────────────────
 
   useEffect(() => {
-    fetchQuotations()
-  }, [fetchQuotations])
-
-  // ─── Product search ──────────────────────────────
-
-  const searchProducts = useCallback(async (query: string) => {
-    if (!store || !query.trim()) {
-      setSearchResults([])
-      return
+    if (showDetail && detailQuery.isError && !pendingConvert) {
+      toast.error('Error al cargar detalle')
+      setShowDetail(false)
+      setSelectedId(null)
     }
-    setSearchingProducts(true)
-    try {
-      const params = new URLSearchParams({ storeId: store.id.toString(), q: query.trim(), active: 'true' })
-      const res = await fetch(`/api/products?${params}`)
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      const results = Array.isArray(data) ? data : (data.data || [])
-      setSearchResults(results.slice(0, 15))
-    } catch {
-      setSearchResults([])
-    } finally {
-      setSearchingProducts(false)
-    }
-  }, [store])
+  }, [showDetail, detailQuery.isError, pendingConvert])
 
+  // Auto-open convert dialog when detail loads for pending convert
   useEffect(() => {
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
-    searchTimeoutRef.current = setTimeout(() => {
-      searchProducts(productSearch)
-    }, 300)
-    return () => {
-      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    if (pendingConvert && detail && !detailQuery.isLoading) {
+      setPendingConvert(false)
+      setConvertMethod('')
+      setConvertInvoiceMode('TIRILLA')
+      setInvoiceCustomerNit('')
+      setInvoiceCustomerName('')
+      setInvoiceCustomerEmail('')
+      setNitDvError('')
+      setShowConvert(true)
     }
-  }, [productSearch, searchProducts])
+  }, [pendingConvert, detail, detailQuery.isLoading])
 
   // ─── Cart operations ─────────────────────────────
 
@@ -269,7 +288,6 @@ export function QuotationsView() {
       }])
     }
     setProductSearch('')
-    setSearchResults([])
   }
 
   const updateCartQty = (productId: number, delta: number) => {
@@ -307,7 +325,6 @@ export function QuotationsView() {
   const handleCreateQuotation = async () => {
     if (!store || cart.length === 0) return
 
-    setSaving(true)
     try {
       const body = {
         storeId: store.id,
@@ -327,26 +344,12 @@ export function QuotationsView() {
         notes: quotationNotes || undefined,
       }
 
-      const res = await fetch('/api/quotations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al crear cotización')
-      }
-
-      const data = await res.json()
+      const data = await createQuotationMut.mutateAsync({ body })
       toast.success(`Cotización ${data.quotationNumber} creada exitosamente`)
       resetCreateForm()
       setShowCreate(false)
-      fetchQuotations()
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al crear cotización')
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -360,34 +363,17 @@ export function QuotationsView() {
     setCustomerAddress('')
     setCart([])
     setProductSearch('')
-    setSearchResults([])
     setDiscountType('NONE')
     setDiscountAmount('0')
     setValidUntil(undefined)
     setQuotationNotes('')
   }
 
-  // ─── Fetch detail ────────────────────────────────
+  // ─── Open detail ──────────────────────────────────
 
-  const openDetail = async (id: number) => {
-    if (!store) return
-    setLoadingDetail(true)
+  const openDetail = (id: number) => {
+    setSelectedId(id)
     setShowDetail(true)
-    try {
-      const res = await fetch(`/api/quotations/${id}?storeId=${store.id}`)
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      // Check if expired
-      if (data.status === 'ACTIVE' && data.validUntil && isAfter(new Date(), parseISO(data.validUntil))) {
-        data.status = 'EXPIRED'
-      }
-      setDetail(data)
-    } catch {
-      toast.error('Error al cargar detalle')
-      setShowDetail(false)
-    } finally {
-      setLoadingDetail(false)
-    }
   }
 
   // ─── Cancel quotation ────────────────────────────
@@ -395,18 +381,10 @@ export function QuotationsView() {
   const handleCancel = async (id: number) => {
     if (!store) return
     try {
-      const res = await fetch(`/api/quotations/${id}?storeId=${store.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId: store.id, status: 'CANCELLED' }),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al cancelar')
-      }
+      await updateQuotationMut.mutateAsync({ id, body: { storeId: store.id, status: 'CANCELLED' } })
       toast.success('Cotización cancelada')
       setShowDetail(false)
-      fetchQuotations()
+      setSelectedId(null)
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al cancelar')
     }
@@ -414,8 +392,7 @@ export function QuotationsView() {
 
   // ─── Convert to order ────────────────────────────
 
-  const openConvertDialog = (quotation: QuotationDetail) => {
-    setConvertingQuotation(quotation)
+  const openConvertDialog = () => {
     setConvertMethod('')
     setConvertInvoiceMode('TIRILLA')
     setInvoiceCustomerNit('')
@@ -426,25 +403,17 @@ export function QuotationsView() {
   }
 
   const handleConvert = async () => {
-    if (!store || !convertingQuotation || !convertMethod) return
-    setConverting(true)
+    if (!store || !detail || !convertMethod) return
     try {
-      const res = await fetch(`/api/quotations/${convertingQuotation.id}/convert`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId: store.id, paymentMethod: convertMethod }),
+      const convertResult = await convertQuotationMut.mutateAsync({
+        id: detail.id,
+        body: { storeId: store.id, paymentMethod: convertMethod },
       })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al convertir')
-      }
-      const convertResult = await res.json()
       toast.success(convertResult.message, { description: `Orden: ${convertResult.orderNumber} — ${cop(convertResult.total)}` })
 
       // ── Auto-create electronic invoice if selected ──
       if (convertInvoiceMode === 'ELECTRONICA' && isEInvEnabled && convertResult?.orderId) {
         try {
-          setCreatingInvoice(true)
           const finalNit = invoiceCustomerNit.trim().replace(/[^0-9]/g, '') || DIAN_CONSUMIDOR_FINAL_NIT
           const finalName = invoiceCustomerName.trim() || 'Consumidor Final'
           const finalEmail = invoiceCustomerEmail.trim() || undefined
@@ -458,33 +427,19 @@ export function QuotationsView() {
           }
           if (finalEmail) invBody.customerEmail = finalEmail
 
-          const invRes = await fetch('/api/invoices', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(invBody),
-          })
-          if (invRes.ok) {
-            const invoiceData = await invRes.json()
-            toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, { duration: 5000 })
-          } else {
-            const err = await invRes.json().catch(() => ({}))
-            toast.error(`Error al generar factura: ${err.error || 'Desconocido'}`, { duration: 6000 })
-          }
-        } catch {
-          toast.error('Error al generar factura electrónica')
-        } finally {
-          setCreatingInvoice(false)
+          const invoiceData = await createInvoiceMut.mutateAsync({ body: invBody })
+          toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, { duration: 5000 })
+        } catch (invErr: unknown) {
+          const msg = invErr instanceof Error ? invErr.message : 'Error al generar factura'
+          toast.error(`Error al generar factura: ${msg}`, { duration: 6000 })
         }
       }
 
       setShowConvert(false)
       setShowDetail(false)
-      setConvertingQuotation(null)
-      fetchQuotations()
+      setSelectedId(null)
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al convertir')
-    } finally {
-      setConverting(false)
     }
   }
 
@@ -665,19 +620,9 @@ export function QuotationsView() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8 text-amber-600 hover:text-amber-700"
-                                onClick={async () => {
-                                  if (!store) return
-                                  setLoadingDetail(true)
-                                  try {
-                                    const res = await fetch(`/api/quotations/${q.id}?storeId=${store.id}`)
-                                    if (!res.ok) throw new Error()
-                                    const data = await res.json()
-                                    openConvertDialog(data)
-                                  } catch {
-                                    toast.error('Error al cargar cotización')
-                                  } finally {
-                                    setLoadingDetail(false)
-                                  }
+                                onClick={() => {
+                                  setSelectedId(q.id)
+                                  setPendingConvert(true)
                                 }}
                                 aria-label="Convertir a venta"
                               >
@@ -1298,7 +1243,7 @@ export function QuotationsView() {
                       <Printer className="h-4 w-4" />
                       Imprimir
                     </Button>
-                    <Button variant="outline" className="gap-2" onClick={() => openConvertDialog(detail)}>
+                    <Button variant="outline" className="gap-2" onClick={() => openConvertDialog()}>
                       <ArrowRightLeft className="h-4 w-4" />
                       Convertir a Venta
                     </Button>
@@ -1327,12 +1272,12 @@ export function QuotationsView() {
       {/* ════════════════════════════════════════════════
           CONVERT DIALOG
       ════════════════════════════════════════════════ */}
-      <Dialog open={showConvert} onOpenChange={(open) => { if (!open) { setShowConvert(false); setConvertingQuotation(null); setConvertMethod('') } }}>
+      <Dialog open={showConvert} onOpenChange={(open) => { if (!open) { setShowConvert(false); setSelectedId(null); setConvertMethod('') } }}>
         <DialogContent className="sm:max-w-md rounded-xl">
           <DialogHeader>
             <DialogTitle>Convertir a Venta</DialogTitle>
             <DialogDescription>
-              Se creará una orden de venta con los productos de la cotización {convertingQuotation?.quotationNumber}
+              Se creará una orden de venta con los productos de la cotización {detail?.quotationNumber}
             </DialogDescription>
           </DialogHeader>
 
@@ -1347,7 +1292,7 @@ export function QuotationsView() {
             <div className="space-y-1.5">
               <Label>Total de la cotización</Label>
               <div className="text-2xl font-bold text-emerald-600">
-                {convertingQuotation ? cop(convertingQuotation.total) : ''}
+                {detail ? cop(detail.total) : ''}
               </div>
             </div>
 
@@ -1486,10 +1431,10 @@ export function QuotationsView() {
             </div>
 
             {/* Summary */}
-            {convertingQuotation && (
+            {detail && (
               <div className="rounded-lg border p-3 text-sm space-y-1 max-h-40 overflow-y-auto">
-                <div className="font-semibold mb-2">Productos ({convertingQuotation.items.length})</div>
-                {convertingQuotation.items.map((item) => (
+                <div className="font-semibold mb-2">Productos ({detail.items.length})</div>
+                {detail.items.map((item) => (
                   <div key={item.id} className="flex justify-between">
                     <span className="truncate mr-2">
                       {item.productName} ×{item.quantity}
@@ -1502,7 +1447,7 @@ export function QuotationsView() {
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button variant="outline" onClick={() => { setShowConvert(false); setConvertingQuotation(null); setConvertMethod('') }} disabled={converting || creatingInvoice}>
+            <Button variant="outline" onClick={() => { setShowConvert(false); setSelectedId(null); setConvertMethod('') }} disabled={converting || creatingInvoice}>
               Cancelar
             </Button>
             <Button onClick={handleConvert} disabled={!convertMethod || converting || creatingInvoice} className="gap-2">

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useComandaAddItem, useComandaUpdateItem } from '@/hooks/api/use-tables'
 import { formatCurrency } from '@/lib/auth'
 import { paymentMethodLabel } from '@/lib/format'
 import { playAlert, playError } from '@/lib/pos-sounds'
@@ -109,13 +110,15 @@ export function ComandaPanel({
   canServe,
   canPay,
   selectedPendingItems,
-  fetchSession,
   fetchProducts,
-  fetchTables,
   onOpenPayment,
   onCloseSession,
 }: ComandaPanelProps) {
   const { store } = useAuthStore()
+
+  // ── TanStack Query mutations ──
+  const comandaAddItem = useComandaAddItem()
+  const comandaUpdateItem = useComandaUpdateItem()
 
   // ── Comanda notes editing ──
   const [notesPopoverItemId, setNotesPopoverItemId] = useState<number | null>(null)
@@ -167,25 +170,15 @@ export function ComandaPanel({
         itemPayload.notes = pendingItemNotes.trim()
       }
 
-      const res = await fetch(`/api/tables/sessions/${session.id}/comanda`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId: store.id,
-          items: [itemPayload],
-        }),
+      await comandaAddItem.mutateAsync({
+        sessionId: session.id,
+        storeId: store.id,
+        items: [itemPayload],
       })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Error al agregar item')
-      }
 
       playAlert()
       toast.success('Item agregado a la comanda')
       setPendingItemNotes('')
-      await fetchSession(session.id)
-      fetchTables()
     } catch (err) {
       playError()
       toast.error(err instanceof Error ? err.message : 'Error al agregar item')
@@ -198,18 +191,13 @@ export function ComandaPanel({
     if (!session) return
     setSavingNotes(true)
     try {
-      const res = await fetch(`/api/tables/sessions/${session.id}/comanda`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemIds: [itemId], notes }),
+      await comandaUpdateItem.mutateAsync({
+        sessionId: session.id,
+        itemIds: [itemId],
+        notes,
       })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al actualizar nota')
-      }
       toast.success('Nota actualizada')
       setNotesPopoverItemId(null)
-      await fetchSession(session.id)
     } catch (err) {
       playError()
       toast.error(err instanceof Error ? err.message : 'Error al actualizar nota')
@@ -222,19 +210,13 @@ export function ComandaPanel({
     if (!session || itemIds.length === 0) return
     setServingItemIds(itemIds)
     try {
-      const res = await fetch(`/api/tables/sessions/${session.id}/comanda`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemIds, status: 'SERVED' }),
+      await comandaUpdateItem.mutateAsync({
+        sessionId: session.id,
+        itemIds,
+        status: 'SERVED',
       })
 
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al marcar como servido')
-      }
-
       toast.success(`${itemIds.length} item${itemIds.length > 1 ? 's' : ''} marcado${itemIds.length > 1 ? 's' : ''} como servido`)
-      await fetchSession(session.id)
     } catch (err) {
       playError()
       toast.error(err instanceof Error ? err.message : 'Error al marcar como servido')
@@ -247,17 +229,12 @@ export function ComandaPanel({
     if (!session || itemIds.length === 0) return
     setServingItemIds(itemIds)
     try {
-      const res = await fetch(`/api/tables/sessions/${session.id}/comanda`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemIds, status: 'CANCELLED' }),
+      await comandaUpdateItem.mutateAsync({
+        sessionId: session.id,
+        itemIds,
+        status: 'CANCELLED',
       })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al cancelar item')
-      }
       toast.success(`${itemIds.length} item${itemIds.length > 1 ? 's' : ''} cancelado${itemIds.length > 1 ? 's' : ''}`)
-      await fetchSession(session.id)
     } catch (err) {
       playError()
       toast.error(err instanceof Error ? err.message : 'Error al cancelar item')
@@ -270,17 +247,11 @@ export function ComandaPanel({
     if (!session || newQuantity < 1) return
     setUpdatingQtyItemId(itemId)
     try {
-      const res = await fetch(`/api/tables/sessions/${session.id}/comanda`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemIds: [itemId], quantity: newQuantity }),
+      await comandaUpdateItem.mutateAsync({
+        sessionId: session.id,
+        itemIds: [itemId],
+        quantity: newQuantity,
       })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al actualizar cantidad')
-      }
-      await fetchSession(session.id)
-      fetchTables()
     } catch (err) {
       playError()
       toast.error(err instanceof Error ? err.message : 'Error al actualizar cantidad')

@@ -1,7 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useQuery } from '@tanstack/react-query'
+import { unwrapArray } from '@/hooks/api/query-helpers'
+import { useInformes, useExportPdf } from '@/hooks/api/use-reports'
 import { formatCurrency } from '@/lib/auth'
 import { KPIBar } from '@/components/shared/kpi-bar'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -87,12 +90,6 @@ export function ReportsView() {
   const [from, setFrom] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0])
   const [to, setTo] = useState(now.toISOString().split('T')[0])
   const [tab, setTab] = useState('cifras')
-  const [data, setData] = useState<ReportsData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  // Products for dialogs
-  const [products, setProducts] = useState<ReportProduct[]>([])
 
   // Trazabilidad filter
   const [trazFilter, setTrazFilter] = useState<string>('ALL')
@@ -100,30 +97,23 @@ export function ReportsView() {
   // Ref for inventory dialogs
   const dialogsRef = useRef<InventoryDialogsHandle>(null)
 
-  const fetchReports = useCallback(async () => {
-    if (!store) return
-    try {
-      setLoading(true); setError(null)
-      const res = await fetch(`/api/reports/informes?storeId=${store.id}&from=${from}&to=${to}`)
-      if (!res.ok) throw new Error('Error al cargar informes')
-      setData(await res.json())
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)) }
-    finally { setLoading(false) }
-  }, [store, from, to])
+  // ─── TanStack Query hooks ───────────────────────────────────────────────
+  const { data: rawData, isLoading: loading, error: queryError, refetch: fetchReports } = useInformes(store?.id, from, to)
+  const data = rawData as ReportsData | undefined
 
-  const fetchProducts = useCallback(async () => {
-    if (!store) return
-    try {
-      const res = await fetch(`/api/products?storeId=${store.id}`)
-      if (res.ok) {
-        const json = await res.json()
-        setProducts(Array.isArray(json) ? json : (json.data || []))
-      }
-    } catch { /* ignore */ }
-  }, [store])
+  const { data: productsData, refetch: fetchProducts } = useQuery<ReportProduct[]>({
+    queryKey: ['products-for-reports', store?.id],
+    queryFn: async () => {
+      return unwrapArray<ReportProduct>(
+        await fetch(`/api/products?storeId=${store?.id}`)
+      )
+    },
+    enabled: !!store?.id,
+    staleTime: 120_000,
+  })
+  const products = productsData ?? []
 
-  useEffect(() => { fetchReports() }, [fetchReports])
-  useEffect(() => { fetchProducts() }, [fetchProducts])
+  const exportPdf = useExportPdf()
 
   const quickRange = (range: 'today' | 'week' | 'month') => {
     const d = new Date()
@@ -163,48 +153,44 @@ export function ReportsView() {
     toast.success('Reporte exportado a Excel')
   }
 
-  const handleExportPDF = async () => {
+  const handleExportPDF = () => {
     const exportData = getExportData(tab, data!, [])
     if (!exportData) {
       toast.error('No hay datos para exportar en esta pestaña')
       return
     }
     const label = tabLabelMap[tab] || tab
-    try {
-      const res = await fetch('/api/reports/export-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeName,
-          title: `Reporte: ${label}`,
-          subtitle: dateRangeStr,
-          headers: exportData.headers,
-          rows: exportData.rows,
-          columnAligns: exportData.columnAligns,
-        }),
-      })
-      if (!res.ok) throw new Error('Error generando PDF')
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${label}_${from}_${to}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      toast.success('Reporte exportado a PDF')
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Error al exportar PDF')
-    }
+    exportPdf.mutate({
+      storeName,
+      title: `Reporte: ${label}`,
+      subtitle: dateRangeStr,
+      headers: exportData.headers,
+      rows: exportData.rows,
+      columnAligns: exportData.columnAligns,
+    }, {
+      onSuccess: (blob) => {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${label}_${from}_${to}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        toast.success('Reporte exportado a PDF')
+      },
+      onError: (e) => {
+        toast.error(e instanceof Error ? e.message : 'Error al exportar PDF')
+      },
+    })
   }
 
   if (loading) return <LoadingSkeleton />
-  if (error) return (
+  if (queryError) return (
     <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-destructive/50"><CardContent className="p-6 flex flex-col items-center gap-3">
       <AlertTriangle className="h-8 w-8 text-destructive" />
-      <p className="font-semibold text-sm">{error}</p>
-      <Button className="active:scale-[0.98] transition-all" onClick={fetchReports} size="sm" variant="outline"><RefreshCw className="h-3 w-3 mr-1" />Reintentar</Button>
+      <p className="font-semibold text-sm">{queryError.message}</p>
+      <Button className="active:scale-[0.98] transition-all" onClick={() => fetchReports()} size="sm" variant="outline"><RefreshCw className="h-3 w-3 mr-1" />Reintentar</Button>
     </CardContent></Card>
   )
   if (!data) return null
@@ -238,7 +224,7 @@ export function ReportsView() {
               <label className="text-xs font-medium text-muted-foreground">Hasta:</label>
               <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="h-8 w-36 text-xs" />
             </div>
-            <Button className="active:scale-[0.98] transition-all" onClick={fetchReports} size="sm"><RefreshCw className="h-3 w-3 mr-1" />Actualizar</Button>
+            <Button className="active:scale-[0.98] transition-all" onClick={() => fetchReports()} size="sm"><RefreshCw className="h-3 w-3 mr-1" />Actualizar</Button>
             <div className="flex items-center gap-1">
               <Button variant="outline" size="sm" className="h-7 text-xs gap-1 active:scale-[0.98] transition-all" onClick={handleExportPDF} title="Exportar PDF">
                 <Download className="h-3 w-3" /><span className="hidden sm:inline">PDF</span>

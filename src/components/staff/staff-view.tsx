@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,38 +24,18 @@ import {
   KeyRound,
 } from 'lucide-react'
 
-// ── Types ──────────────────────────────────────────
-interface StaffUser {
-  id: number
-  phone: string
-  email: string | null
-  fullName: string | null
-  cedula: string | null
-  documentType: string | null
-  role: string
-  roleId: number | null
-  isActive: boolean
-  createdAt: string
-  roleName: string | null
-  permissions: Record<string, boolean> | null
-}
-
-interface StaffRole {
-  id: number
-  name: string
-  description: string | null
-  permissions: Record<string, boolean>
-  isActive: boolean
-  isDefault: boolean
-  createdAt: string
-  userCount: number
-}
-
-interface StaffData {
-  users: StaffUser[]
-  roles: StaffRole[]
-  stats: { totalUsers: number; activeUsers: number; totalRoles: number }
-}
+import {
+  useStaff,
+  useCreateUser,
+  useUpdateUser,
+  useDeleteUser,
+  useUpdateRoleName,
+  useCreateRole,
+  useDeleteRole,
+  useResetUserPassword,
+  type StaffUser,
+  type StaffRole,
+} from '@/hooks/api/use-staff'
 
 // ── Module definitions ─────────────────────────────
 const MODULE_GROUPS = [
@@ -153,9 +133,19 @@ export function StaffView() {
   const { store } = useAuthStore()
   const storeId = store?.id
 
-  const [data, setData] = useState<StaffData | null>(null)
-  const [loading, setLoading] = useState(true)
+  // ─── Data fetching with TanStack Query ────────────────────────────────
+  const { data, isLoading: loading } = useStaff(storeId)
+
   const [search, setSearch] = useState('')
+
+  // ─── Mutations ───────────────────────────────────────────────────────
+  const createUserMutation = useCreateUser()
+  const updateUserMutation = useUpdateUser()
+  const deleteUserMutation = useDeleteUser()
+  const updateRoleNameMutation = useUpdateRoleName()
+  const createRoleMutation = useCreateRole()
+  const deleteRoleMutation = useDeleteRole()
+  const resetPasswordMutation = useResetUserPassword()
 
   // Employee dialog
   const [showEmployeeDialog, setShowEmployeeDialog] = useState(false)
@@ -169,7 +159,6 @@ export function StaffView() {
     password: '',
     roleId: '' as string,
   })
-  const [empSaving, setEmpSaving] = useState(false)
 
   // Role dialog
   const [showRoleDialog, setShowRoleDialog] = useState(false)
@@ -180,32 +169,11 @@ export function StaffView() {
     permissions: {} as Record<string, boolean>,
     isDefault: false,
   })
-  const [roleSaving, setRoleSaving] = useState(false)
 
   // Reset password dialog
   const [showResetPwdDialog, setShowResetPwdDialog] = useState(false)
   const [resetPwdUser, setResetPwdUser] = useState<StaffUser | null>(null)
   const [newPassword, setNewPassword] = useState('')
-  const [resetPwdSaving, setResetPwdSaving] = useState(false)
-
-  const fetchStaff = useCallback(async () => {
-    if (!storeId) return
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/staff?storeId=${storeId}`)
-      if (!res.ok) throw new Error('Error al cargar datos')
-      const json = await res.json()
-      setData(json)
-    } catch {
-      toast.error('Error al cargar datos del personal')
-    } finally {
-      setLoading(false)
-    }
-  }, [storeId])
-
-  useEffect(() => {
-    fetchStaff()
-  }, [fetchStaff])
 
   // ── Employee CRUD ───────────────────────────────
   function openAddEmployee() {
@@ -234,7 +202,6 @@ export function StaffView() {
     if (!editingEmployee && (!empForm.cedula.trim() || empForm.cedula.length < 5)) { toast.error('Número de documento mínimo 5 dígitos (usuario de login)'); return }
     if (!editingEmployee && empForm.password.length < 6) { toast.error('Contraseña mínimo 6 caracteres'); return }
 
-    setEmpSaving(true)
     try {
       if (editingEmployee) {
         const body: Record<string, unknown> = {
@@ -245,18 +212,11 @@ export function StaffView() {
           documentType: empForm.documentType,
           roleId: empForm.roleId ? parseInt(empForm.roleId) : null,
         }
-        const res = await fetch(`/api/users?userId=${editingEmployee.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Error al actualizar'); return }
+        await updateUserMutation.mutateAsync({ userId: editingEmployee.id, body })
         toast.success('Empleado actualizado')
       } else {
-        const res = await fetch('/api/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        await createUserMutation.mutateAsync({
+          body: {
             storeId,
             phone: empForm.phone,
             password: empForm.password,
@@ -265,45 +225,33 @@ export function StaffView() {
             cedula: empForm.cedula || null,
             documentType: empForm.documentType,
             roleId: empForm.roleId ? parseInt(empForm.roleId) : null,
-          }),
+          },
         })
-        if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Error al crear'); return }
         toast.success('Empleado creado exitosamente')
       }
       setShowEmployeeDialog(false)
-      fetchStaff()
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setEmpSaving(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión')
     }
   }
 
   async function toggleEmployeeActive(emp: StaffUser) {
     if (emp.role === 'OWNER') { toast.error('No se puede desactivar al propietario'); return }
     try {
-      const res = await fetch(`/api/users?userId=${emp.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !emp.isActive }),
-      })
-      if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Error'); return }
+      await updateUserMutation.mutateAsync({ userId: emp.id, body: { isActive: !emp.isActive } })
       toast.success(emp.isActive ? 'Empleado desactivado' : 'Empleado activado')
-      fetchStaff()
-    } catch {
-      toast.error('Error de conexión')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error')
     }
   }
 
   async function deleteEmployee(emp: StaffUser) {
     if (emp.role === 'OWNER') { toast.error('No se puede eliminar al propietario'); return }
     try {
-      const res = await fetch(`/api/users/${emp.id}`, { method: 'DELETE' })
-      if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Error al eliminar'); return }
+      await deleteUserMutation.mutateAsync({ id: emp.id })
       toast.success('Empleado eliminado')
-      fetchStaff()
-    } catch {
-      toast.error('Error de conexión')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al eliminar')
     }
   }
 
@@ -346,42 +294,26 @@ export function StaffView() {
     if (!storeId) return
     if (!roleForm.name.trim()) { toast.error('El nombre del rol es requerido'); return }
 
-    setRoleSaving(true)
     try {
       if (editingRole) {
-        const res = await fetch(`/api/roles/${editingRole.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(roleForm),
-        })
-        if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Error al actualizar'); return }
+        await updateRoleNameMutation.mutateAsync({ id: editingRole.id, body: roleForm })
         toast.success('Rol actualizado')
       } else {
-        const res = await fetch('/api/roles', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ storeId, ...roleForm }),
-        })
-        if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Error al crear'); return }
+        await createRoleMutation.mutateAsync({ body: { storeId, ...roleForm } })
         toast.success('Rol creado exitosamente')
       }
       setShowRoleDialog(false)
-      fetchStaff()
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setRoleSaving(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión')
     }
   }
 
   async function deleteRole(role: StaffRole) {
     try {
-      const res = await fetch(`/api/roles/${role.id}`, { method: 'DELETE' })
-      if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Error al eliminar'); return }
+      await deleteRoleMutation.mutateAsync({ id: role.id })
       toast.success('Rol eliminado')
-      fetchStaff()
-    } catch {
-      toast.error('Error de conexión')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al eliminar')
     }
   }
 
@@ -396,20 +328,12 @@ export function StaffView() {
     if (!resetPwdUser) return
     if (newPassword.length < 6) { toast.error('La contraseña debe tener al menos 6 caracteres'); return }
 
-    setResetPwdSaving(true)
     try {
-      const res = await fetch(`/api/users/${resetPwdUser.id}/reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newPassword }),
-      })
-      if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Error al cambiar contraseña'); return }
+      await resetPasswordMutation.mutateAsync({ id: resetPwdUser.id, body: { newPassword } })
       toast.success(`Contraseña de ${resetPwdUser.fullName || resetPwdUser.phone} actualizada`)
       setShowResetPwdDialog(false)
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setResetPwdSaving(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al cambiar contraseña')
     }
   }
 
@@ -653,9 +577,6 @@ export function StaffView() {
               const alreadyExists = data?.roles.some(
                 r => r.name.toLowerCase() === name.toLowerCase()
               )
-              const existingRole = data?.roles.find(
-                r => r.name.toLowerCase() === name.toLowerCase()
-              )
               return (
                 <Button
                   key={name}
@@ -896,8 +817,8 @@ export function StaffView() {
             <Button variant="outline" onClick={() => setShowEmployeeDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={saveEmployee} disabled={empSaving} className="gap-2">
-              {empSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Button onClick={saveEmployee} disabled={createUserMutation.isPending || updateUserMutation.isPending} className="gap-2">
+              {(createUserMutation.isPending || updateUserMutation.isPending) && <Loader2 className="h-4 w-4 animate-spin" />}
               {editingEmployee ? 'Guardar Cambios' : 'Crear Empleado y Habilitar Login'}
             </Button>
           </DialogFooter>
@@ -1005,8 +926,8 @@ export function StaffView() {
             <Button variant="outline" onClick={() => setShowRoleDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={saveRole} disabled={roleSaving} className="gap-2">
-              {roleSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Button onClick={saveRole} disabled={createRoleMutation.isPending || updateRoleNameMutation.isPending} className="gap-2">
+              {(createRoleMutation.isPending || updateRoleNameMutation.isPending) && <Loader2 className="h-4 w-4 animate-spin" />}
               {editingRole ? 'Guardar Cambios' : 'Crear Rol'}
             </Button>
           </DialogFooter>
@@ -1051,8 +972,8 @@ export function StaffView() {
             <Button variant="outline" onClick={() => setShowResetPwdDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleResetPassword} disabled={resetPwdSaving || newPassword.length < 6} className="gap-2">
-              {resetPwdSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Button onClick={handleResetPassword} disabled={resetPasswordMutation.isPending || newPassword.length < 6} className="gap-2">
+              {resetPasswordMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               <KeyRound className="h-4 w-4" />
               Actualizar Contraseña
             </Button>

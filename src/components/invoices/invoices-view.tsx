@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useInvoices, useInvoiceDetail, useResolutionStatus, useCreateInvoice, useSendInvoice, useEmailInvoice, useInvoicePdf, useInvoiceStatus } from '@/hooks/api/use-invoices'
+import { useOrders } from '@/hooks/api/use-orders'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NITInput } from '@/components/ui/nit-input'
@@ -81,11 +83,6 @@ import { es } from 'date-fns/locale'
 import { formatCOP } from '@/lib/format'
 
 // ── Constants ───────────────────────────────────────────────────────────────
-
-// Helper: get store ID from auth store (no hardcoded values)
-function getStoreId(store: { id: number } | null): string {
-  return store?.id?.toString() || ''
-}
 
 const STATUS_BADGES: Record<string, { label: string; className: string }> = {
   DRAFT: { label: 'Borrador', className: 'bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300 border-slate-200 dark:border-slate-700' },
@@ -210,10 +207,9 @@ interface ResolutionStatus {
 
 export function InvoicesView() {
   const { store } = useAuthStore()
+  const storeIdNum = store?.id
 
-  // ── List state ──
-  const [invoices, setInvoices] = useState<InvoiceSummary[]>([])
-  const [loading, setLoading] = useState(true)
+  // ── Filter state ──
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [dateFrom, setDateFrom] = useState('')
@@ -221,18 +217,13 @@ export function InvoicesView() {
 
   // ── Detail dialog ──
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null)
-  const [invoiceDetail, setInvoiceDetail] = useState<InvoiceDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
 
   // ── Create dialog ──
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [createStep, setCreateStep] = useState<1 | 2>(1)
-  const [availableOrders, setAvailableOrders] = useState<OrderForInvoice[]>([])
-  const [ordersLoading, setOrdersLoading] = useState(false)
   const [ordersSearch, setOrdersSearch] = useState('')
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<OrderForInvoice | null>(null)
-  const [creating, setCreating] = useState(false)
 
   // ── Create form ──
   const [formNit, setFormNit] = useState(DIAN_CONSUMIDOR_FINAL_NIT)
@@ -243,12 +234,61 @@ export function InvoicesView() {
   const [formContingencyType, setFormContingencyType] = useState('01')
   const [isConsumidorFinal, setIsConsumidorFinal] = useState(true)
 
-  // ── Action loading ──
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  // ── Query hooks ──
+  const invoicesQuery = useInvoices(storeIdNum, {
+    status: statusFilter !== 'ALL' ? statusFilter : undefined,
+    from: dateFrom || undefined,
+    to: dateTo || undefined,
+    q: search.trim() || undefined,
+  })
 
-  // ── Resolution status ──
-  const [resolutionStatus, setResolutionStatus] = useState<ResolutionStatus | null>(null)
-  const [resolutionLoading, setResolutionLoading] = useState(false)
+  const resolutionQuery = useResolutionStatus(storeIdNum)
+  const detailQuery = useInvoiceDetail(selectedInvoiceId, storeIdNum)
+
+  const thirtyDaysAgo = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 30)
+    return d.toISOString().slice(0, 10)
+  }, [])
+
+  const ordersQuery = useOrders(storeIdNum, {
+    status: 'COMPLETED',
+    from: thirtyDaysAgo,
+  })
+
+  // All invoices (for filtering already-invoiced orders in create dialog)
+  const allInvoicesQuery = useInvoices(storeIdNum, {})
+
+  // ── Mutation hooks ──
+  const createInvoiceMutation = useCreateInvoice()
+  const sendInvoiceMutation = useSendInvoice()
+  const emailInvoiceMutation = useEmailInvoice()
+  const pdfMutation = useInvoicePdf()
+  const statusMutation = useInvoiceStatus()
+
+  // ── Derived data ──
+  const invoices = useMemo<InvoiceSummary[]>(() => {
+    if (!invoicesQuery.data) return []
+    return Array.isArray(invoicesQuery.data) ? invoicesQuery.data : (invoicesQuery.data.data || [])
+  }, [invoicesQuery.data])
+
+  const resolutionStatus: ResolutionStatus | null = resolutionQuery.data ?? null
+
+  const invoiceDetail: InvoiceDetail | null = detailQuery.data ?? null
+
+  const availableOrders = useMemo<OrderForInvoice[]>(() => {
+    if (!showCreateDialog || !ordersQuery.data) return []
+    const orders: OrderForInvoice[] = Array.isArray(ordersQuery.data) ? ordersQuery.data : (ordersQuery.data.data || [])
+    const allInv = allInvoicesQuery.data
+    if (allInv) {
+      const existingInvoices: InvoiceSummary[] = Array.isArray(allInv) ? allInv : (allInv.data || [])
+      const invoicedOrderIds = new Set(existingInvoices.map(inv => inv.orderNumber).filter(Boolean))
+      return orders.filter(o => !invoicedOrderIds.has(o.orderNumber))
+    }
+    return orders
+  }, [ordersQuery.data, allInvoicesQuery.data, showCreateDialog])
+
+  const ordersLoading = showCreateDialog && (ordersQuery.isPending || allInvoicesQuery.isPending)
 
   // ── KPIs ──
   const kpis = useMemo(() => {
@@ -258,71 +298,13 @@ export function InvoicesView() {
     return { total, validated, pending }
   }, [invoices])
 
-  // ── Fetch invoices ──
-  const storeId = getStoreId(store)
-  const fetchInvoices = useCallback(async () => {
-    if (!storeId) return
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ storeId })
-      if (statusFilter !== 'ALL') params.set('status', statusFilter)
-      if (dateFrom) params.set('from', dateFrom)
-      if (dateTo) params.set('to', dateTo)
-      if (search.trim()) params.set('q', search.trim())
-      const res = await fetch(`/api/invoices?${params}`)
-      if (!res.ok) throw new Error()
-      const json = await res.json()
-      setInvoices(Array.isArray(json) ? json : (json.data || []))
-    } catch {
-      toast.error('Error al cargar facturas')
-    } finally {
-      setLoading(false)
-    }
-  }, [statusFilter, dateFrom, dateTo, search, storeId])
-
-  useEffect(() => {
-    if (!storeId) return
-    const timer = setTimeout(() => fetchInvoices(), 300)
-    return () => clearTimeout(timer)
-  }, [fetchInvoices, storeId])
-
-  // ── Fetch resolution status ──
-  const fetchResolutionStatus = useCallback(async () => {
-    setResolutionLoading(true)
-    try {
-      const res = await fetch(`/api/invoices/resolution-status?storeId=${storeId}`)
-      if (!res.ok) throw new Error()
-      setResolutionStatus(await res.json())
-    } catch {
-      // Resolution status is optional, don't show error
-    } finally {
-      setResolutionLoading(false)
-    }
-  }, [storeId])
-
-  useEffect(() => {
-    if (!storeId) return
-    fetchResolutionStatus()
-  }, [fetchResolutionStatus, storeId])
-
-  // ── Open detail dialog ──
-  async function openDetail(invoiceId: number) {
+  // ── Action helpers ──
+  function openDetail(invoiceId: number) {
     setSelectedInvoiceId(invoiceId)
-    setInvoiceDetail(null)
-    setDetailLoading(true)
-    try {
-      const res = await fetch(`/api/invoices/${invoiceId}?storeId=${storeId}`)
-      if (!res.ok) throw new Error()
-      setInvoiceDetail(await res.json())
-    } catch {
-      toast.error('Error al cargar el detalle de la factura')
-    } finally {
-      setDetailLoading(false)
-    }
   }
 
   // ── Open create dialog ──
-  async function openCreateDialog() {
+  function openCreateDialog() {
     setShowCreateDialog(true)
     setCreateStep(1)
     setSelectedOrderId(null)
@@ -335,35 +317,6 @@ export function InvoicesView() {
     setFormNotes('')
     setFormContingencyType('01')
     setIsConsumidorFinal(true)
-    setOrdersLoading(true)
-    try {
-      const from = new Date()
-      from.setDate(from.getDate() - 30)
-      const params = new URLSearchParams({
-        storeId,
-        status: 'COMPLETED',
-        from: from.toISOString().slice(0, 10),
-      })
-      const res = await fetch(`/api/orders?${params}`)
-      if (!res.ok) throw new Error()
-      const ordersJson = await res.json()
-      const orders: OrderForInvoice[] = Array.isArray(ordersJson) ? ordersJson : (ordersJson.data || [])
-      // Filter out orders that already have invoices
-      const invoiceRes = await fetch(`/api/invoices?storeId=${storeId}&status=ALL`)
-      if (invoiceRes.ok) {
-        const invJson = await invoiceRes.json()
-        const existingInvoices: InvoiceSummary[] = Array.isArray(invJson) ? invJson : (invJson.data || [])
-        const invoicedOrderIds = new Set(existingInvoices.map(inv => inv.orderNumber).filter(Boolean))
-        const filtered = orders.filter(o => !invoicedOrderIds.has(o.orderNumber))
-        setAvailableOrders(filtered)
-      } else {
-        setAvailableOrders(orders)
-      }
-    } catch {
-      toast.error('Error al cargar órdenes disponibles')
-    } finally {
-      setOrdersLoading(false)
-    }
   }
 
   // ── Select order for invoice ──
@@ -377,12 +330,9 @@ export function InvoicesView() {
   // ── Create invoice ──
   async function handleCreateInvoice() {
     if (!selectedOrderId) return
-    setCreating(true)
     try {
-      const res = await fetch(`/api/invoices`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await createInvoiceMutation.mutateAsync({
+        body: {
           orderId: selectedOrderId,
           customerNit: formNit,
           customerName: formName,
@@ -391,30 +341,20 @@ export function InvoicesView() {
           notes: formNotes || undefined,
           testMode: true,
           invoiceType: formContingencyType,
-        }),
+        },
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al crear factura')
-      }
-      const data = await res.json()
       toast.success(`Factura ${data.invoiceNumber} creada exitosamente`)
       setShowCreateDialog(false)
-      fetchInvoices()
-      fetchResolutionStatus()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al crear factura')
-    } finally {
-      setCreating(false)
     }
   }
 
   // ── Actions ──
-  async function handlePrintInvoice(invoiceId: number, invoiceNumber?: string) {
+  async function handlePrintInvoice(invoiceId: number) {
+    if (!storeIdNum) return
     try {
-      const res = await fetch(`/api/invoices/${invoiceId}/pdf?storeId=${storeId}`)
-      if (!res.ok) throw new Error('Error al generar PDF')
-      const blob = await res.blob()
+      const blob = await pdfMutation.mutateAsync({ id: invoiceId, storeId: storeIdNum })
       const url = window.URL.createObjectURL(blob)
       const printWindow = window.open(url, '_blank')
       if (printWindow) {
@@ -430,12 +370,10 @@ export function InvoicesView() {
   }
 
   async function handleAction(action: string, invoiceId: number, invoiceNumber?: string) {
-    setActionLoading(action)
+    if (!storeIdNum) return
     try {
       if (action === 'pdf') {
-        const res = await fetch(`/api/invoices/${invoiceId}/pdf?storeId=${storeId}`)
-        if (!res.ok) throw new Error('Error al generar PDF')
-        const blob = await res.blob()
+        const blob = await pdfMutation.mutateAsync({ id: invoiceId, storeId: storeIdNum })
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
@@ -444,28 +382,17 @@ export function InvoicesView() {
         window.URL.revokeObjectURL(url)
         toast.success('PDF descargado')
       } else if (action === 'send') {
-        const res = await fetch(`/api/invoices/${invoiceId}/send?storeId=${storeId}`, { method: 'POST' })
-        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Error al enviar') }
+        await sendInvoiceMutation.mutateAsync({ id: invoiceId, storeId: storeIdNum })
         toast.success('Factura enviada a DIAN')
-        fetchInvoices()
-        if (selectedInvoiceId === invoiceId) openDetail(invoiceId)
       } else if (action === 'status') {
-        const res = await fetch(`/api/invoices/${invoiceId}/status?storeId=${storeId}`)
-        if (!res.ok) throw new Error('Error al consultar estado')
-        const data = await res.json()
+        const data = await statusMutation.mutateAsync({ id: invoiceId, storeId: storeIdNum })
         toast.success(`Estado DIAN: ${data.dianStatus || data.status || 'Consultado'}`)
-        if (selectedInvoiceId === invoiceId) openDetail(invoiceId)
-        fetchInvoices()
       } else if (action === 'email') {
-        const res = await fetch(`/api/invoices/${invoiceId}/email?storeId=${storeId}`, { method: 'POST' })
-        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Error al enviar email') }
+        await emailInvoiceMutation.mutateAsync({ id: invoiceId, storeId: storeIdNum })
         toast.success('Factura enviada por email')
-        if (selectedInvoiceId === invoiceId) openDetail(invoiceId)
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error en la acción')
-    } finally {
-      setActionLoading(null)
     }
   }
 
@@ -506,7 +433,7 @@ export function InvoicesView() {
           <div>
             <h2 className="text-xl font-semibold">Facturación Electrónica</h2>
             <p className="text-sm text-muted-foreground">
-              {loading ? '...' : `Gestión de facturas electrónicas DIAN`}
+              {invoicesQuery.isPending ? '...' : `Gestión de facturas electrónicas DIAN`}
             </p>
           </div>
         </div>
@@ -592,7 +519,7 @@ export function InvoicesView() {
       {/* ── Invoices Table ─────────────────────────────── */}
       <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
         <CardContent className="p-0">
-          {loading ? (
+          {invoicesQuery.isPending ? (
             <div className="p-4 space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-14 w-full rounded-md" />
@@ -669,39 +596,39 @@ export function InvoicesView() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleAction('pdf', inv.id, inv.invoiceNumber)}
-                              disabled={actionLoading === `pdf-${inv.id}`}
+                              disabled={pdfMutation.isPending}
                               className="gap-2"
                             >
-                              {actionLoading === `pdf-${inv.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                              {pdfMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                               Generar PDF
                             </DropdownMenuItem>
                             {(inv.status === 'DRAFT' || inv.status === 'REJECTED') && (
                               <DropdownMenuItem
                                 onClick={() => handleAction('send', inv.id, inv.invoiceNumber)}
-                                disabled={actionLoading === `send-${inv.id}`}
+                                disabled={sendInvoiceMutation.isPending}
                                 className="gap-2"
                               >
-                                {actionLoading === `send-${inv.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                {sendInvoiceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                                 Enviar a DIAN
                               </DropdownMenuItem>
                             )}
                             {inv.status === 'PENDING_VALIDATE' && (
                               <DropdownMenuItem
                                 onClick={() => handleAction('status', inv.id, inv.invoiceNumber)}
-                                disabled={actionLoading === `status-${inv.id}`}
+                                disabled={statusMutation.isPending}
                                 className="gap-2"
                               >
-                                {actionLoading === `status-${inv.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                {statusMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                                 Consultar Estado
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => handleAction('email', inv.id, inv.invoiceNumber)}
-                              disabled={actionLoading === `email-${inv.id}`}
+                              disabled={emailInvoiceMutation.isPending}
                               className="gap-2"
                             >
-                              {actionLoading === `email-${inv.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                              {emailInvoiceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
                               Enviar por Email
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -725,7 +652,7 @@ export function InvoicesView() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {resolutionLoading ? (
+          {resolutionQuery.isPending ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-48" />
               <Skeleton className="h-3 w-64" />
@@ -980,8 +907,8 @@ export function InvoicesView() {
               {createStep === 1 ? 'Cancelar' : 'Atrás'}
             </Button>
             {createStep === 2 && (
-              <Button onClick={handleCreateInvoice} disabled={creating || !formNit.trim() || !formName.trim()}>
-                {creating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creando...</> : <><Plus className="h-4 w-4 mr-2" />Crear Factura</>}
+              <Button onClick={handleCreateInvoice} disabled={createInvoiceMutation.isPending || !formNit.trim() || !formName.trim()}>
+                {createInvoiceMutation.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creando...</> : <><Plus className="h-4 w-4 mr-2" />Crear Factura</>}
               </Button>
             )}
           </DialogFooter>
@@ -989,7 +916,7 @@ export function InvoicesView() {
       </Dialog>
 
       {/* ── Invoice Detail Dialog ──────────────────────── */}
-      <Dialog open={!!selectedInvoiceId} onOpenChange={(open) => { if (!open) { setSelectedInvoiceId(null); setInvoiceDetail(null) } }}>
+      <Dialog open={!!selectedInvoiceId} onOpenChange={(open) => { if (!open) { setSelectedInvoiceId(null) } }}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1003,7 +930,7 @@ export function InvoicesView() {
             </DialogDescription>
           </DialogHeader>
 
-          {detailLoading ? (
+          {detailQuery.isPending ? (
             <div className="space-y-4 p-2">
               {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-md" />)}
             </div>
@@ -1291,25 +1218,25 @@ export function InvoicesView() {
                   <Printer className="h-4 w-4" />
                   Imprimir
                 </Button>
-                <Button onClick={() => handleAction('pdf', invoiceDetail.id, invoiceDetail.invoiceNumber)} disabled={actionLoading === `pdf-${invoiceDetail.id}`} variant="outline" className="gap-2">
-                  {actionLoading === `pdf-${invoiceDetail.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <Button onClick={() => handleAction('pdf', invoiceDetail.id, invoiceDetail.invoiceNumber)} disabled={pdfMutation.isPending} variant="outline" className="gap-2">
+                  {pdfMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   Descargar PDF
                 </Button>
                 {(invoiceDetail.status === 'DRAFT' || invoiceDetail.status === 'REJECTED') && (
-                  <Button onClick={() => handleAction('send', invoiceDetail.id, invoiceDetail.invoiceNumber)} disabled={actionLoading === `send-${invoiceDetail.id}`} variant="outline" className="gap-2">
-                    {actionLoading === `send-${invoiceDetail.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  <Button onClick={() => handleAction('send', invoiceDetail.id, invoiceDetail.invoiceNumber)} disabled={sendInvoiceMutation.isPending} variant="outline" className="gap-2">
+                    {sendInvoiceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     Enviar a DIAN
                   </Button>
                 )}
                 {invoiceDetail.customerEmail && (invoiceDetail.status === 'VALIDATED' || invoiceDetail.status === 'DELIVERED') && (
-                  <Button onClick={() => handleAction('email', invoiceDetail.id, invoiceDetail.invoiceNumber)} disabled={actionLoading === `email-${invoiceDetail.id}`} variant="outline" className="gap-2">
-                    {actionLoading === `email-${invoiceDetail.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                  <Button onClick={() => handleAction('email', invoiceDetail.id, invoiceDetail.invoiceNumber)} disabled={emailInvoiceMutation.isPending} variant="outline" className="gap-2">
+                    {emailInvoiceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
                     Enviar por Email
                   </Button>
                 )}
                 {invoiceDetail.status === 'PENDING_VALIDATE' && (
-                  <Button onClick={() => handleAction('status', invoiceDetail.id, invoiceDetail.invoiceNumber)} disabled={actionLoading === `status-${invoiceDetail.id}`} variant="outline" className="gap-2">
-                    {actionLoading === `status-${invoiceDetail.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  <Button onClick={() => handleAction('status', invoiceDetail.id, invoiceDetail.invoiceNumber)} disabled={statusMutation.isPending} variant="outline" className="gap-2">
+                    {statusMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                     Consultar Estado DIAN
                   </Button>
                 )}
@@ -1343,5 +1270,3 @@ function ResolutionStatusBadge({ status }: { status: string }) {
   const s = map[status] || { label: status || 'Desconocido', className: 'bg-muted text-muted-foreground border-border' }
   return <Badge variant="outline" className={`text-xs ${s.className}`}>{s.label}</Badge>
 }
-
-

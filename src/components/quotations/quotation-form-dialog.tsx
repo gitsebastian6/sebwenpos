@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import type { StoreInfo } from '@/stores/auth-store'
 import type { CartItem, ProductSearchResult, DiscountType } from './quotation-types'
 import { formatCOP } from '@/lib/format'
@@ -34,6 +34,8 @@ import {
 } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useProducts } from '@/hooks/api/use-products'
+import { useCreateQuotation } from '@/hooks/api/use-quotations'
 
 const cop = formatCOP
 
@@ -59,8 +61,6 @@ export function QuotationFormDialog({ open, onOpenChange, store, onCreated }: Qu
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([])
   const [productSearch, setProductSearch] = useState('')
-  const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([])
-  const [searchingProducts, setSearchingProducts] = useState(false)
 
   // Discount & options
   const [discountType, setDiscountType] = useState<DiscountType>('NONE')
@@ -68,41 +68,32 @@ export function QuotationFormDialog({ open, onOpenChange, store, onCreated }: Qu
   const [validUntil, setValidUntil] = useState<Date | undefined>(undefined)
   const [quotationNotes, setQuotationNotes] = useState('')
 
-  // Submit state
-  const [saving, setSaving] = useState(false)
+  // ─── TanStack Query hooks ──────────────────────
+  const [debouncedProductSearch, setDebouncedProductSearch] = useState('')
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  // ─── Product search ──────────────────────────────
-
-  const searchProducts = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([])
-      return
-    }
-    setSearchingProducts(true)
-    try {
-      const params = new URLSearchParams({ storeId: store.id.toString(), q: query.trim(), active: 'true' })
-      const res = await fetch(`/api/products?${params}`)
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      const results = Array.isArray(data) ? data : (data.data || [])
-      setSearchResults(results.slice(0, 15))
-    } catch {
-      setSearchResults([])
-    } finally {
-      setSearchingProducts(false)
-    }
-  }, [store.id])
+  const productsSearchQuery = useProducts(store.id, { search: debouncedProductSearch, active: 'true' })
+  const createQuotationMut = useCreateQuotation()
 
   useEffect(() => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
-    searchTimeoutRef.current = setTimeout(() => {
-      searchProducts(productSearch)
-    }, 300)
+    if (productSearch.trim()) {
+      searchTimeoutRef.current = setTimeout(() => {
+        setDebouncedProductSearch(productSearch)
+      }, 300)
+    } else {
+      setDebouncedProductSearch('')
+    }
     return () => {
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
     }
-  }, [productSearch, searchProducts])
+  }, [productSearch])
+
+  const searchResults = useMemo(() => {
+    if (!debouncedProductSearch.trim()) return []
+    return (productsSearchQuery.data?.data ?? []).slice(0, 15) as ProductSearchResult[]
+  }, [debouncedProductSearch, productsSearchQuery.data])
+  const searchingProducts = !!debouncedProductSearch.trim() && productsSearchQuery.isFetching
+  const saving = createQuotationMut.isPending
 
   // ─── Cart operations ─────────────────────────────
 
@@ -120,7 +111,6 @@ export function QuotationFormDialog({ open, onOpenChange, store, onCreated }: Qu
       }])
     }
     setProductSearch('')
-    setSearchResults([])
   }
 
   const updateCartQty = (productId: number, delta: number) => {
@@ -158,7 +148,6 @@ export function QuotationFormDialog({ open, onOpenChange, store, onCreated }: Qu
   const handleCreateQuotation = async () => {
     if (cart.length === 0) return
 
-    setSaving(true)
     try {
       const body = {
         storeId: store.id,
@@ -178,26 +167,13 @@ export function QuotationFormDialog({ open, onOpenChange, store, onCreated }: Qu
         notes: quotationNotes || undefined,
       }
 
-      const res = await fetch('/api/quotations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al crear cotización')
-      }
-
-      const data = await res.json()
+      const data = await createQuotationMut.mutateAsync({ body })
       toast.success(`Cotización ${data.quotationNumber} creada exitosamente`)
       resetForm()
       onOpenChange(false)
       onCreated()
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al crear cotización')
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -211,7 +187,6 @@ export function QuotationFormDialog({ open, onOpenChange, store, onCreated }: Qu
     setCustomerAddress('')
     setCart([])
     setProductSearch('')
-    setSearchResults([])
     setDiscountType('NONE')
     setDiscountAmount('0')
     setValidUntil(undefined)

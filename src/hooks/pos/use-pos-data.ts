@@ -1,9 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import { playError } from '@/lib/pos-sounds'
 import type { ProductSummary, Service, CategorySummary, CustomerSummary } from '@/types'
+import {
+  usePosProducts,
+  usePosServices,
+  usePosCashRegister,
+  usePosRecentSales,
+} from '@/hooks/api/use-pos'
+import { useCategories } from '@/hooks/api/use-categories'
+import { useCustomers } from '@/hooks/api/use-customers'
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -30,128 +38,66 @@ export interface RecentOrder {
 // ─── Hook ──────────────────────────────────────────────
 
 export function usePosData({ storeId }: { storeId: number | undefined }) {
-  const [products, setProducts] = useState<Product[]>([])
-  const [services, setServices] = useState<Service[]>([])
-  const [categories, setCategories] = useState<CategorySummary[]>([])
-  const [customers, setCustomers] = useState<CustomerSummary[]>([])
-  const [isLoadingProducts, setIsLoadingProducts] = useState(true)
-  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false)
-  const [openCashRegisters, setOpenCashRegisters] = useState<OpenCashRegister[]>([])
+  // ───────────── TanStack Query ────────────────────────────────────────
+
+  // Products
+  const productsQuery = usePosProducts(storeId)
+  const products = (productsQuery.data ?? []) as Product[]
+  const isLoadingProducts = productsQuery.isLoading
+
+  // Services
+  const servicesQuery = usePosServices(storeId)
+  const services = (servicesQuery.data ?? []) as Service[]
+
+  // Categories
+  const categoriesQuery = useCategories(storeId)
+  const categoriesRaw = categoriesQuery.data
+  const categories = (Array.isArray(categoriesRaw) ? categoriesRaw : []) as CategorySummary[]
+
+  // Customers
+  const customersQuery = useCustomers(storeId, { limit: 200 })
+  const customersRaw = customersQuery.data
+  const customers = Array.isArray(customersRaw)
+    ? (customersRaw as CustomerSummary[])
+    : ((customersRaw as any)?.data ?? []) as CustomerSummary[]
+  const isLoadingCustomers = customersQuery.isLoading
+
+  // Cash registers
+  const cashRegQuery = usePosCashRegister(storeId)
+  const cashRegData = cashRegQuery.data
+  const cashRegShifts = cashRegData?.shifts ?? []
+  const openCashRegisters = cashRegShifts.map(
+    (s: any) => ({
+      id: s.shift.id,
+      user: s.shift.user,
+      openedAt: s.shift.openedAt,
+      openingBalance: s.shift.openingBalance,
+    }) as OpenCashRegister
+  )
+
+  // Recent sales
+  const recentSalesQuery = usePosRecentSales(storeId)
+  const recentOrders = (recentSalesQuery.data ?? []) as RecentOrder[]
+  const loadingRecentSales = recentSalesQuery.isLoading
+
+  // ───────────── Local state ───────────────────────────────────────────
+
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('auto')
-  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([])
-  const [loadingRecentSales, setLoadingRecentSales] = useState(false)
   const [recentSalesSearch, setRecentSalesSearch] = useState('')
 
-  // ─── Fetch open cash registers ──────────────────
-  const fetchOpenCashRegisters = useCallback(async () => {
-    if (!storeId) return
-    try {
-      const res = await fetch(`/api/cash-register/current?storeId=${storeId}`)
-      if (res.ok) {
-        const data = await res.json()
-        const shifts = data.shifts || []
-        setOpenCashRegisters(shifts.map((s: { shift: { id: number; user: { fullName: string | null }; openedAt: string; openingBalance: number } }) => ({
-          id: s.shift.id,
-          user: s.shift.user,
-          openedAt: s.shift.openedAt,
-          openingBalance: s.shift.openingBalance,
-        })))
-      }
-    } catch {
-      // Silent fail - non-critical check
-    }
-  }, [storeId])
+  // ───────────── Imperative fetch functions (backward compat) ──────────
 
-  // ─── Fetch products ──────────────────────────────────
-  const fetchProducts = useCallback(async () => {
-    if (!storeId) return
-    setIsLoadingProducts(true)
-    try {
-      const res = await fetch(`/api/products?storeId=${storeId}&active=true&limit=500`)
-      if (!res.ok) throw new Error('Error al cargar productos')
-      const json = await res.json()
-      setProducts(Array.isArray(json) ? json : (json.data || []))
-    } catch {
-      toast.error('Error al cargar productos')
-      playError()
-    } finally {
-      setIsLoadingProducts(false)
-    }
-  }, [storeId])
+  const fetchOpenCashRegisters = useCallback(() => {
+    cashRegQuery.refetch()
+  }, [cashRegQuery])
 
-  // ─── Fetch services ──────────────────────────────────
-  const fetchServices = useCallback(async () => {
-    if (!storeId) return
-    try {
-      const res = await fetch(`/api/services?storeId=${storeId}`)
-      if (!res.ok) throw new Error('Error al cargar servicios')
-      const data = await res.json()
-      setServices(data.filter((s: Service) => s.isActive))
-    } catch {
-      // Silent fail - services are optional
-    }
-  }, [storeId])
+  const fetchProducts = useCallback(() => {
+    productsQuery.refetch()
+  }, [productsQuery])
 
-  // ─── Fetch categories ────────────────────────────────
-  const fetchCategories = useCallback(async () => {
-    if (!storeId) return
-    try {
-      const res = await fetch(`/api/categories?storeId=${storeId}`)
-      if (!res.ok) throw new Error('Error al cargar categorías')
-      const data = await res.json()
-      setCategories(data)
-    } catch {
-      // Silent fail - categories are optional
-    }
-  }, [storeId])
-
-  // ─── Fetch customers ─────────────────────────────────
-  const fetchCustomers = useCallback(async () => {
-    if (!storeId) return
-    setIsLoadingCustomers(true)
-    try {
-      const res = await fetch(`/api/customers?storeId=${storeId}&limit=200`)
-      if (!res.ok) throw new Error('Error al cargar clientes')
-      const json = await res.json()
-      setCustomers(Array.isArray(json) ? json : (json.data || []))
-    } catch {
-      // Silent fail - customers are optional
-    } finally {
-      setIsLoadingCustomers(false)
-    }
-  }, [storeId])
-
-  // ─── Fetch recent sales ──────────────────────────────
-  const fetchRecentSales = useCallback(async () => {
-    if (!storeId) return
-    setLoadingRecentSales(true)
-    try {
-      const today = new Date().toISOString().split('T')[0]
-      const params = new URLSearchParams({
-        storeId: storeId.toString(),
-        status: 'COMPLETED',
-        from: today,
-        expand: 'items',
-      })
-      const res = await fetch(`/api/orders?${params}`)
-      if (!res.ok) throw new Error('Error')
-      const json = await res.json()
-      const recentData = Array.isArray(json) ? json : (json.data || [])
-      setRecentOrders(recentData.slice(0, 50)) // Last 50
-    } catch {
-      toast.error('Error al cargar ventas recientes')
-    } finally {
-      setLoadingRecentSales(false)
-    }
-  }, [storeId])
-
-  useEffect(() => {
-    fetchProducts()
-    fetchServices()
-    fetchCategories()
-    fetchCustomers()
-    fetchOpenCashRegisters()
-  }, [fetchProducts, fetchServices, fetchCategories, fetchCustomers, fetchOpenCashRegisters])
+  const fetchRecentSales = useCallback(() => {
+    recentSalesQuery.refetch()
+  }, [recentSalesQuery])
 
   return {
     products,

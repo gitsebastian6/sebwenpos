@@ -1,8 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
+import {
+  useCurrentCashRegister,
+  useCashRegisters,
+  useCashRegister,
+  useOpenCashRegister,
+  useUpdateCashRegister,
+  useDeleteCashRegister,
+} from '@/hooks/api/use-cash-register'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -81,28 +89,13 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
   const store = useAuthStore((s) => s.store)
 
   // ─── State ────────────────────────────────────────────────────────────
-  const [openShifts, setOpenShifts] = useState<Array<{
-    shift: CashShift
-    orderCount: number
-    totalSales: number
-    totalTips: number
-    cashSales: number
-    otherSales: number
-    creditSales: number
-    expectedCash: number
-    byPayment: Record<string, { count: number; total: number; tips: number }>
-    recentOrders: Array<{ id: number; orderNumber: string; total: number; paymentMethod: string; status: string; createdAt: string }>
-  }>>([])
   const [selectedShiftId, setSelectedShiftId] = useState<number | null>(null)
-  const [shiftHistory, setShiftHistory] = useState<CashShift[]>([])
-  const [isLoadingCash, setIsLoadingCash] = useState(false)
   const [showOpenDialog, setShowOpenDialog] = useState(false)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
   const [openBalance, setOpenBalance] = useState('')
   const [openNotes, setOpenNotes] = useState('')
   const [closeCount, setCloseCount] = useState<Record<string, string>>({})
   const [closeNotes, setCloseNotes] = useState('')
-  const [isSavingShift, setIsSavingShift] = useState(false)
   const [lastClosedShift, setLastClosedShift] = useState<{ shift: CashShift; summary: CashShiftSummary } | null>(null)
   const [deleteShiftId, setDeleteShiftId] = useState<number | null>(null)
 
@@ -152,72 +145,39 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
   const [historyFrom, setHistoryFrom] = useState('')
   const [historyTo, setHistoryTo] = useState('')
 
-  // ─── Fetch ─────────────────────────────────────────────────────────────
+  // ─── Query hooks ─────────────────────────────────────────────────────
+  const { data: openShifts = [], refetch: refetchCurrentShift } = useCurrentCashRegister(store?.id)
+  const { data: shiftHistory = [], isLoading: isLoadingCash, refetch: refetchHistory } = useCashRegisters(store?.id, {
+    limit: 50,
+    from: historyFrom || undefined,
+    to: historyTo || undefined,
+  })
 
-  const fetchCurrentShift = useCallback(async () => {
-    if (!store?.id) return
-    try {
-      const res = await fetch(`/api/cash-register/current?storeId=${store.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setOpenShifts(data.shifts || [])
-      }
-    } catch { /* silent */ }
-  }, [store?.id])
-
-  const fetchShiftHistory = useCallback(async () => {
-    if (!store?.id) return
-    setIsLoadingCash(true)
-    try {
-      let url = `/api/cash-register?storeId=${store.id}&limit=50`
-      if (historyFrom) url += `&from=${historyFrom}`
-      if (historyTo) url += `&to=${historyTo}`
-      const res = await fetch(url)
-      if (res.ok) {
-        const data = await res.json()
-        setShiftHistory(data.shifts || [])
-      }
-    } catch { /* silent */ } finally {
-      setIsLoadingCash(false)
-    }
-  }, [store?.id, historyFrom, historyTo])
-
-  useEffect(() => {
-    fetchCurrentShift()
-    fetchShiftHistory()
-  }, [fetchCurrentShift, fetchShiftHistory])
+  // ─── Mutation hooks ─────────────────────────────────────────────────
+  const openCashRegister = useOpenCashRegister()
+  const updateCashRegister = useUpdateCashRegister()
+  const deleteCashRegister = useDeleteCashRegister()
+  const isSavingShift = openCashRegister.isPending || updateCashRegister.isPending || deleteCashRegister.isPending
 
   // ─── Handlers ──────────────────────────────────────────────────────────
 
   async function handleOpenShift() {
     if (!store?.id || !openBalance) return
-    setIsSavingShift(true)
     try {
-      const res = await fetch('/api/cash-register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await openCashRegister.mutateAsync({
+        body: {
           storeId: store.id,
           userId: useAuthStore.getState().user?.id || 0,
           openingBalance: parseInt(openBalance) || 0,
           notes: openNotes || undefined,
-        }),
+        },
       })
-      if (res.ok) {
-        toast.success('Caja abierta exitosamente')
-        setShowOpenDialog(false)
-        setOpenBalance('')
-        setOpenNotes('')
-        fetchCurrentShift()
-        fetchShiftHistory()
-      } else {
-        const err = await res.json()
-        toast.error(err.error || 'Error al abrir caja')
-      }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setIsSavingShift(false)
+      toast.success('Caja abierta exitosamente')
+      setShowOpenDialog(false)
+      setOpenBalance('')
+      setOpenNotes('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al abrir caja')
     }
   }
 
@@ -244,25 +204,13 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
     if (Object.keys(breakdown).length > 0) body.countBreakdown = breakdown
     if (closeNotes) body.notes = closeNotes
 
-    setIsSavingShift(true)
     try {
-      const res = await fetch(`/api/cash-register/${shiftData.shift.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      const result = await updateCashRegister.mutateAsync({
+        id: shiftData.shift.id,
+        body,
       })
 
-      const responseText = await res.text()
-      let data: Record<string, unknown> | null = null
-      try { data = JSON.parse(responseText) } catch { /* not JSON */ }
-
-      if (!res.ok || !data) {
-        const errMsg = String(data?.error || `Error ${res.status}: ${responseText.slice(0, 100)}`)
-        toast.error(errMsg)
-        return
-      }
-
-      const parsedShift = data.shift as CashShift
+      const parsedShift = result.shift as CashShift
       const emptySummary: CashShiftSummary = { totalOrders: 0, totalSales: 0, totalTips: 0, cashSales: 0, otherSales: 0, byPayment: {} }
 
       toast.success('✅ Caja cerrada exitosamente')
@@ -271,9 +219,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
       setCloseNotes('')
       setSelectedShiftId(null)
 
-      fetchCurrentShift()
-      fetchShiftHistory()
-
+      // Fetch detail for printing
       try {
         const detailRes = await fetch(`/api/cash-register/${shiftData.shift.id}`)
         if (detailRes.ok) {
@@ -287,46 +233,30 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
       } catch {
         setLastClosedShift({ shift: parsedShift, summary: emptySummary })
       }
-    } catch {
-      toast.error('Error de conexión al cerrar caja. Intenta de nuevo.')
-    } finally {
-      setIsSavingShift(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión al cerrar caja. Intenta de nuevo.')
     }
   }
 
   async function handleReopenShift(shiftId: number) {
     try {
-      const res = await fetch(`/api/cash-register/${shiftId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reopen' }),
+      await updateCashRegister.mutateAsync({
+        id: shiftId,
+        body: { action: 'reopen' },
       })
-      if (res.ok) {
-        toast.success('Turno reabierto correctamente')
-        fetchCurrentShift()
-        fetchShiftHistory()
-      } else {
-        const err = await res.json().catch(() => ({ error: 'Error' }))
-        toast.error(err.error || 'No se pudo reabrir el turno')
-      }
-    } catch {
-      toast.error('Error de conexión')
+      toast.success('Turno reabierto correctamente')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo reabrir el turno')
     }
   }
 
   async function handleDeleteShift(shiftId: number) {
     try {
-      const res = await fetch(`/api/cash-register/${shiftId}`, { method: 'DELETE' })
-      if (res.ok) {
-        toast.success('Turno eliminado correctamente')
-        fetchCurrentShift()
-        fetchShiftHistory()
-      } else {
-        const err = await res.json().catch(() => ({ error: 'Error' }))
-        toast.error(err.error || 'No se pudo eliminar el turno')
-      }
-    } catch {
-      toast.error('Error de conexión')
+      await deleteCashRegister.mutateAsync({ id: shiftId })
+      toast.success('Turno eliminado correctamente')
+      setDeleteShiftId(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo eliminar el turno')
     }
   }
 
@@ -432,7 +362,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
                     <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 font-semibold">
                       ABIERTA
                     </Badge>
-                    <Button variant="outline" size="sm" onClick={fetchCurrentShift} className="gap-1 h-8 active:scale-[0.98] transition-all">
+                    <Button variant="outline" size="sm" onClick={() => refetchCurrentShift()} className="gap-1 h-8 active:scale-[0.98] transition-all">
                       <Loader2 className="h-3 w-3" />
                       <span className="">Actualizar</span>
                     </Button>
@@ -722,7 +652,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
                 <Search className="h-3.5 w-3.5" />
                 Limpiar
               </Button>
-              <Button variant="outline" size="sm" onClick={fetchShiftHistory} className="gap-1.5 active:scale-[0.98] transition-all">
+              <Button variant="outline" size="sm" onClick={() => refetchCurrentShift()} className="gap-1.5 active:scale-[0.98] transition-all">
                 <Loader2 className="h-3.5 w-3.5" />
                 Actualizar
               </Button>
@@ -738,7 +668,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
               <Input type="date" value={historyTo} onChange={(e) => setHistoryTo(e.target.value)} className="h-8 text-xs" />
             </div>
             <div className="flex items-end">
-              <Button size="sm" onClick={fetchShiftHistory} className="h-8 gap-1.5 active:scale-[0.98] transition-all">
+              <Button size="sm" onClick={() => refetchHistory()} className="h-8 gap-1.5 active:scale-[0.98] transition-all">
                 <Search className="h-3.5 w-3.5" />
                 Filtrar
               </Button>

@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useProviders, useCreateProvider, useUpdateProvider, useDeleteProvider } from '@/hooks/api/use-providers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -60,15 +61,11 @@ type ActiveFilter = 'all' | 'active' | 'inactive'
 
 export function ProvidersView() {
   const { store } = useAuthStore()
-  const [providers, setProviders] = useState<Provider[]>([])
   const [search, setSearch] = useState('')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all')
-  const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null)
   const [deleteProvider, setDeleteProvider] = useState<Provider | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [deleting, setDeleting] = useState(false)
 
   // Form state
   const [formName, setFormName] = useState('')
@@ -81,29 +78,19 @@ export function ProvidersView() {
   const [formNotes, setFormNotes] = useState('')
   const [formIsActive, setFormIsActive] = useState(true)
 
-  const fetchProviders = useCallback(async () => {
-    if (!store?.id) return
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ storeId: store.id.toString() })
-      if (search.trim()) params.set('q', search.trim())
-      if (activeFilter === 'active') params.set('active', 'true')
-      if (activeFilter === 'inactive') params.set('active', 'false')
-      const res = await fetch(`/api/providers?${params}`)
-      if (!res.ok) throw new Error('Error al cargar proveedores')
-      const data = await res.json()
-      setProviders(data)
-    } catch {
-      toast.error('Error al cargar proveedores')
-    } finally {
-      setLoading(false)
-    }
-  }, [store?.id, search, activeFilter])
+  // ── Query hooks ──
+  const activeParam = activeFilter === 'all' ? undefined : activeFilter === 'active'
+  const { data: providers = [], isLoading: loading } = useProviders(store?.id, {
+    q: search.trim() || undefined,
+    active: activeParam,
+  })
 
-  useEffect(() => {
-    const timer = setTimeout(() => fetchProviders(), 300)
-    return () => clearTimeout(timer)
-  }, [fetchProviders])
+  // ── Mutation hooks ──
+  const createProviderMut = useCreateProvider()
+  const updateProviderMut = useUpdateProvider()
+  const deleteProviderMut = useDeleteProvider()
+  const submitting = createProviderMut.isPending || updateProviderMut.isPending
+  const deleting = deleteProviderMut.isPending
 
   function openCreateDialog() {
     setEditingProvider(null)
@@ -143,33 +130,24 @@ export function ProvidersView() {
       toast.error('Tienda no disponible')
       return
     }
-    setSubmitting(true)
     try {
       if (editingProvider) {
-        // Update
-        const body: Record<string, unknown> = {
-          name: formName.trim(),
-          contactName: formContactName.trim() || '',
-          phone: formPhone.trim() || '',
-          email: formEmail.trim() || '',
-          address: formAddress.trim() || '',
-          city: formCity.trim() || '',
-          nit: formNit.trim() || '',
-          notes: formNotes.trim() || '',
-          isActive: formIsActive,
-        }
-        const res = await fetch(`/api/providers/${editingProvider.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+        await updateProviderMut.mutateAsync({
+          id: editingProvider.id,
+          body: {
+            name: formName.trim(),
+            contactName: formContactName.trim() || '',
+            phone: formPhone.trim() || '',
+            email: formEmail.trim() || '',
+            address: formAddress.trim() || '',
+            city: formCity.trim() || '',
+            nit: formNit.trim() || '',
+            notes: formNotes.trim() || '',
+            isActive: formIsActive,
+          },
         })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error || 'Error al actualizar')
-        }
         toast.success('Proveedor actualizado')
       } else {
-        // Create
         const body: Record<string, unknown> = {
           storeId: store.id,
           name: formName.trim(),
@@ -181,38 +159,23 @@ export function ProvidersView() {
         if (formCity.trim()) body.city = formCity.trim()
         if (formNit.trim()) body.nit = formNit.trim()
         if (formNotes.trim()) body.notes = formNotes.trim()
-
-        const res = await fetch('/api/providers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error || 'Error al crear')
-        }
+        await createProviderMut.mutateAsync({ body })
         toast.success('Proveedor creado')
       }
       setDialogOpen(false)
-      fetchProviders()
-    } catch (err: unknown) {
+    } catch (err) {
       const message = err instanceof Error ? err.message : 'Error desconocido'
       toast.error(message)
-    } finally {
-      setSubmitting(false)
     }
   }
 
   async function handleToggleActive(provider: Provider) {
     try {
-      const res = await fetch(`/api/providers/${provider.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !provider.isActive }),
+      await updateProviderMut.mutateAsync({
+        id: provider.id,
+        body: { isActive: !provider.isActive },
       })
-      if (!res.ok) throw new Error()
       toast.success(provider.isActive ? 'Proveedor desactivado' : 'Proveedor activado')
-      fetchProviders()
     } catch {
       toast.error('Error al cambiar estado')
     }
@@ -220,19 +183,12 @@ export function ProvidersView() {
 
   async function handleDelete() {
     if (!deleteProvider) return
-    setDeleting(true)
     try {
-      const res = await fetch(`/api/providers/${deleteProvider.id}`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) throw new Error()
+      await deleteProviderMut.mutateAsync({ id: deleteProvider.id })
       toast.success('Proveedor eliminado')
       setDeleteProvider(null)
-      fetchProviders()
     } catch {
       toast.error('Error al eliminar proveedor')
-    } finally {
-      setDeleting(false)
     }
   }
 

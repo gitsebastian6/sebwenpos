@@ -1,13 +1,16 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useState, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
-import { useProducts } from '@/hooks/api/use-products'
-import { useCategories } from '@/hooks/api/use-categories'
+import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, useImportProducts } from '@/hooks/api/use-products'
+import { useProviders } from '@/hooks/api/use-providers'
+import { useTaxes } from '@/hooks/api/use-taxes'
+import { useCurrentSubscription } from '@/hooks/api/use-subscription'
+import { useKardex, useInventoryAdjustment, useInventoryLoss, useInventoryReturn } from '@/hooks/api/use-inventory'
+import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from '@/hooks/api/use-categories'
 import { useAppStore } from '@/stores/app-store'
 import { formatCurrency } from '@/lib/auth'
-import type { Product, Category, Provider, TaxRate, TraceMovement } from '@/types'
+import type { Product, Category, TraceMovement } from '@/types'
 import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -79,14 +82,30 @@ import {
 export function ProductsView() {
   const { store } = useAuthStore()
   const { setView } = useAppStore()
-  const queryClient = useQueryClient()
 
-  // ─── Meta State ─────────────────────────────────────────────────────────
-  const [maxProducts, setMaxProducts] = useState<number | null>(null)
-  const [planName, setPlanName] = useState<string | null>(null)
-  const [providers, setProviders] = useState<Provider[]>([])
-  const [taxRates, setTaxRates] = useState<TaxRate[]>([])
-  const [subscriptionLoading, setSubscriptionLoading] = useState(true)
+  // ─── Mutation hooks ──────────────────────────────────────────────────
+  const createProductMut = useCreateProduct()
+  const updateProductMut = useUpdateProduct()
+  const deleteProductMut = useDeleteProduct()
+  const createCategoryMut = useCreateCategory()
+  const updateCategoryMut = useUpdateCategory()
+  const deleteCategoryMut = useDeleteCategory()
+  const importProductsMut = useImportProducts()
+
+  // ─── TanStack Query — Support Data ─────────────────────────────────────
+  const providersQuery = useProviders(store?.id, { active: true })
+  const taxesQuery = useTaxes(store?.id, { isActive: true })
+  const subscriptionQuery = useCurrentSubscription(store?.id)
+
+  const providers = providersQuery.data ?? []
+  const taxRates = taxesQuery.data ?? []
+  const subscriptionLoading = subscriptionQuery.isLoading
+  const planName = subscriptionQuery.data?.planName ?? null
+  const maxProducts = useMemo(() => {
+    const limit = subscriptionQuery.data?.planLimits?.maxProducts
+    if (limit != null && limit !== -1) return limit
+    return null
+  }, [subscriptionQuery.data?.planLimits?.maxProducts])
 
   // ─── Filter / Sort State ───────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
@@ -128,7 +147,6 @@ export function ProductsView() {
   const [adjustProductId, setAdjustProductId] = useState<number | null>(null)
   const [adjustProductName, setAdjustProductName] = useState('')
   const [adjustCurrentStock, setAdjustCurrentStock] = useState(0)
-  const [actionSubmitting, setActionSubmitting] = useState(false)
 
   const [lossProductId, setLossProductId] = useState<number | null>(null)
   const [lossProductName, setLossProductName] = useState('')
@@ -136,60 +154,21 @@ export function ProductsView() {
   const [returnProductId, setReturnProductId] = useState<number | null>(null)
   const [returnProductName, setReturnProductName] = useState('')
 
+  const [traceProductId, setTraceProductId] = useState<number | null>(null)
   const [traceProductName, setTraceProductName] = useState('')
-  const [traceMovements, setTraceMovements] = useState<TraceMovement[]>([])
-  const [traceLoading, setTraceLoading] = useState(false)
+  const traceMovements = (kardexQuery.data ?? []) as TraceMovement[]
+  const traceLoading = kardexQuery.isLoading
 
   const [importing, setImporting] = useState(false)
 
-  // ─── Data Fetching ──────────────────────────────────────────────────────
+  // ─── TanStack Query — Inventory Mutations ────────────────────────────────
+  const adjustStockMut = useInventoryAdjustment()
+  const lossMut = useInventoryLoss()
+  const returnMut = useInventoryReturn()
+  const actionSubmitting = adjustStockMut.isPending || lossMut.isPending || returnMut.isPending
 
-  const fetchProviders = useCallback(async () => {
-    if (!store?.id) return
-    try {
-      const res = await fetch(`/api/providers?storeId=${store.id}&active=true`)
-      if (!res.ok) throw new Error('Error cargando proveedores')
-      const data = await res.json()
-      setProviders(data)
-    } catch {
-      // Silent fail - providers are optional
-    }
-  }, [store?.id])
-
-  const fetchTaxRates = useCallback(async () => {
-    if (!store?.id) return
-    try {
-      const res = await fetch(`/api/taxes?storeId=${store.id}&isActive=true`)
-      if (!res.ok) throw new Error('Error cargando impuestos')
-      const data = await res.json()
-      setTaxRates(data)
-    } catch {
-      // Silent fail - tax rates are optional
-    }
-  }, [store?.id])
-
-  const fetchSubscriptionLimits = useCallback(async () => {
-    if (!store?.id) return
-    try {
-      const res = await fetch(`/api/subscription/current?storeId=${store.id}`)
-      if (!res.ok) return
-      const data = await res.json()
-      if (data.planName) setPlanName(data.planName)
-      if (data.planLimits?.maxProducts != null && data.planLimits.maxProducts !== -1) {
-        setMaxProducts(data.planLimits.maxProducts)
-      }
-    } catch {
-      // If subscription check fails, no limit applied
-    } finally {
-      setSubscriptionLoading(false)
-    }
-  }, [store?.id])
-
-  useEffect(() => {
-    fetchProviders()
-    fetchTaxRates()
-    fetchSubscriptionLimits()
-  }, [fetchProviders, fetchTaxRates, fetchSubscriptionLimits])
+  // ─── TanStack Query — Kardex (trace) ────────────────────────────────────
+  const kardexQuery = useKardex(traceProductId, store?.id)
 
   // ─── Product Handlers ──────────────────────────────────────────────────
 
@@ -205,32 +184,18 @@ export function ProductsView() {
 
   async function handleSaveProduct(body: Record<string, unknown>, isEditing: boolean) {
     if (!store?.id) return
-    const url = isEditing && editingProduct ? `/api/products/${editingProduct.id}` : '/api/products'
-    const method = isEditing ? 'PUT' : 'POST'
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.error || 'Error al guardar producto')
+    if (isEditing && editingProduct) {
+      await updateProductMut.mutateAsync({ id: editingProduct.id, body })
+    } else {
+      await createProductMut.mutateAsync({ body })
     }
     toast.success(isEditing ? 'Producto actualizado' : 'Producto creado')
-    queryClient.invalidateQueries({ queryKey: ['products'] })
-    queryClient.invalidateQueries({ queryKey: ['categories'] })
   }
 
   async function handleToggleProduct(product: Product) {
     try {
-      const res = await fetch(`/api/products/${product.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !product.isActive }),
-      })
-      if (!res.ok) throw new Error()
+      await updateProductMut.mutateAsync({ id: product.id, body: { isActive: !product.isActive } })
       toast.success(product.isActive ? 'Producto desactivado' : 'Producto activado')
-      queryClient.invalidateQueries({ queryKey: ['products'] })
     } catch {
       toast.error('Error al cambiar estado del producto')
     }
@@ -252,24 +217,13 @@ export function ProductsView() {
     if (!store?.id) return
     setCategorySaving(true)
     try {
-      const url = isEditing && editingCategory ? `/api/categories/${editingCategory.id}` : '/api/categories'
-      const method = isEditing ? 'PUT' : 'POST'
-      const body = isEditing
-        ? { name, icon: icon || null }
-        : { storeId: store.id, name, icon: icon || null }
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al guardar categoría')
+      if (isEditing && editingCategory) {
+        await updateCategoryMut.mutateAsync({ id: editingCategory.id, body: { name, icon: icon || null } })
+      } else {
+        await createCategoryMut.mutateAsync({ body: { storeId: store.id, name, icon: icon || null } })
       }
       toast.success(isEditing ? 'Categoría actualizada' : 'Categoría creada')
       setCategoryDialogOpen(false)
-      queryClient.invalidateQueries({ queryKey: ['categories'] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar categoría')
     } finally {
@@ -283,24 +237,17 @@ export function ProductsView() {
     if (!deleteTarget) return
     setDeleting(true)
     try {
-      const url = deleteTarget.type === 'product'
-        ? `/api/products/${deleteTarget.item.id}`
-        : `/api/categories/${deleteTarget.item.id}`
-
-      const res = await fetch(url, { method: 'DELETE' })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al eliminar')
+      if (deleteTarget.type === 'product') {
+        await deleteProductMut.mutateAsync({ id: deleteTarget.item.id })
+      } else {
+        await deleteCategoryMut.mutateAsync({ id: deleteTarget.item.id })
       }
-
       toast.success(
         deleteTarget.type === 'product'
           ? 'Producto eliminado'
           : 'Categoría eliminada'
       )
       setDeleteTarget(null)
-      if (deleteTarget.type === 'product') queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['categories'] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al eliminar')
     } finally {
@@ -329,69 +276,39 @@ export function ProductsView() {
     setReturnDialogOpen(true)
   }
 
-  async function openTraceDialog(productId: number, name: string) {
+  function openTraceDialog(productId: number, name: string) {
     setTraceProductName(name)
-    setTraceMovements([])
-    setTraceLoading(true)
+    setTraceProductId(productId)
     setTraceDialogOpen(true)
-    try {
-      const res = await fetch(`/api/inventory/kardex?productId=${productId}&storeId=${store?.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setTraceMovements(data.movements || [])
-      }
-    } catch { /* ignore */ }
-    finally { setTraceLoading(false) }
   }
 
   async function handleAdjustStock(newStock: number, notes: string) {
     if (!store?.id || !adjustProductId) return
     const diff = newStock - adjustCurrentStock
     if (diff === 0) { toast.info('Sin cambios'); return }
-    setActionSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/adjustments', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId: store.id, productId: adjustProductId, quantity: diff, notes: notes || undefined })
-      })
-      if (!res.ok) throw new Error()
+      await adjustStockMut.mutateAsync({ body: { storeId: store.id, productId: adjustProductId, quantity: diff, notes: notes || undefined } })
       toast.success('Stock ajustado')
       setAdjustDialogOpen(false)
-      queryClient.invalidateQueries({ queryKey: ['products'] })
     } catch { toast.error('Error al ajustar stock') }
-    finally { setActionSubmitting(false) }
   }
 
   async function handleLoss(quantity: number, reason: string, notes: string) {
     if (!store?.id || !lossProductId) return
-    setActionSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/losses', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId: store.id, productId: lossProductId, quantity, reason, notes: notes || undefined })
-      })
-      if (!res.ok) throw new Error()
+      await lossMut.mutateAsync({ body: { storeId: store.id, productId: lossProductId, quantity, reason, notes: notes || undefined } })
       toast.success('Pérdida registrada')
       setLossDialogOpen(false)
-      queryClient.invalidateQueries({ queryKey: ['products'] })
     } catch { toast.error('Error al registrar pérdida') }
-    finally { setActionSubmitting(false) }
   }
 
   async function handleReturn(quantity: number, notes: string) {
     if (!store?.id || !returnProductId) return
-    setActionSubmitting(true)
     try {
-      const res = await fetch('/api/inventory/returns', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId: store.id, productId: returnProductId, quantity, notes: notes || undefined })
-      })
-      if (!res.ok) throw new Error()
+      await returnMut.mutateAsync({ body: { storeId: store.id, productId: returnProductId, quantity, notes: notes || undefined } })
       toast.success('Devolución registrada')
       setReturnDialogOpen(false)
-      queryClient.invalidateQueries({ queryKey: ['products'] })
     } catch { toast.error('Error al registrar devolución') }
-    finally { setActionSubmitting(false) }
   }
 
   // ─── Import Handler ────────────────────────────────────────────────────
@@ -400,20 +317,9 @@ export function ProductsView() {
     if (!store?.id) return null
     setImporting(true)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await fetch('/api/products/import', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Error al importar productos')
-      }
+      const data = await importProductsMut.mutateAsync({ file })
       if (data.imported > 0) {
-        queryClient.invalidateQueries({ queryKey: ['products'] })
-        queryClient.invalidateQueries({ queryKey: ['categories'] })
-        fetchProviders()
+        providersQuery.refetch()
       }
       return data
     } catch (err) {
@@ -427,9 +333,8 @@ export function ProductsView() {
   function handleImportDialogOpenChange(open: boolean) {
     setImportDialogOpen(open)
     if (!open) {
-      // Refresh lists when closing — import may have created new categories/providers
-      queryClient.invalidateQueries({ queryKey: ['categories'] })
-      fetchProviders()
+      // Refresh providers when closing — import may have created new providers
+      providersQuery.refetch()
     }
   }
 
@@ -1075,7 +980,7 @@ export function ProductsView() {
       />
       <TraceDialog
         open={traceDialogOpen}
-        onOpenChange={setTraceDialogOpen}
+        onOpenChange={(open) => { if (!open) setTraceProductId(null); setTraceDialogOpen(open) }}
         productName={traceProductName}
         movements={traceMovements}
         loading={traceLoading}

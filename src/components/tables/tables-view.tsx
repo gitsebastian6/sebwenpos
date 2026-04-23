@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { playError } from '@/lib/pos-sounds'
 import { toast } from 'sonner'
+import { useCreateSession, useUpdateSession } from '@/hooks/api/use-tables'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -200,6 +201,9 @@ export function TablesView() {
     }
   }
 
+  const createSessionMutation = useCreateSession()
+  const updateSessionMutation = useUpdateSession()
+
   async function handleOpenSession(data: { guests: number; customerId: number | null; notes: string }) {
     if (!store?.id || !selectedTable) return
 
@@ -217,20 +221,10 @@ export function TablesView() {
         body.notes = data.notes
       }
 
-      const res = await fetch('/api/tables/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al abrir mesa')
-      }
+      await createSessionMutation.mutateAsync(body)
 
       toast.success(`Mesa ${selectedTable.number} abierta`)
       setOpenSessionOpen(false)
-      fetchTables()
     } catch (err) {
       playError()
       toast.error(err instanceof Error ? err.message : 'Error al abrir mesa')
@@ -253,16 +247,7 @@ export function TablesView() {
 
     setCloseSessionSaving(true)
     try {
-      const res = await fetch(`/api/tables/sessions/${session.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'CLOSE' }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error al cerrar mesa')
-      }
+      await updateSessionMutation.mutateAsync({ id: session.id, action: 'CLOSE' })
 
       toast.success(`Mesa ${session.barTable.number} cerrada`)
       setCloseSessionOpen(false)
@@ -270,7 +255,6 @@ export function TablesView() {
       setSession(null)
       setSelectedTable(null)
       setSelectedItemIds([])
-      fetchTables()
     } catch (err) {
       playError()
       toast.error(err instanceof Error ? err.message : 'Error al cerrar mesa')

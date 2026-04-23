@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useServices, useCreateService, useUpdateService, useDeleteService, useUpdateServiceTransaction, useDeleteServiceTransaction } from '@/hooks/api/use-services'
 import { formatCurrency } from '@/lib/auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -145,10 +146,38 @@ export function ServicesView() {
   const storeId = store?.id
   const currencyCode = store?.currencyCode || 'COP'
 
-  // Data state
-  const [services, setServices] = useState<Service[]>([])
-  const [transactions, setTransactions] = useState<ServiceTransaction[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // ─── TanStack Query hooks ──────────────────────────────────────
+  const servicesQuery = useServices(storeId)
+  const servicesWithTxQuery = useServices(storeId, { include: 'transactions' })
+  const services = servicesQuery.data ?? []
+  const isLoading = servicesQuery.isLoading
+
+  // Mutation hooks
+  const createServiceMut = useCreateService()
+  const updateServiceMut = useUpdateService()
+  const deleteServiceMut = useDeleteService()
+  const updateTxMut = useUpdateServiceTransaction()
+  const deleteTxMut = useDeleteServiceTransaction()
+
+  // Flatten transactions from services with include=transactions
+  const transactions = useMemo(() => {
+    const txData = servicesWithTxQuery.data ?? []
+    const allTx: ServiceTransaction[] = []
+    for (const s of txData) {
+      if (s.serviceTransactions) {
+        for (const tx of s.serviceTransactions) {
+          allTx.push({
+            ...tx,
+            unitPrice: Number(tx.unitPrice),
+            totalAmount: Number(tx.totalAmount),
+          })
+        }
+      }
+    }
+    allTx.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    return allTx
+  }, [servicesWithTxQuery.data])
+
   const [activeTab, setActiveTab] = useState('servicios')
 
   // Service form state
@@ -190,48 +219,6 @@ export function ServicesView() {
   const [deleteTx, setDeleteTx] = useState<ServiceTransaction | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // ─── Fetch ────────────────────────────────────────────────
-
-  const fetchData = useCallback(async () => {
-    if (!storeId) return
-    setIsLoading(true)
-    try {
-      const [servicesRes, transactionsRes] = await Promise.all([
-        fetch(`/api/services?storeId=${storeId}`),
-        fetch(`/api/services?storeId=${storeId}&include=transactions`),
-      ])
-      if (!servicesRes.ok || !transactionsRes.ok) throw new Error('Error al cargar datos')
-      const servicesData = await servicesRes.json()
-      const transactionsData = await transactionsRes.json()
-
-      setServices(servicesData)
-
-      // Flatten all transactions from all services
-      const allTx: ServiceTransaction[] = []
-      for (const s of transactionsData) {
-        if (s.serviceTransactions) {
-          for (const tx of s.serviceTransactions) {
-            allTx.push({
-              ...tx,
-              unitPrice: Number(tx.unitPrice),
-              totalAmount: Number(tx.totalAmount),
-            })
-          }
-        }
-      }
-      allTx.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      setTransactions(allTx)
-    } catch {
-      toast.error('Error al cargar datos')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [storeId])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
   // ─── Service Handlers ───────────────────────────────────
 
   function openCreateService() {
@@ -250,25 +237,18 @@ export function ServicesView() {
     }
     setIsSubmittingService(true)
     try {
-      const res = await fetch('/api/services', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await createServiceMut.mutateAsync({
+        body: {
           storeId,
           name: formName.trim(),
           description: formDescription.trim() || null,
           price: Math.round(parseFloat(formPrice)),
           icon: formIcon,
           unit: formUnit,
-        }),
+        },
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al crear servicio')
-      }
       toast.success('Servicio creado')
       setShowCreateService(false)
-      fetchData()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al crear servicio')
     } finally {
@@ -289,21 +269,18 @@ export function ServicesView() {
     if (!editingService) return
     setIsSavingService(true)
     try {
-      const res = await fetch(`/api/services/${editingService.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await updateServiceMut.mutateAsync({
+        id: editingService.id,
+        body: {
           name: editName.trim(),
           description: editDescription.trim() || null,
           price: Math.round(parseFloat(editPrice)),
           icon: editIcon,
           unit: editUnit,
-        }),
+        },
       })
-      if (!res.ok) throw new Error('Error al actualizar')
       toast.success('Servicio actualizado')
       setEditingService(null)
-      fetchData()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al actualizar')
     } finally {
@@ -315,11 +292,9 @@ export function ServicesView() {
     if (!deleteService) return
     setIsDeleting(true)
     try {
-      const res = await fetch(`/api/services/${deleteService.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Error al eliminar')
+      await deleteServiceMut.mutateAsync({ id: deleteService.id })
       toast.success('Servicio eliminado')
       setDeleteService(null)
-      fetchData()
     } catch {
       toast.error('Error al eliminar servicio')
     } finally {
@@ -364,10 +339,8 @@ export function ServicesView() {
     }
     setIsSubmittingTx(true)
     try {
-      const res = await fetch('/api/services', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await createServiceMut.mutateAsync({
+        body: {
           type: 'transaction',
           storeId,
           serviceId: txServiceId,
@@ -375,21 +348,16 @@ export function ServicesView() {
           unitPrice: price,
           totalAmount: qty * price,
           notes: txNotes.trim() || null,
-        }),
+        },
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al registrar')
-      }
       toast.success('Servicio registrado')
       setShowCreateTransaction(false)
-      fetchData()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al registrar')
     } finally {
       setIsSubmittingTx(false)
     }
-  }
+ }
 
   function openEditTx(tx: ServiceTransaction) {
     setEditingTx(tx)
@@ -406,40 +374,35 @@ export function ServicesView() {
     if (isNaN(qty) || isNaN(price)) return
     setIsSavingTx(true)
     try {
-      const res = await fetch(`/api/services/transactions/${editingTx.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await updateTxMut.mutateAsync({
+        id: editingTx.id,
+        body: {
           quantity: qty,
           unitPrice: price,
           totalAmount: qty * price,
           notes: editTxNotes.trim() || null,
           status: editTxStatus,
-        }),
+        },
       })
-      if (!res.ok) throw new Error('Error al actualizar')
       toast.success('Transacción actualizada')
       setEditingTx(null)
-      fetchData()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al actualizar')
     } finally {
       setIsSavingTx(false)
     }
-  }
+ }
 
   async function handleDeleteTx() {
     if (!deleteTx) return
     setIsDeleting(true)
     try {
-      const res = await fetch(`/api/services/transactions/${deleteTx.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Error al eliminar')
+      await deleteTxMut.mutateAsync({ id: deleteTx.id })
       toast.success('Transacción eliminada')
       setDeleteTx(null)
-      fetchData()
     } catch {
       toast.error('Error al eliminar transacción')
-    } finally {
+ } finally {
       setIsDeleting(false)
     }
   }

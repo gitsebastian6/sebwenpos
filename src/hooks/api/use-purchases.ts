@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { unwrapArray, throwIfNotOk } from './query-helpers'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -113,32 +114,7 @@ export interface UsePurchasesParams {
   limit?: number
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
-/** Normalize API responses that may be a plain array or wrapped in `{ data }`. */
-async function unwrapArray<T>(res: Response): Promise<T[]> {
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    const message =
-      body?.error ?? body?.message ?? `Error ${res.status}: ${res.statusText}`
-    throw new Error(message)
-  }
-  const json = await res.json()
-  return Array.isArray(json) ? json : (json.data ?? [])
-}
-
-/** Standard error-throwing helper for mutation responses. */
-async function throwIfNotOk(res: Response): Promise<any> {
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    const message =
-      body?.error ?? body?.message ?? `Error ${res.status}: ${res.statusText}`
-    throw new Error(message)
-  }
-  return res.json()
-}
 
 // ---------------------------------------------------------------------------
 // Query hooks

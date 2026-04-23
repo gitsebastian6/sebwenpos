@@ -7,6 +7,7 @@ import { DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
 import { playCartAdd, playSaleSuccess, playError } from '@/lib/pos-sounds'
 import type { CartItem, PaymentMethod, InvoiceMode, LastOrderData, LastInvoiceData, CustomerSummary, Service } from '@/types'
 import type { Product, OpenCashRegister } from './use-pos-data'
+import { useCreateOrder, useCreateInvoice } from '@/hooks/api/use-pos'
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -61,6 +62,11 @@ export function usePosCart(deps: UsePosCartDeps) {
   // ─── Last order ──────────────────────────────────────
   const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null)
   const [lastOrderData, setLastOrderData] = useState<LastOrderData | null>(null)
+
+  // ─── TanStack Query Mutations ────────────────────────
+
+  const createOrderMutation = useCreateOrder()
+  const createInvoiceMutation = useCreateInvoice()
 
   // ─── Cart operations ─────────────────────────────────
   const addToCart = useCallback(
@@ -305,18 +311,7 @@ export function usePosCart(deps: UsePosCartDeps) {
         })),
       }
 
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}))
-        throw new Error(errorData.error || 'Error al registrar la venta')
-      }
-
-      const order = await res.json()
+      const order = await createOrderMutation.mutateAsync(payload)
       playSaleSuccess()
       toast.success('¡Venta registrada!', {
         description: `Orden ${order.orderNumber}`,
@@ -364,24 +359,15 @@ export function usePosCart(deps: UsePosCartDeps) {
           }
           if (finalEmail) invBody.customerEmail = finalEmail
 
-          const invRes = await fetch('/api/invoices', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(invBody),
+          const invoiceData = await createInvoiceMutation.mutateAsync(invBody)
+          setLastInvoiceData(invoiceData)
+          toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, {
+            description: 'CUFE generado correctamente',
+            duration: 5000,
           })
-          if (invRes.ok) {
-            const invoiceData = await invRes.json()
-            setLastInvoiceData(invoiceData)
-            toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, {
-              description: 'CUFE generado correctamente',
-              duration: 5000,
-            })
-          } else {
-            const err = await invRes.json().catch(() => ({}))
-            toast.error(`Error al generar factura: ${err.error || 'Desconocido'}`, { duration: 6000 })
-          }
-        } catch {
-          toast.error('Error al generar factura electrónica')
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Error al generar factura electrónica'
+          toast.error(`Error al generar factura: ${msg}`, { duration: 6000 })
         } finally {
           setCreatingInvoice(false)
         }

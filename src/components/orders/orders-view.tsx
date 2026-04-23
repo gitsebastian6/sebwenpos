@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { useOrders, useOrderDetail, useReturnOrder } from '@/hooks/api/use-orders'
+import { useCreateInvoice } from '@/hooks/api/use-invoices'
 import { formatCurrency } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -113,8 +115,6 @@ interface OrderDetail {
 
 export function OrdersView() {
   const { store } = useAuthStore()
-  const [orders, setOrders] = useState<OrderSummary[]>([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [dateFrom, setDateFrom] = useState('')
@@ -123,8 +123,6 @@ export function OrdersView() {
 
   // Detail dialog
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null)
-  const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
 
   // Return dialog
   const [showReturnDialog, setShowReturnDialog] = useState(false)
@@ -135,31 +133,29 @@ export function OrdersView() {
   const isEInvEnabled = !!store?.invoiceEnabled && !!store?.nit
   const [generatingInvoice, setGeneratingInvoice] = useState<number | null>(null)
 
-  const fetchOrders = useCallback(async () => {
-    if (!store?.id) return
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ storeId: store.id.toString() })
-      if (statusFilter !== 'ALL') params.set('status', statusFilter)
-      if (dateFrom) params.set('from', dateFrom)
-      if (dateTo) params.set('to', dateTo)
-      if (search.trim()) params.set('q', search.trim())
+  // ─── TanStack Query hooks ──────────────────────────────────────
+  const ordersQuery = useOrders(store?.id, {
+    status: statusFilter,
+    from: dateFrom || undefined,
+    to: dateTo || undefined,
+    q: search.trim() || undefined,
+  })
 
-      const res = await fetch(`/api/orders?${params}`)
-      if (!res.ok) throw new Error('Error al cargar órdenes')
-      const json = await res.json()
-      setOrders(Array.isArray(json) ? json : (json.data || []))
-    } catch {
-      toast.error('Error al cargar órdenes')
-    } finally {
-      setLoading(false)
-    }
-  }, [store?.id, statusFilter, dateFrom, dateTo, search])
+  const orders = useMemo(() => {
+    const data = ordersQuery.data
+    if (!data) return []
+    return Array.isArray(data) ? data : (data.data || [])
+  }, [ordersQuery.data])
 
-  useEffect(() => {
-    const timer = setTimeout(() => fetchOrders(), 300)
-    return () => clearTimeout(timer)
-  }, [fetchOrders])
+  const loading = ordersQuery.isLoading
+
+  const orderDetailQuery = useOrderDetail(selectedOrderId, store?.id)
+  const orderDetail = selectedOrderId ? orderDetailQuery.data : null
+  const detailLoading = orderDetailQuery.isLoading
+
+  // Mutation hooks
+  const returnOrderMut = useReturnOrder()
+  const createInvoiceMut = useCreateInvoice()
 
   const posOrders = useMemo(() => orders.filter(o => !o.tableSessionId), [orders])
   const mesaOrders = useMemo(() => orders.filter(o => !!o.tableSessionId), [orders])
@@ -170,20 +166,8 @@ export function OrdersView() {
     return orders
   }, [sectionFilter, posOrders, mesaOrders, orders])
 
-  async function openOrderDetail(orderId: number) {
-    if (!store?.id) { toast.error('Tienda no disponible'); return }
+  function openOrderDetail(orderId: number) {
     setSelectedOrderId(orderId)
-    setOrderDetail(null)
-    setDetailLoading(true)
-    try {
-      const res = await fetch(`/api/orders/${orderId}?storeId=${store.id}`)
-      if (!res.ok) throw new Error()
-      setOrderDetail(await res.json())
-    } catch {
-      toast.error('Error al cargar detalle')
-    } finally {
-      setDetailLoading(false)
-    }
   }
 
   function handlePrintTicket(detail: OrderDetail) {
@@ -260,15 +244,10 @@ export function OrdersView() {
     setReturning(true)
     try {
       const items = Array.from(returnItems.entries()).map(([orderItemId, quantity]) => ({ orderItemId, quantity }))
-      const res = await fetch(`/api/orders/${selectedOrderId}/return`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, reason: returnReason.trim() || undefined }),
+      const data = await returnOrderMut.mutateAsync({
+        id: selectedOrderId,
+        body: { items, reason: returnReason.trim() || undefined },
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Error al procesar devolución')
-      }
-      const data = await res.json()
       toast.success(data.message)
       // Show credit note notification if auto-generated
       if (data.creditNote) {
@@ -280,7 +259,6 @@ export function OrdersView() {
       setShowReturnDialog(false)
       setReturnItems(new Map())
       setSelectedOrderId(null)
-      fetchOrders()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al procesar devolución')
     } finally {
@@ -301,24 +279,13 @@ export function OrdersView() {
       }
       if (orderData.customer?.email) (invBody as Record<string, unknown>).customerEmail = orderData.customer.email
 
-      const invRes = await fetch('/api/invoices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(invBody),
+      const invoiceData = await createInvoiceMut.mutateAsync({ body: invBody })
+      toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, {
+        description: 'CUFE generado correctamente',
+        duration: 5000,
       })
-      if (invRes.ok) {
-        const invoiceData = await invRes.json()
-        toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, {
-          description: 'CUFE generado correctamente',
-          duration: 5000,
-        })
-        fetchOrders()
-      } else {
-        const err = await invRes.json().catch(() => ({}))
-        toast.error(`Error al generar factura: ${err.error || 'Desconocido'}`, { duration: 6000 })
-      }
-    } catch {
-      toast.error('Error al generar factura electrónica')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al generar factura electrónica')
     } finally {
       setGeneratingInvoice(null)
     }
@@ -749,7 +716,7 @@ export function OrdersView() {
                               className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50">−</button>
                             <Input type="number" min={1} max={available} value={returnQty}
                               onChange={(e) => setReturnItemQty(item.id, Number(e.target.value) || 1, available)}
-                              className="h-7 w-14 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                              className="h-7 w-14 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance:none [&::-webkit-inner-spin-button]:appearance-none" />
                             <button type="button" onClick={() => setReturnItemQty(item.id, returnQty + 1, available)}
                               disabled={returnQty >= available}
                               className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50">+</button>
@@ -800,5 +767,3 @@ function StatusBadge({ status }: { status: string }) {
   const s = map[status] || { label: status, className: 'bg-muted text-muted-foreground border-border' }
   return <Badge variant="outline" className={s.className}>{s.label}</Badge>
 }
-
-

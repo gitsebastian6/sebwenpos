@@ -63,6 +63,8 @@ import {
 } from 'lucide-react'
 import type { BarTable, TableSession, Customer, OpenCashRegister } from '@/hooks/use-tables-data'
 import { ZONES, ZONE_STYLES } from '@/hooks/use-tables-data'
+import { usePaySession, useComandaAddItem, useComandaUpdateItem } from '@/hooks/api/use-tables'
+import { useCreateInvoice } from '@/hooks/api/use-pos'
 
 // ─── Open Session Dialog ────────────────────────────────────────────────────
 
@@ -441,6 +443,10 @@ export function PaymentDialog({
   const isEInvEnabled = !!store?.invoiceEnabled && !!store?.nit
   const hasStoreNit = !!store?.nit
 
+  // TanStack Query mutations
+  const paySessionMutation = usePaySession()
+  const createInvoiceMutation = useCreateInvoice()
+
   const [paymentMethod, setPaymentMethod] = useState('CASH')
   const [paymentSaving, setPaymentSaving] = useState(false)
   const [tipAmount, setTipAmount] = useState<number>(0)
@@ -522,28 +528,19 @@ export function PaymentDialog({
 
     setPaymentSaving(true)
     try {
-      const res = await fetch(`/api/tables/sessions/${session.id}/pay`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId: store.id,
-          itemIds: selectedItemIds,
-          paymentMethod,
-          cashRegisterId: selectedCashRegisterId !== 'auto' ? Number(selectedCashRegisterId) : undefined,
-          tipAmount: (paymentMethod !== 'CREDIT' && paymentMethod !== 'FIADO') ? tipAmount : 0,
-          discountType,
-          discountAmount: calcDiscount,
-          discountReason: discountReason.trim() || undefined,
-        }),
+      const paymentData = await paySessionMutation.mutateAsync({
+        sessionId: session.id,
+        storeId: store.id,
+        itemIds: selectedItemIds,
+        paymentMethod,
+        cashRegisterId: selectedCashRegisterId !== 'auto' ? Number(selectedCashRegisterId) : undefined,
+        tipAmount: (paymentMethod !== 'CREDIT' && paymentMethod !== 'FIADO') ? tipAmount : 0,
+        discountType,
+        discountAmount: calcDiscount,
+        discountReason: discountReason.trim() || undefined,
       })
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Error al procesar pago')
-      }
-
       playSaleSuccess()
-      const paymentData = await res.json()
       toast.success(`Pago exitoso - ${paymentMethodLabel(paymentMethod)}`)
 
       // ── Auto-create electronic invoice if selected ──
@@ -565,23 +562,14 @@ export function PaymentDialog({
           }
           if (finalEmail) invBody.customerEmail = finalEmail
 
-          const invRes = await fetch('/api/invoices', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(invBody),
+          const invoiceData = await createInvoiceMutation.mutateAsync(invBody)
+          toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, {
+            description: 'CUFE generado correctamente',
+            duration: 5000,
           })
-          if (invRes.ok) {
-            const invoiceData = await invRes.json()
-            toast.success(`Factura electrónica ${invoiceData.invoiceNumber} generada`, {
-              description: 'CUFE generado correctamente',
-              duration: 5000,
-            })
-          } else {
-            const err = await invRes.json().catch(() => ({}))
-            toast.error(`Error al generar factura: ${err.error || 'Desconocido'}`, { duration: 6000 })
-          }
-        } catch {
-          toast.error('Error al generar factura electrónica')
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Desconocido'
+          toast.error(`Error al generar factura: ${msg}`, { duration: 6000 })
         } finally {
           setCreatingInvoice(false)
         }

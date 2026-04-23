@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
+import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense } from '@/hooks/api/use-expenses'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -63,44 +64,30 @@ export function ExpensesTab({ currencyCode, onAccountsChanged }: ExpensesTabProp
   const store = useAuthStore((s) => s.store)
 
   // ─── State ──────────────────────────────────────────────────────────
-  const [expenses, setExpenses] = useState<Expense[]>([])
-  const [isLoadingExpenses, setIsLoadingExpenses] = useState(false)
   const [expenseFilterFrom, setExpenseFilterFrom] = useState('')
   const [expenseFilterTo, setExpenseFilterTo] = useState('')
   const [expenseFilterCategory, setExpenseFilterCategory] = useState<string>('')
   const [showExpenseDialog, setShowExpenseDialog] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [deleteExpenseId, setDeleteExpenseId] = useState<number | null>(null)
-  const [isSavingExpense, setIsSavingExpense] = useState(false)
   const [expenseFormCategory, setExpenseFormCategory] = useState('OTRO')
   const [expenseFormDescription, setExpenseFormDescription] = useState('')
   const [expenseFormAmount, setExpenseFormAmount] = useState('')
   const [expenseFormDate, setExpenseFormDate] = useState('')
   const [expenseFormNotes, setExpenseFormNotes] = useState('')
 
-  // ─── Fetch ──────────────────────────────────────────────────────────
+  // ─── Query hooks ──────────────────────────────────────────────────
+  const { data: expenses = [], isLoading: isLoadingExpenses } = useExpenses(store?.id, {
+    from: expenseFilterFrom || undefined,
+    to: expenseFilterTo || undefined,
+    category: expenseFilterCategory || undefined,
+  })
 
-  const fetchExpenses = useCallback(async () => {
-    if (!store?.id) return
-    setIsLoadingExpenses(true)
-    try {
-      let url = `/api/expenses?storeId=${store.id}`
-      if (expenseFilterFrom) url += `&from=${expenseFilterFrom}`
-      if (expenseFilterTo) url += `&to=${expenseFilterTo}`
-      if (expenseFilterCategory) url += `&category=${expenseFilterCategory}`
-      const res = await fetch(url)
-      if (res.ok) {
-        const data = await res.json()
-        setExpenses(data.expenses || [])
-      }
-    } catch { /* silent */ } finally {
-      setIsLoadingExpenses(false)
-    }
-  }, [store?.id, expenseFilterFrom, expenseFilterTo, expenseFilterCategory])
-
-  useEffect(() => {
-    fetchExpenses()
-  }, [fetchExpenses])
+  // ─── Mutation hooks ───────────────────────────────────────────────
+  const createExpense = useCreateExpense()
+  const updateExpense = useUpdateExpense()
+  const deleteExpense = useDeleteExpense()
+  const isSavingExpense = createExpense.isPending || updateExpense.isPending || deleteExpense.isPending
 
   // ─── Handlers ───────────────────────────────────────────────────────
 
@@ -131,66 +118,39 @@ export function ExpensesTab({ currencyCode, onAccountsChanged }: ExpensesTabProp
       toast.error('Ingresa descripción y monto válido')
       return
     }
-    setIsSavingExpense(true)
+    const payload = {
+      storeId: store.id,
+      category: expenseFormCategory,
+      description: expenseFormDescription.trim(),
+      amount,
+      date: new Date(expenseFormDate + 'T12:00:00').toISOString(),
+      notes: expenseFormNotes.trim() || undefined,
+    }
+
     try {
-      const payload = {
-        storeId: store.id,
-        category: expenseFormCategory,
-        description: expenseFormDescription.trim(),
-        amount,
-        date: new Date(expenseFormDate + 'T12:00:00').toISOString(),
-        notes: expenseFormNotes.trim() || undefined,
-      }
-
-      let res: Response
       if (editingExpense) {
-        res = await fetch(`/api/expenses/${editingExpense.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
+        await updateExpense.mutateAsync({ id: editingExpense.id, body: payload })
+        toast.success('Gasto actualizado')
       } else {
-        res = await fetch('/api/expenses', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
+        await createExpense.mutateAsync({ body: payload })
+        toast.success('Gasto registrado')
       }
-
-      if (res.ok) {
-        toast.success(editingExpense ? 'Gasto actualizado' : 'Gasto registrado')
-        setShowExpenseDialog(false)
-        fetchExpenses()
-        onAccountsChanged()
-      } else {
-        const err = await res.json()
-        toast.error(err.error || 'Error al guardar gasto')
-      }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setIsSavingExpense(false)
+      setShowExpenseDialog(false)
+      onAccountsChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al guardar gasto')
     }
   }
 
   async function handleDeleteExpense() {
     if (!deleteExpenseId) return
-    setIsSavingExpense(true)
     try {
-      const res = await fetch(`/api/expenses/${deleteExpenseId}`, { method: 'DELETE' })
-      if (res.ok) {
-        toast.success('Gasto eliminado')
-        setDeleteExpenseId(null)
-        fetchExpenses()
-        onAccountsChanged()
-      } else {
-        const err = await res.json()
-        toast.error(err.error || 'Error al eliminar')
-      }
-    } catch {
-      toast.error('Error de conexión')
-    } finally {
-      setIsSavingExpense(false)
+      await deleteExpense.mutateAsync({ id: deleteExpenseId })
+      toast.success('Gasto eliminado')
+      setDeleteExpenseId(null)
+      onAccountsChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al eliminar')
     }
   }
 
