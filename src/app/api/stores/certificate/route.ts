@@ -4,29 +4,7 @@ import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomBytes, X509Certificate } from 'node:crypto'
 import crypto from 'node:crypto'
-
-// Simple reversible encryption for cert password at rest
-function encrypt(text: string): string {
-  const key = process.env.ENCRYPTION_KEY || 'default-pos-key-32!'
-  const buf = Buffer.from(text, 'utf8')
-  const keyBuf = Buffer.from(key.padEnd(32, '0').slice(0, 32), 'utf8')
-  const encrypted = Buffer.alloc(buf.length)
-  for (let i = 0; i < buf.length; i++) {
-    encrypted[i] = buf[i] ^ keyBuf[i % keyBuf.length]
-  }
-  return encrypted.toString('base64')
-}
-
-function decrypt(encrypted: string): string {
-  const key = process.env.ENCRYPTION_KEY || 'default-pos-key-32!'
-  const buf = Buffer.from(encrypted, 'base64')
-  const keyBuf = Buffer.from(key.padEnd(32, '0').slice(0, 32), 'utf8')
-  const decrypted = Buffer.alloc(buf.length)
-  for (let i = 0; i < buf.length; i++) {
-    decrypted[i] = buf[i] ^ keyBuf[i % keyBuf.length]
-  }
-  return decrypted.toString('utf8')
-}
+import { encryptField, decryptField } from '@/lib/field-encryption'
 
 // Extract certificate info from .p12
 function extractCertInfo(p12Path: string, password: string): {
@@ -174,7 +152,7 @@ export async function POST(request: NextRequest) {
         where: { id: parseInt(storeId) },
         data: {
           certData: certDataBase64,
-          certPassword: encrypt(certPassword.trim()),
+          certPassword: encryptField(certPassword.trim()),
           certUploadedAt: new Date(),
           certExpiresAt: certInfo.expiresAt,
           certSubject: certInfo.subject,
