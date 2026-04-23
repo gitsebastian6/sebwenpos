@@ -9,8 +9,8 @@ export type { CUFEInput } from './cufe-generator'
 export { generateUBL21XML } from './xml-generator'
 export type { InvoiceXMLInput } from './xml-generator'
 
-export { loadCertificate, signXML, verifyCertificateConfig } from './certificate'
-export type { CertificateConfig, LoadedCertificate, CertificateVerificationResult } from './certificate'
+// NOTE: certificate.ts was deleted (dead code, superseded by @/lib/invoicing/certificate)
+// Re-exports removed — use @/lib/invoicing/certificate instead
 
 export { generateInvoicePDF, generateInvoicePDFBase64 } from './pdf-generator'
 export type { InvoicePDFData } from './pdf-generator'

@@ -1,4 +1,31 @@
 ---
+Task ID: R09-f10
+Agent: main
+Task: R-09 FASE 10 — Refactor print-ticket.ts + certificate.ts
+
+Work Log:
+- Deleted src/lib/dian/certificate.ts (276 lines): dead code, zero imports
+- Updated src/lib/dian/index.ts: removed broken certificate re-exports (module was dead code)
+- Created src/lib/print-ticket-types.ts (123 lines): TicketItem, TicketData, CashRegisterCloseData, DailySummaryData, ProductCatalogData, KardexData interfaces + PAYMENT_LABELS constant
+- Created src/lib/print-ticket-helpers.ts (148 lines): fmt, fmtDate, truncate helpers + THERMAL_STYLE CSS constant + openPrintWindow helper
+- Created src/lib/print-secondary.ts (268 lines): printCashRegisterClose, printDailySummary, printProductCatalog, printKardex
+- Refactored src/lib/print-ticket.ts (527 lines): keeps only printTicket() with re-exports for all types + functions + PAYMENT_LABELS
+- Created src/lib/invoicing/certificate-types.ts (66 lines): CertificateInfo, SignXMLResult, CertificateValidation, LoadedKeyPair interfaces + CryptoKeyObject type
+- Created src/lib/invoicing/xml-canonicalization.ts (78 lines): exclusiveCanonicalize, normalizeEntities, toBase64
+- Created src/lib/invoicing/xml-signing.ts (220 lines): signXML with XMLDSIG_ALGORITHMS, DS_NS, DS_PREFIX constants + helper functions
+- Refactored src/lib/invoicing/certificate.ts (677 lines): keeps loadFromPEM, loadFromP12, loadFromP12ViaOpenSSL, loadCertificate, getCertificateInfo, validateCertificate, signXMLForDIAN, loadUploadedStoreCert + re-exports
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully, responds 200
+
+Stage Summary:
+- print-ticket.ts: 1,045 → 527 lines (50% reduction)
+- invoicing/certificate.ts: 1,020 → 677 lines (34% reduction)
+- dian/certificate.ts: 276 lines deleted (dead code)
+- 6 new files created, 1 deleted
+- All exports preserved via re-exports in original files
+- Zero new lint errors
+
+---
 Task ID: R09-f9
 Agent: main
 Task: R-09 FASE 9 — Refactor table-session-dialog.tsx from 1,053 → 379 lines
@@ -1440,4 +1467,31 @@ Stage Summary:
 - 1 new file created: payment-dialog.tsx (697 lines)
 - PaymentDialog is fully self-contained with own state, mutations (usePaySession, useCreateInvoice), and hooks (useAuthStore)
 - Backward-compatible re-export preserved (tables-view.tsx import unchanged)
+- Zero new lint errors
+
+---
+Task ID: R09-f10
+Agent: main
+Task: R-09 FASE 10 — Refactor print-ticket.ts + certificate.ts
+
+Work Log:
+- Deleted src/lib/dian/certificate.ts (276 lines): dead code, zero imports across entire codebase
+- Updated src/lib/dian/index.ts: removed broken certificate re-exports (module was dead code)
+- Created src/lib/print-ticket-types.ts (123 lines): TicketItem, TicketData, CashRegisterCloseData, DailySummaryData, ProductCatalogData, KardexData interfaces + PAYMENT_LABELS constant
+- Created src/lib/print-ticket-helpers.ts (148 lines): fmt, fmtDate, truncate helpers + THERMAL_STYLE CSS constant + openPrintWindow helper
+- Created src/lib/print-secondary.ts (268 lines): printCashRegisterClose, printDailySummary, printProductCatalog, printKardex
+- Refactored src/lib/print-ticket.ts (527 lines): keeps only printTicket() with re-exports for all types + functions + PAYMENT_LABELS
+- Created src/lib/invoicing/certificate-types.ts (66 lines): CertificateInfo, SignXMLResult, CertificateValidation, LoadedKeyPair interfaces + CryptoKeyObject type
+- Created src/lib/invoicing/xml-canonicalization.ts (78 lines): exclusiveCanonicalize, normalizeEntities, toBase64
+- Created src/lib/invoicing/xml-signing.ts (220 lines): signXML with XMLDSIG_ALGORITHMS, DS_NS, DS_PREFIX constants + helper functions
+- Refactored src/lib/invoicing/certificate.ts (677 lines): keeps loadFromPEM, loadFromP12, loadFromP12ViaOpenSSL, loadCertificate, getCertificateInfo, validateCertificate, signXMLForDIAN, loadUploadedStoreCert + re-exports
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully, responds 200
+
+Stage Summary:
+- print-ticket.ts: 1,045 → 527 lines (50% reduction)
+- invoicing/certificate.ts: 1,020 → 677 lines (34% reduction)
+- dian/certificate.ts: 276 lines deleted (dead code)
+- 6 new files created, 1 deleted
+- All exports preserved via re-exports in original files
 - Zero new lint errors
