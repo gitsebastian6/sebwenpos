@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
+  // Reduce memory usage in dev
+  swcMinify: true,
+  compiler: {
+    removeConsole: false,
+  },
 
   // Security headers on all responses
   async headers() {
