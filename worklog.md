@@ -869,3 +869,25 @@ Stage Summary:
 - 17+ routes verified as PASS (Categories, Orders POST, Tables, Taxes, Employees, etc.)
 - Verdict: FUNCTIONAL WITH TECHNICAL DEBT
 - 4-phase correction plan proposed (Emergency → Security → Quality → Polish)
+---
+Task ID: critical-fixes
+Agent: main
+Task: Fix 8 critical QA bugs (C-01 through C-08)
+
+Work Log:
+- C-01: Rewrote /api/staff/route.ts to use db.employee with includes for user and role relations. Added requireStoreAccess auth check.
+- C-02: Fixed /api/users/[id] GET to query through employee relation for role/position data instead of non-existent User fields.
+- C-03: Fixed /api/users/[id] DELETE to update employee.isActive instead of User.roleId (which doesn't exist). Added requireAuth.
+- C-04: Added requireStoreAccess to /api/staff (was completely unauthenticated).
+- C-05: Added requireStoreAccess to /api/products GET (was exposing prices/stock without auth).
+- C-06: Added requireStoreAccess to /api/orders GET (was exposing order data without auth).
+- C-07: Created DebitNote model in Prisma schema with all fields needed by the route. Added relations to Store and Invoice models.
+- C-08: Removed isActive from editStoreSchema and removed the employee deactivation logic (Store model has no isActive field).
+- Pushed schema changes to DB (db:push), rebuilt production, verified all endpoints.
+
+Stage Summary:
+- All 8 critical bugs fixed and verified
+- /api/staff, /api/products GET, /api/orders GET, /api/users/[id] now require authentication
+- DebitNote model created with proper relations
+- Production build successful, server running stable
+- Committed and pushed to GitHub: 6c9c676
