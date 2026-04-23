@@ -1,4 +1,22 @@
 ---
+Task ID: R09-f9
+Agent: main
+Task: R-09 FASE 9 — Refactor table-session-dialog.tsx from 1,053 → 379 lines
+
+Work Log:
+- Created src/components/tables/payment-dialog.tsx (697 lines): extracted PaymentDialog with all internal state (paymentMethod, paymentSaving, tipAmount, showTipInput, transferRef, discountType/Value/Reason, tableInvoiceMode, invoiceCustomerNit/Name/Email, nitDvError, creatingInvoice), hooks (useAuthStore, usePaySession, useCreateInvoice), invoice mode selector, NIT DV validation, tip/discount UI, payment method grid, cash register selector, transfer reference input
+- Refactored table-session-dialog.tsx (379 lines): removed PaymentDialog + InvoiceMode type + PaymentDialogProps interface, cleaned 20+ unused imports, added `export { PaymentDialog } from './payment-dialog'` re-export for backward compatibility
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully
+
+Stage Summary:
+- table-session-dialog.tsx: 1,053 → 379 lines (64% reduction)
+- 1 new file created: payment-dialog.tsx (697 lines)
+- PaymentDialog is fully self-contained with own state, mutations (usePaySession, useCreateInvoice), and hooks (useAuthStore)
+- Backward-compatible re-export preserved (tables-view.tsx import unchanged)
+- Zero new lint errors
+
+---
 Task ID: R09-f8
 Agent: main
 Task: R-09 FASE 8 — Refactor inventory-view.tsx from 1,114 → 168 lines
@@ -1404,4 +1422,22 @@ Stage Summary:
 - Key prop pattern used for both dialogs (clean state reset on open)
 - All business logic preserved, zero visual/functional changes
 - InventoryView export name preserved
+- Zero new lint errors
+
+---
+Task ID: R09-f9
+Agent: main
+Task: R-09 FASE 9 — Refactor table-session-dialog.tsx from 1,053 → 379 lines
+
+Work Log:
+- Created src/components/tables/payment-dialog.tsx (697 lines): extracted PaymentDialog with all internal state (paymentMethod, paymentSaving, tipAmount, showTipInput, transferRef, discountType/Value/Reason, tableInvoiceMode, invoiceCustomerNit/Name/Email, nitDvError, creatingInvoice), hooks (useAuthStore, usePaySession, useCreateInvoice), invoice mode selector, NIT DV validation, tip/discount UI, payment method grid, cash register selector, transfer reference input
+- Refactored table-session-dialog.tsx (379 lines): removed PaymentDialog + InvoiceMode type + PaymentDialogProps interface, cleaned 20+ unused imports, added `export { PaymentDialog } from './payment-dialog'` re-export for backward compatibility
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully
+
+Stage Summary:
+- table-session-dialog.tsx: 1,053 → 379 lines (64% reduction)
+- 1 new file created: payment-dialog.tsx (697 lines)
+- PaymentDialog is fully self-contained with own state, mutations (usePaySession, useCreateInvoice), and hooks (useAuthStore)
+- Backward-compatible re-export preserved (tables-view.tsx import unchanged)
 - Zero new lint errors
