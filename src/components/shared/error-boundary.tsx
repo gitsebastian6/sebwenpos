@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import * as Sentry from '@sentry/nextjs'
 import { Button } from '@/components/ui/button'
 import { AlertTriangle, RefreshCcw, ArrowLeft, Home } from 'lucide-react'
 
@@ -36,7 +37,13 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     this.setState({ errorInfo })
-    // Log to console in dev, in production this would go to a monitoring service
+    // Send to Sentry in production for error monitoring
+    Sentry.withScope((scope) => {
+      if (this.props.viewName) scope.setTag('view', this.props.viewName)
+      scope.setExtra('componentStack', errorInfo.componentStack)
+      Sentry.captureException(error)
+    })
+    // Also log locally for dev debugging
     console.error(
       `[ErrorBoundary${this.props.viewName ? ` (${this.props.viewName})` : ''}]`,
       error,
