@@ -1,4 +1,27 @@
 ---
+Task ID: PROD-F5
+Agent: main
+Task: Fase 5 — Variables de entorno y seguridad de secrets
+
+Work Log:
+- Audited all process.env.* references across the codebase (38 occurrences in 15 files)
+- Identified 21 unique environment variables needed
+- Found hardcodeed encryption key fallback 'default-pos-key-32!' in certificate/route.ts (MEDIUM security issue)
+- Verified field-encryption.ts is safe (throws error if no key, no fallback)
+- Verified no other secrets hardcodeed in source (only fallback display names like 'Ventify POS')
+- Created .env.example with all 21 variables documented with descriptions and usage guidance
+- Replaced insecure XOR encryption in certificate/route.ts with AES-256-GCM via field-encryption.ts (encryptField/decryptField)
+- Removed .env from git tracking (contained AUTH_SECRET and INTERNAL_SECRET values)
+- Updated .gitignore: explicit .env/.env.local/.env.production/.env.development ignore rules, !.env.example exception
+- Lint: 0 errors, dev server compiles successfully
+
+Stage Summary:
+- .env.example created with 21 documented variables across 6 categories (Core, DIAN, SMTP, MessageBird, Support, Seed)
+- Certificate encryption upgraded from XOR (insecure) to AES-256-GCM (industry standard)
+- .env removed from git tracking — secrets no longer exposed in repository
+- Git pushed: 6bdf55a
+
+---
 Task ID: PROD-F3
 Agent: main
 Task: Fase 3 — Corregir 18 errores de lint (de 18 a 0)
