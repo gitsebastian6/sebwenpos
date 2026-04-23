@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,29 +14,42 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
 
-    const users = await db.user.findMany({
-      where: { storeId: parseInt(storeId) },
-      include: { roleRef: true },
+    const storeIdNum = parseInt(storeId)
+
+    // Auth: verify user has access to this store
+    const storeAccessError = requireStoreAccess(req, storeIdNum)
+    if (storeAccessError) return storeAccessError
+
+    // Query employees (not users) — employees belong to a store via Employee model
+    const employees = await db.employee.findMany({
+      where: { storeId: storeIdNum },
+      include: {
+        user: { select: { id: true, cedula: true, phone: true, email: true, fullName: true } },
+        role: true,
+      },
       orderBy: { createdAt: 'desc' },
     })
 
-    const staffUsers = users.map(u => ({
-      id: u.id,
-      phone: u.phone,
-      email: u.email,
-      fullName: u.fullName,
-      cedula: u.cedula,
-      documentType: u.documentType,
-      role: u.role,
-      roleId: u.roleId,
-      createdAt: u.createdAt,
-      roleName: u.roleRef?.name ?? null,
-      permissions: u.roleRef ? JSON.parse(u.roleRef.permissions) : null,
+    const staffUsers = employees.map(e => ({
+      id: e.id,
+      employeeId: e.id,
+      userId: e.userId,
+      phone: e.user.phone,
+      email: e.user.email,
+      fullName: e.user.fullName,
+      cedula: e.user.cedula,
+      position: e.position,
+      roleId: e.roleId,
+      isActive: e.isActive,
+      permissions: e.permissions ? (() => { try { return JSON.parse(e.permissions) } catch { return {} } })() : {},
+      createdAt: e.createdAt,
+      roleName: e.role?.name ?? null,
+      rolePermissions: e.role ? (() => { try { return JSON.parse(e.role.permissions) } catch { return {} } })() : null,
     }))
 
     const roles = await db.role.findMany({
-      where: { storeId: parseInt(storeId) },
-      include: { _count: { select: { users: true } } },
+      where: { storeId: storeIdNum },
+      include: { _count: { select: { employees: true } } },
       orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
     })
 
@@ -43,19 +57,22 @@ export async function GET(req: NextRequest) {
       id: r.id,
       name: r.name,
       description: r.description,
-      permissions: JSON.parse(r.permissions),
+      permissions: (() => { try { return JSON.parse(r.permissions) } catch { return {} } })(),
       isActive: r.isActive,
       isDefault: r.isDefault,
       createdAt: r.createdAt,
-      userCount: r._count.users,
+      employeeCount: r._count.employees,
     }))
+
+    // Calculate active users from employees
+    const activeUsers = employees.filter(e => e.isActive).length
 
     return NextResponse.json({
       users: staffUsers,
       roles: enrichedRoles,
       stats: {
         totalUsers: staffUsers.length,
-        activeUsers: 0,
+        activeUsers,
         totalRoles: enrichedRoles.length,
       },
     })

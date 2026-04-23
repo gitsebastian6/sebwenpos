@@ -151,6 +151,7 @@ model Store {
   taxRates            TaxRate[]
   invoices            Invoice[]
   creditNotes         CreditNote[]
+  debitNotes          DebitNote[]
   contingencyInvoices ContingencyInvoice[]
   quotations          Quotation[]
   subscription        Subscription?
@@ -384,6 +385,7 @@ model Invoice {
   order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
   creditNotes         CreditNote[]
+  debitNotes          DebitNote[]
   contingencyInvoices ContingencyInvoice[]
 
   @@unique([storeId, prefix, consecutive])
@@ -444,6 +446,70 @@ model CreditNote {
   @@index([storeId])
   @@index([invoiceId])
   @@map("credit_notes")
+}
+
+// ----------------------------------------------
+// CONTEXTO: NOTAS DEBITO (DIAN)
+// ----------------------------------------------
+
+model DebitNote {
+  id                Int       @id @default(autoincrement())
+  storeId           Int       @map("store_id")
+  invoiceId         Int?      @map("invoice_id")
+  prefix            String    @default("ND")
+  consecutive       Int
+  resolutionNumber  String?   @map("resolution_number")
+  resolutionDate    DateTime? @map("resolution_date")
+  startDate         DateTime? @map("start_date")
+  endDate           DateTime? @map("end_date")
+  startNumber       Int?      @map("start_number")
+  endNumber         Int?      @map("end_number")
+  // Emisor
+  supplierNit       String?   @map("supplier_nit")
+  supplierName      String?   @map("supplier_name")
+  supplierAddress   String?   @map("supplier_address")
+  supplierPhone     String?   @map("supplier_phone")
+  supplierEmail     String?   @map("supplier_email")
+  // Cliente
+  customerNit       String?   @map("customer_nit")
+  customerName      String?   @map("customer_name")
+  customerEmail     String?   @map("customer_email")
+  customerPhone     String?   @map("customer_phone")
+  customerAddress   String?   @map("customer_address")
+  customerRegime    String?   @map("customer_regime")
+  customerType      String?   @map("customer_type")
+  // Desglose tributario
+  subtotalBase      Int       @default(0) @map("subtotal_base")
+  taxExemptAmount   Int       @default(0) @map("tax_exempt_amount")
+  taxBreakdown      String?   @map("tax_breakdown")
+  totalTaxAmount    Int       @default(0) @map("total_tax_amount")
+  totalWithTax      Int       @map("total_with_tax")
+  discountAmount    Int       @default(0) @map("discount_amount")
+  grandTotal        Int       @map("grand_total")
+  // Motivo
+  reason            String?
+  debitCode         String    @default("01") @map("debit_code")
+  // DIAN
+  cufe              String?
+  qrCode            String?   @map("qr_code")
+  xmlContent        String?   @map("xml_content")
+  status            String    @default("DRAFT")
+  dianResponse      String?   @map("dian_response")
+  sentAt            DateTime? @map("sent_at")
+  validatedAt       DateTime? @map("validated_at")
+  emailedAt         DateTime? @map("emailed_at")
+  testMode          Boolean   @default(true) @map("test_mode")
+  notes             String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt
+
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  invoice  Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@unique([storeId, prefix, consecutive])
+  @@index([storeId])
+  @@index([invoiceId])
+  @@map("debit_notes")
 }
 
 model ContingencyInvoice {

@@ -38,8 +38,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
 
+    const storeIdNum = Number(storeId)
+
+    // Auth: verify user has access to this store
+    const storeAccessError = requireStoreAccess(req, storeIdNum)
+    if (storeAccessError) return storeAccessError
+
     const where: Record<string, unknown> = {
-      storeId: Number(storeId),
+      storeId: storeIdNum,
     }
 
     if (q) {

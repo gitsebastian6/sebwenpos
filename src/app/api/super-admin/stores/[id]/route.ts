@@ -16,13 +16,11 @@ const editStoreSchema = z.object({
   ownerFullName: z.string().min(2).max(200).optional(),
   ownerEmail: z.string().email().optional().nullable(),
   ownerPhone: z.string().max(30).optional().nullable(),
-  // Activar/desactivar
-  isActive: z.boolean().optional(),
 })
 
 /**
  * PATCH /api/super-admin/stores/[id]
- * Editar datos de la tienda y/o del owner, o activar/desactivar
+ * Editar datos de la tienda y/o del owner
  */
 export async function PATCH(
   req: NextRequest,
@@ -45,16 +43,6 @@ export async function PATCH(
 
     if (!store) {
       return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 })
-    }
-
-    // Activar/desactivar
-    if (typeof data.isActive === 'boolean') {
-      if (!data.isActive) {
-        await db.employee.updateMany({
-          where: { storeId },
-          data: { isActive: false },
-        })
-      }
     }
 
     // Actualizar datos de la tienda

@@ -508,6 +508,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
     }
 
+    // Auth: verify user has access to this store
+    const storeAccessError = requireStoreAccess(request, storeId)
+    if (storeAccessError) return storeAccessError
+
     const where: Record<string, unknown> = { storeId }
 
     if (status && status !== 'ALL') {
