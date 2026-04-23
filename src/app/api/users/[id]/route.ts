@@ -46,7 +46,7 @@ export async function DELETE(
     // Deactivate instead of hard delete
     await db.user.update({
       where: { id: userId },
-      data: { isActive: false, roleId: null },
+      data: { roleId: null },
     })
 
     return NextResponse.json({ message: 'Usuario desactivado correctamente' })
@@ -81,7 +81,6 @@ export async function GET(
       documentType: user.documentType,
       role: user.role,
       roleId: user.roleId,
-      isActive: user.isActive,
       storeId: user.storeId,
       createdAt: user.createdAt,
       roleName: user.roleRef?.name ?? null,

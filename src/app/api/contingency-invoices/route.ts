@@ -49,15 +49,16 @@ export async function GET(request: NextRequest) {
     }
 
     if (from || to) {
-      where.createdAt = {}
+      const dateFilter: Record<string, Date> = {}
       if (from) {
-        where.createdAt.gte = new Date(from)
+        dateFilter.gte = new Date(from)
       }
       if (to) {
         const endDate = new Date(to)
         endDate.setHours(23, 59, 59, 999)
-        where.createdAt.lte = endDate
+        dateFilter.lte = endDate
       }
+      where.createdAt = dateFilter
     }
 
     const contingencies = await db.contingencyInvoice.findMany({
@@ -212,7 +213,7 @@ export async function POST(req: NextRequest) {
     const seconds = String(now.getSeconds()).padStart(2, '0')
     const issueTime = `${hours}${minutes}${seconds}000`
 
-    const softwarePIN = decryptField(store.softwarePin) || process.env.DIAN_SOFTWARE_PIN || ''
+    const softwarePIN = decryptField(store.softwarePin || '') || process.env.DIAN_SOFTWARE_PIN || ''
     const providerNit = getSoftwareProviderNIT()
 
     const contingencyNotes = data.reason

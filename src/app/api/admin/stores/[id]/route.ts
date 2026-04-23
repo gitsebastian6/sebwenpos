@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
-import { calculatePlanDates } from '@/lib/plan-utils'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -13,14 +12,11 @@ const updateSchema = z.object({
   legalName: z.string().nullable().optional(),
   city: z.string().nullable().optional(),
   address: z.string().nullable().optional(),
-  plan: z.enum(['TRIAL', 'BASIC', 'PRO', 'ENTERPRISE']).optional(),
   // Owner fields
   ownerFullName: z.string().min(2).optional(),
   ownerPhone: z.string().optional(),
   ownerEmail: z.string().email().nullable().optional(),
   ownerPassword: z.string().min(6).optional(), // Reset owner password
-  // Toggle
-  isActive: z.boolean().optional(),
 })
 
 // GET /api/admin/stores/[id] — Store details with full stats
@@ -34,11 +30,10 @@ export async function GET(
       where: { id: parseInt(id) },
       include: {
         user: {
-          select: { id: true, fullName: true, cedula: true, phone: true, email: true, isActive: true, createdAt: true },
+          select: { id: true, fullName: true, cedula: true, phone: true, email: true, createdAt: true },
         },
-        staff: {
-          select: { id: true, fullName: true, cedula: true, phone: true, role: true, roleId: true, isActive: true, roleRef: { select: { name: true } } },
-          where: { role: 'EMPLOYEE' },
+        employees: {
+          select: { id: true, user: { select: { id: true, fullName: true, cedula: true, phone: true, email: true } } },
           orderBy: { createdAt: 'desc' },
         },
         _count: {
@@ -78,22 +73,18 @@ export async function GET(
       name: store.name,
       legalName: store.legalName,
       nit: store.nit,
-      city: store.city,
+      cityName: store.cityName,
       address: store.address,
       phone: store.phone,
-      email: store.email,
       currencyCode: store.currencyCode,
-      plan: store.plan,
-      planStartDate: store.planStartDate?.toISOString() || null,
-      planExpiresAt: store.planExpiresAt?.toISOString() || null,
-      isActive: store.user.isActive,
+      isActive: true,
       createdAt: store.createdAt,
       updatedAt: store.updatedAt,
       owner: store.user,
-      staff: store.staff,
+      staff: store.employees,
       stats: {
         ...store._count,
-        totalStaff: store.staff.length, // Only EMPLOYEE role (excludes OWNER)
+        totalStaff: store.employees.length,
         todayOrders,
         todaySales: todaySales._sum.total || 0,
       },
@@ -128,15 +119,8 @@ export async function PUT(
     if (data.storeName !== undefined) storeUpdate.name = data.storeName
     if (data.nit !== undefined) storeUpdate.nit = data.nit
     if (data.legalName !== undefined) storeUpdate.legalName = data.legalName
-    if (data.city !== undefined) storeUpdate.city = data.city
+    if (data.city !== undefined) storeUpdate.cityName = data.city
     if (data.address !== undefined) storeUpdate.address = data.address
-    if (data.plan !== undefined) {
-      storeUpdate.plan = data.plan
-      // Auto-calculate plan expiration dates
-      const { planStartDate, planExpiresAt } = calculatePlanDates(data.plan)
-      storeUpdate.planStartDate = planStartDate
-      storeUpdate.planExpiresAt = planExpiresAt
-    }
 
     if (Object.keys(storeUpdate).length > 0) {
       await db.store.update({
@@ -150,8 +134,6 @@ export async function PUT(
     if (data.ownerFullName !== undefined) ownerUpdate.fullName = data.ownerFullName
     if (data.ownerPhone !== undefined) ownerUpdate.phone = data.ownerPhone
     if (data.ownerEmail !== undefined) ownerUpdate.email = data.ownerEmail
-    if (data.isActive !== undefined) ownerUpdate.isActive = data.isActive
-
     // Reset owner password
     if (data.ownerPassword) {
       const hash = await hashPassword(data.ownerPassword)

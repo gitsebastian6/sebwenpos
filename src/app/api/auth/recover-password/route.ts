@@ -31,13 +31,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!user.isActive) {
-      return NextResponse.json(
-        { error: 'Tu cuenta está desactivada. Contacta al administrador.' },
-        { status: 403 }
-      )
-    }
-
     const passwordHash = await hashPassword(data.newPassword)
 
     await db.user.update({
@@ -73,14 +66,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Teléfono es requerido' }, { status: 400 })
     }
 
-    const user = await db.user.findUnique({
+    const user = await db.user.findFirst({
       where: { phone },
       select: {
         id: true,
         fullName: true,
         cedula: true,
-        documentType: true,
-        isActive: true,
       },
     })
 
@@ -96,9 +87,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       found: true,
       fullName: user.fullName,
-      documentType: user.documentType,
       maskedCedula,
-      isActive: user.isActive,
     })
   } catch (error) {
     console.error('Recovery lookup error:', error)

@@ -48,7 +48,7 @@ export async function GET(
             nit: true,
             address: true,
             phone: true,
-            email: true,
+            user: { select: { email: true } },
             currencyCode: true,
           },
         },
@@ -129,7 +129,7 @@ export async function GET(
       supplierLegalName: store.legalName || store.name || '',
       supplierAddress: store.address || '',
       supplierPhone: store.phone || '',
-      supplierEmail: store.email || undefined,
+      supplierEmail: store.user?.email || undefined,
       // Receptor
       customerNit: invoice.customerNit || '',
       customerName: invoice.customerName || 'Consumidor Final',

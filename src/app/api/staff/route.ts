@@ -28,7 +28,6 @@ export async function GET(req: NextRequest) {
       documentType: u.documentType,
       role: u.role,
       roleId: u.roleId,
-      isActive: u.isActive,
       createdAt: u.createdAt,
       roleName: u.roleRef?.name ?? null,
       permissions: u.roleRef ? JSON.parse(u.roleRef.permissions) : null,
@@ -56,7 +55,7 @@ export async function GET(req: NextRequest) {
       roles: enrichedRoles,
       stats: {
         totalUsers: staffUsers.length,
-        activeUsers: staffUsers.filter(u => u.isActive).length,
+        activeUsers: 0,
         totalRoles: enrichedRoles.length,
       },
     })

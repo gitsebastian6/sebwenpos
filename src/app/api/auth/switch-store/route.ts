@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
-const SWITCH_STORE_RATE_LIMIT = { max: 30, window: 60 }
+const SWITCH_STORE_RATE_LIMIT: { maxRequests: number; windowSeconds: number } = { maxRequests: 30, windowSeconds: 60 }
 
 /** Grace period: 3 calendar days after endDate before fully expiring. */
 const GRACE_PERIOD_DAYS = 3
@@ -17,8 +17,8 @@ const GRACE_PERIOD_DAYS = 3
 
 interface SubRow {
   id: number; status: string; planId: number
-  endDate: string | null; graceEndDate: string | null
-  trialEndDate: string | null; billingPeriod: string; startDate: string
+  endDate: Date | string | null; graceEndDate: Date | string | null
+  trialEndDate: Date | string | null; billingPeriod: string; startDate: Date | string
   plan: { id: number; name: string; price: number; maxEmployees: number; maxProducts: number; features: string }
 }
 

@@ -142,7 +142,7 @@ async function getSubscriptionInfo(storeId: number) {
   return buildSubInfo(subscription)
 }
 
-function buildSubInfo(sub: { id: number; status: string; planId: number; endDate: string | null; graceEndDate: string | null; trialEndDate: string | null; billingPeriod: string; startDate: string; plan: { id: number; name: string; price: number; maxEmployees: number; maxProducts: number; features: string } }) {
+function buildSubInfo(sub: { id: number; status: string; planId: number; endDate: Date | string | null; graceEndDate: Date | string | null; trialEndDate: Date | string | null; billingPeriod: string; startDate: Date | string; plan: { id: number; name: string; price: number; maxEmployees: number; maxProducts: number; features: string } }) {
   const now = new Date()
   const endDate = sub.endDate ? new Date(sub.endDate) : null
   const graceEndDate = sub.graceEndDate ? new Date(sub.graceEndDate) : null
@@ -186,7 +186,7 @@ function buildSubInfo(sub: { id: number; status: string; planId: number; endDate
 export async function POST(req: NextRequest) {
   // ─── Rate Limiting: 5 intentos por minuto por IP ───
   const rl = withRateLimit(req, 'login', LOGIN_RATE_LIMIT)
-  if (!rl.allowed) return rl.response
+  if (!rl.allowed) return (rl as { allowed: false; response: NextResponse }).response
 
   try {
     const body = await req.json()
@@ -264,11 +264,6 @@ export async function POST(req: NextRequest) {
     } else if (user.role === 'EMPLOYEE' && user.employee) {
       store = user.employee.store
       employeeId = user.employee.id
-
-      // Verificar empleado activo
-      if (!user.employee.isActive) {
-        return NextResponse.json({ error: 'Empleado inactivo. Contacte al administrador.' }, { status: 403 })
-      }
 
       // Obtener permisos del ROL asignado (prioridad) o del empleado directamente
       if (user.employee.role && user.employee.role.isActive) {

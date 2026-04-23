@@ -67,6 +67,16 @@ export function formatInvoiceNumber(prefix: string, consecutive: number): string
   return `${prefix}-${padField(consecutive, 8)}`
 }
 
+/**
+ * Obtiene la URL base de la aplicación desde el request.
+ * En producción usa las headers, en desarrollo usa localhost.
+ */
+export function getAppBaseUrl(request: Request): string {
+  const host = request.headers.get('host') || 'localhost:3000'
+  const protocol = request.headers.get('x-forwarded-proto') || 'https'
+  return `${protocol}://${host}`
+}
+
 // ─── Mapeo de metodos de pago ────────────────────────────────────────────
 
 const PAYMENT_CODE_MAP: Record<string, string> = {

@@ -225,7 +225,7 @@ export async function POST(
             name: true,
             address: true,
             phone: true,
-            email: true,
+            user: { select: { email: true } },
           },
         },
       },
@@ -417,7 +417,7 @@ export async function POST(
           supplierName: invoice.store?.name,
           supplierAddress: invoice.store?.address,
           supplierPhone: invoice.store?.phone,
-          supplierEmail: invoice.store?.email,
+          supplierEmail: invoice.store?.user?.email || '',
           // Cliente (copiado de factura original)
           customerNit: invoice.customerNit,
           customerName: invoice.customerName,

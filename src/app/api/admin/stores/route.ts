@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
-import { calculatePlanDates } from '@/lib/plan-utils'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -18,7 +17,6 @@ const createStoreSchema = z.object({
   legalName: z.string().optional().nullable(),
   city: z.string().optional().nullable(),
   address: z.string().optional().nullable(),
-  plan: z.enum(['TRIAL', 'BASIC', 'PRO', 'ENTERPRISE']).default('TRIAL'),
 })
 
 // ── Helper: seed initial data for a new store ──
@@ -64,10 +62,9 @@ export async function GET(req: NextRequest) {
     const stores = await db.store.findMany({
       include: {
         user: {
-          select: { id: true, fullName: true, cedula: true, phone: true, email: true, isActive: true },
+          select: { id: true, fullName: true, cedula: true, phone: true, email: true },
         },
-        staff: {
-          where: { role: 'EMPLOYEE' },
+        employees: {
           select: { id: true },
         },
         _count: {
@@ -88,21 +85,16 @@ export async function GET(req: NextRequest) {
         name: s.name,
         legalName: s.legalName,
         nit: s.nit,
-        city: s.city,
+        cityName: s.cityName,
         address: s.address,
         phone: s.phone,
-        email: s.email,
         currencyCode: s.currencyCode,
-        plan: s.plan,
-        planStartDate: s.planStartDate?.toISOString() || null,
-        planExpiresAt: s.planExpiresAt?.toISOString() || null,
-        isActive: s.user.isActive,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
         owner: s.user,
         stats: {
           totalOrders: s._count.orders,
-          totalStaff: s.staff.length, // Only EMPLOYEE role (excludes OWNER)
+          totalStaff: s.employees.length,
           totalProducts: s._count.products,
           totalCustomers: s._count.customers,
           totalRoles: s._count.roles,
@@ -112,13 +104,12 @@ export async function GET(req: NextRequest) {
 
     // Summary stats
     const totalStores = enriched.length
-    const activeStores = enriched.filter(s => s.isActive).length
     const totalOrders = enriched.reduce((a, s) => a + s.stats.totalOrders, 0)
     const totalUsers = enriched.reduce((a, s) => a + s.stats.totalStaff, 0)
 
     return NextResponse.json({
       stores: enriched,
-      summary: { totalStores, activeStores, inactiveStores: totalStores - activeStores, totalOrders, totalUsers },
+      summary: { totalStores, totalOrders, totalUsers },
     })
   } catch (error) {
     console.error('Error fetching admin stores:', error)
@@ -140,7 +131,7 @@ export async function POST(req: NextRequest) {
 
     // Check phone uniqueness if provided
     if (data.ownerPhone) {
-      const existingPhone = await db.user.findUnique({ where: { phone: data.ownerPhone } })
+      const existingPhone = await db.user.findFirst({ where: { phone: data.ownerPhone } })
       if (existingPhone) {
         return NextResponse.json({ error: 'Ya existe un usuario con ese teléfono' }, { status: 409 })
       }
@@ -148,20 +139,14 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await hashPassword(data.ownerPassword)
 
-    // Calculate plan dates
-    const { planStartDate, planExpiresAt } = calculatePlanDates(data.plan)
-
     // Create store + owner atomically
     const store = await db.store.create({
       data: {
         name: data.storeName,
         legalName: data.legalName,
         nit: data.nit,
-        city: data.city,
+        cityName: data.city,
         address: data.address,
-        plan: data.plan,
-        planStartDate,
-        planExpiresAt,
         currencyCode: 'COP',
         countryCode: 'CO',
         user: {
@@ -171,7 +156,6 @@ export async function POST(req: NextRequest) {
             passwordHash,
             fullName: data.ownerFullName,
             cedula: data.ownerCedula,
-            documentType: data.ownerDocumentType,
             role: 'OWNER',
           },
         },
@@ -182,7 +166,7 @@ export async function POST(req: NextRequest) {
     // Set storeId on owner (circular dependency)
     await db.user.update({
       where: { id: store.user.id },
-      data: { storeId: store.id },
+      data: { store: { connect: { id: store.id } } },
     })
 
     // Seed initial data (accounts, categories, taxes)

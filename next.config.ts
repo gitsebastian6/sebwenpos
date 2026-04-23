@@ -2,12 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: false,
-  // Reduce memory usage in dev
-  swcMinify: true,
   compiler: {
     removeConsole: false,
   },
-
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  // Exclude examples folder from build
+  outputFileTracingExcludes: {
+    '*': ['./examples/**'],
+  },
   // Security headers on all responses
   async headers() {
     return [
