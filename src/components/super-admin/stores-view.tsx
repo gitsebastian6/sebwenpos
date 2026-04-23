@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useCreateStoreAdmin, useSuperAdminResetPassword } from '@/hooks/api/use-super-admin'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -219,7 +220,7 @@ interface CreateStoreDialogProps {
 }
 
 export function CreateStoreDialog({ open, onOpenChange, plans, onSuccess }: CreateStoreDialogProps) {
-  const [creating, setCreating] = useState(false)
+  const createMutation = useCreateStoreAdmin()
   const [showOwnerPassword, setShowOwnerPassword] = useState(false)
   const [selectedBillingPeriod, setSelectedBillingPeriod] = useState('MONTHLY')
   const [createReceiptFile, setCreateReceiptFile] = useState<File | null>(null)
@@ -271,19 +272,14 @@ export function CreateStoreDialog({ open, onOpenChange, plans, onSuccess }: Crea
       toast.error('Debe adjuntar el comprobante de pago para planes de pago')
       return
     }
-    setCreating(true)
     try {
-      const res = await fetch('/api/super-admin/stores', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          ...form,
-          planId: form.selectedPlanId ? parseInt(form.selectedPlanId) : undefined,
-          billingPeriod: isPaidPlan ? selectedBillingPeriod : undefined,
-          receipt: isPaidPlan && createReceiptFile ? await buildReceiptPayload() : undefined,
-        }),
+      const data = await createMutation.mutateAsync({
+        ...form,
+        planId: form.selectedPlanId ? parseInt(form.selectedPlanId) : undefined,
+        billingPeriod: isPaidPlan ? selectedBillingPeriod : undefined,
+        receipt: isPaidPlan && createReceiptFile ? await buildReceiptPayload() : undefined,
       })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al crear tienda'); return }
-      toast.success(data.message || 'Tienda creada exitosamente')
+      toast.success((data as any)?.message || 'Tienda creada exitosamente')
       setForm({ ownerCedula: '', ownerPassword: '', ownerFullName: '', ownerEmail: '', ownerPhone: '', storeName: '', nit: '', legalName: '', address: '', phone: '', selectedPlanId: '' })
       setSelectedBillingPeriod('MONTHLY')
       setCreateReceiptFile(null)
@@ -292,7 +288,6 @@ export function CreateStoreDialog({ open, onOpenChange, plans, onSuccess }: Crea
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error de conexión')
     }
-    finally { setCreating(false) }
   }
 
   return (
@@ -505,8 +500,8 @@ export function CreateStoreDialog({ open, onOpenChange, plans, onSuccess }: Crea
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => { onOpenChange(false); setForm({ ownerCedula: '', ownerPassword: '', ownerFullName: '', ownerEmail: '', ownerPhone: '', storeName: '', nit: '', legalName: '', address: '', phone: '', selectedPlanId: '' }); setSelectedBillingPeriod('MONTHLY'); setCreateReceiptFile(null); setCreateReceiptForm({ amount: '', paymentMethod: 'NEQUI', reference: '', notes: '' }) }}>Cancelar</Button>
-          <Button onClick={handleCreateStore} disabled={creating} className="gap-2 active:scale-[0.98] transition-all">
-            {creating ? (<><div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />Creando...</>) : (<><Plus className="h-4 w-4" />Crear Tienda</>)}
+          <Button onClick={handleCreateStore} disabled={createMutation.isPending} className="gap-2 active:scale-[0.98] transition-all">
+            {createMutation.isPending ? (<><div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />Creando...</>) : (<><Plus className="h-4 w-4" />Crear Tienda</>)}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -525,23 +520,18 @@ interface ResetPasswordDialogProps {
 export function ResetPasswordDialog({ open, onOpenChange, selectedUser, onSuccess }: ResetPasswordDialogProps) {
   const [newPassword, setNewPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const resetMutation = useSuperAdminResetPassword()
 
   async function handleResetPassword() {
     if (!selectedUser || !newPassword || newPassword.length < 6) { toast.error('Contraseña mín. 6 caracteres'); return }
-    setLoading(true)
     try {
-      const res = await fetch('/api/super-admin/reset-password', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: selectedUser.id, newPassword }),
-      })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al resetear'); return }
-      toast.success(data.message)
+      const data = await resetMutation.mutateAsync({ userId: selectedUser.id, newPassword })
+      toast.success((data as any)?.message || 'Contraseña actualizada')
       setNewPassword('')
       onSuccess()
-    } catch { toast.error('Error de conexión') }
-    finally { setLoading(false) }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error de conexión')
+    }
   }
 
   // Reset password when dialog opens
@@ -571,7 +561,7 @@ export function ResetPasswordDialog({ open, onOpenChange, selectedUser, onSucces
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handleResetPassword} disabled={!newPassword || newPassword.length < 6} className="gap-2 active:scale-[0.98] transition-all"><KeyRound className="h-4 w-4" />Actualizar</Button>
+          <Button onClick={handleResetPassword} disabled={!newPassword || newPassword.length < 6 || resetMutation.isPending} className="gap-2 active:scale-[0.98] transition-all"><KeyRound className="h-4 w-4" />Actualizar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

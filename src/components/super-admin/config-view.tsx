@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,45 +10,36 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { MessageCircle, Zap, KeyRound, Phone, Eye, EyeOff, CheckCircle2, Info } from 'lucide-react'
+import { useSystemConfig, useUpdateSystemConfig } from '@/hooks/api/use-super-admin'
 
 export function ConfigView() {
-  const [configLoading, setConfigLoading] = useState(false)
-  const [configSaving, setConfigSaving] = useState(false)
+  const { data: configData, isLoading: configLoading } = useSystemConfig()
+  const updateConfig = useUpdateSystemConfig()
   const [showApiKey, setShowApiKey] = useState(false)
   const [mbConfig, setMbConfig] = useState({ apiKey: '', phoneNumber: '', enabled: false, testMode: false, template: 'Tu código de verificación para Ventify POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.' })
 
-  const loadConfig = useCallback(async () => {
-    setConfigLoading(true)
-    try {
-      const res = await fetch('/api/super-admin/system-config')
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al cargar configuración'); return }
+  // Initialize form from query data
+  useEffect(() => {
+    if (configData?.messagebird) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync form state from query data
       setMbConfig({
-        apiKey: data.messagebird?.apiKey || '',
-        phoneNumber: data.messagebird?.phoneNumber || '',
-        enabled: data.messagebird?.enabled || false,
-        testMode: data.messagebird?.testMode || false,
-        template: data.messagebird?.template || 'Tu código de verificación para Ventify POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.',
+        apiKey: configData.messagebird.apiKey || '',
+        phoneNumber: configData.messagebird.phoneNumber || '',
+        enabled: configData.messagebird.enabled || false,
+        testMode: configData.messagebird.testMode || false,
+        template: configData.messagebird.template || 'Tu código de verificación para Ventify POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.',
       })
-    } catch { toast.error('Error de conexión') }
-    finally { setConfigLoading(false) }
-  }, [])
+    }
+  }, [configData])
 
-  useEffect(() => { loadConfig() }, [loadConfig])
-
-  async function handleSaveConfig() {
-    setConfigSaving(true)
-    try {
-      const res = await fetch('/api/super-admin/system-config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messagebird: mbConfig }),
-      })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al guardar'); return }
-      toast.success(data.message || 'Configuración guardada exitosamente')
-    } catch { toast.error('Error de conexión') }
-    finally { setConfigSaving(false) }
+  function handleSaveConfig() {
+    updateConfig.mutate(
+      { messagebird: mbConfig },
+      {
+        onSuccess: (data: any) => toast.success(data?.message || 'Configuración guardada exitosamente'),
+        onError: (err) => toast.error(err.message || 'Error de conexión'),
+      },
+    )
   }
 
   return (
@@ -171,8 +162,8 @@ export function ConfigView() {
             <Separator className="my-2" />
 
             {/* Save */}
-            <Button onClick={handleSaveConfig} disabled={configSaving} className="gap-2">
-              {configSaving ? (
+            <Button onClick={handleSaveConfig} disabled={updateConfig.isPending} className="gap-2">
+              {updateConfig.isPending ? (
                 <><div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />Guardando...</>
               ) : (
                 <><CheckCircle2 className="h-4 w-4" />Guardar Cambios</>

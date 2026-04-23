@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useResetStoreProducts, useUpdateStoreSubscription } from '@/hooks/api/use-super-admin'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -42,9 +43,11 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
   const profit = stats.totalSales - stats.totalExpenses
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showResetProductsDialog, setShowResetProductsDialog] = useState(false)
-  const [resettingProducts, setResettingProducts] = useState(false)
+  const resetProductsMutation = useResetStoreProducts()
+  const resettingProducts = resetProductsMutation.isPending
   const [showChangePlanDialog, setShowChangePlanDialog] = useState(false)
-  const [changingPlan, setChangingPlan] = useState(false)
+  const updateSubMutation = useUpdateStoreSubscription()
+  const changingPlan = updateSubMutation.isPending
   const [selectedPlanId, setSelectedPlanId] = useState<string>(subscription?.planId?.toString() || '')
   const [selectedPeriod, setSelectedPeriod] = useState<string>('MONTHLY')
   const [receiptCount, setReceiptCount] = useState(0)
@@ -79,37 +82,25 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
   }
 
   async function handleResetProducts() {
-    setResettingProducts(true)
     try {
-      const res = await fetch(`/api/super-admin/stores/${store.id}/reset-products`, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al reiniciar maestra'); return }
-      toast.success(data.message)
+      await resetProductsMutation.mutateAsync({ id: store.id })
+      toast.success('Maestra reiniciada correctamente')
       setShowResetProductsDialog(false)
       onRefresh(store.id)
-    } catch { toast.error('Error de conexión') }
-    finally { setResettingProducts(false) }
+    } catch (err: any) { toast.error(err?.message || 'Error al reiniciar maestra') }
   }
 
   async function handleChangePlan() {
     if (!selectedPlanId) { toast.error('Seleccione un plan'); return }
-    setChangingPlan(true)
     try {
-      const res = await fetch(`/api/super-admin/stores/${store.id}/subscription`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          planId: parseInt(selectedPlanId),
-          billingPeriod: selectedPeriod,
-        }),
+      await updateSubMutation.mutateAsync({
+        id: store.id,
+        body: { planId: parseInt(selectedPlanId), billingPeriod: selectedPeriod },
       })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al cambiar plan'); return }
-      toast.success(data.message || 'Plan actualizado')
+      toast.success('Plan actualizado')
       setShowChangePlanDialog(false)
       onRefresh(store.id)
-    } catch { toast.error('Error de conexión') }
-    finally { setChangingPlan(false) }
+    } catch (err: any) { toast.error(err?.message || 'Error al cambiar plan') }
   }
 
   return (

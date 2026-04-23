@@ -11,11 +11,12 @@ import type { StoreListItem, PlanData, StoreDetail, StatsData } from '@/componen
 export interface PaymentReceiptData {
   id: number
   storeId: number
+  subscriptionId?: number
   amount: number
   paymentMethod: string
   reference: string | null
   notes: string | null
-  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | string
   reviewNotes: string | null
   reviewedBy: string | null
   reviewedAt: string | null
@@ -25,6 +26,8 @@ export interface PaymentReceiptData {
   fileData?: string
   createdAt: string
   updatedAt: string
+  store?: { id: number; name: string; nit: string | null; phone: string | null; user: { fullName: string | null; phone: string | null } }
+  subscription?: { id: number; status: string; plan: { name: string; price: number }; endDate: string | null }
 }
 
 export interface SystemConfig {
@@ -170,7 +173,7 @@ export function useUpdatePlan() {
   return useMutation<unknown, Error, { id: number; body: Record<string, unknown> }>({
     mutationFn: ({ id, body }) =>
       mutationFetch(`/api/super-admin/plans/${id}`, 'PUT', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['super-admin-plans'] })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['super-admin-plans'] }),
   })
 }
 
@@ -187,13 +190,30 @@ export function useUpdateStoreAdmin() {
   })
 }
 
+/** Create a new store (super admin) */
+export function useCreateStoreAdmin() {
+  const qc = useQueryClient()
+  return useMutation<unknown, Error, Record<string, unknown>>({
+    mutationFn: (body) =>
+      fetch('/api/super-admin/stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(throwIfNotOk),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['super-admin-stores'] })
+      qc.invalidateQueries({ queryKey: ['super-admin-plans'] })
+    },
+  })
+}
+
 /** Delete a store */
 export function useDeleteStoreAdmin() {
   const qc = useQueryClient()
   return useMutation<unknown, Error, { id: number }>({
     mutationFn: ({ id }) =>
       fetch(`/api/super-admin/stores/${id}`, { method: 'DELETE' }).then(throwIfNotOk),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['super-admin-stores'] })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['super-admin-stores'] }),
   })
 }
 
@@ -254,7 +274,7 @@ export function useDeleteReceipt() {
   return useMutation<unknown, Error, { id: number }>({
     mutationFn: ({ id }) =>
       fetch(`/api/super-admin/payment-receipts/${id}`, { method: 'DELETE' }).then(throwIfNotOk),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['super-admin-payment-receipts'] })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['super-admin-payment-receipts'] }),
   })
 }
 

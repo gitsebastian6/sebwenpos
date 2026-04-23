@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner'
 import { Building2, Store, User, Phone, Mail, MapPin, Hash, Pencil, Receipt, Upload, XCircle, FileText } from 'lucide-react'
 import type { StoreListItem, StoreCount } from './types'
+import { useUpdateStoreAdmin, useCreateSuperAdminReceipt } from '@/hooks/api/use-super-admin'
 
 interface EditStoreDialogProps {
   store: StoreListItem & { _count: StoreCount }
@@ -22,9 +22,9 @@ interface EditStoreDialogProps {
 }
 
 export function EditStoreDialog({ store, open, onOpenChange, onSaved }: EditStoreDialogProps) {
-  const queryClient = useQueryClient()
+  const updateStore = useUpdateStoreAdmin()
+  const createReceipt = useCreateSuperAdminReceipt()
 
-  const [saving, setSaving] = useState(false)
   const [editForm, setEditForm] = useState({
     name: store.name || '',
     legalName: store.legalName || '',
@@ -41,11 +41,10 @@ export function EditStoreDialog({ store, open, onOpenChange, onSaved }: EditStor
   const [editReceiptForm, setEditReceiptForm] = useState({
     amount: '', paymentMethod: 'NEQUI', reference: '', notes: '',
   })
-  const [uploadingReceipt, setUploadingReceipt] = useState(false)
-
   // Initialize form when dialog opens
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync form state when controlled dialog opens
       setEditForm({
         name: store.name || '',
         legalName: store.legalName || '',
@@ -63,15 +62,14 @@ export function EditStoreDialog({ store, open, onOpenChange, onSaved }: EditStor
 
   function updateEdit(field: string, value: string) { setEditForm((p) => ({ ...p, [field]: value })) }
 
-  async function handleSave() {
+  function handleSave() {
     if (!editForm.name || editForm.name.length < 2) { toast.error('Nombre de tienda es obligatorio (mín. 2 caracteres)'); return }
     if (!editForm.ownerFullName || editForm.ownerFullName.length < 2) { toast.error('Nombre del propietario es obligatorio (mín. 2 caracteres)'); return }
-    setSaving(true)
-    try {
-      const res = await fetch(`/api/super-admin/stores/${store.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+
+    updateStore.mutate(
+      {
+        id: store.id,
+        body: {
           name: editForm.name,
           legalName: editForm.legalName || null,
           nit: editForm.nit || null,
@@ -80,58 +78,51 @@ export function EditStoreDialog({ store, open, onOpenChange, onSaved }: EditStor
           ownerFullName: editForm.ownerFullName,
           ownerEmail: editForm.ownerEmail || null,
           ownerPhone: editForm.ownerPhone || null,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al guardar'); return }
-      toast.success(data.message || 'Datos actualizados')
+        },
+      },
+      {
+        onSuccess: async (data: any) => {
+          toast.success(data?.message || 'Datos actualizados')
 
-      if (editReceiptFile && editReceiptForm.amount) {
-        setUploadingReceipt(true)
-        try {
-          const reader = new FileReader()
-          const fileData = await new Promise<string>((resolve, reject) => {
-            reader.onload = () => {
-              const result = reader.result as string
-              const base64 = result.split(',')[1]
-              if (base64) resolve(base64)
-              else reject(new Error('No se pudo leer el archivo'))
+          if (editReceiptFile && editReceiptForm.amount) {
+            try {
+              const reader = new FileReader()
+              const fileData = await new Promise<string>((resolve, reject) => {
+                reader.onload = () => {
+                  const result = reader.result as string
+                  const base64 = result.split(',')[1]
+                  if (base64) resolve(base64)
+                  else reject(new Error('No se pudo leer el archivo'))
+                }
+                reader.onerror = () => reject(new Error('Error leyendo archivo'))
+                reader.readAsDataURL(editReceiptFile)
+              })
+
+              await createReceipt.mutateAsync({
+                storeId: store.id,
+                amount: parseInt(editReceiptForm.amount),
+                paymentMethod: editReceiptForm.paymentMethod,
+                reference: editReceiptForm.reference || undefined,
+                notes: editReceiptForm.notes || undefined,
+                fileData,
+                fileName: editReceiptFile.name,
+                fileSize: editReceiptFile.size,
+                fileType: editReceiptFile.type || 'application/octet-stream',
+              })
+              toast.success('Comprobante de pago registrado')
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : 'Error al subir comprobante')
             }
-            reader.onerror = () => reject(new Error('Error leyendo archivo'))
-            reader.readAsDataURL(editReceiptFile)
-          })
-          const receiptRes = await fetch('/api/super-admin/payment-receipts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              storeId: store.id,
-              amount: parseInt(editReceiptForm.amount),
-              paymentMethod: editReceiptForm.paymentMethod,
-              reference: editReceiptForm.reference || undefined,
-              notes: editReceiptForm.notes || undefined,
-              fileData,
-              fileName: editReceiptFile.name,
-              fileSize: editReceiptFile.size,
-              fileType: editReceiptFile.type || 'application/octet-stream',
-            }),
-          })
-          const receiptData = await receiptRes.json()
-          if (!receiptRes.ok) { toast.error(receiptData.error || 'Error al subir comprobante') }
-          else { toast.success('Comprobante de pago registrado') }
-        } catch (err) {
-          toast.error(err instanceof Error ? err.message : 'Error al subir comprobante')
-        }
-        finally { setUploadingReceipt(false) }
-      }
+          }
 
-      onOpenChange(false)
-      setEditReceiptFile(null)
-      setEditReceiptForm({ amount: '', paymentMethod: 'NEQUI', reference: '', notes: '' })
-      onSaved()
-      queryClient.invalidateQueries({ queryKey: ['stores'] })
-      queryClient.invalidateQueries({ queryKey: ['store-detail', store.id] })
-    } catch { toast.error('Error de conexión') }
-    finally { setSaving(false) }
+          onOpenChange(false)
+          setEditReceiptFile(null)
+          setEditReceiptForm({ amount: '', paymentMethod: 'NEQUI', reference: '', notes: '' })
+          onSaved()
+        },
+        onError: () => toast.error('Error de conexión'),
+      },
+    )
   }
 
   return (
@@ -282,9 +273,9 @@ export function EditStoreDialog({ store, open, onOpenChange, onSaved }: EditStor
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => { onOpenChange(false); setEditReceiptFile(null); setEditReceiptForm({ amount: '', paymentMethod: 'NEQUI', reference: '', notes: '' }) }}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving || uploadingReceipt} className="gap-2 active:scale-[0.98] transition-all">
-            {saving || uploadingReceipt ? (
-              <><div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />{uploadingReceipt ? 'Subiendo comprobante...' : 'Guardando...'}</>
+          <Button onClick={handleSave} disabled={updateStore.isPending || createReceipt.isPending} className="gap-2 active:scale-[0.98] transition-all">
+            {updateStore.isPending || createReceipt.isPending ? (
+              <><div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />{createReceipt.isPending ? 'Subiendo comprobante...' : 'Guardando...'}</>
             ) : (
               <><Pencil className="h-4 w-4" />Guardar Cambios</>
             )}

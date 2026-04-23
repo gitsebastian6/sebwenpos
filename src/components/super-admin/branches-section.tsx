@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useStoreBranches, useCreateBranch } from '@/hooks/api/use-super-admin'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,17 +12,6 @@ import { toast } from 'sonner'
 import { Building2, Users, Package, ShoppingCart, Crown, Plus, Link2 } from 'lucide-react'
 import { formatDate } from './helpers'
 
-interface BranchData {
-  id: number; name: string; legalName: string | null; nit: string | null;
-  address: string | null; phone: string | null; createdAt: string;
-  user: { cedula: string; fullName: string | null };
-  _count: { employees: number; products: number; orders: number };
-}
-
-interface ParentSubInfo {
-  planName: string | null; status: string | null; maxStores: number; multiStoreEnabled: boolean
-}
-
 interface BranchesSectionProps {
   storeId: number
   storeName: string
@@ -32,59 +21,23 @@ interface BranchesSectionProps {
 }
 
 export function BranchesSection({ storeId, storeName, storeLegalName, storeNit, onRefresh }: BranchesSectionProps) {
-  const queryClient = useQueryClient()
-
-  const [branches, setBranches] = useState<BranchData[]>([])
-  const [branchesLoading, setBranchesLoading] = useState(false)
+  const { data, isLoading: branchesLoading } = useStoreBranches(storeId)
+  const createBranchMutation = useCreateBranch()
+  const branchCreating = createBranchMutation.isPending
+  const branches = data?.branches ?? []
+  const parentSubInfo = data?.parentSubscription ?? null
   const [showBranchDialog, setShowBranchDialog] = useState(false)
-  const [branchCreating, setBranchCreating] = useState(false)
-  const [parentSubInfo, setParentSubInfo] = useState<ParentSubInfo | null>(null)
   const [branchForm, setBranchForm] = useState({ name: '', address: '', phone: '', legalName: '', nit: '' })
-
-  const loadBranches = useCallback(async () => {
-    setBranchesLoading(true)
-    try {
-      const res = await fetch(`/api/super-admin/stores/${storeId}/branches`)
-      if (res.ok) {
-        const data = await res.json()
-        setBranches(Array.isArray(data.branches) ? data.branches : [])
-        setParentSubInfo(data.parentSubscription || null)
-      }
-    } catch { /* non-critical */ }
-    finally { setBranchesLoading(false) }
-  }, [storeId])
-
-  useEffect(() => { loadBranches() }, [loadBranches])
 
   async function handleCreateBranch() {
     if (!branchForm.name || branchForm.name.length < 2) { toast.error('Nombre de sucursal obligatorio (mín. 2 caracteres)'); return }
-    setBranchCreating(true)
     try {
-      const res = await fetch(`/api/super-admin/stores/${storeId}/branches`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(branchForm),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        if (data.code === 'MULTI_STORE_REQUIRED') {
-          toast.error('Plan requerido: Empresarial', { description: data.error, duration: 6000 })
-        } else if (data.code === 'MAX_STORES_REACHED') {
-          toast.error('Límite alcanzado', { description: data.error, duration: 6000 })
-        } else {
-          toast.error(data.error || 'Error al crear sucursal')
-        }
-        return
-      }
-      toast.success(data.message || `Sucursal "${branchForm.name}" creada exitosamente`)
+      await createBranchMutation.mutateAsync({ storeId, body: branchForm })
+      toast.success(`Sucursal "${branchForm.name}" creada exitosamente`)
       setBranchForm({ name: '', address: '', phone: '', legalName: '', nit: '' })
       setShowBranchDialog(false)
-      loadBranches()
       onRefresh?.(storeId)
-      queryClient.invalidateQueries({ queryKey: ['stores'] })
-      queryClient.invalidateQueries({ queryKey: ['store-detail', storeId] })
-    } catch { toast.error('Error de conexión') }
-    finally { setBranchCreating(false) }
+    } catch (err: any) { toast.error(err?.message || 'Error al crear sucursal') }
   }
 
   return (

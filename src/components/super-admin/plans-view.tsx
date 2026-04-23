@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 import { formatCOP } from './helpers'
 import { formatLimit } from './helpers'
 import type { PlanData } from './types'
+import { useUpdatePlan } from '@/hooks/api/use-super-admin'
 
 interface PlansViewProps {
   plans: PlanData[]
@@ -24,9 +25,9 @@ interface PlansViewProps {
 }
 
 export function PlansView({ plans, onPlansChange }: PlansViewProps) {
+  const updatePlan = useUpdatePlan()
   const [showEditPlanDialog, setShowEditPlanDialog] = useState(false)
   const [editingPlan, setEditingPlan] = useState<PlanData | null>(null)
-  const [savingPlan, setSavingPlan] = useState(false)
   const [planForm, setPlanForm] = useState({
     name: '', description: '', price: 0,
     maxEmployees: 5, maxProducts: 100, maxStores: 1,
@@ -48,23 +49,20 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
     setShowEditPlanDialog(true)
   }
 
-  async function handleSavePlan() {
+  function handleSavePlan() {
     if (!editingPlan) return
     if (!planForm.name || planForm.name.length < 2) { toast.error('Nombre del plan es obligatorio (mín. 2 caracteres)'); return }
-    setSavingPlan(true)
-    try {
-      const res = await fetch(`/api/super-admin/plans/${editingPlan.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(planForm),
-      })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al guardar plan'); return }
-      toast.success(data.message || 'Plan actualizado exitosamente')
-      setShowEditPlanDialog(false)
-      onPlansChange()
-    } catch { toast.error('Error de conexión') }
-    finally { setSavingPlan(false) }
+    updatePlan.mutate(
+      { id: editingPlan.id, body: planForm },
+      {
+        onSuccess: (data: any) => {
+          toast.success(data?.message || 'Plan actualizado exitosamente')
+          setShowEditPlanDialog(false)
+          onPlansChange()
+        },
+        onError: (err) => toast.error(err.message || 'Error de conexión'),
+      },
+    )
   }
 
   return (
@@ -233,8 +231,8 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditPlanDialog(false)}>Cancelar</Button>
-            <Button onClick={handleSavePlan} disabled={savingPlan} className="gap-2 active:scale-[0.98] transition-all">
-              {savingPlan ? (<><div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />Guardando...</>) : (<><Pencil className="h-4 w-4" />Guardar</>)}
+            <Button onClick={handleSavePlan} disabled={updatePlan.isPending} className="gap-2 active:scale-[0.98] transition-all">
+              {updatePlan.isPending ? (<><div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />Guardando...</>) : (<><Pencil className="h-4 w-4" />Guardar</>)}
             </Button>
           </DialogFooter>
         </DialogContent>

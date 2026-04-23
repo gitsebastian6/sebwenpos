@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,7 +19,14 @@ import {
   BadgeCheck, CalendarDays, Hash, FileText, Plus, AlertTriangle, ArrowRight,
 } from 'lucide-react'
 import { formatCOP, formatDateTime } from './helpers'
-import type { PaymentReceiptData } from './types'
+import type { PaymentReceiptData } from '@/hooks/api/use-super-admin'
+import {
+  useSuperAdminPaymentReceipts,
+  useSuperAdminReceiptDetail,
+  useUpdateReceipt,
+  useDeleteReceipt,
+  useCreateSuperAdminReceipt,
+} from '@/hooks/api/use-super-admin'
 
 interface PaymentReceiptsSectionProps {
   storeId: number
@@ -30,18 +36,30 @@ interface PaymentReceiptsSectionProps {
 }
 
 export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountChange }: PaymentReceiptsSectionProps) {
-  const queryClient = useQueryClient()
+  // Queries
+  const { data: receipts = [], isLoading: receiptsLoading } = useSuperAdminPaymentReceipts({ storeId })
 
-  // Payment receipts state
-  const [receipts, setReceipts] = useState<PaymentReceiptData[]>([])
-  const [receiptsLoading, setReceiptsLoading] = useState(false)
+  // Receipt detail for preview dialog
+  const [viewingReceiptId, setViewingReceiptId] = useState<number | null>(null)
+  const { data: receiptDetail, isLoading: detailLoading } = useSuperAdminReceiptDetail(viewingReceiptId)
+  const receiptPreviewImage = useMemo(() => {
+    if (!receiptDetail?.fileData) return null
+    const mime = receiptDetail.fileType || 'application/octet-stream'
+    if (mime.startsWith('image/')) return `data:${mime};base64,${receiptDetail.fileData}`
+    return null
+  }, [receiptDetail])
+
+  // Mutations
+  const updateReceipt = useUpdateReceipt()
+  const deleteReceipt = useDeleteReceipt()
+  const createReceipt = useCreateSuperAdminReceipt()
+
+  // Payment receipts UI state
   const [previewReceipt, setPreviewReceipt] = useState<PaymentReceiptData | null>(null)
   const [reviewNotes, setReviewNotes] = useState('')
-  const [reviewing, setReviewing] = useState(false)
 
   // Upload receipt state (super admin)
   const [showUploadDialog, setShowUploadDialog] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [selectedFilePreview, setSelectedFilePreview] = useState<string | null>(null)
   const [uploadForm, setUploadForm] = useState({
@@ -54,26 +72,11 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
   // Receipt preview dialog
   const [showReceiptPreviewDialog, setShowReceiptPreviewDialog] = useState(false)
   const [receiptPreviewData, setReceiptPreviewData] = useState<PaymentReceiptData | null>(null)
-  const [receiptPreviewImage, setReceiptPreviewImage] = useState<string | null>(null)
-  const [loadingPreview, setLoadingPreview] = useState(false)
   // Receipt filter
   const [receiptFilter, setReceiptFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL')
 
-  const loadReceipts = useCallback(async () => {
-    try {
-      setReceiptsLoading(true)
-      // R-06 FIX: Server-side filtering by storeId instead of fetching ALL receipts
-      const params = new URLSearchParams({ storeId: String(storeId) })
-      const res = await fetch(`/api/super-admin/payment-receipts?${params}`)
-      if (!res.ok) { return }
-      const data = await res.json()
-      setReceipts(data || [])
-      onCountChange?.((data || []).length)
-    } catch { /* non-critical */ }
-    finally { setReceiptsLoading(false) }
-  }, [storeId, onCountChange])
-
-  useEffect(() => { loadReceipts() }, [loadReceipts])
+  // Report count changes
+  useEffect(() => { onCountChange?.(receipts.length) }, [receipts.length, onCountChange])
 
   function openUploadDialog() {
     setSelectedFile(null)
@@ -82,36 +85,29 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
     setShowUploadDialog(true)
   }
 
-  async function handleReviewReceipt(receiptId: number, action: 'APPROVE' | 'REJECT') {
-    setReviewing(true)
-    try {
-      const res = await fetch(`/api/super-admin/payment-receipts/${receiptId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, reviewNotes }),
-      })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al procesar comprobante'); return }
-      toast.success(data.message)
-      setPreviewReceipt(null)
-      setReviewNotes('')
-      loadReceipts()
-      onRefresh?.(storeId)
-      queryClient.invalidateQueries({ queryKey: ['stores'] })
-      queryClient.invalidateQueries({ queryKey: ['store-detail', storeId] })
-    } catch { toast.error('Error de conexión') }
-    finally { setReviewing(false) }
+  function handleReviewReceipt(receiptId: number, action: 'APPROVE' | 'REJECT') {
+    updateReceipt.mutate(
+      { id: receiptId, body: { action, reviewNotes } },
+      {
+        onSuccess: (data: any) => {
+          toast.success(data?.message || (action === 'APPROVE' ? 'Comprobante aprobado' : 'Comprobante rechazado'))
+          setPreviewReceipt(null)
+          setReviewNotes('')
+          onRefresh?.(storeId)
+        },
+        onError: (err) => toast.error(err.message || 'Error al procesar comprobante'),
+      },
+    )
   }
 
-  async function handleDeleteReceipt(receiptId: number) {
-    try {
-      const res = await fetch(`/api/super-admin/payment-receipts/${receiptId}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al eliminar'); return }
-      toast.success(data.message)
-      loadReceipts()
-      queryClient.invalidateQueries({ queryKey: ['stores'] })
-    } catch { toast.error('Error de conexión') }
+  function handleDeleteReceipt(receiptId: number) {
+    deleteReceipt.mutate(
+      { id: receiptId },
+      {
+        onSuccess: (data: any) => toast.success(data?.message || 'Comprobante eliminado'),
+        onError: (err) => toast.error(err.message || 'Error al eliminar'),
+      },
+    )
   }
 
   async function handleUploadReceipt() {
@@ -123,10 +119,9 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
       toast.error('El archivo excede 5MB. Selecciona uno más pequeño.')
       return
     }
-    setUploading(true)
     try {
       const reader = new FileReader()
-      const base64Promise = new Promise<string>((resolve, reject) => {
+      const fileData = await new Promise<string>((resolve, reject) => {
         reader.onload = () => {
           const result = reader.result as string
           const base64 = result.split(',')[1]
@@ -137,12 +132,8 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
         reader.readAsDataURL(selectedFile)
       })
 
-      const fileData = await base64Promise
-
-      const res = await fetch('/api/super-admin/payment-receipts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      createReceipt.mutate(
+        {
           storeId,
           amount: parseInt(uploadForm.amount),
           paymentMethod: uploadForm.paymentMethod,
@@ -153,46 +144,28 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
           fileSize: selectedFile.size,
           fileType: selectedFile.type || 'application/octet-stream',
           autoApprove: uploadForm.autoApprove,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || 'Error al registrar comprobante')
-        return
-      }
-      toast.success(data.message)
-      setShowUploadDialog(false)
-      setSelectedFile(null)
-      setSelectedFilePreview(null)
-      setUploadForm({ amount: '', paymentMethod: 'NEQUI', reference: '', notes: '', autoApprove: true })
-      loadReceipts()
-      onRefresh?.(storeId)
-      queryClient.invalidateQueries({ queryKey: ['stores'] })
-      queryClient.invalidateQueries({ queryKey: ['store-detail', storeId] })
+        },
+        {
+          onSuccess: (data: any) => {
+            toast.success(data?.message || 'Comprobante registrado')
+            setShowUploadDialog(false)
+            setSelectedFile(null)
+            setSelectedFilePreview(null)
+            setUploadForm({ amount: '', paymentMethod: 'NEQUI', reference: '', notes: '', autoApprove: true })
+            onRefresh?.(storeId)
+          },
+          onError: (err) => toast.error(err.message || 'Error de conexión al registrar'),
+        },
+      )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error de conexión al registrar')
     }
-    finally { setUploading(false) }
   }
 
-  async function handleViewReceipt(receipt: PaymentReceiptData) {
-    setLoadingPreview(true)
+  function handleViewReceipt(receipt: PaymentReceiptData) {
     setShowReceiptPreviewDialog(true)
     setReceiptPreviewData(receipt)
-    setReceiptPreviewImage(null)
-    try {
-      const res = await fetch(`/api/super-admin/payment-receipts/${receipt.id}`)
-      const data = await res.json()
-      if (res.ok && data.fileData) {
-        const mime = data.fileType || 'application/octet-stream'
-        if (mime.startsWith('image/')) {
-          setReceiptPreviewImage(`data:${mime};base64,${data.fileData}`)
-        } else {
-          setReceiptPreviewImage(null)
-        }
-      }
-    } catch { /* preview unavailable */ }
-    finally { setLoadingPreview(false) }
+    setViewingReceiptId(receipt.id)
   }
 
   function handleDownloadReceipt(receipt: PaymentReceiptData) {
@@ -435,12 +408,12 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
           )}
           <DialogFooter className="gap-2 sm:gap-0">
             <div className="flex-1" />
-            <Button variant="destructive" onClick={() => previewReceipt && handleReviewReceipt(previewReceipt.id, 'REJECT')} disabled={reviewing} className="gap-2 active:scale-[0.98] transition-all">
-              {reviewing ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <XCircle className="h-4 w-4" />}
+            <Button variant="destructive" onClick={() => previewReceipt && handleReviewReceipt(previewReceipt.id, 'REJECT')} disabled={updateReceipt.isPending} className="gap-2 active:scale-[0.98] transition-all">
+              {updateReceipt.isPending ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <XCircle className="h-4 w-4" />}
               Rechazar
             </Button>
-            <Button onClick={() => previewReceipt && handleReviewReceipt(previewReceipt.id, 'APPROVE')} disabled={reviewing} className="gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all">
-              {reviewing ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            <Button onClick={() => previewReceipt && handleReviewReceipt(previewReceipt.id, 'APPROVE')} disabled={updateReceipt.isPending} className="gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all">
+              {updateReceipt.isPending ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               Aprobar
             </Button>
           </DialogFooter>
@@ -567,8 +540,8 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowUploadDialog(false); setSelectedFile(null); setSelectedFilePreview(null) }}>Cancelar</Button>
-            <Button onClick={handleUploadReceipt} disabled={uploading || !selectedFile || !uploadForm.amount} className={`gap-2 active:scale-[0.98] transition-all ${uploadForm.autoApprove ? 'bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20' : ''}`}>
-              {uploading ? (
+            <Button onClick={handleUploadReceipt} disabled={createReceipt.isPending || !selectedFile || !uploadForm.amount} className={`gap-2 active:scale-[0.98] transition-all ${uploadForm.autoApprove ? 'bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20' : ''}`}>
+              {createReceipt.isPending ? (
                 <><div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />{uploadForm.autoApprove ? 'Aprobando...' : 'Registrando...'}</>
               ) : uploadForm.autoApprove ? (
                 <><CheckCircle2 className="h-4 w-4" />Registrar y Aprobar</>
@@ -581,7 +554,7 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
       </Dialog>
 
       {/* Receipt Image Preview Dialog */}
-      <Dialog open={showReceiptPreviewDialog} onOpenChange={(open) => { if (!open) { setShowReceiptPreviewDialog(false); setReceiptPreviewData(null); setReceiptPreviewImage(null) } }}>
+      <Dialog open={showReceiptPreviewDialog} onOpenChange={(open) => { if (!open) { setShowReceiptPreviewDialog(false); setReceiptPreviewData(null); setViewingReceiptId(null) } }}>
         <DialogContent className="max-w-2xl rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -591,7 +564,7 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
               Vista Previa del Comprobante
             </DialogTitle>
           </DialogHeader>
-          {loadingPreview ? (
+          {detailLoading ? (
             <div className="flex justify-center py-12"><div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>
           ) : receiptPreviewData ? (
             <div className="space-y-4">

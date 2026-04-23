@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,96 +11,73 @@ import {
   LogOut, Moon, Sun,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import type { StoreListItem, StoreOwner, PlanData, StoreDetail, StatsData } from './types'
+import type { StoreOwner } from './types'
 import { StatsView } from './stats-view'
 import { ConfigView } from './config-view'
 import { PlansView } from './plans-view'
 import { StoresKPICards, StoresTable, CreateStoreDialog, ResetPasswordDialog } from './stores-view'
 import { StoreDetailView } from './store-detail-view'
+import {
+  useSuperAdminStores,
+  useSuperAdminStatistics,
+  useSuperAdminPlans,
+  useSuperAdminStoreDetail,
+  useSeedPlans,
+  useDeleteStoreAdmin,
+} from '@/hooks/api/use-super-admin'
 
 // ---- MAIN COMPONENT ----
 export function SuperAdminShell() {
   const { user, logout } = useAuthStore()
   const { theme, setTheme } = useTheme()
-  const [stores, setStores] = useState<StoreListItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedStore, setSelectedStore] = useState<StoreDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
+  const qc = useQueryClient()
+
+  // ── UI-only state ──
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [selectedUser, setSelectedUser] = useState<StoreOwner | null>(null)
   const [currentView, setCurrentView] = useState<'stores' | 'plans' | 'config' | 'stats'>('stores')
+  const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null)
 
-  // ── Statistics ──
-  const [statsLoading, setStatsLoading] = useState(false)
-  const [stats, setStats] = useState<StatsData | null>(null)
+  // ── Query hooks ──
+  const storesQuery = useSuperAdminStores()
+  const statsQuery = useSuperAdminStatistics(currentView === 'stats')
+  const plansQuery = useSuperAdminPlans()
+  const storeDetailQuery = useSuperAdminStoreDetail(selectedStoreId)
 
-  // ── Plans ──
-  const [plans, setPlans] = useState<PlanData[]>([])
+  // ── Mutation hooks ──
+  const seedPlans = useSeedPlans()
+  const deleteStore = useDeleteStoreAdmin()
 
-  const loadStores = useCallback(async () => {
-    try {
-      const res = await fetch('/api/super-admin/stores')
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al cargar tiendas'); return }
-      setStores(Array.isArray(data) ? data : [])
-    } catch { toast.error('Error al cargar tiendas') }
-    finally { setLoading(false) }
-  }, [])
+  // Seed default plans on mount (fire-and-forget, silent)
+  useEffect(() => { seedPlans.mutate() }, [seedPlans])
 
-  const loadStats = useCallback(async () => {
-    setStatsLoading(true)
-    try {
-      const res = await fetch('/api/super-admin/statistics')
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al cargar estadísticas'); return }
-      setStats(data)
-    } catch { toast.error('Error al cargar estadísticas') }
-    finally { setStatsLoading(false) }
-  }, [])
+  // ── Derived data from queries ──
+  const stores = storesQuery.data ?? []
+  const loading = storesQuery.isLoading
+  const plans = plansQuery.data ?? []
+  const stats = statsQuery.data ?? null
+  const statsLoading = statsQuery.isLoading
+  const selectedStore = storeDetailQuery.data ?? null
+  const detailLoading = storeDetailQuery.isLoading
 
-  const loadPlans = useCallback(async () => {
-    try {
-      const res = await fetch('/api/super-admin/plans')
-      const data = await res.json()
-      setPlans(Array.isArray(data) ? data : [])
-    } catch { /* silent */ }
-  }, [])
-
-  useEffect(() => {
-    loadStores()
-    loadPlans()
-    fetch('/api/super-admin/plans/seed', { method: 'POST' }).catch(() => {})
-  }, [loadStores, loadPlans])
-
-  async function handleViewDetail(storeId: number) {
-    setDetailLoading(true)
-    setSelectedStore(null)
-    try {
-      const res = await fetch(`/api/super-admin/stores/${storeId}/detail`)
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al cargar detalle'); return }
-      setSelectedStore(data)
-    } catch { toast.error('Error de conexión') }
-    finally { setDetailLoading(false) }
+  // ── Handlers ──
+  function handleViewDetail(storeId: number) {
+    setSelectedStoreId(storeId)
   }
 
-  async function handleDeleteStore(storeId: number, storeName: string) {
-    try {
-      const res = await fetch(`/api/super-admin/stores/${storeId}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (!res.ok) { toast.error(data.error || 'Error al eliminar'); return }
-      toast.success(data.message || 'Tienda eliminada')
-      loadStores()
-    } catch { toast.error('Error de conexión') }
+  function handleDeleteStore(storeId: number, storeName: string) {
+    deleteStore.mutate({ id: storeId }, {
+      onSuccess: () => toast.success('Tienda eliminada'),
+      onError: (err) => toast.error(err.message || 'Error al eliminar'),
+    })
   }
 
   // Computed values for KPIs
-  const storeList = Array.isArray(stores) ? stores : []
-  const totalStores = storeList.length
-  const totalEmployees = storeList.reduce((s, st) => s + (st._count?.employees || 0), 0)
-  const totalProducts = storeList.reduce((s, st) => s + (st._count?.products || 0), 0)
-  const totalOrders = storeList.reduce((s, st) => s + (st._count?.orders || 0), 0)
+  const totalStores = stores.length
+  const totalEmployees = stores.reduce((s, st) => s + (st._count?.employees || 0), 0)
+  const totalProducts = stores.reduce((s, st) => s + (st._count?.products || 0), 0)
+  const totalOrders = stores.reduce((s, st) => s + (st._count?.orders || 0), 0)
 
   // ---- DETAIL VIEW ----
   if (detailLoading) {
@@ -116,9 +94,9 @@ export function SuperAdminShell() {
       <StoreDetailView
         store={selectedStore}
         plans={plans}
-        onBack={() => setSelectedStore(null)}
+        onBack={() => setSelectedStoreId(null)}
         onResetPassword={(u) => { setSelectedUser(u); setShowResetDialog(true) }}
-        onRefresh={(id) => handleViewDetail(id)}
+        onRefresh={(id) => qc.invalidateQueries({ queryKey: ['super-admin-store-detail', id] })}
       />
     )
   }
@@ -196,7 +174,7 @@ export function SuperAdminShell() {
                   variant={currentView === 'stats' ? 'default' : 'ghost'}
                   size="sm"
                   className="gap-1.5 h-8 transition-all duration-200"
-                  onClick={() => { setCurrentView('stats'); loadStats() }}
+                  onClick={() => setCurrentView('stats')}
                 >
                   <TrendingUp className="h-3.5 w-3.5" />Estadísticas
                 </Button>
@@ -233,7 +211,7 @@ export function SuperAdminShell() {
 
             {/* PLANS VIEW */}
             {currentView === 'plans' && (
-              <PlansView plans={plans} onPlansChange={loadPlans} />
+              <PlansView plans={plans} onPlansChange={() => qc.invalidateQueries({ queryKey: ['super-admin-plans'] })} />
             )}
 
             {/* CONFIG VIEW */}
@@ -254,7 +232,7 @@ export function SuperAdminShell() {
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
         plans={plans}
-        onSuccess={loadStores}
+        onSuccess={() => qc.invalidateQueries({ queryKey: ['super-admin-stores'] })}
       />
 
       {/* Reset Password Dialog */}
