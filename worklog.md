@@ -25,6 +25,33 @@ Stage Summary:
 - Zero new lint errors
 
 ---
+Task ID: R09-f7
+Agent: main
+Task: R-09 FASE 7 — Refactor reports-tab.tsx from 1,117 → 220 lines
+
+Work Log:
+- Created src/components/accounting/reports-print-handlers.ts (107 lines): extracted 3 print handler functions (handlePrintDailySummary, handlePrintCatalog, handlePrintKardex) with StoreInfo interface for type safety
+- Created src/components/accounting/reports-kpi-cards.tsx (101 lines): extracted 4 KPI cards (Total Ventas, Contado vs Fiado, Propinas, Mesas Abiertas) into ReportsKpiCards component
+- Created src/components/accounting/reports-sales-sections.tsx (237 lines): extracted 4 sales card components — SalesByPaymentCard, SalesByCategoryCard, TopProductsCard, SalesBySourceCard
+- Created src/components/accounting/reports-inventory-sections.tsx (270 lines): extracted 4 inventory/accounting card components — CuentasPorCobrarCard (with onResetDebts callback), LowStockProductsCard, ValuedInventoryCard, BalanceCuentasCard
+- Created src/components/accounting/reports-daily-sales.tsx (257 lines): extracted 2 daily/detail card components — DailySalesCard (7-day chart + profit), SalesDetailCard (full orders table with print ticket button + summary footer)
+- Created src/components/accounting/reset-debts-dialog.tsx (178 lines): self-contained ResetDebtsDialog with internal state (resetNote, showResetFinalConfirm), composed of both Dialog + AlertDialog for two-step confirmation
+- Refactored reports-tab.tsx (220 lines): imports all extracted components, keeps report state, TanStack Query, handleResetDebts, print handler wrappers, date filter card, loading skeleton, and composes all sections
+- Lint: 32 errors (all pre-existing, 0 new errors)
+- Dev server compiles successfully, responds 200
+
+Stage Summary:
+- reports-tab.tsx: 1,117 → 220 lines (80% reduction)
+- 6 new files created: 1 print handlers + 5 component files
+- Each extracted component is self-contained with its own imports
+- ResetDebtsDialog manages its own internal state (resetNote, showResetFinalConfirm)
+- SalesDetailCard receives storeName prop for print ticket functionality
+- CuentasPorCobrarCard accepts onResetDebts callback prop
+- All business logic preserved, zero visual/functional changes
+- ReportsTab export name preserved
+- Zero new lint errors
+
+---
 Task ID: R09-f5
 Agent: main
 Task: R-09 FASE 5 — Refactor auth-page.tsx from 1,280 → 184 lines
