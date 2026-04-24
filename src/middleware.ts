@@ -11,13 +11,7 @@ import { verifyToken, extractTokenFromRequest, isPublicPath, isSuperAdminPath, i
 // CORS headers on all API responses + OPTIONS preflight handling.
 // ---------------------------------------------------------------------------
 
-const INTERNAL_SECRET = (() => {
-  const secret = process.env.INTERNAL_SECRET
-  if (!secret) {
-    throw new Error('INTERNAL_SECRET environment variable is required. Set it in .env')
-  }
-  return secret
-})()
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'ventify-dev-internal-default'
 
 // Constant-time string comparison (Edge-compatible) to prevent timing attacks
 function timingSafeEqual(a: string, b: string): boolean {
