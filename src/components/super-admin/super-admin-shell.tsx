@@ -50,7 +50,15 @@ export function SuperAdminShell() {
   const deleteStore = useDeleteStoreAdmin()
 
   // Seed default plans on mount (fire-and-forget, silent)
-  useEffect(() => { seedPlans.mutate() }, [seedPlans])
+  // Only run once — use mutate() directly to avoid re-trigger from seedPlans reference changes
+  const hasSeededRef = useState(false)
+  useEffect(() => {
+    if (!hasSeededRef[0]) {
+      hasSeededRef[1](true)
+      seedPlans.mutate()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Derived data from queries ──
   const stores = storesQuery.data ?? []
