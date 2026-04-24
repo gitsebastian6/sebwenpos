@@ -168,7 +168,7 @@ export const SETUP_RATE_LIMIT: RateLimitConfig = {
 
 // ─── Next.js helper: create a rate-limited response or null ───────────
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 /**
  * Convenience: check rate limit and return 429 response if exceeded.

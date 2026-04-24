@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { queryFetch, mutationFetch, unwrapArray } from './query-helpers'
+import { queryFetch, mutationFetch, unwrapArray, throwIfNotOk } from './query-helpers'
 import type { StoreListItem, PlanData, StoreDetail, StatsData } from '@/components/super-admin/types'
 
 // ---------------------------------------------------------------------------
