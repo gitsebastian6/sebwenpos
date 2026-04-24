@@ -273,7 +273,7 @@ export function OrdersView() {
       const invBody: Record<string, unknown> = {
         orderId,
         testMode: store.invoiceTestMode ?? true,
-        customerNit: orderData.customer?.email ? (orderData as Record<string, unknown>).customerNit || DIAN_CONSUMIDOR_FINAL_NIT : DIAN_CONSUMIDOR_FINAL_NIT,
+        customerNit: orderData.customer?.email ? (orderData as unknown as Record<string, unknown>).customerNit || DIAN_CONSUMIDOR_FINAL_NIT : DIAN_CONSUMIDOR_FINAL_NIT,
         customerName: orderData.customer?.name || 'Consumidor Final',
         autoSend: true,
       }

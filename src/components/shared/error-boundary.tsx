@@ -78,7 +78,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   renderFullPageError() {
-    const { error, viewName } = this.state
+    const { error } = this.state
+    const { viewName } = this.props
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-6">
         <div className="max-w-md w-full text-center space-y-6">
@@ -125,7 +126,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   renderInlineError() {
-    const { error, viewName } = this.state
+    const { error } = this.state
+    const { viewName } = this.props
     return (
       <div className="flex items-center justify-center p-8 min-h-[300px]">
         <div className="max-w-sm w-full text-center space-y-4">

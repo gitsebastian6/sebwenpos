@@ -89,7 +89,7 @@ export function AccountingView() {
         {/* Tab 1: Cuentas */}
         <TabsContent value="cuentas">
           <AccountsTab
-            accounts={accounts}
+            accounts={accounts as any}
             isLoadingAccounts={isLoadingAccounts}
             currencyCode={currencyCode}
             onRefresh={fetchAccounts}
@@ -100,7 +100,7 @@ export function AccountingView() {
         {/* Tab 2: Movimientos */}
         <TabsContent value="movimientos">
           <MovementsTab
-            accounts={accounts}
+            accounts={accounts as any}
             currencyCode={currencyCode}
             initialAccountId={movementsFilterAccount}
           />
@@ -109,7 +109,7 @@ export function AccountingView() {
         {/* Tab 3: Resumen */}
         <TabsContent value="resumen">
           <SummaryTab
-            accounts={accounts}
+            accounts={accounts as any}
             currencyCode={currencyCode}
           />
         </TabsContent>
@@ -117,7 +117,7 @@ export function AccountingView() {
         {/* Tab 4: Informes */}
         <TabsContent value="informes">
           <ReportsTab
-            accounts={accounts}
+            accounts={accounts as any}
             currencyCode={currencyCode}
             onAccountsChanged={handleAccountsChanged}
           />

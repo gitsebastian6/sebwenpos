@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     const storeIdNum = Number(storeId)
-    const storeAccessErr = requireStoreAccess(req, storeIdNum)
+    const storeAccessErr = requireStoreAccess(request, Number(storeId))
     if (storeAccessErr) return storeAccessErr
 
     // ── Feature Gate: electronicInvoicing ──

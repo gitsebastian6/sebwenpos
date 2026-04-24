@@ -31,7 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!employee) {
       return NextResponse.json({ error: 'Empleado no encontrado' }, { status: 404 })
     }
-    const storeAccessErr = requireStoreAccess(req, employee.storeId)
+    const storeAccessErr = requireStoreAccess(req, Number(employee.storeId))
     if (storeAccessErr) return storeAccessErr
     return NextResponse.json(employee)
   } catch (error) {
@@ -53,7 +53,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Empleado no encontrado' }, { status: 404 })
     }
 
-    const storeAccessErr = requireStoreAccess(req, employee.storeId)
+    const storeAccessErr = requireStoreAccess(req, Number(employee.storeId))
     if (storeAccessErr) return storeAccessErr
 
     // Verificar rol existe si se proporcionó
@@ -115,7 +115,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ error: 'Empleado no encontrado' }, { status: 404 })
     }
 
-    const storeAccessErr = requireStoreAccess(req, employee.storeId)
+    const storeAccessErr = requireStoreAccess(req, Number(employee.storeId))
     if (storeAccessErr) return storeAccessErr
 
     await db.$transaction(async (tx) => {

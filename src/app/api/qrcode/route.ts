@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       color: { dark: '#000000', light: '#ffffff' },
     })
 
-    return new NextResponse(pngBuffer, {
+    return new NextResponse(new Uint8Array(pngBuffer) as BodyInit, {
       headers: {
         'Content-Type': 'image/png',
         'Cache-Control': 'public, max-age=86400',

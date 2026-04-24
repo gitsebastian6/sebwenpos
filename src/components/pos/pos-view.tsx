@@ -185,7 +185,7 @@ export function POSView() {
       tipAmount: cart.lastOrderData.tipAmount || 0,
       total: cart.lastOrderData.total,
       taxAmount: cart.lastOrderData.taxAmount || 0,
-      taxBreakdown: cart.lastOrderData.taxBreakdown || undefined,
+      taxBreakdown: (cart.lastOrderData.taxBreakdown || undefined) as { name: string; code: string; rate: number; base: number; amount: number }[] | undefined,
       discountAmount: cart.lastOrderData.discountAmount || 0,
       paymentMethod: cart.lastOrderData.paymentMethod,
       currencyCode: currencyCode,

@@ -367,31 +367,31 @@ export async function GET(request: NextRequest) {
     }
 
     // ── 5. VENTAS — from GROUP BY queries (no N+1) ──
-    const salesData = results[9] || {}
-    const salesAggRow = Array.isArray(salesData.agg) ? salesData.agg[0] : null
+    const salesData = (results[9] || {}) as Record<string, unknown>
+    const salesAggRow = Array.isArray(salesData.agg) ? (salesData.agg as unknown[])[0] as Record<string, unknown> : null
     const salesTotal = N(salesAggRow?.total)
     const salesOrderCount = N(salesAggRow?.count)
 
     const salesByPayment: Record<string, { count: number; total: number }> = {}
-    for (const row of (salesData.byPayment || [])) {
-      salesByPayment[row.method] = { count: N(row.count), total: N(row.total) }
+    for (const row of (salesData.byPayment || []) as Record<string, unknown>[]) {
+      salesByPayment[row.method as string] = { count: N(row.count), total: N(row.total) }
     }
 
     const salesByCategory: Record<string, { qty: number; total: number }> = {}
-    for (const row of (salesData.byCategory || [])) {
-      salesByCategory[row.category] = { qty: N(row.qty), total: N(row.total) }
+    for (const row of (salesData.byCategory || []) as Record<string, unknown>[]) {
+      salesByCategory[row.category as string] = { qty: N(row.qty), total: N(row.total) }
     }
 
     const salesBySource = { MESA: { count: 0, total: 0 }, POS: { count: 0, total: 0 } }
-    for (const row of (salesData.bySource || [])) {
-      salesBySource[row.source] = { count: N(row.count), total: N(row.total) }
+    for (const row of (salesData.bySource || []) as Record<string, unknown>[]) {
+      salesBySource[row.source as string] = { count: N(row.count), total: N(row.total) }
     }
 
-    const topProducts = (salesData.topProds || []).map((row) => ({
-      name: row.name, qty: N(row.qty), total: N(row.total),
+    const topProducts = ((salesData.topProds || []) as Record<string, unknown>[]).map((row) => ({
+      name: row.name as string, qty: N(row.qty), total: N(row.total),
     }))
 
-    const orders = salesData.ordersList || []
+    const orders = (salesData.ordersList || []) as unknown[]
 
     // ── 7. PUNTO DE EQUILIBRIO ──
     const beRow = Array.isArray(results[11]) ? results[11][0] : null
@@ -427,15 +427,15 @@ export async function GET(request: NextRequest) {
 
     // ── 18. IVA RECAUDADO ──
     const ivaOrders = ivaOrdersRaw
-      .filter((o) => Number(o.taxAmount) > 0)
-      .map((o) => ({
+      .filter((o: any) => Number(o.taxAmount) > 0)
+      .map((o: any) => ({
         ...o,
-        createdAt: o.createdAt.toISOString(),
+        createdAt: new Date(o.createdAt).toISOString(),
         taxBreakdown: o.taxBreakdown ? JSON.parse(String(o.taxBreakdown)) : [],
       }))
 
-    const totalIva = ivaOrders.reduce((sum, o) => sum + Number(o.taxAmount), 0)
-    const totalBase = ivaOrders.reduce((sum, o) => sum + Number(o.subtotal || 0), 0)
+    const totalIva = ivaOrders.reduce((sum: number, o: any) => sum + Number(o.taxAmount), 0)
+    const totalBase = ivaOrders.reduce((sum: number, o: any) => sum + Number(o.subtotal || 0), 0)
 
     // Group by tax code for summary
     const ivaByCodeMap = new Map<string, { name: string; code: string; rate: number; base: number; amount: number }>()
@@ -518,7 +518,7 @@ export async function GET(request: NextRequest) {
         convertedCount: quotesConverted,
         totalCount: quotes.length,
       },
-      invoices: invoices.map((inv) => ({
+      invoices: invoices.map((inv: any) => ({
         id: inv.id,
         invoiceNumber: `${inv.prefix}${String(inv.consecutive).padStart(10, '0')}`,
         customerNit: inv.customerNit,
@@ -530,17 +530,17 @@ export async function GET(request: NextRequest) {
         cufe: inv.cufe,
         sentAt: inv.sentAt?.toISOString() || null,
         validatedAt: inv.validatedAt?.toISOString() || null,
-        createdAt: inv.createdAt.toISOString(),
+        createdAt: inv.createdAt instanceof Date ? inv.createdAt.toISOString() : inv.createdAt,
         orderNumber: inv.order?.orderNumber || null,
       })),
       invoicesSummary: {
-        total: invoices.reduce((s, inv) => s + Number(inv.grandTotal), 0),
+        total: invoices.reduce((s: number, inv: any) => s + Number(inv.grandTotal), 0),
         count: invoices.length,
-        validated: invoices.filter((inv) => inv.status === 'VALIDATED' || inv.status === 'DELIVERED').length,
-        pending: invoices.filter((inv) => inv.status === 'DRAFT' || inv.status === 'PENDING_VALIDATE').length,
-        rejected: invoices.filter((inv) => inv.status === 'REJECTED').length,
+        validated: invoices.filter((inv: any) => inv.status === 'VALIDATED' || inv.status === 'DELIVERED').length,
+        pending: invoices.filter((inv: any) => inv.status === 'DRAFT' || inv.status === 'PENDING_VALIDATE').length,
+        rejected: invoices.filter((inv: any) => inv.status === 'REJECTED').length,
       },
-      creditNotes: creditNotes.map((cn) => ({
+      creditNotes: creditNotes.map((cn: any) => ({
         id: cn.id,
         noteNumber: `${cn.prefix}${String(cn.consecutive).padStart(10, '0')}`,
         noteType: cn.noteType,
@@ -548,14 +548,14 @@ export async function GET(request: NextRequest) {
         totalAmount: Number(cn.grandTotal),
         reason: cn.concept || '',
         status: cn.status,
-        createdAt: cn.createdAt.toISOString(),
+        createdAt: cn.createdAt instanceof Date ? cn.createdAt.toISOString() : cn.createdAt,
         invoiceNumber: cn.invoice ? `${cn.invoice.prefix}${String(cn.invoice.consecutive).padStart(10, '0')}` : null,
       })),
       creditNotesSummary: {
-        total: creditNotes.reduce((s, cn) => s + Number(cn.grandTotal), 0),
+        total: creditNotes.reduce((s: number, cn: any) => s + Number(cn.grandTotal), 0),
         count: creditNotes.length,
-        creditCount: creditNotes.filter((cn) => cn.noteType === 'CREDIT').length,
-        debitCount: creditNotes.filter((cn) => cn.noteType === 'DEBIT').length,
+        creditCount: creditNotes.filter((cn: any) => cn.noteType === 'CREDIT').length,
+        debitCount: creditNotes.filter((cn: any) => cn.noteType === 'DEBIT').length,
       },
       ivaCollected,
     })

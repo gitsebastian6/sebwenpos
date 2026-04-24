@@ -29,7 +29,7 @@ const setupSchema = z.object({
 export async function POST(req: NextRequest) {
   // ─── Rate Limiting: 3 intentos por 5 minutos por IP ───
   const rl = withRateLimit(req, 'setup', SETUP_RATE_LIMIT)
-  if (!rl.allowed) return rl.response
+  if (rl.allowed === false) return rl.response
 
   try {
     // ─── Gate 1: No Super Admin puede hacer setup ───

@@ -34,6 +34,7 @@ interface PollSummary {
   errors: number
   results: PollResult[]
   timestamp: string
+  message?: string
 }
 
 async function processInvoice(invoice: {

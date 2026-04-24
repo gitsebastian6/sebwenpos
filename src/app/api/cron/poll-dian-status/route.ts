@@ -45,6 +45,8 @@ interface PollSummary {
   creditNotesProcessed: number
   results: PollResult[]
   timestamp: string
+  message?: string
+  durationMs?: number
 }
 
 // ─── Process single item ────────────────────────────────────────────────────

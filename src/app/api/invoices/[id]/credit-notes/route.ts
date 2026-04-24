@@ -389,6 +389,7 @@ export async function POST(
       totalTaxAmount,
       discountAmount: 0,
       grandTotal,
+      providerNit: '',
     })
 
     // 7. Generate QR code URL
@@ -400,7 +401,7 @@ export async function POST(
       date: now.toISOString().slice(0, 10),
       grandTotal,
       cufe,
-      appBaseUrl,
+      testMode: consecResult.testMode,
     })
 
     // 8-12: Create credit note and side effects in a transaction
@@ -441,7 +442,7 @@ export async function POST(
           totalWithTax,
           grandTotal,
           // Items devueltos
-          items: JSON.stringify(returnedItemsData),
+          items: JSON.stringify(returnedItemsData) as any,
           // Motivo
           reason: body.reason ?? null,
           returnCode: body.returnCode ?? '01',
@@ -548,7 +549,7 @@ export async function POST(
         totalWithTax: Number(creditNote.totalWithTax),
         grandTotal: Number(creditNote.grandTotal),
         // Items
-        items: JSON.parse(creditNote.items),
+        items: JSON.parse((creditNote as any).items || '[]'),
         // Motivo
         reason: creditNote.reason,
         returnCode: creditNote.returnCode,

@@ -25,15 +25,15 @@ const TAX_CATEGORIES = ['SALES_TAX', 'CONSUMPTION_TAX', 'WITHHOLDING', 'MUNICIPA
 
 const updateTaxRateSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(200).optional(),
-  code: z.enum(DIAN_TAX_CODES, {
+  code: z.enum(DIAN_TAX_CODES as unknown as [string, ...string[]], {
     errorMap: () => ({ message: 'Código DIAN inválido. Debe ser uno de: 01-09' }),
   }).optional(),
-  rateType: z.enum(RATE_TYPES, {
+  rateType: z.enum(RATE_TYPES as unknown as [string, ...string[]], {
     errorMap: () => ({ message: 'Tipo de tasa inválido. Use PERCENTAGE o FIXED_AMOUNT' }),
   }).optional(),
   rate: z.number().int().min(0, 'La tasa no puede ser negativa').max(1000000, 'La tasa excede el límite permitido').optional(),
-  applyTo: z.enum(APPLY_TO_OPTIONS).optional(),
-  category: z.enum(TAX_CATEGORIES).optional(),
+  applyTo: z.enum(APPLY_TO_OPTIONS as unknown as [string, ...string[]]).optional(),
+  category: z.enum(TAX_CATEGORIES as unknown as [string, ...string[]]).optional(),
   isActive: z.boolean().optional(),
   isDefault: z.boolean().optional(),
   description: z.string().max(500, 'La descripción no puede exceder 500 caracteres').nullable().optional(),

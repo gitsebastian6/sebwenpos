@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const yearStart = new Date(now.getFullYear(), 0, 1)
 
     // Run queries with error isolation
-    const runSafe = async (name: string, fn: () => Promise<unknown>) => {
+    const runSafe = async <T>(name: string, fn: () => Promise<T>): Promise<T | null> => {
       try {
         return await fn()
       } catch (e: unknown) {

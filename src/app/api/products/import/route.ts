@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
 
     // ─── Parse rows FIRST to discover categories & providers needed ───────
     const parsed: ExcelRow[] = []
-    const parseErrors: { row: number; message: string } = []
+    const parseErrors: { row: number; message: string }[] = []
 
     rawData.forEach((rawRow, index) => {
       const row = parseRow(rawRow)
@@ -265,7 +265,7 @@ export async function POST(req: NextRequest) {
 
     // ─── Validate and create products ──────────────────────────────────────
     const created: string[] = []
-    const skipped: { row: number; name: string; reason: string } = []
+    const skipped: { row: number; name: string; reason: string }[] = []
     const errors: { row: number; message: string }[] = parseErrors
 
     for (let i = 0; i < parsed.length; i++) {

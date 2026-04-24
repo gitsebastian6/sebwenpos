@@ -168,10 +168,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Suscripción no encontrada' }, { status: 404 })
     }
 
+    if (!(storeData as any).subscriptionId) {
+      return NextResponse.json({ error: 'La tienda no tiene suscripción asociada' }, { status: 400 })
+    }
+
+    const subscriptionId = storeData.subscription.id
+
     // Check if there's already a PENDING receipt for this store's subscription
     const existingPending = await db.paymentReceipt.findFirst({
       where: {
-        subscriptionId: storeData.subscriptionId,
+        subscriptionId,
         status: 'PENDING',
       },
     })
@@ -189,7 +195,7 @@ export async function POST(req: NextRequest) {
     const receipt = await db.paymentReceipt.create({
       data: {
         storeId: data.storeId,
-        subscriptionId: storeData.subscriptionId,
+        subscriptionId,
         amount: data.amount,
         paymentMethod: data.paymentMethod,
         reference: data.reference || null,

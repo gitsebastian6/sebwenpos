@@ -19,7 +19,7 @@ interface UsePosCartDeps {
   openCashRegisters: OpenCashRegister[]
   selectedCashRegisterId: string
   customers: CustomerSummary[]
-  fetchOpenCashRegisters: () => Promise<void>
+  fetchOpenCashRegisters: () => void | Promise<void>
 }
 
 // ─── Hook ──────────────────────────────────────────────

@@ -22,6 +22,7 @@ import {
   TrendingDown, TrendingUp, Receipt, Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { formatCurrency } from '@/lib/auth'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {

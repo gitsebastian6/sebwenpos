@@ -329,7 +329,7 @@ async function sendExpiryAlertEmail(data: AlertEmailData): Promise<{ success: bo
       html,
     })
 
-    return { success: true, messageId: info.messageId }
+    return { success: true, messageId: info.messageId } as { success: boolean; error?: string }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     logger.error(`[AlertEmail] Error sending to ${data.to}:`, message)

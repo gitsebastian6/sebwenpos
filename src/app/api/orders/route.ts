@@ -541,16 +541,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (from || to) {
-      where.createdAt = {}
+      const dateFilter: Record<string, Date> = {}
       if (from) {
-        where.createdAt.gte = new Date(from)
+        dateFilter.gte = new Date(from)
       }
       if (to) {
         // End of day
         const endDate = new Date(to)
         endDate.setHours(23, 59, 59, 999)
-        where.createdAt.lte = endDate
+        dateFilter.lte = endDate
       }
+      where.createdAt = dateFilter
     }
 
     if (q) {

@@ -264,13 +264,14 @@ export async function GET(request: NextRequest) {
     }
 
     if (from || to) {
-      where.createdAt = {}
-      if (from) where.createdAt.gte = new Date(from)
+      const dateFilter: Record<string, Date> = {}
+      if (from) dateFilter.gte = new Date(from)
       if (to) {
         const endDate = new Date(to)
         endDate.setHours(23, 59, 59, 999)
-        where.createdAt.lte = endDate
+        dateFilter.lte = endDate
       }
+      where.createdAt = dateFilter
     }
 
     if (q) {

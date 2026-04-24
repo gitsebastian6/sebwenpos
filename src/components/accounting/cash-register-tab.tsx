@@ -53,6 +53,21 @@ import {
   type DailySummaryData,
   type ProductCatalogData,
 } from '@/lib/print-ticket'
+
+interface DailyReportResponse {
+  date: string
+  orders: { total: number; completed: number; cancelled: number }
+  sales: { total: number; subtotal: number; tips: number }
+  byPayment: Record<string, { count: number; total: number; tips: number }>
+  topProducts: Array<{ name: string; quantity: number; total: number }>
+  cash: { openingBalance: number; expectedCash: number }
+  services: number
+}
+
+interface ProductsCatalogResponse {
+  data?: Array<{ name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }>
+  [key: number]: unknown
+}
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHOD_COLORS,
@@ -79,7 +94,6 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
     handleCloseShift,
     handleReopenShift,
     handleDeleteShift,
-    handleShowShiftDetail,
     handlePrintShiftFromHistory,
     handlePrintClose,
     refetchCurrentShift,
@@ -357,9 +371,9 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
             <Button variant="outline" size="sm" onClick={async () => {
               if (!store?.id) return
               try {
-                const data = await queryClient.fetchQuery({
+                const data = await queryClient.fetchQuery<DailyReportResponse>({
                   queryKey: ['daily-report-cash', store.id],
-                  queryFn: () => queryFetch(`/api/reports/daily?storeId=${store.id}`),
+                  queryFn: () => queryFetch<DailyReportResponse>(`/api/reports/daily?storeId=${store.id}`),
                   staleTime: 60_000,
                 })
                 const printData: DailySummaryData = {
@@ -390,9 +404,9 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
             <Button variant="outline" size="sm" onClick={async () => {
               if (!store?.id) return
               try {
-                const data = await queryClient.fetchQuery({
+                const data = await queryClient.fetchQuery<ProductsCatalogResponse>({
                   queryKey: ['products-catalog-cash', store.id],
-                  queryFn: () => queryFetch(`/api/products?storeId=${store.id}&active=true&limit=500`),
+                  queryFn: () => queryFetch<ProductsCatalogResponse>(`/api/products?storeId=${store.id}&active=true&limit=500`),
                   staleTime: 120_000,
                 })
                 const rawProducts = Array.isArray(data) ? data : (data.data || [])

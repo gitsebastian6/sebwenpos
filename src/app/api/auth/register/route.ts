@@ -23,7 +23,7 @@ const registerSchema = z.object({
 export async function POST(req: NextRequest) {
   // ─── Rate Limiting: 3 registros por 5 minutos por IP ───
   const rl = withRateLimit(req, 'register', REGISTER_RATE_LIMIT)
-  if (!rl.allowed) return rl.response
+  if (rl.allowed === false) return rl.response
 
   try {
     const body = await req.json()

@@ -173,6 +173,12 @@ export interface LastOrderData extends OrderData {
   paymentMethod: string
   customerNit?: string | null
   customerName?: string | null
+  subtotal?: number
+  tipAmount?: number
+  taxAmount?: number
+  taxBreakdown?: unknown[] | null
+  discountAmount?: number
+  notes?: string | null
 }
 
 // ---- Invoice Response ----
@@ -194,6 +200,7 @@ export interface InvoiceData {
 export interface LastInvoiceData extends InvoiceData {
   testMode?: boolean
   dianMessage?: string | null
+  qrCode?: string | null
 }
 
 // ---- Cart ----
@@ -250,6 +257,7 @@ export interface TaxBreakdownEntry {
   rate: number
   base: number
   taxAmount: number
+  amount?: number
 }
 
 // ---- Inventory ----

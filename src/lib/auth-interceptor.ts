@@ -160,3 +160,5 @@ function initInterceptor() {
 
 // Auto-initialize on import (safe for SSR — only patches in browser)
 initInterceptor()
+
+export {}

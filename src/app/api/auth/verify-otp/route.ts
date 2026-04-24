@@ -20,7 +20,7 @@ const verifyOtpSchema = z.object({
 export async function POST(req: NextRequest) {
   // Rate limiting: 5 requests per 5 minutes per IP
   const rl = withRateLimit(req, 'verify-otp', VERIFY_OTP_RATE_LIMIT)
-  if (!rl.allowed) return rl.response
+  if (rl.allowed === false) return rl.response
 
   try {
     const body = await req.json()

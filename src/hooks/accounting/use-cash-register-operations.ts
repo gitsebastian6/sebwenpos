@@ -13,7 +13,8 @@ import {
   useReopenShift,
   useDeleteShift,
 } from '@/hooks/api/use-cash-register'
-import type { CashShift, CashShiftSummary } from '@/components/accounting/accounting-types'
+import type { CashShift, CashShiftSummary, ShiftDetailData } from '@/hooks/api/use-cash-register'
+import type { CashShift as ComponentCashShift, CashShiftSummary as ComponentCashShiftSummary } from '@/components/accounting/accounting-types'
 import {
   printCashRegisterClose,
   type CashRegisterCloseData,
@@ -26,8 +27,8 @@ export function useCashRegisterOperations(currencyCode: string) {
   // ─── State ──────────────────────────────────────────────────────────────
   const [selectedShiftId, setSelectedShiftId] = useState<number | null>(null)
   const [lastClosedShift, setLastClosedShift] = useState<{
-    shift: CashShift
-    summary: CashShiftSummary
+    shift: ComponentCashShift
+    summary: ComponentCashShiftSummary
   } | null>(null)
   const [deleteShiftId, setDeleteShiftId] = useState<number | null>(null)
 
@@ -115,7 +116,7 @@ export function useCashRegisterOperations(currencyCode: string) {
         body,
       })
 
-      const parsedShift = result.shift as CashShift
+      const parsedShift = result.shift
       const emptySummary: CashShiftSummary = {
         totalOrders: 0,
         totalSales: 0,
@@ -130,19 +131,19 @@ export function useCashRegisterOperations(currencyCode: string) {
 
       // Fetch detail for printing
       try {
-        const detail = await queryClient.fetchQuery({
+        const detail = await queryClient.fetchQuery<ShiftDetailData>({
           queryKey: ['cash-register-detail', shiftData.shift.id],
-          queryFn: () => queryFetch(`/api/cash-register/${shiftData.shift.id}`),
+          queryFn: () => queryFetch<ShiftDetailData>(`/api/cash-register/${shiftData.shift.id}`),
           staleTime: 30_000,
         })
         const closedShiftData = {
-          shift: parsedShift,
-          summary: detail.orderSummary as CashShiftSummary,
+          shift: parsedShift as unknown as ComponentCashShift,
+          summary: detail.orderSummary as unknown as ComponentCashShiftSummary,
         }
         setLastClosedShift(closedShiftData)
-        printShiftReport(parsedShift, detail.orderSummary as CashShiftSummary)
+        printShiftReport(parsedShift as unknown as ComponentCashShift, detail.orderSummary as unknown as ComponentCashShiftSummary)
       } catch {
-        setLastClosedShift({ shift: parsedShift, summary: emptySummary })
+        setLastClosedShift({ shift: parsedShift as unknown as ComponentCashShift, summary: emptySummary as unknown as ComponentCashShiftSummary })
       }
     } catch (err) {
       toast.error(
@@ -177,8 +178,8 @@ export function useCashRegisterOperations(currencyCode: string) {
   }
 
   async function printShiftReport(
-    shift: CashShift,
-    summary: CashShiftSummary,
+    shift: ComponentCashShift,
+    summary: ComponentCashShiftSummary,
   ) {
     if (!store) return
     const payBreakdown = Object.entries(summary.byPayment).map(
@@ -221,13 +222,13 @@ export function useCashRegisterOperations(currencyCode: string) {
   async function handlePrintShiftFromHistory(shiftId: number) {
     if (!store) return
     try {
-      const detail = await queryClient.fetchQuery({
+      const detail = await queryClient.fetchQuery<ShiftDetailData>({
         queryKey: ['cash-register-detail', shiftId],
         queryFn: () =>
-          queryFetch(`/api/cash-register/${shiftId}?storeId=${store.id}`),
+          queryFetch<ShiftDetailData>(`/api/cash-register/${shiftId}?storeId=${store.id}`),
         staleTime: 30_000,
       })
-      printShiftReport(detail.shift, detail.orderSummary)
+      printShiftReport(detail.shift as unknown as ComponentCashShift, detail.orderSummary as unknown as ComponentCashShiftSummary)
     } catch {
       toast.error('Error de conexión')
     }

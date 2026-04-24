@@ -30,7 +30,7 @@ function buildOwnerPermissions(isPastDue: boolean): Record<string, boolean> {
 export async function POST(req: NextRequest) {
   // ─── Rate Limiting ───
   const rl = withRateLimit(req, 'switch-store', SWITCH_STORE_RATE_LIMIT)
-  if (!rl.allowed) return rl.response
+  if (rl.allowed === false) return rl.response
 
   try {
     // ─── Authenticate ───

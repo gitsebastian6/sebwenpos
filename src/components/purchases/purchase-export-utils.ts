@@ -34,7 +34,7 @@ export function handlePrintPurchases(
       headers: ['#', 'Consecutivo', 'Tipo', 'Fecha', 'Vencimiento', 'Proveedor', 'Total', 'IVA', 'Pago', 'Estado'],
       columnAligns: ['center', 'center', 'center', 'center', 'center', 'left', 'right', 'right', 'center', 'center'],
       columnWidths: ['25px', '70px', '35px', '70px', '70px', '1fr', '80px', '70px', '60px', '70px'],
-      rows: purchases.map((p, i) => [
+      rows: purchases.map((p, i) => ([
         i + 1,
         p.consecutiveNumber || `#${p.id}`,
         getDocBadge(p.documentType).short,
@@ -45,7 +45,7 @@ export function handlePrintPurchases(
         formatCurrency(p.totalIva, currencyCode),
         p.paymentStatus === 'PAID' ? 'Pagado' : p.paymentStatus === 'PARTIAL' ? 'Parcial' : 'Pendiente',
         p.status === 'COMPLETED' ? 'Completada' : p.status === 'PENDING' ? 'Pendiente' : 'Cancelada',
-      ]),
+      ] as any)),
       footer: `Total compras: ${purchases.length} · Valor total: ${formatCurrency(purchases.filter(p => p.status !== 'CANCELLED').reduce((s, p) => s + p.total, 0), currencyCode)}`,
       orientation: 'landscape',
     })
@@ -63,14 +63,14 @@ export function handlePrintPurchaseDetail(purchase: Purchase, currencyCode: stri
   lines.push({ left: `Proveedor: ${purchase.provider?.name || 'Sin proveedor'}` })
   if (purchase.invoiceNumber) lines.push({ left: `Factura: ${purchase.invoiceNumber}` })
   if (purchase.notes) lines.push({ left: `Notas: ${purchase.notes}` })
-  lines.push({ separator: true })
-  lines.push({ left: 'PRODUCTO', right: 'IVA', bold: true, separator: true })
+  lines.push({ left: '────────────────────────────────', separator: true as boolean | undefined })
+  lines.push({ left: 'PRODUCTO', right: 'IVA', bold: true, separator: true as boolean | undefined })
   purchase.purchaseItems.forEach(item => {
     const name = (item.product?.name || 'Producto').slice(0, 22)
     lines.push({ left: `${item.quantity}x ${name}`, right: `${formatCurrency(item.ivaAmount, currencyCode)}` })
   })
-  lines.push({ left: '────────────────────────────────' })
-  lines.push({ left: `Subtotal:`, right: formatCurrency(purchase.subtotal, currencyCode) })
+  lines.push({ left: '────────────────────────────────', separator: true as boolean | undefined })
+  lines.push({ left: 'Subtotal:', right: formatCurrency(purchase.subtotal, currencyCode) })
   lines.push({ left: `IVA:`, right: formatCurrency(purchase.totalIva, currencyCode) })
   if (purchase.totalReteFuente > 0) lines.push({ left: `ReteFuente:`, right: formatCurrency(purchase.totalReteFuente, currencyCode) })
   if (purchase.totalReteIca > 0) lines.push({ left: `ReteICA:`, right: formatCurrency(purchase.totalReteIca, currencyCode) })
@@ -90,7 +90,7 @@ export function handlePrintThermalDetail(purchase: Purchase, currencyCode: strin
   if (purchase.dueDate) lines.push({ left: `Vence: ${format(new Date(purchase.dueDate), 'dd/MM/yyyy')}` })
   lines.push({ left: `Prov: ${purchase.provider?.name || 'N/A'}` })
   if (purchase.invoiceNumber) lines.push({ left: `Factura: ${purchase.invoiceNumber}` })
-  lines.push({ separator: true })
+  lines.push({ left: '────────────────────────────────', separator: true as boolean | undefined })
   purchase.purchaseItems.forEach(item => {
     const n = (item.product?.name || 'Prod').slice(0, 22)
     lines.push({ left: `${item.quantity}x ${n}`, right: formatCurrency(item.total, currencyCode) })

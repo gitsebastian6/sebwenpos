@@ -45,10 +45,10 @@ export async function GET(
 
     const store = creditNote.store
     const createdAt = creditNote.createdAt
-    const items: Array<{ productName?: string; quantity: number; unitPrice: number }> = JSON.parse(creditNote.items || '[]')
+    const items: Array<{ productName?: string; quantity: number; unitPrice: number }> = JSON.parse((creditNote as any).items || '[]')
     const taxBreakdown: Array<{ code: string; rate: number; amount: number }> = JSON.parse(creditNote.taxBreakdown || '[]')
     const cnNumber = formatInvoiceNumber(creditNote.prefix, creditNote.consecutive)
-    const invNumber = formatInvoiceNumber(creditNote.invoice?.prefix, creditNote.invoice?.consecutive)
+    const invNumber = formatInvoiceNumber(creditNote.invoice?.prefix ?? '', creditNote.invoice?.consecutive ?? 0)
 
     // Generate QR code as inline data URL for DIAN validation
     let qrDataUrl = ''

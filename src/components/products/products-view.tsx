@@ -109,6 +109,7 @@ export function ProductsView() {
 
   const [traceProductId, setTraceProductId] = useState<number | null>(null)
   const [traceProductName, setTraceProductName] = useState('')
+  const kardexQuery = useKardex(traceProductId, store?.id)
   const traceMovements = (kardexQuery.data ?? []) as TraceMovement[]
   const traceLoading = kardexQuery.isLoading
 
@@ -119,9 +120,6 @@ export function ProductsView() {
   const lossMut = useInventoryLoss()
   const returnMut = useInventoryReturn()
   const actionSubmitting = adjustStockMut.isPending || lossMut.isPending || returnMut.isPending
-
-  // ─── TanStack Query — Kardex (trace) ────────────────────────────────────
-  const kardexQuery = useKardex(traceProductId, store?.id)
 
   // ─── Product Handlers ──────────────────────────────────────────────────
 
@@ -406,7 +404,7 @@ export function ProductsView() {
             onDelete={(p) => setDeleteTarget({ type: 'product', item: p })}
             onPrint={handlePrintProducts}
             onImport={() => setImportDialogOpen(true)}
-            onSetView={setView}
+            onSetView={setView as (view: string) => void}
             currencyCode={store?.currencyCode}
           />
         </TabsContent>

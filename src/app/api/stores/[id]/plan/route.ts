@@ -22,7 +22,10 @@ export async function PUT(
 
     const store = await db.store.findUnique({
       where: { id: parseInt(id) },
-      select: { id: true, name: true, plan: true, planStartDate: true, planExpiresAt: true },
+      select: {
+        id: true, name: true,
+        subscription: { select: { plan: true, startDate: true, endDate: true } },
+      },
     })
 
     if (!store) {
@@ -34,16 +37,17 @@ export async function PUT(
     const updated = await db.store.update({
       where: { id: parseInt(id) },
       data: {
-        plan: data.plan,
-        planStartDate,
-        planExpiresAt,
+        subscription: {
+          upsert: {
+            create: { planId: 1, status: data.plan === 'TRIAL' ? 'TRIAL' : 'ACTIVE', startDate: planStartDate, endDate: planExpiresAt, billingPeriod: data.plan === 'TRIAL' ? 'TRIAL' : 'MONTHLY', billingPrice: 0 },
+            update: { startDate: planStartDate, endDate: planExpiresAt },
+          },
+        },
       },
       select: {
         id: true,
         name: true,
-        plan: true,
-        planStartDate: true,
-        planExpiresAt: true,
+        subscription: { select: { plan: true, startDate: true, endDate: true } },
       },
     })
 
@@ -52,9 +56,9 @@ export async function PUT(
       store: {
         id: updated.id,
         name: updated.name,
-        plan: updated.plan,
-        planStartDate: updated.planStartDate?.toISOString() || null,
-        planExpiresAt: updated.planExpiresAt?.toISOString() || null,
+        plan: updated.subscription?.plan?.name || data.plan,
+        planStartDate: updated.subscription?.startDate?.toISOString() || planStartDate?.toISOString() || null,
+        planExpiresAt: updated.subscription?.endDate?.toISOString() || planExpiresAt?.toISOString() || null,
       },
     })
   } catch (error: unknown) {

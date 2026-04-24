@@ -12,8 +12,8 @@ export interface ExpenseItem { id: number; date: string; category: string; descr
 export interface ReturnItem { id: number; createdAt: string; product?: { name: string; salePrice: number } | null; quantity: number; notes: string | null }
 export interface AdjustmentItem { id: number; createdAt: string; product?: { name: string; currentStock: number; salePrice: number } | null; quantity: number; notes: string | null }
 export interface TraceabilityItem { id: number; createdAt: string; movementType: string; productId: number; quantity: number; notes: string | null; referenceId?: string; product?: { name: string; costPrice: number; salePrice: number; category?: { name: string } | null } | null }
-export interface QuoteItem { id: number; createdAt: string; quotationNumber: string; customerName: string | null; customer?: { name: string } | null; total: number; items?: unknown[]; status: string }
-export interface InvoiceItem { id: number; createdAt: string; invoiceNumber: string; customerName: string; grandTotal: number; status: string; testMode: boolean }
+export interface QuoteItem { id: number; createdAt: string; quotationNumber: string; customerName: string | null; customer?: { name: string } | null; total: number; items?: unknown[]; status: string; validUntil?: string | null }
+export interface InvoiceItem { id: number; createdAt: string; invoiceNumber: string; customerName: string; grandTotal: number; status: string; testMode: boolean; cufe?: string | null }
 export interface CreditNoteItem { id: number; createdAt: string; noteNumber: string; noteType: string; customerName: string; totalAmount: number; status: string; invoiceNumber: string | null }
 export interface DebtItem { id: number; name: string; phone: string | null; totalDebt: number }
 export interface IvaByCode { name: string; code: string; rate: number; base: number; amount: number }

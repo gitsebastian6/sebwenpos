@@ -259,13 +259,13 @@ export function generateUBL21XML(input: InvoiceXMLInput): string {
 
   // Party name
   const supplierName = supplier.ele('cac:PartyName')
-  supplierName.ele('cbc:Name').cdata(storeName).up()
+  supplierName.ele('cbc:Name').txt(storeName).up()
   supplier.up()
 
   // Postal address
   const supplierAddress = supplier.ele('cac:PostalAddress')
   if (storeAddress) {
-    supplierAddress.ele('cbc:StreetName').cdata(storeAddress).up()
+    supplierAddress.ele('cbc:StreetName').txt(storeAddress).up()
   }
   if (storeCityCode) {
     supplierAddress
@@ -287,7 +287,7 @@ export function generateUBL21XML(input: InvoiceXMLInput): string {
   const supplierLegal = supplier.ele('cac:PartyLegalEntity')
   supplierLegal
     .ele('cbc:RegistrationName')
-    .cdata(storeLegalName || storeName)
+    .txt(storeLegalName || storeName)
     .up()
   const supplierTaxScheme = supplierLegal.ele('cac:TaxScheme')
   supplierTaxScheme
@@ -332,12 +332,12 @@ export function generateUBL21XML(input: InvoiceXMLInput): string {
 
   // Customer party name
   const custName = customer.ele('cac:PartyName')
-  custName.ele('cbc:Name').cdata(customerName).up()
+  custName.ele('cbc:Name').txt(customerName).up()
 
   // Customer address
   const custAddress = customer.ele('cac:PostalAddress')
   if (customerAddress) {
-    custAddress.ele('cbc:StreetName').cdata(customerAddress).up()
+    custAddress.ele('cbc:StreetName').txt(customerAddress).up()
   }
   if (customerCityCode) {
     custAddress
@@ -356,7 +356,7 @@ export function generateUBL21XML(input: InvoiceXMLInput): string {
 
   // Customer legal entity
   const custLegal = customer.ele('cac:PartyLegalEntity')
-  custLegal.ele('cbc:RegistrationName').cdata(customerName).up()
+  custLegal.ele('cbc:RegistrationName').txt(customerName).up()
 
   // Customer fiscal regime
   if (customerRegime) {
@@ -507,7 +507,7 @@ export function generateUBL21XML(input: InvoiceXMLInput): string {
 
     // Item description
     const lineItem = line.ele('cac:Item')
-    lineItem.ele('cbc:Description').cdata(item.description).up()
+    lineItem.ele('cbc:Description').txt(item.description).up()
 
     // Price
     const linePrice = line.ele('cac:Price')

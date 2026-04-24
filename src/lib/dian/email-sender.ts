@@ -292,7 +292,7 @@ export async function createTestTransport(): Promise<{
       user: account.user,
       pass: account.pass,
       smtp: account.smtp,
-      web: nodemailer.getTestMessageUrl({} as nodemailer.SendMailInfo) ?? '',
+      web: (nodemailer.getTestMessageUrl({} as nodemailer.SentMessageInfo) as string) || '',
     },
   }
 }

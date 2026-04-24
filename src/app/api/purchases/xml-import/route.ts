@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       const existing = await db.provider.findFirst({
         where: {
           storeId,
-          nit: { equals: providerNit, mode: 'insensitive' },
+          nit: { equals: providerNit, mode: 'insensitive' } as any,
         },
       })
       if (existing) {

@@ -97,15 +97,16 @@ export async function GET(request: NextRequest) {
     }
 
     if (q) {
-      where.OR = [
+      const orConditions: Record<string, unknown>[] = [
         { concept: { contains: q } },
         { customerName: { contains: q } },
         { customerNit: { contains: q } },
       ]
       const numericQ = parseInt(q, 10)
       if (!isNaN(numericQ)) {
-        where.OR.push({ consecutive: numericQ })
+        orConditions.push({ consecutive: numericQ })
       }
+      where.OR = orConditions
     }
 
     const creditNotes = await db.creditNote.findMany({

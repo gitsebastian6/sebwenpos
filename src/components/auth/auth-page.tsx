@@ -51,7 +51,7 @@ export function AuthPage() {
         toast.success(`¡Bienvenido${data.user.fullName ? ', ' + data.user.fullName : ''}!`)
       }
     } catch (err) {
-      const error = err as Error & { data?: { subscriptionStatus?: string; planName?: string; endDate?: string; retryAfter?: number }; status?: number }
+      const error = err as Error & { data?: { error?: string; subscriptionStatus?: string; planName?: string; endDate?: string; retryAfter?: number }; status?: number }
       const data = error.data
       const status = error.status || 0
       if (data?.subscriptionStatus === 'EXPIRED' || data?.subscriptionStatus === 'CANCELLED' || data?.subscriptionStatus === 'NO_SUBSCRIPTION') {

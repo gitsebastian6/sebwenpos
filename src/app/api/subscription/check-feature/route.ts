@@ -33,9 +33,10 @@ export async function GET(req: NextRequest) {
 
     if (!hasFeature) {
       const check = await (await import('@/lib/subscription-helpers')).checkFeatureAccess(storeId, feature)
+      const gated = check.allowed ? null : check as { allowed: false; feature: string; planName: string }
       return NextResponse.json({
         enabled: false,
-        ...featureGatedResponse(check.feature, check.planName),
+        ...featureGatedResponse(gated?.feature || '', gated?.planName || ''),
       })
     }
 

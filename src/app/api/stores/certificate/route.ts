@@ -15,7 +15,7 @@ function extractCertInfo(p12Path: string, password: string): {
 } | null {
   try {
     const p12Data = readFileSync(p12Path)
-    const parsed = crypto.pkcs12.parse(p12Data, password)
+    const parsed = (crypto as any).pkcs12.parse(p12Data, password)
 
     if (!parsed || !parsed.cert) {
       throw new Error('No se pudo leer el certificado. Verifica la contraseña.')
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       await db.store.update({
         where: { id: parseInt(storeId) },
         data: {
-          certData: null,
+          certData: null as any,
           certPassword: null,
           certUploadedAt: null,
           certExpiresAt: null,
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       await db.store.update({
         where: { id: parseInt(storeId) },
         data: {
-          certData: certDataBase64,
+          certData: certDataBase64 as any,
           certPassword: encryptField(certPassword.trim()),
           certUploadedAt: new Date(),
           certExpiresAt: certInfo.expiresAt,

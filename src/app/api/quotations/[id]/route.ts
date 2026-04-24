@@ -132,7 +132,7 @@ export async function PUT(
     const { id } = await params
     const body = await req_json(request)
     const data = updateQuotationSchema.parse(body)
-    const storeId = body.storeId
+    const storeId = body.storeId as number
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })

@@ -234,7 +234,7 @@ export async function POST(req: NextRequest) {
         error: 'Suscripción expirada. Contacte al administrador para renovar su plan.',
         subscriptionStatus: subInfo.subscriptionStatus,
         planName: subInfo.planName,
-        endDate: subInfo.endDate,
+        endDate: (subInfo as any).endDate,
       }, { status: 403 })
     }
 

@@ -212,6 +212,7 @@ export async function POST(
           totalTaxAmount: taxAmount,
           discountAmount: 0,
           grandTotal,
+          providerNit: '',
         })
 
         // 6. Generate QR code URL
@@ -223,7 +224,7 @@ export async function POST(
           date: now.toISOString().slice(0, 10),
           grandTotal,
           cufe,
-          appBaseUrl,
+          testMode: store.invoiceTestMode,
         })
 
         // 7. Create debit note within the same transaction

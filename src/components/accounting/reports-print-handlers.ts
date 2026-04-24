@@ -18,12 +18,31 @@ interface StoreInfo {
   nit?: string | null
 }
 
+interface DailyReportResponse {
+  date: string
+  orders: { total: number; completed: number; cancelled: number }
+  sales: { total: number; subtotal: number; tips: number }
+  byPayment: Record<string, { count: number; total: number; tips: number }>
+  topProducts: Array<{ name: string; quantity: number; total: number }>
+  cash: { openingBalance: number; expectedCash: number }
+  services: number
+}
+
+interface ProductsCatalogResponse {
+  data?: Array<{ name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }>
+  [key: number]: unknown
+}
+
+interface KardexResponse {
+  movements: KardexData['movements']
+}
+
 export async function handlePrintDailySummary(queryClient: QueryClient, store: StoreInfo, currencyCode: string) {
   if (!store.id) return
   try {
-    const data = await queryClient.fetchQuery({
+    const data = await queryClient.fetchQuery<DailyReportResponse>({
       queryKey: ['daily-report', store.id],
-      queryFn: () => queryFetch(`/api/reports/daily?storeId=${store.id}`),
+      queryFn: () => queryFetch<DailyReportResponse>(`/api/reports/daily?storeId=${store.id}`),
       staleTime: 60_000,
     })
     const printData: DailySummaryData = {
@@ -55,9 +74,9 @@ export async function handlePrintDailySummary(queryClient: QueryClient, store: S
 export async function handlePrintCatalog(queryClient: QueryClient, store: StoreInfo, currencyCode: string) {
   if (!store.id) return
   try {
-    const data = await queryClient.fetchQuery({
+    const data = await queryClient.fetchQuery<ProductsCatalogResponse>({
       queryKey: ['products-catalog', store.id],
-      queryFn: () => queryFetch(`/api/products?storeId=${store.id}&active=true&limit=500`),
+      queryFn: () => queryFetch<ProductsCatalogResponse>(`/api/products?storeId=${store.id}&active=true&limit=500`),
       staleTime: 120_000,
     })
     const rawProducts = Array.isArray(data) ? data : (data.data || [])
@@ -89,9 +108,9 @@ export async function handlePrintKardex(
 ) {
   if (!store.id) return
   try {
-    const data = await queryClient.fetchQuery({
+    const data = await queryClient.fetchQuery<KardexResponse>({
       queryKey: ['kardex-print', productId, store.id],
-      queryFn: () => queryFetch(`/api/inventory/kardex?storeId=${store.id}&productId=${productId}`),
+      queryFn: () => queryFetch<KardexResponse>(`/api/inventory/kardex?storeId=${store.id}&productId=${productId}`),
       staleTime: 30_000,
     })
     const printData: KardexData = {

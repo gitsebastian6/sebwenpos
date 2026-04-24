@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { useState, useRef } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useQuery } from '@tanstack/react-query'
@@ -33,6 +34,9 @@ import { DescuentosTab, CierresTab, ComisionesTab, GastosTab } from './report-ta
 import { ImpuestosTab, DevolucionesTab, AjustesTab, TrazabilidadTab } from './report-tabs-operations'
 import { CotizacionesTab, FacturasTab, NotasCreditoTab, CxcTab } from './report-tabs-documents'
 
+interface TabIconProps { className?: string }
+type ReportTabEntry = [string, string, React.ComponentType<TabIconProps>]
+
 // ── Main Component ──
 export function ReportsView() {
   const store = useAuthStore((s) => s.store)
@@ -52,11 +56,11 @@ export function ReportsView() {
 
   // ─── TanStack Query hooks ───────────────────────────────────────────────
   const { data: rawData, isLoading: loading, error: queryError, refetch: fetchReports } = useInformes(store?.id, from, to)
-  const data = rawData as ReportsData | undefined
+  const data = rawData as unknown as ReportsData | undefined
 
   const { data: productsData, refetch: fetchProducts } = useQuery<ReportProduct[]>({
     queryKey: ['products-for-reports', store?.id],
-    queryFn: () => unwrapArray<ReportProduct>(queryFetch(`/api/products?storeId=${store?.id}`)),
+    queryFn: () => unwrapArray<ReportProduct>(queryFetch<Response>(`/api/products?storeId=${store?.id}`) as unknown as Promise<Response>),
     enabled: !!store?.id,
     staleTime: 120_000,
   })
@@ -196,7 +200,7 @@ export function ReportsView() {
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
           <TabsList className="flex-wrap gap-1 h-auto bg-transparent p-0">
-            {[
+            {([
               ['cifras', 'Cifras', Store], ['ventas', 'Ventas', ShoppingCart], ['rentabilidad', 'Rentabilidad', TrendingUp],
               ['compras', 'Compras', Truck], ['inventario', 'Inventario', Package],
               ['perdidas', 'Pérdidas', AlertTriangle], ['punto-eq', 'Punto Eq.', Target],
@@ -205,9 +209,9 @@ export function ReportsView() {
               ['impuestos', 'Impuestos', Receipt], ['devoluciones', 'Devoluciones', RotateCcw],
               ['ajustes', 'Ajustes', SlidersHorizontal], ['trazabilidad', 'Trazabilidad', Route],
               ['cotizaciones', 'Cotizaciones', FileText], ['facturas', 'Facturas', FileCheck], ['notas-credito', 'Notas Cr/Dt', FileText], ['cxc', 'CxC', Users],
-            ].map(([key, label, Icon]) => (
-              <TabsTrigger key={key} value={key} className="text-xs gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-3 py-1.5 rounded-md border">
-                <Icon className="h-3.5 w-3.5" />{label}
+            ] as any).map(([key, label, Icon]: any) => (
+              <TabsTrigger key={String(key)} value={String(key)} className="text-xs gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-3 py-1.5 rounded-md border">
+                {'className' in Icon ? <Icon className="h-3.5 w-3.5" /> : null}{label}
               </TabsTrigger>
             ))}
           </TabsList>

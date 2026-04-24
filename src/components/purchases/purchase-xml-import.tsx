@@ -220,7 +220,7 @@ export function PurchaseXmlImport({
         items: xmlPreview.items.map(item => ({ productId: 0, quantity: item.quantity, unitCost: item.unitCost, name: item.name })),
       },
     }, {
-      onSuccess: (result: { message?: string; itemsCreated?: number }) => {
+      onSuccess: (result: any) => {
         toast.success(`Factura importada: ${result?.itemsCreated} producto(s)`)
         setXmlPreview(null)
       },

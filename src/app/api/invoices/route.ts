@@ -66,27 +66,29 @@ export async function GET(request: NextRequest) {
     }
 
     if (from || to) {
-      where.createdAt = {}
+      const dateFilter: Record<string, Date> = {}
       if (from) {
-        where.createdAt.gte = new Date(from)
+        dateFilter.gte = new Date(from)
       }
       if (to) {
         const endDate = new Date(to)
         endDate.setHours(23, 59, 59, 999)
-        where.createdAt.lte = endDate
+        dateFilter.lte = endDate
       }
+      where.createdAt = dateFilter
     }
 
     if (q) {
       // Buscar por numero consecutivo formateado (ej: "FE-00000001")
-      where.OR = [
+      const orConditions: Record<string, unknown>[] = [
         { prefix: { contains: q } },
       ]
       // Si el query es numerico, buscar por consecutivo exacto
       const numericQ = parseInt(q, 10)
       if (!isNaN(numericQ)) {
-        where.OR.push({ consecutive: numericQ })
+        orConditions.push({ consecutive: numericQ })
       }
+      where.OR = orConditions
     }
 
     const [total, invoices] = await Promise.all([

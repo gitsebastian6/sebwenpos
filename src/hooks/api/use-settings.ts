@@ -3,6 +3,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { mutationFetch, queryFetch } from './query-helpers'
 import { toast } from 'sonner'
+import type {
+  SubscriptionCurrent,
+  PlanOption,
+  SubscriptionHistoryItem,
+  BillingHistory,
+  ReceiptItem,
+  ProrationInfo,
+} from './use-subscription'
 
 // ─── Store mutations (shared by business, invoice, divipola, dian tabs) ───
 
@@ -55,44 +63,44 @@ export function useUpdateSecurityQuestion() {
 // ─── Subscription ───
 
 export function useSubscriptionCurrent(storeId: number | undefined) {
-  return useQuery({
+  return useQuery<SubscriptionCurrent>({
     queryKey: ['subscription-current', storeId],
-    queryFn: () => queryFetch(`/api/subscription/current?storeId=${storeId}`),
+    queryFn: () => queryFetch<SubscriptionCurrent>(`/api/subscription/current?storeId=${storeId}`),
     enabled: !!storeId,
     staleTime: 30_000, // auto-refresh is 30s
   })
 }
 
 export function usePaymentReceipts(storeId: number | undefined) {
-  return useQuery({
+  return useQuery<ReceiptItem[]>({
     queryKey: ['payment-receipts', storeId],
-    queryFn: () => queryFetch(`/api/payment-receipts?storeId=${storeId}`),
+    queryFn: () => queryFetch<ReceiptItem[]>(`/api/payment-receipts?storeId=${storeId}`),
     enabled: !!storeId,
     staleTime: 30_000,
   })
 }
 
 export function useSubscriptionPlans() {
-  return useQuery({
+  return useQuery<PlanOption[]>({
     queryKey: ['subscription-plans'],
-    queryFn: () => queryFetch('/api/subscription/plans'),
+    queryFn: () => queryFetch<PlanOption[]>('/api/subscription/plans'),
     staleTime: 10 * 60_000,
   })
 }
 
 export function useSubscriptionHistory(storeId: number | undefined) {
-  return useQuery({
+  return useQuery<SubscriptionHistoryItem[]>({
     queryKey: ['subscription-history', storeId],
-    queryFn: () => queryFetch(`/api/subscription/history?storeId=${storeId}`),
+    queryFn: () => queryFetch<SubscriptionHistoryItem[]>(`/api/subscription/history?storeId=${storeId}`),
     enabled: !!storeId,
     staleTime: 60_000,
   })
 }
 
 export function useBillingHistory(storeId: number | undefined) {
-  return useQuery({
+  return useQuery<BillingHistory>({
     queryKey: ['billing-history', storeId],
-    queryFn: () => queryFetch(`/api/subscription/billing-history?storeId=${storeId}`),
+    queryFn: () => queryFetch<BillingHistory>(`/api/subscription/billing-history?storeId=${storeId}`),
     enabled: !!storeId,
     staleTime: 60_000,
   })
@@ -124,9 +132,9 @@ export function useCancelSubscription() {
 }
 
 export function useSubscriptionProration(storeId: number | undefined, targetPlanId: number | null) {
-  return useQuery({
+  return useQuery<ProrationInfo>({
     queryKey: ['subscription-proration', storeId, targetPlanId],
-    queryFn: () => queryFetch(
+    queryFn: () => queryFetch<ProrationInfo>(
       `/api/subscription/proration?storeId=${storeId}&targetPlanId=${targetPlanId}`
     ),
     enabled: !!storeId && !!targetPlanId,
@@ -136,19 +144,36 @@ export function useSubscriptionProration(storeId: number | undefined, targetPlan
 
 // ─── Electronic Invoicing ───
 
+export interface EInvoicingConfigResponse {
+  error?: string
+  invoiceEnabled?: boolean
+  invoiceProvider?: string
+  softwareId?: string | null
+  softwarePin?: string | null
+  providerConfig?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface EInvoicingCertStatus {
+  uploaded: boolean
+  fileName: string | null
+  fileSize: number
+  lastModified: string | null
+}
+
 export function useEInvoicingConfig(storeId: number | undefined) {
-  return useQuery({
+  return useQuery<EInvoicingConfigResponse>({
     queryKey: ['e-invoicing-config', storeId],
-    queryFn: () => queryFetch(`/api/electronic-invoicing/config?storeId=${storeId}`),
+    queryFn: () => queryFetch<EInvoicingConfigResponse>(`/api/electronic-invoicing/config?storeId=${storeId}`),
     enabled: !!storeId,
     staleTime: 60_000,
   })
 }
 
 export function useEInvoicingCertStatus(storeId: number | undefined) {
-  return useQuery({
+  return useQuery<EInvoicingCertStatus>({
     queryKey: ['e-invoicing-cert-status', storeId],
-    queryFn: () => queryFetch(`/api/electronic-invoicing/upload-certificate?storeId=${storeId}`),
+    queryFn: () => queryFetch<EInvoicingCertStatus>(`/api/electronic-invoicing/upload-certificate?storeId=${storeId}`),
     enabled: !!storeId,
     staleTime: 60_000,
   })

@@ -111,7 +111,7 @@ export function PurchaseDetailDialog({ open, onClose, purchaseId, currencyCode, 
       id: purchase.id,
       body: { amount, paymentMethod, reference: paymentReference.trim() || undefined, notes: paymentNotes.trim() || undefined },
     }, {
-      onSuccess: (data: { message?: string }) => { toast.success(data?.message || 'Pago registrado exitosamente'); setShowPaymentDialog(false) },
+      onSuccess: (data: any) => { toast.success(data?.message || 'Pago registrado exitosamente'); setShowPaymentDialog(false) },
       onError: (err) => toast.error(err.message),
     })
   }

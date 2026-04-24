@@ -367,7 +367,7 @@ export async function POST(
             startNumber: store?.resolutionStartNumber,
             endNumber: store?.resolutionEndNumber,
             noteType: 'CREDIT',
-            concept,
+            concept: concept || '',
             description: `Devolución automática de venta #${order.orderNumber}${body.reason ? ` — ${body.reason}` : ''}`,
             customerNit: invoice.customerNit || DIAN_CONSUMIDOR_FINAL_NIT,
             customerName: invoice.customerName || 'Consumidor Final',
@@ -401,7 +401,7 @@ export async function POST(
           noteNumber: formatInvoiceNumber(creditNote.prefix, creditNote.consecutive),
           noteType: 'CREDIT',
           grandTotal: ncGrandTotal,
-          concept,
+          concept: concept || '',
         }
 
         logger.info(`[Return→NC] Credit Note ${creditNoteResult.noteNumber} auto-generated for order #${order.orderNumber}`)

@@ -11,10 +11,10 @@ const subscriptionStatuses = ['TRIAL', 'ACTIVE', 'PAST_DUE', 'CANCELLED', 'EXPIR
 
 const updateSubscriptionSchema = z.object({
   planId: z.number().int().positive('El planId debe ser un número positivo'),
-  billingPeriod: z.enum(billingPeriods, {
+  billingPeriod: z.enum(billingPeriods as unknown as [string, ...string[]], {
     errorMap: () => ({ message: `billingPeriod debe ser uno de: ${billingPeriods.join(', ')}` }),
   }),
-  status: z.enum(subscriptionStatuses).optional(),
+  status: z.enum(subscriptionStatuses as unknown as [string, ...string[]]).optional(),
 })
 
 function addDays(date: Date, days: number): Date {
@@ -88,18 +88,20 @@ export async function PUT(
     }
 
     // R-04 FIX: Preserve original startDate on reactivation (don't reset customer tenure)
+    // ─── Proration: credit for unused days on existing active subscription ───
+    // Fetch existing subscription first
+    const existingSubscription = await db.subscription.findUnique({
+      where: { storeId },
+      include: { plan: true },
+    })
     const isReactivation = existingSubscription?.status === 'CANCELLED' || existingSubscription?.status === 'EXPIRED'
     const startDate = (isReactivation && existingSubscription?.startDate) ? new Date(existingSubscription.startDate) : new Date()
+
     let endDate: Date | null = null
     let trialEndDate: Date | null = null
     let billingPrice: number
     let nextBillingAt: Date | null = null
 
-    // ─── Proration: credit for unused days on existing active subscription ───
-    const existingSubscription = await db.subscription.findUnique({
-      where: { storeId },
-      include: { plan: true },
-    })
     let prorationCredit = 0
     let prorationDays = 0
 

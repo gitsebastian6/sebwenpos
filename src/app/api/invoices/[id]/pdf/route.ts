@@ -163,7 +163,7 @@ export async function GET(
     // 4. Devolver como archivo descargable
     const filename = `Factura_${pdfData.invoiceNumber}.pdf`
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer) as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

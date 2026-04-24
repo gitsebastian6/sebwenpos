@@ -125,6 +125,16 @@ model Store {
   // DIVIPOLA (código municipio DIAN)
   divipolaCode           String?  @map("divipola_code")
   cityName               String?  @map("city_name")
+  // Certificate management
+  certUploadedAt    DateTime? @map("cert_uploaded_at")
+  certExpiresAt     DateTime? @map("cert_expires_at")
+  certSubject       String?   @map("cert_subject")
+  // PTE (Proveedor Tecnológico Electrónico)
+  connectionMode    String    @default("OFFLINE") @map("connection_mode")
+  pteNit            String?   @map("pte_nit")
+  pteApiUrl         String?   @map("pte_api_url")
+  pteApiKey         String?   @map("pte_api_key")
+  electronicInvoicingEnabled Boolean @default(false) @map("electronic_invoicing_enabled")
   // Sucursal / Branch support
   parentStoreId          Int?     @map("parent_store_id")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -420,6 +430,15 @@ model CreditNote {
   noteType          String    @default("CREDIT")
   concept           String    @map("concept")
   description       String?
+  // Motivo de la nota crédito
+  reason            String?
+  returnCode        String    @default("01") @map("return_code")
+  // Emisor (supplier info for DIAN)
+  supplierNit       String?   @map("supplier_nit")
+  supplierName      String?   @map("supplier_name")
+  supplierAddress   String?   @map("supplier_address")
+  supplierPhone     String?   @map("supplier_phone")
+  supplierEmail     String?   @map("supplier_email")
   customerNit       String?   @map("customer_nit")
   customerName      String?   @map("customer_name")
   customerEmail     String?   @map("customer_email")
