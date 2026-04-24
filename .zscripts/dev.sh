@@ -1,179 +1,98 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────
+# Ventify POS — Custom Dev Script (runs from container /start.sh)
+# ─────────────────────────────────────────────────────────────
+# This script is executed by /start.sh via: sudo -u z bash .zscripts/dev.sh
+# It runs in a background subshell, so a keepalive loop is safe.
+# The process inherits ROOT's network namespace → Caddy can reach port 3000.
+# ─────────────────────────────────────────────────────────────
 
-set -euo pipefail
+set -e
 
-# 获取脚本所在目录（.zscripts）
-# 使用 $0 获取脚本路径（与 build.sh 保持一致）
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="/home/z/my-project"
+LOG="$PROJECT_DIR/dev.log"
+MAX_RETRIES=5
 
-log_step_start() {
-        local step_name="$1"
-        echo "=========================================="
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting: $step_name"
-        echo "=========================================="
-        export STEP_START_TIME
-        STEP_START_TIME=$(date +%s)
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG"
 }
 
-log_step_end() {
-        local step_name="${1:-Unknown step}"
-        local end_time
-        end_time=$(date +%s)
-        local duration=$((end_time - STEP_START_TIME))
-        echo "=========================================="
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Completed: $step_name"
-        echo "[LOG] Step: $step_name | Duration: ${duration}s"
-        echo "=========================================="
-        echo ""
-}
-
-start_mini_services() {
-        local mini_services_dir="$PROJECT_DIR/mini-services"
-        local started_count=0
-
-        log_step_start "Starting mini-services"
-        if [ ! -d "$mini_services_dir" ]; then
-                echo "Mini-services directory not found, skipping..."
-                log_step_end "Starting mini-services"
-                return 0
-        fi
-
-        echo "Found mini-services directory, scanning for sub-services..."
-
-        for service_dir in "$mini_services_dir"/*; do
-                if [ ! -d "$service_dir" ]; then
-                        continue
-                fi
-
-                local service_name
-                service_name=$(basename "$service_dir")
-                echo "Checking service: $service_name"
-
-                if [ ! -f "$service_dir/package.json" ]; then
-                        echo "[$service_name] No package.json found, skipping..."
-                        continue
-                fi
-
-                if ! grep -q '"dev"' "$service_dir/package.json"; then
-                        echo "[$service_name] No dev script found, skipping..."
-                        continue
-                fi
-
-                echo "Starting $service_name in background..."
-                (
-                        cd "$service_dir"
-                        echo "[$service_name] Installing dependencies..."
-                        bun install
-                        echo "[$service_name] Running bun run dev..."
-                        exec bun run dev
-                ) >"$PROJECT_DIR/.zscripts/mini-service-${service_name}.log" 2>&1 &
-
-                local service_pid=$!
-                echo "[$service_name] Started in background (PID: $service_pid)"
-                echo "[$service_name] Log: $PROJECT_DIR/.zscripts/mini-service-${service_name}.log"
-                disown "$service_pid" 2>/dev/null || true
-                started_count=$((started_count + 1))
-        done
-
-        echo "Mini-services startup completed. Started $started_count service(s)."
-        log_step_end "Starting mini-services"
-}
-
-wait_for_service() {
-        local host="$1"
-        local port="$2"
-        local service_name="$3"
-        local max_attempts="${4:-60}"
-        local attempt=1
-
-        echo "Waiting for $service_name to be ready on $host:$port..."
-
-        while [ "$attempt" -le "$max_attempts" ]; do
-                if curl -s --connect-timeout 2 --max-time 5 "http://$host:$port" >/dev/null 2>&1; then
-                        echo "$service_name is ready!"
-                        return 0
-                fi
-
-                echo "Attempt $attempt/$max_attempts: $service_name not ready yet, waiting..."
-                sleep 1
-                attempt=$((attempt + 1))
-        done
-
-        echo "ERROR: $service_name failed to start within $max_attempts seconds"
-        return 1
-}
-
-cleanup() {
-        if [ -n "${DEV_PID:-}" ] && kill -0 "$DEV_PID" >/dev/null 2>&1; then
-                echo "Stopping Next.js dev server (PID: $DEV_PID)..."
-                kill "$DEV_PID" >/dev/null 2>&1 || true
-        fi
-}
-
-trap cleanup EXIT INT TERM
-
+# ── Step 1: Install dependencies ──
+log "Installing dependencies..."
 cd "$PROJECT_DIR"
+bun install 2>&1 | tail -3 >> "$LOG"
 
-if ! command -v bun >/dev/null 2>&1; then
-        echo "ERROR: bun is not installed or not in PATH"
-        exit 1
-fi
+# ── Step 2: Push DB schema ──
+log "Pushing database schema..."
+bun run db:push 2>&1 | tail -5 >> "$LOG"
 
-log_step_start "bun install"
-echo "[BUN] Installing dependencies..."
-bun install
-log_step_end "bun install"
+# ── Step 3: Ensure env vars ──
+log "Ensuring .env variables..."
+bash "$PROJECT_DIR/scripts/ensure-env.sh" 2>&1 | tee -a "$LOG"
 
-# Remove .config file if it exists (JuiceFS artifact that blocks Prisma)
-while [ -f "$PROJECT_DIR/.config" ]; do
-  echo "[BUN] Removing stale .config file (JuiceFS artifact)..."
-  rm -f "$PROJECT_DIR/.config"
-  sleep 1
-done
+# ── Step 4: Keepalive dev server loop ──
+RETRIES=0
 
-log_step_start "bun run db:push"
-echo "[BUN] Setting up database..."
-bun run db:push
-log_step_end "bun run db:push"
-
-log_step_start "Building Next.js production bundle"
-echo "[BUN] Building for production (low memory mode)..."
-cd "$PROJECT_DIR"
-npx next build 2>&1 | tail -5
-log_step_end "Building Next.js production bundle"
-
-log_step_start "Starting Next.js production server"
-echo "[BUN] Starting production server (~100MB vs 2-3GB dev mode)..."
-NODE_ENV=production npx next start -p 3000 &
-DEV_PID=$!
-log_step_end "Starting Next.js production server"
-
-log_step_start "Waiting for Next.js server"
-wait_for_service "localhost" "3000" "Next.js server"
-log_step_end "Waiting for Next.js server"
-
-log_step_start "Health check"
-echo "[BUN] Performing health check..."
-curl -fsS localhost:3000 >/dev/null
-echo "[BUN] Health check passed"
-log_step_end "Health check"
-
-start_mini_services
-
-echo "Next.js dev server is running in background (PID: $DEV_PID)."
-echo "Use 'kill $DEV_PID' to stop it."
-disown "$DEV_PID" 2>/dev/null || true
-
-# Keep script alive - restart production server if it dies
 while true; do
-  if ! kill -0 "$DEV_PID" 2>/dev/null; then
-    echo "[BUN] Production server died, restarting..."
-    cd "$PROJECT_DIR"
-    NODE_ENV=production npx next start -p 3000 &
-    DEV_PID=$!
-    disown "$DEV_PID" 2>/dev/null || true
-    echo "[BUN] Restarted production server (PID: $DEV_PID)"
+  log "Starting Next.js dev server (attempt $((RETRIES + 1))/$MAX_RETRIES)..."
+
+  # Start dev server in background
+  NODE_OPTIONS="--max-old-space-size=1536" npx next dev -p 3000 -H 0.0.0.0 >> "$LOG" 2>&1 &
+  DEV_PID=$!
+  log "Dev server PID: $DEV_PID"
+
+  # Wait for server to be ready (max 90s)
+  READY=0
+  for i in $(seq 1 90); do
+    if ! kill -0 $DEV_PID 2>/dev/null; then
+      log "Dev server process died after ${i}s"
+      break
+    fi
+    if python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(2)
+try:
+    s.connect(('127.0.0.1', 3000))
+    s.send(b'GET /api/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
+    import time; time.sleep(1)
+    data = s.recv(4096)
+    s.close()
+    if b'200' in data or b'healthy' in data or b'OK' in data:
+        print('READY')
+    else:
+        print('RESPONSE')
+except Exception as e:
+    print(f'WAIT')
+" 2>/dev/null | grep -q "READY"; then
+      log "Server is READY after ${i}s"
+      READY=1
+      break
+    fi
+    sleep 1
+  done
+
+  if [ $READY -eq 1 ]; then
+    log "Server running successfully on port 3000"
+    RETRIES=0  # Reset retry counter on success
+
+    # Wait for the dev server process to exit
+    wait $DEV_PID 2>/dev/null
+    EXIT_CODE=$?
+    log "Dev server exited with code $EXIT_CODE"
+  else
+    log "Server failed to start within 90s"
+    kill $DEV_PID 2>/dev/null || true
   fi
-  sleep 5
+
+  # Increment retry counter
+  RETRIES=$((RETRIES + 1))
+  if [ $RETRIES -ge $MAX_RETRIES ]; then
+    log "Max retries ($MAX_RETRIES) reached. Waiting 30s before resetting..."
+    sleep 30
+    RETRIES=0
+  else
+    log "Restarting in 3s..."
+    sleep 3
+  fi
 done
