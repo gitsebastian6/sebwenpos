@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "bash scripts/ensure-env.sh && next dev -p 3000 -H 0.0.0.0",
+    "dev": "bash scripts/ensure-env.sh && npx next dev -p 3000 -H 0.0.0.0",
     "dev:start": "bash start.sh",
     "dev:safe": "cd mini-services/keepalive && bun --hot index.ts",
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
