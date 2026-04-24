@@ -71,9 +71,9 @@ export function useCreateUser() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ body }: { body: Record<string, unknown> }) =>
+    mutationFn: async ({ body }: { body: Record<string, unknown> }) =>
       throwIfNotOk(
-        fetch('/api/users', {
+        await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -89,9 +89,9 @@ export function useUpdateUser() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ userId, body }: { userId: number; body: Record<string, unknown> }) =>
+    mutationFn: async ({ userId, body }: { userId: number; body: Record<string, unknown> }) =>
       throwIfNotOk(
-        fetch(`/api/users?userId=${userId}`, {
+        await fetch(`/api/users?userId=${userId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -107,8 +107,8 @@ export function useDeleteUser() {
   const queryClient = useQueryClient()
 
   return useMutation<void, Error, { id: number }>({
-    mutationFn: ({ id }) =>
-      throwIfNotOk(fetch(`/api/users/${id}`, { method: 'DELETE' })),
+    mutationFn: async ({ id }) =>
+      throwIfNotOk(await fetch(`/api/users/${id}`, { method: 'DELETE' })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff'] })
     },
@@ -117,9 +117,9 @@ export function useDeleteUser() {
 
 export function useResetUserPassword() {
   return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
+    mutationFn: async ({ id, body }: { id: number; body: Record<string, unknown> }) =>
       throwIfNotOk(
-        fetch(`/api/users/${id}/reset-password`, {
+        await fetch(`/api/users/${id}/reset-password`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -136,9 +136,9 @@ export function useUpdateRoleName() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
+    mutationFn: async ({ id, body }: { id: number; body: Record<string, unknown> }) =>
       throwIfNotOk(
-        fetch(`/api/roles/${id}`, {
+        await fetch(`/api/roles/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -154,9 +154,9 @@ export function useCreateRole() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ body }: { body: Record<string, unknown> }) =>
+    mutationFn: async ({ body }: { body: Record<string, unknown> }) =>
       throwIfNotOk(
-        fetch('/api/roles', {
+        await fetch('/api/roles', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -172,8 +172,8 @@ export function useDeleteRole() {
   const queryClient = useQueryClient()
 
   return useMutation<void, Error, { id: number }>({
-    mutationFn: ({ id }) =>
-      throwIfNotOk(fetch(`/api/roles/${id}`, { method: 'DELETE' })),
+    mutationFn: async ({ id }) =>
+      throwIfNotOk(await fetch(`/api/roles/${id}`, { method: 'DELETE' })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff'] })
     },

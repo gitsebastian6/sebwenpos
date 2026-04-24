@@ -27,9 +27,9 @@ export interface Role {
 export function useRoles(storeId: number | undefined | null) {
   return useQuery<Role[]>({
     queryKey: ['roles', storeId],
-    queryFn: () =>
+    queryFn: async () =>
       unwrapArray<Role>(
-        fetch(`/api/roles?storeId=${storeId}`)
+        await fetch(`/api/roles?storeId=${storeId}`)
       ),
     enabled: !!storeId,
     staleTime: 30_000,
@@ -44,9 +44,9 @@ export function useCreateRole() {
   const queryClient = useQueryClient()
 
   return useMutation<Role, Error, { body: Record<string, unknown> }>({
-    mutationFn: ({ body }) =>
+    mutationFn: async ({ body }) =>
       throwIfNotOk(
-        fetch('/api/roles', {
+        await fetch('/api/roles', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -62,9 +62,9 @@ export function useUpdateRole() {
   const queryClient = useQueryClient()
 
   return useMutation<Role, Error, { id: number; body: Record<string, unknown> }>({
-    mutationFn: ({ id, body }) =>
+    mutationFn: async ({ id, body }) =>
       throwIfNotOk(
-        fetch(`/api/roles/${id}`, {
+        await fetch(`/api/roles/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -80,9 +80,9 @@ export function usePatchRole() {
   const queryClient = useQueryClient()
 
   return useMutation<Role, Error, { id: number; body: Record<string, unknown> }>({
-    mutationFn: ({ id, body }) =>
+    mutationFn: async ({ id, body }) =>
       throwIfNotOk(
-        fetch(`/api/roles/${id}`, {
+        await fetch(`/api/roles/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -98,8 +98,8 @@ export function useDeleteRole() {
   const queryClient = useQueryClient()
 
   return useMutation<void, Error, { id: number }>({
-    mutationFn: ({ id }) =>
-      throwIfNotOk(fetch(`/api/roles/${id}`, { method: 'DELETE' })),
+    mutationFn: async ({ id }) =>
+      throwIfNotOk(await fetch(`/api/roles/${id}`, { method: 'DELETE' })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
     },

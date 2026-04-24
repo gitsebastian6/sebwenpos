@@ -45,9 +45,9 @@ export interface Employee {
 export function useEmployees(storeId: number | undefined | null) {
   return useQuery<Employee[]>({
     queryKey: ['employees', storeId],
-    queryFn: () =>
+    queryFn: async () =>
       unwrapArray<Employee>(
-        fetch(`/api/employees?storeId=${storeId}`)
+        await fetch(`/api/employees?storeId=${storeId}`)
       ),
     enabled: !!storeId,
     staleTime: 30_000,
@@ -62,9 +62,9 @@ export function useCreateEmployee() {
   const queryClient = useQueryClient()
 
   return useMutation<Employee, Error, { body: Record<string, unknown> }>({
-    mutationFn: ({ body }) =>
+    mutationFn: async ({ body }) =>
       throwIfNotOk(
-        fetch('/api/employees', {
+        await fetch('/api/employees', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -80,9 +80,9 @@ export function useUpdateEmployee() {
   const queryClient = useQueryClient()
 
   return useMutation<Employee, Error, { id: number; body: Record<string, unknown> }>({
-    mutationFn: ({ id, body }) =>
+    mutationFn: async ({ id, body }) =>
       throwIfNotOk(
-        fetch(`/api/employees/${id}`, {
+        await fetch(`/api/employees/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -98,9 +98,9 @@ export function usePatchEmployee() {
   const queryClient = useQueryClient()
 
   return useMutation<Employee, Error, { id: number; body: Record<string, unknown> }>({
-    mutationFn: ({ id, body }) =>
+    mutationFn: async ({ id, body }) =>
       throwIfNotOk(
-        fetch(`/api/employees/${id}`, {
+        await fetch(`/api/employees/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -116,8 +116,8 @@ export function useDeleteEmployee() {
   const queryClient = useQueryClient()
 
   return useMutation<void, Error, { id: number }>({
-    mutationFn: ({ id }) =>
-      throwIfNotOk(fetch(`/api/employees/${id}`, { method: 'DELETE' })),
+    mutationFn: async ({ id }) =>
+      throwIfNotOk(await fetch(`/api/employees/${id}`, { method: 'DELETE' })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] })
     },

@@ -145,7 +145,7 @@ export function useCurrentSubscription(storeId: number | undefined | null) {
 export function useSubscriptionPlans() {
   return useQuery<PlanOption[]>({
     queryKey: ['subscription-plans'],
-    queryFn: () => unwrapArray<PlanOption>(fetch('/api/subscription/plans')),
+    queryFn: async () => unwrapArray<PlanOption>(await fetch('/api/subscription/plans')),
     staleTime: 5 * 60_000,
   })
 }
@@ -194,7 +194,7 @@ export function useProration(storeId: number | undefined | null, planId: number 
 export function usePaymentReceipts(storeId: number | undefined | null) {
   return useQuery<ReceiptItem[]>({
     queryKey: ['payment-receipts', storeId],
-    queryFn: () => unwrapArray<ReceiptItem>(fetch(`/api/payment-receipts?storeId=${storeId}`)),
+    queryFn: async () => unwrapArray<ReceiptItem>(await fetch(`/api/payment-receipts?storeId=${storeId}`)),
     enabled: !!storeId,
     staleTime: 30_000,
   })

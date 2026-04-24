@@ -96,7 +96,7 @@ export function useSuperAdminStatistics(enabled: boolean = false) {
 export function useSuperAdminPlans() {
   return useQuery<PlanData[]>({
     queryKey: ['super-admin-plans'],
-    queryFn: () => unwrapArray<PlanData>(fetch('/api/super-admin/plans')),
+    queryFn: async () => unwrapArray<PlanData>(await fetch('/api/super-admin/plans')),
     staleTime: 5 * 60_000,
   })
 }
