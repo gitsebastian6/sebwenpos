@@ -10,17 +10,28 @@ import { NextRequest, NextResponse } from 'next/server'
 const TOKEN_VERSION = 'v1'
 const DEFAULT_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
 
-// Derive a deterministic HMAC key from the AUTH_SECRET env var (or a fallback)
+// Derive a deterministic HMAC key from the AUTH_SECRET env var
 let _hmacKeyPromise: Promise<CryptoKey> | null = null
 
 async function getHmacKey(): Promise<CryptoKey> {
   if (_hmacKeyPromise) return _hmacKeyPromise
 
-  const secret = process.env.AUTH_SECRET || 'ventify-dev-auth-default-2025'
+  // AUTH_SECRET is required — validated at startup by env.ts
+  // We read directly from process.env here because this module loads
+  // before env.ts in the Edge Runtime, and the import would be circular.
+  const secret = process.env.AUTH_SECRET
+  if (!secret || secret.trim().length === 0) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('[ENV] FATAL: AUTH_SECRET is required but not set. Add it to your .env file.')
+    }
+    // Dev-only fallback with loud warning
+    console.warn('\n[ENV] WARNING: AUTH_SECRET is not set. Using insecure dev fallback. FIX BEFORE PRODUCTION.\n')
+  }
+  const secretValue = secret?.trim() || 'ventify-dev-auth-INSECURE-CHANGE-ME'
 
   // Encode the secret as UTF-8 bytes
   const encoder = new TextEncoder()
-  const keyData = encoder.encode(secret)
+  const keyData = encoder.encode(secretValue)
 
   _hmacKeyPromise = crypto.subtle.importKey(
     'raw',

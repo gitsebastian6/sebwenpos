@@ -321,8 +321,13 @@ export function getSmtpConfig(): EmailConfig | null {
   const secure = (process.env.SMTP_SECURE ?? 'false').toLowerCase() === 'true'
   const user = process.env.SMTP_USER ?? ''
   const pass = process.env.SMTP_PASS ?? ''
-  const from = process.env.SMTP_FROM ?? 'facturacion@localhost'
+  const from = process.env.SMTP_FROM ?? ''
   const fromName = process.env.SMTP_FROM_NAME ?? 'Facturación'
+
+  // Warn if critical SMTP settings are missing
+  if (!from && process.env.NODE_ENV === 'production') {
+    console.warn('[SMTP] WARNING: SMTP_FROM is not set. Invoice emails may fail to deliver.')
+  }
 
   return {
     host,

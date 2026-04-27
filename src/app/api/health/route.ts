@@ -40,7 +40,7 @@ export async function GET() {
       checks: {
         database: dbStatus,
       },
-      version: process.env.npm_package_version || '1.0.0',
+      version: process.env.npm_package_version || process.env.APP_VERSION || 'unknown',
     },
     {
       status: isHealthy ? 200 : 503,

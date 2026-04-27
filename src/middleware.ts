@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken, extractTokenFromRequest, isPublicPath, isSuperAdminPath, isInternalPath } from '@/lib/auth-helpers'
+import { INTERNAL_SECRET } from '@/lib/env'
 
 // ---------------------------------------------------------------------------
 // Ventify POS — Auth + CORS Middleware (Edge Runtime compatible)
@@ -10,8 +11,6 @@ import { verifyToken, extractTokenFromRequest, isPublicPath, isSuperAdminPath, i
 // Store routes require matching storeId.
 // CORS headers on all API responses + OPTIONS preflight handling.
 // ---------------------------------------------------------------------------
-
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'ventify-dev-internal-default'
 
 // Constant-time string comparison (Edge-compatible) to prevent timing attacks
 function timingSafeEqual(a: string, b: string): boolean {

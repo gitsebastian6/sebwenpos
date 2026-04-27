@@ -18,7 +18,11 @@ function getDbPath(): string {
   return '/home/z/my-project/db/custom.db'
 }
 const DB_PATH = getDbPath()
-const ALERT_API_BASE = process.env.ALERT_API_BASE || 'http://localhost:3000/api/subscription/alerts'
+const ALERT_API_BASE = process.env.ALERT_API_BASE
+if (!ALERT_API_BASE) {
+  console.error('[ENV] FATAL: ALERT_API_BASE is required but not set. Example: https://your-domain.com/api/subscription/alerts')
+  process.exit(1)
+}
 
 // Load INTERNAL_SECRET from .env
 function getInternalSecret(): string {

@@ -66,7 +66,10 @@ export async function POST(
       : `Servicio de la DIAN no disponible al enviar factura ${formattedOriginal}`
 
     // 4. Llamar internamente a POST /api/contingency-invoices
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+    if (!baseUrl) {
+      return NextResponse.json({ error: 'NEXT_PUBLIC_APP_URL no está configurado. Requerido para facturas de contingencia.' }, { status: 500 })
+    }
     const internalResponse = await fetch(`${baseUrl}/api/contingency-invoices`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
