@@ -1,0 +1,95 @@
+# ---------------------------------------------------------------------------
+# VentifyPOS — CI Pipeline (Phase 4a)
+# ---------------------------------------------------------------------------
+# Runs on every push and PR to main. Validates:
+#   1. Dependencies install cleanly
+#   2. Prisma client generates without errors
+#   3. TypeScript compiles and Next.js builds successfully
+#   4. All 252+ tests pass
+# ---------------------------------------------------------------------------
+
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+# Cancel in-progress runs for the same branch/PR to save minutes
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimum permissions — principle of least privilege
+permissions:
+  contents: read
+
+env:
+  # ── Required environment variables for build ──────────────────────────────
+  # These are read by src/lib/env.ts via requireEnv() during next build.
+  # In CI we use dummy values — they are NOT used at runtime, only to satisfy
+  # the build-time validation. Real values come from the production host.
+  AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+  INTERNAL_SECRET: ${{ secrets.INTERNAL_SECRET }}
+  NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+  SMTP_FROM: ${{ secrets.SMTP_FROM }}
+  ALERT_API_BASE: ${{ secrets.ALERT_API_BASE }}
+  # SQLite file for CI — Prisma will create it automatically
+  DATABASE_URL: file:./ci-test.db
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        node-version: [20]
+
+    steps:
+      # ── 1. Checkout code ──────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Setup Node.js ──────────────────────────────────────────────────
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      # ── 3. Install system dependencies ────────────────────────────────────
+      # better-sqlite3 requires native compilation tools
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsqlite3-dev build-essential
+
+      # ── 4. Install npm dependencies ───────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+
+      # ── 5. Generate Prisma client ─────────────────────────────────────────
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # ── 6. Build ──────────────────────────────────────────────────────────
+      - name: Build Next.js
+        run: npm run build
+
+      # ── 7. Run tests ──────────────────────────────────────────────────────
+      # Tests force NODE_ENV=development in setup.ts, so requireEnv() won't
+      # crash even if secrets are placeholder values.
+      - name: Run tests
+        run: npm test
+
+      # ── 8. Upload build artifact (optional, for debugging) ────────────────
+      - name: Upload build artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-${{ github.sha }}
+          path: .next/
+          retention-days: 3
