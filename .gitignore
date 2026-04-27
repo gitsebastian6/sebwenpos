@@ -51,6 +51,7 @@ local-*
 dev.log
 dev.out.log
 test
+!src/test/
 prompt
 
 server.log
