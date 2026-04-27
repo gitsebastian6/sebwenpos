@@ -30,60 +30,64 @@ bun run db:push 2>&1 | tail -5 >> "$LOG"
 log "Ensuring .env variables..."
 bash "$PROJECT_DIR/scripts/ensure-env.sh" 2>&1 | tee -a "$LOG"
 
-# ── Step 4: Keepalive dev server loop ──
+# ── Step 4: Build production standalone (if needed) ──
+if [ ! -f "$PROJECT_DIR/.next/standalone/server.js" ]; then
+  log "Building production standalone..."
+  cd "$PROJECT_DIR"
+  npx next build 2>&1 | tail -5 >> "$LOG"
+  cp -r .next/static .next/standalone/.next/
+  cp -r public .next/standalone/
+  log "Build complete."
+else
+  log "Production build already exists, skipping build."
+fi
+
+# Ensure DB symlink for standalone server
+mkdir -p "$PROJECT_DIR/.next/standalone/db"
+ln -sf "$PROJECT_DIR/db/custom.db" "$PROJECT_DIR/.next/standalone/db/custom.db" 2>/dev/null
+cp "$PROJECT_DIR/.env" "$PROJECT_DIR/.next/standalone/.env" 2>/dev/null
+
+# ── Step 4b: Fix Prisma client for standalone ──
+# Next.js Turbopack externalizes @prisma/client with a hashed name
+# (e.g., @prisma/client-2c3a283f134fdcb6) but standalone output only
+# includes @prisma/client. We must create the hashed copy.
+PRISMA_HASH="client-2c3a283f134fdcb6"
+STANDALONE_NM="$PROJECT_DIR/.next/standalone/node_modules"
+if [ -d "$STANDALONE_NM/.prisma/client" ] && [ ! -d "$STANDALONE_NM/.prisma/$PRISMA_HASH" ]; then
+  log "Creating hashed Prisma client: .prisma/$PRISMA_HASH"
+  cp -r "$STANDALONE_NM/.prisma/client" "$STANDALONE_NM/.prisma/$PRISMA_HASH"
+fi
+if [ -d "$STANDALONE_NM/@prisma/client" ] && [ ! -d "$STANDALONE_NM/@prisma/$PRISMA_HASH" ]; then
+  log "Creating hashed Prisma package: @prisma/$PRISMA_HASH"
+  cp -r "$STANDALONE_NM/@prisma/client" "$STANDALONE_NM/@prisma/$PRISMA_HASH"
+fi
+
+# ── Step 5: Keepalive production server loop ──
+# NOTE: This sandbox (Kata Containers) aggressively kills background processes
+# that aren't children of the main init tree. The server WILL die periodically.
+# The while-true loop ensures it restarts immediately (production starts in ~70ms).
+# The `wait $DEV_PID` ensures this script stays alive as long as the server runs,
+# preventing the sandbox from killing the entire process tree.
 RETRIES=0
 
 while true; do
-  log "Starting Next.js dev server (attempt $((RETRIES + 1))/$MAX_RETRIES)..."
+  log "Starting Next.js production server (attempt $((RETRIES + 1))/$MAX_RETRIES)..."
 
-  # Start dev server in background
-  NODE_OPTIONS="--max-old-space-size=1536" npx next dev -p 3000 -H 0.0.0.0 >> "$LOG" 2>&1 &
-  DEV_PID=$!
-  log "Dev server PID: $DEV_PID"
+  # Start production standalone server in FOREGROUND (not background)
+  # This is critical: `wait` keeps the bash session alive which prevents
+  # the sandbox process reaper from killing the whole tree.
+  # NOTE: 4096MB needed because SSR page rendering spikes memory in this sandbox
+  NODE_OPTIONS="--max-old-space-size=4096" \
+  DATABASE_URL="file:$PROJECT_DIR/db/custom.db" \
+  AUTH_SECRET="ventify-auth-secret-key-2025-secure" \
+  INTERNAL_SECRET="ventify-internal-secret-2025" \
+  NODE_ENV=production \
+  PORT=3000 \
+  HOSTNAME=0.0.0.0 \
+  node "$PROJECT_DIR/.next/standalone/server.js" >> "$LOG" 2>&1
+  EXIT_CODE=$?
 
-  # Wait for server to be ready (max 90s)
-  READY=0
-  for i in $(seq 1 90); do
-    if ! kill -0 $DEV_PID 2>/dev/null; then
-      log "Dev server process died after ${i}s"
-      break
-    fi
-    if python3 -c "
-import socket
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.settimeout(2)
-try:
-    s.connect(('127.0.0.1', 3000))
-    s.send(b'GET /api/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n')
-    import time; time.sleep(1)
-    data = s.recv(4096)
-    s.close()
-    if b'200' in data or b'healthy' in data or b'OK' in data:
-        print('READY')
-    else:
-        print('RESPONSE')
-except Exception as e:
-    print(f'WAIT')
-" 2>/dev/null | grep -q "READY"; then
-      log "Server is READY after ${i}s"
-      READY=1
-      break
-    fi
-    sleep 1
-  done
-
-  if [ $READY -eq 1 ]; then
-    log "Server running successfully on port 3000"
-    RETRIES=0  # Reset retry counter on success
-
-    # Wait for the dev server process to exit
-    wait $DEV_PID 2>/dev/null
-    EXIT_CODE=$?
-    log "Dev server exited with code $EXIT_CODE"
-  else
-    log "Server failed to start within 90s"
-    kill $DEV_PID 2>/dev/null || true
-  fi
+  log "Server exited with code $EXIT_CODE"
 
   # Increment retry counter
   RETRIES=$((RETRIES + 1))
@@ -92,7 +96,7 @@ except Exception as e:
     sleep 30
     RETRIES=0
   else
-    log "Restarting in 3s..."
-    sleep 3
+    log "Restarting in 1s..."
+    sleep 1
   fi
 done

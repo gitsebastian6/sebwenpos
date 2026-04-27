@@ -44,3 +44,57 @@ Stage Summary:
 - Orders API route (ruta de negocio más crítica) tiene cobertura de validaciones colombianas
 - Build: 0 TS errors, todos tests pasando
 - Commit: 5411abb
+
+---
+Task ID: 4B-3
+Agent: Main Agent
+Task: Docker + PostgreSQL — Dockerfile, docker-compose, entrypoint for production
+
+Work Log:
+- Created Dockerfile with multi-stage build (deps → builder → runner)
+- Dockerfile auto-switches Prisma from SQLite to PostgreSQL via sed during build
+- Local dev still uses SQLite (schema.prisma unchanged)
+- Created docker-compose.yml with PostgreSQL 16 + Next.js app + pgAdmin (optional)
+- Updated scripts/docker-entrypoint.sh for PostgreSQL (wait for PG, db push, seed)
+- Created .env.docker with all required environment variables
+- Updated .dockerignore to exclude SQLite files and dev artifacts
+- Verified schema.prisma stays as SQLite for local dev
+- Pushed to GitHub (commit 1d5550f)
+
+Stage Summary:
+- Dockerfile: multi-stage, standalone Next.js, auto PostgreSQL switch
+- docker-compose.yml: postgres:16-alpine + app + pgAdmin (profile: tools)
+- .env.docker: template for Docker environment variables
+- docker-entrypoint.sh: wait for PG, prisma generate, db push, seed on first run
+- Schema: sqlite locally, postgresql in Docker (sed switch at build time)
+- Commit: 1d5550f
+
+---
+Task ID: 4B-4
+Agent: Main Agent
+Task: Fix production standalone build — Prisma client + memory + sandbox stability
+
+Work Log:
+- Diagnosed why `/api/auth/init` returned 500 in production standalone
+- Root cause: Next.js 16 Turbopack externalizes `@prisma/client` with a hashed name (`@prisma/client-2c3a283f134fdcb6`) but the standalone output only includes `@prisma/client`
+- At runtime, `require("@prisma/client-2c3a283f134fdcb6")` fails silently and falls back to an old/cached client without the `role` field
+- Fix: Copy `@prisma/client` → `@prisma/client-2c3a283f134fdcb6` and `.prisma/client` → `.prisma/client-2c3a283f134fdcb6`
+- Also diagnosed OOM kills in sandbox: dev mode (Turbopack) uses ~2.5GB RAM; production standalone uses ~164MB but SSR spikes to ~1.5GB
+- Fix: Changed `NODE_OPTIONS="--max-old-space-size=4096"` for production server
+- Updated `.zscripts/dev.sh` to use production standalone instead of `npx next dev`
+- Added Step 4b to dev.sh that auto-creates the hashed Prisma client copies
+- Changed server from background to foreground mode (prevents sandbox from killing the process tree)
+- Updated `next.config.ts` with `allowedDevOrigins: ['.space-z.ai']` for preview
+- Updated security headers to allow framing from `*.space-z.ai` in development
+- Nuclear clean rebuild (rm -rf .next + rm -rf node_modules/.prisma + prisma generate + next build) fixed stale Prisma client
+- Verified: `/api/auth/init` returns `{"needsSetup":false}` correctly
+- Verified: `/api/health` returns `{"status":"healthy"}` correctly
+- Sandbox (Kata Containers) aggressively kills background processes between tool calls — this is a sandbox limitation, not an app issue
+
+Stage Summary:
+- Production standalone build fully working (auth, health, page rendering)
+- Prisma client hashing fix included in `.zscripts/dev.sh`
+- Memory fix: 4096MB for production standalone (was 1536MB for dev/Turbopack)
+- `.zscripts/dev.sh` updated: production mode + auto-restart + Prisma hash fix
+- `next.config.ts` updated: allowedDevOrigins + relaxed security headers for dev
+- Known sandbox limitation: process reaper kills server between sessions
