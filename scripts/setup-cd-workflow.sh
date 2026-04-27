@@ -1,8 +1,10 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# VentifyPOS — Setup CD Workflow on GitHub
+# VentifyPOS — Setup Unified CI/CD Workflow on GitHub
 # ---------------------------------------------------------------------------
-# This script adds the CD workflow file (cd.yml) to the GitHub repository.
+# This script updates the CI workflow file (ci.yml) on GitHub with the
+# unified CI/CD pipeline that includes Docker build, ghcr.io publish,
+# and VPS deployment.
 #
 # IMPORTANT: The default PAT doesn't have 'workflow' scope, which is required
 # to create or modify files in the .github/workflows/ directory.
@@ -11,15 +13,15 @@
 #   - repo scope (full control of private repositories)
 #   - workflow scope (update GitHub Action workflows)
 #
-# Create one at: https://github.com/settings/tokens/new
+# Create one at: https://github.com/settings/tokens/new?scopes=repo,workflow
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO="gitsebastian6/ventifypos"
-WORKFLOW_FILE=".github/workflows/cd.yml"
-TEMPLATE_FILE="$REPO_ROOT/.github/cd.yml.template"
+WORKFLOW_FILE=".github/workflows/ci.yml"
+SOURCE_FILE="$REPO_ROOT/.github/workflows/ci.yml"
 
 # Colors
 RED='\033[0;31m'
@@ -30,11 +32,10 @@ NC='\033[0m'
 
 log()  { echo -e "${BLUE}[SETUP]${NC} $*"; }
 ok()   { echo -e "${GREEN}[SETUP]${NC} $*"; }
+warn() { echo -e "${YELLOW}[SETUP]${NC} $*"; }
 err()  { echo -e "${RED}[SETUP]${NC} $*"; exit 1; }
 
-# ── Check if cd.yml already exists on GitHub ──────────────────────────────
-log "Checking if CD workflow already exists on GitHub..."
-
+# ── Get PAT ──────────────────────────────────────────────────────────────
 if [ -n "${GITHUB_TOKEN:-}" ]; then
     PAT="$GITHUB_TOKEN"
 else
@@ -46,49 +47,74 @@ else
     echo ""
 fi
 
-# Check if the file already exists
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+# ── Check current file on GitHub ─────────────────────────────────────────
+log "Checking current CI workflow on GitHub..."
+
+RESPONSE=$(curl -s \
     -H "Authorization: token $PAT" \
     "https://api.github.com/repos/$REPO/contents/$WORKFLOW_FILE?ref=main")
 
-if [ "$HTTP_CODE" = "200" ]; then
-    ok "CD workflow already exists on GitHub! ✅"
-    exit 0
+SHA=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('sha',''))" 2>/dev/null || echo "")
+
+if [ -z "$SHA" ]; then
+    err "Could not find $WORKFLOW_FILE on GitHub. Make sure the repo and PAT are correct."
 fi
 
-# ── Add the workflow file ─────────────────────────────────────────────────
-if [ ! -f "$TEMPLATE_FILE" ]; then
-    err "Template file not found: $TEMPLATE_FILE"
+# ── Check if local file has CD content ───────────────────────────────────
+if [ ! -f "$SOURCE_FILE" ]; then
+    err "Local workflow file not found: $SOURCE_FILE"
 fi
 
-log "Adding CD workflow to GitHub..."
+if ! grep -q "docker-build-push" "$SOURCE_FILE"; then
+    err "Local ci.yml doesn't contain CD jobs. Make sure you've merged the CD pipeline."
+fi
 
-# Read and encode the template file
-CONTENT=$(base64 -w 0 "$TEMPLATE_FILE")
+# ── Update the workflow file on GitHub ───────────────────────────────────
+log "Updating CI/CD workflow on GitHub..."
 
-# Create the file via GitHub API
+CONTENT=$(base64 -w 0 "$SOURCE_FILE")
+
 RESPONSE=$(curl -s -X PUT \
     -H "Authorization: token $PAT" \
     -H "Accept: application/vnd.github+json" \
     -H "Content-Type: application/json" \
     "https://api.github.com/repos/$REPO/contents/$WORKFLOW_FILE" \
     -d "{
-        \"message\": \"feat: add CD workflow (Phase 4B — Continuous Deployment)\",
+        \"message\": \"feat: unified CI/CD pipeline — merge CD into ci.yml (Phase 4B)\",
         \"content\": \"${CONTENT}\",
+        \"sha\": \"${SHA}\",
         \"branch\": \"main\"
     }")
 
 # Check the response
 if echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); exit(0 if 'content' in d else 1)" 2>/dev/null; then
-    ok "CD workflow added successfully! ✅"
-    ok "The CD pipeline will now run automatically after CI passes on main."
+    ok "CI/CD workflow updated successfully! ✅"
+    ok "The unified pipeline will now run on every push to main."
     echo ""
     echo "  Pipeline flow:"
-    echo "    Push to main → CI (build + test) → CD (Docker build + push to ghcr.io)"
+    echo "    Push to main → CI (build + test) → CD (Docker build + push to ghcr.io) → Deploy (optional)"
     echo ""
     echo "  Docker image: ghcr.io/$REPO"
-    echo "  Manual trigger: https://github.com/$REPO/actions/workflows/cd.yml"
+    echo "  Manual trigger: https://github.com/$REPO/actions/workflows/ci.yml"
+    echo ""
+    echo "  Required GitHub Secrets for CD:"
+    echo "    DEPLOY_HOST     - VPS hostname/IP"
+    echo "    DEPLOY_USER     - SSH user (default: root)"
+    echo "    DEPLOY_SSH_KEY  - Private SSH key"
+    echo "    DEPLOY_PORT     - SSH port (default: 22)"
+    echo ""
+    echo "  Add secrets at: https://github.com/$REPO/settings/secrets/actions"
 else
     ERROR_MSG=$(echo "$RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('message','Unknown error'))" 2>/dev/null || echo "Unknown error")
-    err "Failed to add CD workflow: $ERROR_MSG"
+    if echo "$ERROR_MSG" | grep -qi "workflow"; then
+        warn "PAT doesn't have 'workflow' scope. ❌"
+        echo ""
+        echo "  To fix this, update ci.yml via the GitHub Web UI:"
+        echo "  1. Go to: https://github.com/$REPO/edit/main/.github/workflows/ci.yml"
+        echo "  2. Replace the entire content with the local file:"
+        echo "     $SOURCE_FILE"
+        echo "  3. Click 'Commit changes'"
+    else
+        err "Failed to update workflow: $ERROR_MSG"
+    fi
 fi
