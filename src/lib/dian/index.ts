@@ -406,12 +406,14 @@ export async function processInvoice(
         return { invoice, xmlContent, pdfBuffer, trackId: undefined }
       }
 
-      const result = await soapModule.sendBillToDIAN({
+      const result = await soapModule.sendBillToDIAN(
         xmlContent,
-        certPath,
-        certPassword,
-        testMode: false,
-      })
+        {
+          certPath,
+          certPassword,
+          testMode: false,
+        },
+      )
 
       if (result.success && result.trackId) {
         trackId = result.trackId

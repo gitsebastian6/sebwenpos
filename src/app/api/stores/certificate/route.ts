@@ -76,11 +76,11 @@ export async function POST(request: NextRequest) {
       await db.store.update({
         where: { id: parseInt(storeId) },
         data: {
-          certData: null as any,
-          certPassword: null,
+          certificatePassword: null,
           certUploadedAt: null,
           certExpiresAt: null,
           certSubject: null,
+          certificateUploaded: false,
         },
       })
 
@@ -151,11 +151,11 @@ export async function POST(request: NextRequest) {
       await db.store.update({
         where: { id: parseInt(storeId) },
         data: {
-          certData: certDataBase64 as any,
-          certPassword: encryptField(certPassword.trim()),
+          certificatePassword: encryptField(certPassword.trim()),
           certUploadedAt: new Date(),
           certExpiresAt: certInfo.expiresAt,
           certSubject: certInfo.subject,
+          certificateUploaded: true,
         },
       })
 

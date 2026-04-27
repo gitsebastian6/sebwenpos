@@ -44,7 +44,7 @@ export function AuthPage() {
     setBlockedInfo(null)
     try {
       const data = await loginMutation.mutateAsync({ cedula: loginCedula.trim(), password: loginPassword })
-      login(data.user, data.store, data.token, data.permissions, data.isSuperAdmin, data.subscription || null, data.availableStores || null)
+      login({ id: data.user.id, fullName: data.user.fullName ?? null, cedula: data.user.cedula, phone: data.user.phone ?? null, email: data.user.email ?? null, role: data.user.role ?? 'EMPLOYEE' }, data.store as any, data.token, data.permissions as any, data.isSuperAdmin, (data.subscription || null) as any, (data.availableStores || null) as any)
       if (data.isSuperAdmin) {
         toast.success('Bienvenido, Super Administrador')
       } else {

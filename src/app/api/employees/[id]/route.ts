@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 const updateEmployeeSchema = z.object({
   position: z.string().optional(),
-  permissions: z.record(z.boolean()).optional(),
+  permissions: z.record(z.string(), z.boolean()).optional(),
   isActive: z.boolean().optional(),
   fullName: z.string().min(2).optional(),
   phone: z.string().optional().nullable(),

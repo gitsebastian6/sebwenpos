@@ -14,7 +14,7 @@ const eInvoicingConfigSchema = z.object({
   certificatePassword: z.string().max(200).optional().nullable().default(null),
   softwareId: z.string().max(50).optional().nullable().default(null),
   softwarePin: z.string().max(50).optional().nullable().default(null),
-  providerConfig: z.record(z.unknown()).optional().nullable().default(null),
+  providerConfig: z.record(z.string(), z.unknown()).optional().nullable().default(null),
 })
 
 // POST /api/electronic-invoicing/config — Save provider config
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     const storeIdNum = Number(storeId)
-    const storeAccessErr = requireStoreAccess(request, Number(storeId))
+    const storeAccessErr = requireStoreAccess(req, Number(storeId))
     if (storeAccessErr) return storeAccessErr
 
     // ── Feature Gate: electronicInvoicing ──

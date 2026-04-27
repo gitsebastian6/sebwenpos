@@ -12,7 +12,7 @@ const subscriptionStatuses = ['TRIAL', 'ACTIVE', 'PAST_DUE', 'CANCELLED', 'EXPIR
 const updateSubscriptionSchema = z.object({
   planId: z.number().int().positive('El planId debe ser un número positivo'),
   billingPeriod: z.enum(billingPeriods as unknown as [string, ...string[]], {
-    errorMap: () => ({ message: `billingPeriod debe ser uno de: ${billingPeriods.join(', ')}` }),
+    message: `billingPeriod debe ser uno de: ${billingPeriods.join(', ')}`,
   }),
   status: z.enum(subscriptionStatuses as unknown as [string, ...string[]]).optional(),
 })

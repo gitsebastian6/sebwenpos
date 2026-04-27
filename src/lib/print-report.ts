@@ -3,15 +3,14 @@
  * The window stays within the same browser tab.
  */
 
-interface PrintRow {
-  [key: string]: string | number | null | undefined
-}
+export type PrintCell = string | number | null | undefined
+type PrintRow = PrintCell[]
 
 interface PrintOptions {
   title: string
   subtitle?: string
   headers: string[]
-  rows: PrintRow[][]
+  rows: PrintCell[][]
   columnAligns?: ('left' | 'center' | 'right')[]
   columnWidths?: string[]
   footer?: string

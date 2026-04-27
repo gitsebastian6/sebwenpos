@@ -50,6 +50,4 @@ const nextConfig: NextConfig = {
 export default withSentryConfig(nextConfig, {
   // Disable automatic source map uploads during build (CI handles this)
   silent: true,
-  // Don't upload source maps automatically
-  disableAutomaticUploads: true,
 });

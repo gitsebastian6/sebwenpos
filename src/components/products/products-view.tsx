@@ -14,7 +14,7 @@ import type { Product, Category, TraceMovement } from '@/types'
 import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Package, Tags } from 'lucide-react'
-import { printReport, printThermal80mm } from '@/lib/print-report'
+import { printReport, printThermal80mm, type PrintCell } from '@/lib/print-report'
 import { KPIBar } from '@/components/shared/kpi-bar'
 import { ProductFormDialog } from './product-form-dialog'
 import { ImportProductsDialog } from './import-products-dialog'
@@ -335,7 +335,7 @@ export function ProductsView() {
           formatCurrency(p.salePrice, currencyCode),
           p.currentStock,
           p.isActive ? 'Activo' : 'Inactivo',
-        ]) as unknown as { [key: string]: string | number | null | undefined }[][],
+        ]) as PrintCell[][],
         footer: `Total: ${filteredProducts.length} producto${filteredProducts.length !== 1 ? 's' : ''}`,
         orientation: 'landscape',
       })

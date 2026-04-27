@@ -7,6 +7,7 @@ import {
   useAdminStores,
   useAdminStoreDetail,
   useUpdateAdminStore,
+  type AdminStoreDetail,
 } from '@/hooks/api/use-admin-panel'
 import {
   Building2,
@@ -77,7 +78,7 @@ export function AdminPanel() {
   const [editOpen, setEditOpen] = useState(false)
 
   // Store detail query (only enabled when dialog is open with a storeId)
-  const { data: detailStore, isLoading: detailLoading } = useAdminStoreDetail(detailStoreId)
+  const { data: detailStore, isLoading: detailLoading } = useAdminStoreDetail(detailStoreId) as { data: AdminStoreDetail | undefined; isLoading: boolean }
 
   // Toggle active mutation
   const updateStore = useUpdateAdminStore()

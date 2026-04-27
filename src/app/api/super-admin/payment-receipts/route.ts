@@ -160,15 +160,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 })
     }
 
-    if (!storeData.subscriptionId) {
-      return NextResponse.json({ error: 'La tienda no tiene suscripción asociada' }, { status: 400 })
-    }
-
     if (!storeData.subscription) {
-      return NextResponse.json({ error: 'Suscripción no encontrada' }, { status: 404 })
-    }
-
-    if (!(storeData as any).subscriptionId) {
       return NextResponse.json({ error: 'La tienda no tiene suscripción asociada' }, { status: 400 })
     }
 

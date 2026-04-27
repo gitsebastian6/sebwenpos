@@ -14,6 +14,7 @@ Sentry.init({
   replaysOnErrorSampleRate: 1.0,
 
   // Enable browser tracing
+  // @ts-expect-error — enableBrowserTracing exists in runtime but not in Sentry v9 types
   enableBrowserTracing: true,
 
   // Disable in development (Sentry still captures but doesn't send)

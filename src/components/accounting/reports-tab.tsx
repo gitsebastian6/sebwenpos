@@ -132,7 +132,7 @@ export function ReportsTab({ accounts, currencyCode, onAccountsChanged }: Report
                 className="h-9"
               />
             </div>
-            <Button className="h-9 gap-1.5 active:scale-[0.98] transition-all" onClick={fetchReports}
+            <Button className="h-9 gap-1.5 active:scale-[0.98] transition-all" onClick={() => void fetchReports()}
               disabled={isLoadingReport}
             >
               {isLoadingReport ? (

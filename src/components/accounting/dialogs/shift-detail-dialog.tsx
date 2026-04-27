@@ -120,7 +120,7 @@ export function ShiftDetailDialog({
           ),
         staleTime: 30_000,
       })
-      setDetailShiftData(data)
+      setDetailShiftData(data as ShiftDetailData)
     } catch {
       toast.error('Error de conexión')
     } finally {

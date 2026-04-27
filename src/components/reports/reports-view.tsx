@@ -60,7 +60,10 @@ export function ReportsView() {
 
   const { data: productsData, refetch: fetchProducts } = useQuery<ReportProduct[]>({
     queryKey: ['products-for-reports', store?.id],
-    queryFn: () => unwrapArray<ReportProduct>(queryFetch<Response>(`/api/products?storeId=${store?.id}`) as unknown as Promise<Response>),
+    queryFn: async () => {
+      const res = await fetch(`/api/products?storeId=${store?.id}`)
+      return unwrapArray<ReportProduct>(res)
+    },
     enabled: !!store?.id,
     staleTime: 120_000,
   })

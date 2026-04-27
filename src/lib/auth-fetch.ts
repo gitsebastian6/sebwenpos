@@ -75,7 +75,7 @@ export async function authFetch<T = unknown>(
       ok: res.ok,
       status: res.status,
       error: data && typeof data === 'object' && 'error' in (data as Record<string, unknown>)
-        ? (data as { error: string }).error
+        ? (data as unknown as { error: string }).error
         : undefined,
     }
   } catch (err) {

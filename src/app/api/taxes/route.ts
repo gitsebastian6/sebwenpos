@@ -27,10 +27,10 @@ const createTaxRateSchema = z.object({
   storeId: z.number().int().positive('El storeId es obligatorio'),
   name: z.string().min(1, 'El nombre es obligatorio').max(200, 'El nombre no puede exceder 200 caracteres'),
   code: z.enum(DIAN_TAX_CODES as unknown as [string, ...string[]], {
-    errorMap: () => ({ message: 'Código DIAN inválido. Debe ser uno de: 01-09' }),
+    message: 'Código DIAN inválido. Debe ser uno de: 01-09',
   }),
   rateType: z.enum(RATE_TYPES as unknown as [string, ...string[]], {
-    errorMap: () => ({ message: 'Tipo de tasa inválido. Use PERCENTAGE o FIXED_AMOUNT' }),
+    message: 'Tipo de tasa inválido. Use PERCENTAGE o FIXED_AMOUNT',
   }),
   rate: z.number().int().min(0, 'La tasa no puede ser negativa').max(1000000, 'La tasa excede el límite permitido'),
   applyTo: z.enum(APPLY_TO_OPTIONS as unknown as [string, ...string[]]).default('PRODUCT'),

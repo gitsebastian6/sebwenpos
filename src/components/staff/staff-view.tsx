@@ -498,7 +498,7 @@ export function StaffView() {
                                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                                       <Shield className="h-3 w-3" /> {emp.roleName}
                                       {emp.isActive && (
-                                        <CheckCircle2 className="h-3 w-3 text-emerald-500" title="Login habilitado" />
+                                        <CheckCircle2 className="h-3 w-3 text-emerald-500" />
                                       )}
                                     </p>
                                   ) : (

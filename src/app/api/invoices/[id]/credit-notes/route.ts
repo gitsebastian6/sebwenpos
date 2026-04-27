@@ -441,8 +441,6 @@ export async function POST(
           totalTaxAmount,
           totalWithTax,
           grandTotal,
-          // Items devueltos
-          items: JSON.stringify(returnedItemsData) as any,
           // Motivo
           reason: body.reason ?? null,
           returnCode: body.returnCode ?? '01',
@@ -453,7 +451,7 @@ export async function POST(
           // Estado
           status: consecResult.testMode ? 'DRAFT' : 'PENDING_VALIDATE',
           testMode: consecResult.testMode,
-        },
+        } as any,
       })
 
       // 9. Update returnedQuantity for each OrderItem

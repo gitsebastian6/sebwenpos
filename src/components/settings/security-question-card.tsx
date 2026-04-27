@@ -36,7 +36,7 @@ const SECURITY_QUESTIONS = [
 
 export function SecurityQuestionCard() {
   const { user, token } = useAuthStore()
-  const { data: secData, isLoading: loading } = useSecurityQuestion(user?.id)
+  const { data: secData, isLoading: loading } = useSecurityQuestion(user?.id != null ? String(user.id) : undefined)
   const updateMutation = useUpdateSecurityQuestion()
 
   const [editing, setEditing] = useState(false)
@@ -63,7 +63,7 @@ export function SecurityQuestionCard() {
     }
     try {
       await updateMutation.mutateAsync({
-        userId: user.id,
+        userId: String(user.id),
         question: selectedQuestion,
         answer: answer.trim(),
       })

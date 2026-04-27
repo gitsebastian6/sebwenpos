@@ -8,7 +8,7 @@ import { mutationFetch, throwIfNotOk, queryFetch } from './query-helpers'
 // ---------------------------------------------------------------------------
 
 interface LoginResponse {
-  user: { id: number; fullName?: string; cedula: string }
+  user: { id: number; fullName?: string; cedula: string; phone?: string | null; email?: string | null; role?: string }
   store: { id: number; name: string; currencyCode: string }
   token: string
   permissions: string[]

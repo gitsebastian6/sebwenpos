@@ -110,7 +110,10 @@ export function useAdminStores() {
 export function useAdminStoreDetail(id: number | null | undefined) {
   return useQuery<AdminStoreDetail>({
     queryKey: adminKeys.storeDetail(id!),
-    queryFn: () => queryFetch<{ store: AdminStoreDetail }>(`/api/admin/stores/${id}`).then(d => d.store ?? d),
+    queryFn: async () => {
+      const result = await queryFetch<{ store: AdminStoreDetail }>(`/api/admin/stores/${id}`)
+      return result.store ?? result as unknown as AdminStoreDetail
+    },
     enabled: !!id,
     staleTime: 15_000,
   })
