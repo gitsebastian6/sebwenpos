@@ -6,7 +6,10 @@
 // at startup rather than silently weakening security.
 // ---------------------------------------------------------------------------
 
-const isDev = process.env.NODE_ENV === 'development'
+// Check dynamically so tests can change NODE_ENV
+function isDev(): boolean {
+  return process.env.NODE_ENV === 'development'
+}
 
 /**
  * Require an environment variable. Throws at startup if missing.
@@ -20,7 +23,7 @@ export function requireEnv(name: string): string {
   const msg = `[ENV] FATAL: Environment variable ${name} is required but not set. ` +
     `Add it to your .env file. See .env.example for reference.`
 
-  if (isDev) {
+  if (isDev()) {
     console.warn(`\n${msg}\n[ENV] Running in development mode — using empty string as fallback. FIX THIS BEFORE PRODUCTION.\n`)
     return ''
   }
@@ -59,32 +62,34 @@ export function envOrDefaultBool(name: string, defaultValue: boolean = false): b
 }
 
 // ---------------------------------------------------------------------------
-// Pre-validated environment variables (resolved once at module load)
+// Pre-validated environment variable getters
 // ---------------------------------------------------------------------------
+// These are functions (not constants) so they can be called lazily,
+// avoiding module-load-time crashes in test environments.
 
 /** HMAC signing key for all auth tokens — REQUIRED in production */
-export const AUTH_SECRET = requireEnv('AUTH_SECRET')
+export const getAuthSecret = () => requireEnv('AUTH_SECRET')
 
 /** Secret for internal API-to-API auth (cron, webhooks) — REQUIRED in production */
-export const INTERNAL_SECRET = requireEnv('INTERNAL_SECRET')
+export const getInternalSecret = () => requireEnv('INTERNAL_SECRET')
 
 /** Public URL of the app (used for DIAN, QR, email links) — REQUIRED in production */
-export const APP_URL = requireEnv('NEXT_PUBLIC_APP_URL')
+export const getAppUrl = () => requireEnv('NEXT_PUBLIC_APP_URL')
 
 /** SMTP sender email — REQUIRED when sending invoices by email */
-export const SMTP_FROM = requireEnv('SMTP_FROM')
+export const getSmtpFrom = () => requireEnv('SMTP_FROM')
 
 /** SMTP sender display name */
-export const SMTP_FROM_NAME = envOrDefault('SMTP_FROM_NAME', 'Facturación')
+export const getSmtpFromName = () => envOrDefault('SMTP_FROM_NAME', 'Facturación')
 
 /** SMTP port — standard 587 default */
-export const SMTP_PORT = envOrDefaultInt('SMTP_PORT', 587)
+export const getSmtpPort = () => envOrDefaultInt('SMTP_PORT', 587)
 
 /** SMTP use TLS — defaults to false (STARTTLS on 587) */
-export const SMTP_SECURE = envOrDefaultBool('SMTP_SECURE', false)
+export const getSmtpSecure = () => envOrDefaultBool('SMTP_SECURE', false)
 
 /** Cron service alert API base URL */
-export const ALERT_API_BASE = requireEnv('ALERT_API_BASE')
+export const getAlertApiBase = () => requireEnv('ALERT_API_BASE')
 
 /** Cron service port */
-export const CRON_PORT = envOrDefaultInt('CRON_PORT', 3010)
+export const getCronPort = () => envOrDefaultInt('CRON_PORT', 3010)

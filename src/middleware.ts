@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken, extractTokenFromRequest, isPublicPath, isSuperAdminPath, isInternalPath } from '@/lib/auth-helpers'
-import { INTERNAL_SECRET } from '@/lib/env'
+import { getInternalSecret } from '@/lib/env'
 
 // ---------------------------------------------------------------------------
 // Ventify POS — Auth + CORS Middleware (Edge Runtime compatible)
@@ -70,7 +70,7 @@ export async function middleware(request: NextRequest) {
   // 2. Internal cron routes — check internal secret header (constant-time comparison)
   if (isInternalPath(pathname)) {
     const internalHeader = request.headers.get('x-internal-secret')
-    if (!internalHeader || !timingSafeEqual(internalHeader, INTERNAL_SECRET)) {
+    if (!internalHeader || !timingSafeEqual(internalHeader, getInternalSecret())) {
       return corsError('Acceso no autorizado', 401)
     }
     return withCORS(NextResponse.next(), origin)
