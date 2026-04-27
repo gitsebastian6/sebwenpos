@@ -1,42 +1,59 @@
 # ---------------------------------------------------------------------------
-# VentifyPOS — CI Pipeline (Phase 4a)
+# VentifyPOS — CI/CD Pipeline (Phase 4a + 4B)
 # ---------------------------------------------------------------------------
-# Runs on every push and PR to main. Validates:
-#   1. Dependencies install cleanly
-#   2. Prisma client generates without errors
-#   3. TypeScript compiles and Next.js builds successfully
-#   4. All 252+ tests pass
+# Unified CI + CD pipeline:
+#
+#   CI (every push & PR):
+#     1. Dependencies install cleanly
+#     2. Prisma client generates without errors
+#     3. TypeScript compiles and Next.js builds successfully
+#     4. All 252+ tests pass
+#
+#   CD (push to main/master only, after CI passes):
+#     5. Build production Docker image
+#     6. Push to GitHub Container Registry (ghcr.io)
+#     7. Create deployment status on the commit
+#     8. Deploy to VPS via SSH (optional — requires DEPLOY_* secrets)
+# ---------------------------------------------------------------------------
+# Required GitHub Secrets:
+#   CI:   AUTH_SECRET, INTERNAL_SECRET, NEXT_PUBLIC_APP_URL, SMTP_FROM, ALERT_API_BASE
+#   CD:   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_PORT (optional)
 # ---------------------------------------------------------------------------
 
-name: CI
+name: CI/CD
 
 on:
   push:
     branches: [main, master, develop]
   pull_request:
     branches: [main, master, develop]
+  workflow_dispatch:
+    inputs:
+      deploy_to_server:
+        description: "Deploy to VPS server?"
+        required: false
+        default: "false"
+        type: boolean
 
-# Cancel in-progress runs for the same branch/PR to save minutes
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-cd-${{ github.ref }}
   cancel-in-progress: true
 
-# Minimum permissions — principle of least privilege
 permissions:
   contents: read
+  packages: write
+  deployments: write
+  statuses: write
 
 env:
-  # ── Required environment variables for build ──────────────────────────────
-  # These are read by src/lib/env.ts via requireEnv() during next build.
-  # In CI we use dummy values — they are NOT used at runtime, only to satisfy
-  # the build-time validation. Real values come from the production host.
   AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
   INTERNAL_SECRET: ${{ secrets.INTERNAL_SECRET }}
   NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
   SMTP_FROM: ${{ secrets.SMTP_FROM }}
   ALERT_API_BASE: ${{ secrets.ALERT_API_BASE }}
-  # SQLite file for CI — Prisma will create it automatically
   DATABASE_URL: file:./ci-test.db
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-test:
@@ -49,43 +66,32 @@ jobs:
         node-version: [20]
 
     steps:
-      # ── 1. Checkout code ──────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Setup Node.js ──────────────────────────────────────────────────
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
-      # ── 3. Install system dependencies ────────────────────────────────────
-      # better-sqlite3 requires native compilation tools
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libsqlite3-dev build-essential
 
-      # ── 4. Install npm dependencies ───────────────────────────────────────
       - name: Install dependencies
         run: npm ci
 
-      # ── 5. Generate Prisma client ─────────────────────────────────────────
       - name: Generate Prisma client
         run: npx prisma generate
 
-      # ── 6. Build ──────────────────────────────────────────────────────────
       - name: Build Next.js
         run: npm run build
 
-      # ── 7. Run tests ──────────────────────────────────────────────────────
-      # Tests force NODE_ENV=development in setup.ts, so requireEnv() won't
-      # crash even if secrets are placeholder values.
       - name: Run tests
         run: npm test
 
-      # ── 8. Upload build artifact (optional, for debugging) ────────────────
       - name: Upload build artifact
         if: failure()
         uses: actions/upload-artifact@v4
@@ -93,3 +99,146 @@ jobs:
           name: build-output-${{ github.sha }}
           path: .next/
           retention-days: 3
+
+  docker-build-push:
+    name: Build & Push Docker Image
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: >
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: Image digest
+        run: |
+          echo "## 🐳 Docker Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.meta.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  create-deployment-status:
+    name: Deployment Status
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always() && needs.docker-build-push.result != 'skipped'
+
+    steps:
+      - name: Create deployment status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const success = '${{ needs.docker-build-push.result }}' === 'success';
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: success ? 'success' : 'failure',
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: success ? 'Docker image published to ghcr.io' : 'Docker build/push failed',
+              context: 'CD / Deploy'
+            });
+
+            console.log(`✅ Deployment status: ${success ? 'SUCCESS' : 'FAILURE'}`);
+
+  deploy-vps:
+    name: Deploy to VPS
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >
+      needs.docker-build-push.result == 'success' && (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_to_server == 'true') ||
+        (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
+      )
+
+    environment:
+      name: production
+      url: ${{ vars.APP_URL || 'https://ventifypos.com' }}
+
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.DEPLOY_PORT || 22 }} -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy to server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || 22 }}
+          IMAGE_TAG: ${{ github.sha }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_HOST << DEPLOY_SCRIPT
+          set -e
+          echo "🚀 Deploying VentifyPOS..."
+          docker pull ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+          docker tag ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:latest
+          docker stop ventifypos 2>/dev/null || true
+          docker rm ventifypos 2>/dev/null || true
+          docker run -d \
+            --name ventifypos \
+            --restart unless-stopped \
+            -p 3000:3000 \
+            -v ventifypos-data:/app/db \
+            --env-file /opt/ventifypos/.env \
+            ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+          sleep 10
+          if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
+            echo "✅ Deployment successful!"
+          else
+            docker logs ventifypos --tail 50
+            exit 1
+          fi
+          docker image prune -f --filter "until=72h"
+          DEPLOY_SCRIPT
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh/deploy_key
