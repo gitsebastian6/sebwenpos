@@ -6,12 +6,15 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // Tests that need jsdom can use @vitest/environment or a docblock:
+    // @vitest-environment jsdom
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: ['src/lib/**/*.ts'],
+      include: ['src/lib/**/*.ts', 'src/hooks/**/*.ts'],
     },
     testTimeout: 10_000,
+    setupFiles: ['src/test/setup.ts'],
   },
   resolve: {
     alias: {
