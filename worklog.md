@@ -16,3 +16,31 @@ Stage Summary:
 - 5 Medium priority items: structured logging, duplicate DIAN modules, base64 in DB, seed endpoint, error codes
 - Estimated timeline: 4-6 weeks focused work (excluding PostgreSQL migration)
 - PDF saved to: /home/z/my-project/download/VentifyPOS_Diagnostico_Produccion.pdf
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fase 3 — Agregar tests con soporte TanStack Query hooks
+
+Work Log:
+- Evaluó impacto de la migración a TanStack Query en los tests: necesita @testing-library/react, jsdom, QueryClientProvider wrapper
+- Instaló @testing-library/react y jsdom como devDependencies
+- Actualizó vitest.config.ts con setupFiles y soporte para @vitest-environment jsdom
+- Creó src/test/setup.ts (silencia act() warnings, polyfill TextEncoder)
+- Creó src/test/utils.tsx (createTestQueryClient, renderQueryHook, waitForQuery, mockFetchResponse/mockFetchError)
+- Escribió 90 nuevos tests en 5 archivos:
+  - query-helpers.test.ts (26 tests): throwIfNotOk, queryFetch, mutationFetch, unwrapArray
+  - use-products.test.tsx (12 tests): useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct
+  - use-auth.test.tsx (18 tests): useLogin, useSetup, useResetPassword*, useSendOtp, useVerifyOtp, fetchOtpStatus, fetchAuthInit
+  - use-pos.test.tsx (16 tests): usePosProducts, usePosServices, usePosCashRegister, usePosRecentSales, useCreateOrder, useCreateInvoice, useReturnOrder
+  - orders route.test.ts (18 tests): POST crear orden con validaciones Colombianas (stock, crédito, fiado, caja), GET listar órdenes con filtros
+- Verificó build: 0 TypeScript errors, 252 tests pasando
+- Commiteó y pusheó a GitHub
+
+Stage Summary:
+- Total tests: 252 (de 162 a 252, +90 nuevos)
+- Total test files: 15 (de 10 a 15)
+- TanStack Query hooks ahora son testeables con renderHook + QueryClientProvider
+- Orders API route (ruta de negocio más crítica) tiene cobertura de validaciones colombianas
+- Build: 0 TS errors, todos tests pasando
+- Commit: 5411abb
