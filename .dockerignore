@@ -1,0 +1,86 @@
+# ---------------------------------------------------------------------------
+# VentifyPOS — Docker Ignore
+# ---------------------------------------------------------------------------
+# Exclude files that are not needed in the Docker build context to speed up
+# the build and reduce the image size.
+# ---------------------------------------------------------------------------
+
+# Dependencies (installed inside the container)
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next.js build output (rebuilt inside the container)
+.next
+out
+
+# Development files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Docker files
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Testing
+coverage
+__tests__
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+vitest.config.*
+
+# Documentation
+README.md
+LICENSE
+CHANGELOG.md
+docs/
+
+# CI/CD
+.github/
+.zscripts/
+
+# Sandbox / dev scripts
+scripts/auto-git-push.sh
+scripts/git-auto-commit.sh
+scripts/git-watch-push.sh
+start.sh
+dev.log
+server.log
+
+# Examples (not needed in production)
+examples/
+
+# Mini services (separate deployment)
+mini-services/
+
+# Database files (mounted as volume)
+db/*.db
+db/*.db-journal
+
+# Prisma migrations (handled at startup)
+prisma/migrations/
+
+# Build artifacts
+*.tsbuildinfo
