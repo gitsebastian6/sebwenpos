@@ -3,22 +3,18 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 // ╔══════════════════════════════════════════════════════════════════╗
-// ║  VENTIFY POS — Hybrid Schema (SQLite dev / PostgreSQL prod)    ║
+// ║  VENTIFY POS — PostgreSQL Schema                                ║
 // ║  ─────────────────────────────────────────────────────────────  ║
-// ║  DEVELOPMENT: SQLite (file:./db/custom.db) — zero config        ║
-// ║  PRODUCTION:  PostgreSQL — change provider + DATABASE_URL       ║
+// ║  DEVELOPMENT: PostgreSQL via Docker Compose                     ║
+// ║  PRODUCTION:  PostgreSQL (VPS / managed service)                ║
 // ║                                                                  ║
-// ║  To migrate to PostgreSQL:                                      ║
-// ║    1. Change provider below to "postgresql"                     ║
-// ║    2. Change DATABASE_URL in .env to postgresql://...           ║
-// ║    3. Run: bunx prisma generate && bunx prisma db push          ║
-// ║    4. Run: bun prisma/migrate-sqlite-to-pg.ts                   ║
-// ║    5. Update src/lib/db.ts to use PrismaPg adapter              ║
+// ║  DATABASE_URL format:                                           ║
+// ║    postgresql://user:password@localhost:5432/ventifypos          ║
 // ║                                                                  ║
 // ║  All raw SQL queries use src/lib/db-dialect.ts helper which      ║
 // ║  auto-detects the dialect from DATABASE_URL.                    ║
