@@ -1,0 +1,214 @@
+# ---------------------------------------------------------------------------
+# VentifyPOS — CD Pipeline (Phase 4B — Continuous Deployment)
+# ---------------------------------------------------------------------------
+# Se activa automáticamente cuando el workflow de CI termina con éxito.
+# También se puede ejecutar manualmente desde GitHub Actions.
+#
+# Pipeline:
+#   1. Verifica que CI pasó
+#   2. Construye imagen Docker de producción
+#   3. Publica en GitHub Container Registry (ghcr.io)
+#   4. Crea status de deployment en el commit
+#   5. Deploy a VPS via SSH (opcional — necesita secrets DEPLOY_*)
+# ---------------------------------------------------------------------------
+# Secrets necesarios en GitHub (para deploy a VPS):
+#   DEPLOY_HOST     — IP o hostname del VPS
+#   DEPLOY_USER     — Usuario SSH (default: root)
+#   DEPLOY_SSH_KEY  — Llave privada SSH
+#   DEPLOY_PORT     — Puerto SSH (default: 22)
+# ---------------------------------------------------------------------------
+
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main, master]
+
+  workflow_dispatch:
+    inputs:
+      deploy_to_server:
+        description: "Hacer deploy al VPS?"
+        required: false
+        default: "false"
+        type: boolean
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+  deployments: write
+  statuses: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ── 1. Verificar que CI pasó ──────────────────────────────────────────
+  verify-ci:
+    name: Verify CI Status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: CI Status Check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "✅ CI completed: ${{ github.event.workflow_run.conclusion }}"
+            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+              echo "❌ CI failed. Aborting CD."
+              exit 1
+            fi
+          else
+            echo "🔄 Manual deployment triggered"
+          fi
+
+  # ── 2. Construir y publicar imagen Docker ────────────────────────────
+  docker-build-push:
+    name: Build & Push Docker Image
+    needs: verify-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: Image digest
+        run: |
+          echo "## 🐳 Docker Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.meta.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ── 3. Crear status de deployment en el commit ──────────────────────
+  create-deployment-status:
+    name: Deployment Status
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always() && needs.docker-build-push.result != 'skipped'
+
+    steps:
+      - name: Create deployment status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const success = '${{ needs.docker-build-push.result }}' === 'success';
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: success ? 'success' : 'failure',
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: success ? 'Docker image published to ghcr.io' : 'Docker build/push failed',
+              context: 'CD / Deploy'
+            });
+
+            console.log(`✅ Deployment status: ${success ? 'SUCCESS' : 'FAILURE'}`);
+
+  # ── 4. Deploy a VPS (Opcional) ──────────────────────────────────────
+  deploy-vps:
+    name: Deploy to VPS
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >
+      needs.docker-build-push.result == 'success' && (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_to_server == 'true') ||
+        (github.event_name == 'workflow_run' && secrets.DEPLOY_HOST != '')
+      )
+
+    environment:
+      name: production
+      url: ${{ vars.APP_URL || 'https://ventifypos.com' }}
+
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.DEPLOY_PORT || 22 }} -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy to server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || 22 }}
+          IMAGE_TAG: ${{ github.sha }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_HOST << DEPLOY_SCRIPT
+          set -e
+          echo "🚀 Deploying VentifyPOS..."
+          docker pull ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+          docker tag ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:latest
+          docker stop ventifypos 2>/dev/null || true
+          docker rm ventifypos 2>/dev/null || true
+          docker run -d \
+            --name ventifypos \
+            --restart unless-stopped \
+            -p 3000:3000 \
+            -v ventifypos-data:/app/db \
+            --env-file /opt/ventifypos/.env \
+            ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+          sleep 10
+          if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
+            echo "✅ Deployment successful!"
+          else
+            docker logs ventifypos --tail 50
+            exit 1
+          fi
+          docker image prune -f --filter "until=72h"
+          DEPLOY_SCRIPT
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf ~/.ssh/deploy_key
