@@ -21,6 +21,12 @@ out
 .env.development.local
 .env.test.local
 .env.production.local
+.env.docker
+
+# SQLite database files (we use PostgreSQL in Docker)
+db/*.db
+db/*.db-journal
+db/*.db-wal
 
 # IDE and editor files
 .vscode
@@ -75,12 +81,11 @@ examples/
 # Mini services (separate deployment)
 mini-services/
 
-# Database files (mounted as volume)
-db/*.db
-db/*.db-journal
-
 # Prisma migrations (handled at startup)
 prisma/migrations/
 
 # Build artifacts
 *.tsbuildinfo
+
+# Download folder
+download/

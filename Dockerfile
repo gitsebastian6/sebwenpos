@@ -1,14 +1,19 @@
 # ---------------------------------------------------------------------------
-# VentifyPOS — Production Docker Image
+# VentifyPOS — Production Docker Image (PostgreSQL)
 # ---------------------------------------------------------------------------
 # Multi-stage build optimized for Next.js standalone output:
 #   Stage 1 (deps):    Install production dependencies only
 #   Stage 2 (builder): Build the Next.js app (generates standalone output)
 #   Stage 3 (runner):  Minimal runtime image with standalone server
-# ---------------------------------------------------------------------------
+#
+# NOTE: This Dockerfile switches Prisma from SQLite to PostgreSQL during build.
+#       The local dev environment still uses SQLite. The switch happens ONLY
+#       inside Docker via a sed command in the builder stage.
+#
 # Usage:
+#   docker compose up --build          (with docker-compose.yml)
 #   docker build -t ventifypos .
-#   docker run -p 3000:3000 --env-file .env ventifypos
+#   docker run -p 3000:3000 --env-file .env.docker ventifypos
 # ---------------------------------------------------------------------------
 
 # ── Stage 1: Dependencies ──────────────────────────────────────────────────
@@ -16,9 +21,8 @@ FROM node:20-bookworm-slim AS deps
 
 WORKDIR /app
 
-# Install system dependencies for native modules (better-sqlite3, sharp)
+# Install system dependencies for native modules (sharp)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsqlite3-dev \
     build-essential \
     python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -27,10 +31,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
 
+# ── Switch Prisma provider from SQLite to PostgreSQL ──
+# Local dev uses SQLite, Docker/production uses PostgreSQL
+RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
+
 # Install ALL dependencies (needed for build step)
 RUN npm ci
 
-# Generate Prisma client
+# Generate Prisma client with PostgreSQL provider
 RUN npx prisma generate
 
 # ── Stage 2: Builder ──────────────────────────────────────────────────────
@@ -40,7 +48,6 @@ WORKDIR /app
 
 # Install system dependencies for native modules
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsqlite3-dev \
     build-essential \
     python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -52,6 +59,9 @@ COPY --from=deps /app/prisma ./prisma
 # Copy source code
 COPY . .
 
+# ── Switch Prisma provider from SQLite to PostgreSQL ──
+RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
+
 # Build-time environment variables (dummy values for build validation)
 # Real values come from the runtime environment (.env or docker env)
 ENV AUTH_SECRET=build-placeholder
@@ -59,9 +69,10 @@ ENV INTERNAL_SECRET=build-placeholder
 ENV NEXT_PUBLIC_APP_URL=http://localhost:3000
 ENV SMTP_FROM=build@placeholder.com
 ENV ALERT_API_BASE=http://localhost
-ENV DATABASE_URL=file:./build.db
+# PostgreSQL URL for build — Prisma needs a valid URL format to generate client
+ENV DATABASE_URL=postgresql://placeholder:placeholder@placeholder:5432/placeholder
 
-# Generate Prisma client (ensure it's fresh)
+# Generate Prisma client (ensure it's fresh with PostgreSQL provider)
 RUN npx prisma generate
 
 # Build Next.js (standalone output mode)
@@ -72,9 +83,8 @@ FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 
-# Install runtime-only system dependencies
+# Install runtime-only system dependencies (curl for healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsqlite3-0 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -91,23 +101,14 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Copy Prisma schema and migration files (for db push/migrate on startup)
+# Copy Prisma schema and client (for db push/migrate on startup)
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Copy better-sqlite3 native binding
-COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
-
-# Copy database directory (for SQLite)
-RUN mkdir -p /app/db && chown nextjs:nodejs /app/db
-
 # Copy startup script
 COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
-
-# Create data volume for SQLite database persistence
-VOLUME ["/app/db"]
 
 # Expose port
 EXPOSE 3000
