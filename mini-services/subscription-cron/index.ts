@@ -2,6 +2,8 @@
 // Runs daily to:
 //   1. Check for expired subscriptions and mark them as EXPIRED
 //   2. Send expiry alert emails (3 days and 1 day before)
+// Every 30 seconds:
+//   3. Process pending Wompi demo transactions (auto-approve after 10s delay)
 //
 // Also exposes manual trigger endpoints.
 
@@ -18,11 +20,14 @@ function getDbPath(): string {
   return '/home/z/my-project/db/custom.db'
 }
 const DB_PATH = getDbPath()
-const ALERT_API_BASE = process.env.ALERT_API_BASE
+const ALERT_API_BASE = process.env.ALERT_API_BASE || ''
 if (!ALERT_API_BASE) {
-  console.error('[ENV] FATAL: ALERT_API_BASE is required but not set. Example: https://your-domain.com/api/subscription/alerts')
-  process.exit(1)
+  console.warn('[ENV] WARN: ALERT_API_BASE is not set. Expiry alert emails will be skipped. Set it to enable email alerts. Example: https://your-domain.com/api/subscription/alerts')
 }
+
+// Demo transaction processing URL — derived from APP_BASE_URL or ALERT_API_BASE
+const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:3000'
+const DEMO_PROCESS_URL = `${APP_BASE_URL}/api/payments/wompi/demo-process`
 
 // Load INTERNAL_SECRET from .env
 function getInternalSecret(): string {
@@ -107,8 +112,41 @@ function checkExpiredSubscriptions(): { expiredCount: number; subscriptions: Exp
   }
 }
 
+// ── Demo Transaction Processing ──
+async function triggerDemoProcessing(): Promise<void> {
+  try {
+    console.log(`[${new Date().toISOString()}] Checking pending Wompi demo transactions...`)
+
+    const response = await fetch(DEMO_PROCESS_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Secret': INTERNAL_SECRET,
+      },
+      signal: AbortSignal.timeout(15000), // 15s timeout
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      console.error(`[${new Date().toISOString()}] Demo-process API returned ${response.status}: ${text}`)
+      return
+    }
+
+    const data = await response.json()
+    if (data.processed > 0) {
+      console.log(`[${new Date().toISOString()}] Demo processing: ${data.processed} transaction(s) auto-approved`)
+    }
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] Error triggering demo processing:`, error)
+  }
+}
+
 // ── Alert Check: find subscriptions needing 3-day or 1-day alerts ──
 async function triggerExpiryAlerts(daysBefore: number): Promise<void> {
+  if (!ALERT_API_BASE) {
+    console.log(`[${new Date().toISOString()}] Skipping ${daysBefore}-day alert check (ALERT_API_BASE not configured)`)
+    return
+  }
   try {
     const url = `${ALERT_API_BASE}?daysBefore=${daysBefore}`
     console.log(`[${new Date().toISOString()}] Checking ${daysBefore}-day expiry alerts...`)
@@ -160,6 +198,27 @@ const server = Bun.serve({
         })
       } catch (error) {
         console.error('Error in check-expired endpoint:', error)
+        return new Response(JSON.stringify({ error: 'Error interno' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    // Manual trigger: process pending demo transactions
+    if (url.pathname === '/demo-process' && req.method === 'POST') {
+      try {
+        // Trigger demo processing in background
+        triggerDemoProcessing()
+
+        return new Response(JSON.stringify({
+          message: 'Demo transaction processing initiated',
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      } catch (error) {
+        console.error('Error in demo-process endpoint:', error)
         return new Response(JSON.stringify({ error: 'Error interno' }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
@@ -229,8 +288,8 @@ const server = Bun.serve({
         status: 'ok',
         service: 'subscription-cron',
         port: PORT,
-        version: '2.0',
-        features: ['expiry-check', 'expiry-alerts'],
+        version: '3.0',
+        features: ['expiry-check', 'expiry-alerts', 'demo-process'],
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -241,10 +300,11 @@ const server = Bun.serve({
   },
 })
 
-console.log(`[Subscription Cron v2] Running on port ${PORT}`)
+console.log(`[Subscription Cron v3] Running on port ${PORT}`)
 
 // --- Scheduled Checks ---
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000 // 24 hours
+const DEMO_PROCESS_INTERVAL_MS = 30 * 1000 // 30 seconds
 
 function runScheduledChecks() {
   console.log(`[${new Date().toISOString()}] Running scheduled subscription checks...`)
@@ -274,3 +334,13 @@ setTimeout(runScheduledChecks, 5000)
 
 // Schedule recurring checks every 24 hours
 setInterval(runScheduledChecks, CHECK_INTERVAL_MS)
+
+// --- Scheduled Demo Processing ---
+// Process pending Wompi demo transactions every 30 seconds
+// This ensures demo payments are auto-approved even if the user
+// closes the browser (server-side processing instead of client polling)
+setTimeout(() => {
+  console.log(`[${new Date().toISOString()}] Starting demo transaction processor (every ${DEMO_PROCESS_INTERVAL_MS / 1000}s)...`)
+  triggerDemoProcessing()
+  setInterval(triggerDemoProcessing, DEMO_PROCESS_INTERVAL_MS)
+}, 10000) // Start after 10 seconds to let the app fully initialize

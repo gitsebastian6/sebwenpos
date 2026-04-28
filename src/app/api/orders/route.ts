@@ -5,6 +5,7 @@ import { requireStoreAccess } from '@/lib/api-auth'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { auditLogFromRequest } from '@/lib/audit-logger'
+import { isSubscriptionActive } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,15 @@ export async function POST(req: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(req, data.storeId)
     if (storeAccessError) return storeAccessError
+
+    // ── Subscription gate: block order creation when subscription is expired/cancelled ──
+    const subActive = await isSubscriptionActive(data.storeId)
+    if (!subActive) {
+      return NextResponse.json(
+        { error: 'Tu suscripción está vencida. Renueva tu plan para continuar vendiendo.' },
+        { status: 403 },
+      )
+    }
 
     // Separate product and service items
     const productItems = data.items.filter((i) => i.productId)

@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireAuthStoreId } from '@/lib/api-auth'
-import { createPaymentLink, WompiApiError, isWompiConfigured, isWompiDemoMode } from '@/lib/wompi/client'
+import { createPaymentLink, WompiApiError, isWompiConfigured, isWompiDemoMode, getWompiRedirectUrl } from '@/lib/wompi/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -136,6 +136,8 @@ export async function POST(request: NextRequest) {
     // ── Create payment link (demo or real) ──
     let paymentLink
     try {
+      const redirectUrl = getWompiRedirectUrl()
+
       paymentLink = await createPaymentLink({
         name: linkName,
         description: linkDescription,
@@ -144,6 +146,7 @@ export async function POST(request: NextRequest) {
         reference,
         singleUse: true,
         expiresAt: data.expiresAt,
+        ...(redirectUrl && { redirectUrl }),
         customerEmail: data.customerEmail,
         customerName: data.customerName,
         customerPhone: data.customerPhone,

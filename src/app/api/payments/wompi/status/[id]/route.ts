@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { requireAuthStoreId } from '@/lib/api-auth'
 import { getTransaction, WompiApiError, isWompiDemoMode, getDemoTransactionStatus } from '@/lib/wompi/client'
+import { processDemoApproval } from '@/lib/wompi/demo-processor'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,27 +70,7 @@ export async function GET(
       )
 
       if (demoStatus.status === 'APPROVED') {
-        // Auto-approve the demo transaction
-        await db.wompiTransaction.update({
-          where: { id: wompiTx.id },
-          data: {
-            status: 'APPROVED',
-            wompiStatus: 'APPROVED',
-            paymentMethodType: 'CARD',
-            paidAt: new Date(),
-            wompiResponse: JSON.stringify({
-              demoMode: true,
-              autoApproved: true,
-              paymentMethod: 'CARD',
-              brand: 'VISA',
-              lastFour: '4242',
-              approvedAt: new Date().toISOString(),
-            }),
-          },
-        })
-
-        // Trigger the same webhook processing logic
-        // Import and call the webhook handler internally
+        // Use the shared demo processor (handles WompiTransaction update + subscription logic)
         try {
           await processDemoApproval(wompiTx.id)
         } catch (err) {
@@ -97,7 +78,7 @@ export async function GET(
         }
 
         refreshedFromWompi = true
-        logger.info(`[Wompi Demo] Transaction ${wompiTx.id} auto-approved`)
+        logger.info(`[Wompi Demo] Transaction ${wompiTx.id} auto-approved via status poll`)
       }
     } else if (shouldRefresh && !isDemo && wompiTx.wompiId) {
       // ── Real Mode: refresh from Wompi API ──
@@ -192,162 +173,4 @@ function mapWompiStatus(wompiStatus: string): string {
     ERROR: 'ERROR',
   }
   return statusMap[wompiStatus] || 'ERROR'
-}
-
-/**
- * Process demo approval: same logic as the webhook handler for APPROVED transactions.
- * This reuses the subscription extension logic.
- */
-async function processDemoApproval(wompiTxId: number): Promise<void> {
-  // Dynamic import to avoid circular deps
-  const { logSubscriptionHistory, createBillingRecord, BILLING_PERIODS } = await import('@/lib/subscription-helpers')
-  const { logSubscriptionChange } = await import('@/lib/event-logger')
-
-  const wompiTx = await db.wompiTransaction.findUnique({
-    where: { id: wompiTxId },
-    include: {
-      receipt: {
-        include: {
-          subscription: {
-            include: { plan: true },
-          },
-        },
-      },
-      subscription: {
-        include: { plan: true },
-      },
-      order: {
-        select: { id: true, orderNumber: true, status: true, total: true, paymentMethod: true, notes: true },
-      },
-    },
-  })
-
-  if (!wompiTx) return
-
-  const receipt = wompiTx.receipt
-  const subscription = wompiTx.subscription || receipt?.subscription
-
-  // ── Handle POS order ──
-  if (wompiTx.order && !wompiTx.subscription && !wompiTx.receipt) {
-    await db.order.update({
-      where: { id: wompiTx.order.id },
-      data: {
-        notes: [wompiTx.order.notes, `Pago Wompi (Demo) aprobado — Ref: ${wompiTx.reference}`].filter(Boolean).join('\n'),
-      },
-    })
-    logger.info(`[Wompi Demo] POS order ${wompiTx.order.orderNumber} payment approved`)
-    return
-  }
-
-  if (!subscription) {
-    logger.warn(`[Wompi Demo] No subscription found for WompiTransaction ${wompiTx.id}`)
-    return
-  }
-
-  const now = new Date()
-
-  // ── Auto-approve linked PaymentReceipt ──
-  if (receipt && receipt.status === 'PENDING') {
-    await db.paymentReceipt.update({
-      where: { id: receipt.id },
-      data: {
-        status: 'APPROVED',
-        reviewedBy: 'WOMPI_DEMO_AUTO',
-        reviewNotes: `Aprobado automáticamente (Demo) — transacción ${wompiTx.reference}`,
-        reviewedAt: now,
-      },
-    })
-  }
-
-  // ── Extend subscription ──
-  const effectiveBillingPeriod = subscription.billingPeriod === 'TRIAL' ? 'MONTHLY' : subscription.billingPeriod
-  let newEndDate: Date
-  if (subscription.endDate && new Date(subscription.endDate) > now) {
-    newEndDate = new Date(subscription.endDate)
-  } else {
-    newEndDate = new Date(now)
-  }
-
-  const billingDays: Record<string, number> = {
-    MONTHLY: 30, QUARTERLY: 90, SEMI_ANNUAL: 180, ANNUAL: 365,
-  }
-  const days = billingDays[effectiveBillingPeriod] || 30
-  newEndDate.setDate(newEndDate.getDate() + days)
-
-  const newNextBillingAt = new Date(newEndDate)
-  newNextBillingAt.setDate(newNextBillingAt.getDate() + 1)
-
-  const plan = subscription.plan
-  const billingMonths: Record<string, number> = {
-    MONTHLY: 1, QUARTERLY: 3, SEMI_ANNUAL: 6, ANNUAL: 12,
-  }
-  const months = billingMonths[effectiveBillingPeriod] || 1
-  const periodPrice = plan.price * months
-
-  const previousStatus = subscription.status
-
-  await db.subscription.update({
-    where: { id: subscription.id },
-    data: {
-      status: 'ACTIVE',
-      endDate: newEndDate,
-      nextBillingAt: newNextBillingAt,
-      lastBilledAt: now,
-      billingPeriod: effectiveBillingPeriod,
-      billingPrice: periodPrice,
-      cancelReason: null,
-      alertSentAt3d: null,
-      alertSentAt1d: null,
-      ...(previousStatus === 'EXPIRED' || previousStatus === 'PAST_DUE' ? { graceEndDate: null } : {}),
-    },
-  })
-
-  // ── Log history ──
-  const isReactivation = previousStatus === 'CANCELLED' || previousStatus === 'EXPIRED' || previousStatus === 'PAST_DUE'
-
-  await logSubscriptionChange(wompiTx.storeId, previousStatus, 'ACTIVE', {
-    wompiTransactionId: wompiTx.id,
-    wompiReference: wompiTx.reference,
-    demoMode: true,
-  })
-
-  await logSubscriptionHistory({
-    storeId: wompiTx.storeId,
-    subscriptionId: subscription.id,
-    eventType: isReactivation ? 'REACTIVATED' : 'RENEWED',
-    previousStatus,
-    newStatus: 'ACTIVE',
-    previousPlanId: plan.id,
-    newPlanId: plan.id,
-    previousPlanName: plan.name,
-    newPlanName: plan.name,
-    description: isReactivation
-      ? `Suscripción reactivada por pago Demo — referencia ${wompiTx.reference}`
-      : `Suscripción renovada (${BILLING_PERIODS[effectiveBillingPeriod]?.label || effectiveBillingPeriod}) vía Demo`,
-    metadata: { wompiTransactionId: wompiTx.id, paymentMethod: 'WOMPI_DEMO', billingPeriod: effectiveBillingPeriod, wompiReference: wompiTx.reference, demoMode: true },
-  })
-
-  // ── Create billing record ──
-  const periodStart = subscription.endDate && new Date(subscription.endDate) > now
-    ? new Date(subscription.endDate) : new Date(now)
-
-  await createBillingRecord({
-    storeId: wompiTx.storeId,
-    subscriptionId: subscription.id,
-    receiptId: receipt?.id ?? null,
-    planId: plan.id,
-    planName: plan.name,
-    billingPeriod: effectiveBillingPeriod,
-    amount: periodPrice,
-    prorationCredit: 0,
-    status: 'PAID',
-    paymentMethod: 'WOMPI_DEMO',
-    periodStart,
-    periodEnd: newEndDate,
-    notes: isReactivation
-      ? 'Reactivación de suscripción (Demo)'
-      : `Renovación ${BILLING_PERIODS[effectiveBillingPeriod]?.label || effectiveBillingPeriod} (Demo)`,
-  })
-
-  logger.info(`[Wompi Demo] Subscription ${subscription.id} extended to ${newEndDate.toISOString()} for store ${wompiTx.storeId}`)
 }

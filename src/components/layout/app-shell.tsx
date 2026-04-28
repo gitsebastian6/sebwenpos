@@ -42,6 +42,7 @@ import { useMemo, useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import dynamic from 'next/dynamic'
 import { ViewErrorBoundary } from '@/components/shared/error-boundary'
+import { SubscriptionGate } from '@/components/subscription/subscription-gate'
 
 const DashboardView = dynamic(() => import('@/components/dashboard/dashboard-view').then(m => ({ default: m.DashboardView })), { ssr: false })
 const POSView = dynamic(() => import('@/components/pos/pos-view').then(m => ({ default: m.POSView })), { ssr: false })
@@ -534,7 +535,7 @@ function ViewRouter({ currentView }: { currentView: AppView }) {
   const label = viewLabels[currentView] || currentView
   switch (currentView) {
     case 'dashboard': return <ViewErrorBoundary viewName={label}><DashboardView /></ViewErrorBoundary>
-    case 'pos': return <ViewErrorBoundary viewName={label}><POSView /></ViewErrorBoundary>
+    case 'pos': return <ViewErrorBoundary viewName={label}><SubscriptionGate><POSView /></SubscriptionGate></ViewErrorBoundary>
     case 'tables': return <ViewErrorBoundary viewName={label}><TablesView /></ViewErrorBoundary>
     case 'products': return <ViewErrorBoundary viewName={label}><ProductsView /></ViewErrorBoundary>
     case 'customers': return <ViewErrorBoundary viewName={label}><CustomersView /></ViewErrorBoundary>

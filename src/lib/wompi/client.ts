@@ -503,6 +503,14 @@ export function isWompiConfigured(): { configured: boolean; missingKeys: string[
 }
 
 /**
+ * Get the Wompi redirect URL (where Wompi sends the user after payment).
+ * Falls back to NEXT_PUBLIC_APP_URL if WOMPI_REDIRECT_URL is not set.
+ */
+export function getWompiRedirectUrl(): string {
+  return process.env.WOMPI_REDIRECT_URL || process.env.NEXT_PUBLIC_APP_URL || ''
+}
+
+/**
  * Get the demo auto-approval delay in seconds.
  */
 export function getDemoApprovalDelay(): number {

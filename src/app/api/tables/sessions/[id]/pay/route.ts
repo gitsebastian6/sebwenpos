@@ -4,6 +4,7 @@ import { generateOrderNumber } from '@/lib/auth'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { isSubscriptionActive } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,6 +61,15 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+
+    // ── Subscription gate: block payment when subscription is expired/cancelled ──
+    const subActive = await isSubscriptionActive(data.storeId)
+    if (!subActive) {
+      return NextResponse.json(
+        { error: 'Tu suscripción está vencida. Renueva tu plan para continuar vendiendo.' },
+        { status: 403 },
+      )
+    }
 
     // Get comanda items to pay — must be SERVED or PENDING (not already PAID or CANCELLED)
     const comandaItems = await db.comandaItem.findMany({
