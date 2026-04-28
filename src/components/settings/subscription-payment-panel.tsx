@@ -56,6 +56,8 @@ import type { SubInfo } from '@/components/settings/subscription-info-card'
 import { ReceiptsHistoryCard } from '@/components/settings/receipts-history-card'
 import type { ReceiptItem } from '@/components/settings/receipts-history-card'
 import { PlanChangeDialog } from '@/components/settings/plan-change-dialog'
+import { WompiCheckoutDialog } from '@/components/settings/wompi-checkout'
+import { CreditCard } from 'lucide-react'
 
 // ── Subscription Payment Panel ──
 // Shows subscription info (Trial/Active/Expired) with countdown.
@@ -107,6 +109,12 @@ export function SubscriptionPaymentPanel() {
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const cancelling = cancelMutation.isPending
+
+  // ── Wompi checkout state ──
+  const [showWompiCheckout, setShowWompiCheckout] = useState(false)
+  const [wompiCheckoutParams, setWompiCheckoutParams] = useState<{
+    planId: number; planName: string; amount: number; billingPeriod: string
+  } | null>(null)
 
   // ── Upload receipt handler ──
   function resetUploadForm() {
@@ -356,9 +364,46 @@ export function SubscriptionPaymentPanel() {
               Subir Comprobante de Pago
             </DialogTitle>
             <DialogDescription>
-              Adjunta la captura o foto del comprobante de tu pago. Será revisado por el administrador.
+              Paga con Wompi de forma automática, o adjunta el comprobante manualmente.
             </DialogDescription>
           </DialogHeader>
+
+          {/* ── Opción Wompi ── */}
+          {subInfo && (
+            <div className="space-y-3">
+              <Button
+                className="w-full"
+                variant="default"
+                onClick={() => {
+                  // Buscar el plan actual para obtener planId
+                  const currentPlan = plans.find(p => p.name === subInfo.planName)
+                  setWompiCheckoutParams({
+                    planId: currentPlan?.id || 0,
+                    planName: subInfo.planName,
+                    amount: subInfo.planPrice,
+                    billingPeriod: subInfo.billingPeriod || 'MONTHLY',
+                  })
+                  setShowUploadDialog(false)
+                  setShowWompiCheckout(true)
+                }}
+              >
+                <CreditCard className="h-4 w-4 mr-2" />
+                Pagar con Wompi
+              </Button>
+              <p className="text-[11px] text-center text-muted-foreground">
+                Pago automático — tarjeta, Nequi, Daviplata, PSE y más
+              </p>
+
+              {/* Divisor "ó" */}
+              <div className="relative flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <span className="relative bg-background px-3 text-xs text-muted-foreground">ó</span>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleUploadReceipt}>
             <div className="space-y-4 py-2">
               {/* File Upload */}
@@ -463,6 +508,27 @@ export function SubscriptionPaymentPanel() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Wompi Checkout Dialog */}
+      {wompiCheckoutParams && (
+        <WompiCheckoutDialog
+          open={showWompiCheckout}
+          onOpenChange={setShowWompiCheckout}
+          storeId={store!.id}
+          planId={wompiCheckoutParams.planId}
+          planName={wompiCheckoutParams.planName}
+          amount={wompiCheckoutParams.amount}
+          billingPeriod={wompiCheckoutParams.billingPeriod}
+          onPaymentComplete={() => {
+            qc.invalidateQueries({ queryKey: ['subscription-current', store!.id] })
+            qc.invalidateQueries({ queryKey: ['payment-receipts', store!.id] })
+          }}
+          onManualUpload={() => {
+            resetUploadForm()
+            setShowUploadDialog(true)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -24,11 +24,14 @@ import {
   Plus,
   AlertTriangle,
   Send,
+  CreditCard,
+  Shield,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/format'
 import { useSubscriptionProration, useUploadPaymentReceipt } from '@/hooks/api/use-settings'
 import type { PlanOption } from '@/components/settings/subscription-payment-panel'
 import { BILLING_PERIODS } from '@/components/settings/subscription-payment-panel'
+import { WompiCheckoutDialog } from '@/components/settings/wompi-checkout'
 
 interface PlanChangeDialogProps {
   open: boolean
@@ -47,6 +50,12 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
   const [uploadMethod, setUploadMethod] = useState('NEQUI')
   const [uploadNotes, setUploadNotes] = useState('')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
+
+  // ── Wompi checkout state ──
+  const [showWompiCheckout, setShowWompiCheckout] = useState(false)
+  const [wompiCheckoutParams, setWompiCheckoutParams] = useState<{
+    planId: number; planName: string; amount: number; billingPeriod: string
+  } | null>(null)
 
   // Track previous open state to reset on open
   const prevOpenRef = useRef(false)
@@ -289,12 +298,47 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
               </div>
             )}
 
-            {/* Comprobante Upload */}
+            {/* Pago con Wompi + Comprobante Manual */}
             {selectedPlanId && (
               <div className="space-y-3">
-                <Label className="text-sm font-semibold">3. Comprobante de pago <span className="text-destructive">*</span></Label>
+                <Label className="text-sm font-semibold">3. Método de pago</Label>
+
+                {/* ── Opción Wompi (primaria) ── */}
+                <Button
+                  className="w-full"
+                  size="lg"
+                  type="button"
+                  onClick={() => {
+                    const plan = plans.find(p => p.id === selectedPlanId)
+                    if (!plan) return
+                    const { adjustedPrice } = getPlanPriceWithProration(plan)
+                    setWompiCheckoutParams({
+                      planId: plan.id,
+                      planName: plan.name,
+                      amount: adjustedPrice,
+                      billingPeriod: selectedBillingPeriod,
+                    })
+                    setShowWompiCheckout(true)
+                  }}
+                >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Pagar con Wompi
+                </Button>
+                <div className="flex items-center gap-2 justify-center text-[11px] text-muted-foreground">
+                  <Shield className="h-3 w-3 text-emerald-500" />
+                  <span>Tarjeta · Nequi · Daviplata · PSE · Bancolombia</span>
+                </div>
+
+                {/* Divisor "ó" */}
+                <div className="relative flex items-center justify-center">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <span className="relative bg-background px-3 text-xs text-muted-foreground">ó</span>
+                </div>
+
                 <p className="text-[11px] text-muted-foreground">
-                  Sube la captura o foto de tu pago. El administrador lo verificará para activar tu nuevo plan.
+                  Sube la captura o foto de tu pago manualmente. El administrador lo verificará para activar tu nuevo plan.
                 </p>
                 <div className="relative">
                   <input
@@ -381,6 +425,26 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
           </DialogFooter>
         </form>
       </DialogContent>
+
+      {/* Wompi Checkout Dialog */}
+      {wompiCheckoutParams && (
+        <WompiCheckoutDialog
+          open={showWompiCheckout}
+          onOpenChange={setShowWompiCheckout}
+          storeId={storeId}
+          planId={wompiCheckoutParams.planId}
+          planName={wompiCheckoutParams.planName}
+          amount={wompiCheckoutParams.amount}
+          billingPeriod={wompiCheckoutParams.billingPeriod}
+          onPaymentComplete={() => {
+            onOpenChange(false)
+            onPlanChanged()
+          }}
+          onManualUpload={() => {
+            setShowWompiCheckout(false)
+          }}
+        />
+      )}
     </Dialog>
   )
 }

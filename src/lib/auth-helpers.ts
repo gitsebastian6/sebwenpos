@@ -257,6 +257,7 @@ export const PUBLIC_PATHS = [
   '/api/auth/logout',  // Logout is public — it only needs the token itself
   '/api/health',
   '/api/subscription/plans',
+  '/api/webhooks/wompi',
   // DEV-ONLY: Test endpoints (only accessible in development mode)
   ...(process.env.NODE_ENV === 'development' ? ['/api/test'] : []),
   // NOTE: /api/auth/register is NOT public — user creation is ONLY

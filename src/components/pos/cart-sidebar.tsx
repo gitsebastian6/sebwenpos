@@ -51,16 +51,18 @@ import {
   RotateCcw,
   Banknote,
   Smartphone,
+  Shield,
 } from 'lucide-react'
 import type { POSReturnDialogRef } from '@/components/pos/pos-return-dialog'
 
 // ─── Payment method labels ──────────────────────────────
 
-const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.ReactNode }[] = [
+const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.ReactNode; badge?: string }[] = [
   { value: 'CASH', label: 'Efectivo', icon: <Banknote className="h-4 w-4" /> },
   { value: 'DAVIPLATA', label: 'Daviplata', icon: <Smartphone className="h-4 w-4" /> },
   { value: 'NEQUI', label: 'Nequi', icon: <Smartphone className="h-4 w-4" /> },
   { value: 'CARD', label: 'Tarjeta', icon: <CreditCard className="h-4 w-4" /> },
+  { value: 'WOMPI', label: 'Wompi', icon: <Shield className="h-4 w-4" />, badge: 'Online' },
   { value: 'TRANSFER', label: 'Transferencia', icon: <ArrowRightLeft className="h-4 w-4" /> },
   { value: 'FIADO', label: 'Fiado', icon: <Users className="h-4 w-4" /> },
 ]
@@ -680,7 +682,7 @@ export function CartSidebar({
                     value={paymentMethod}
                     onValueChange={(v) => {
                       setPaymentMethod(v as PaymentMethod)
-                      if (!['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(v)) setTransferRef('')
+                      if (!['TRANSFER', 'NEQUI', 'DAVIPLATA', 'WOMPI'].includes(v)) setTransferRef('')
                     }}
                     className="grid grid-cols-3 gap-1.5"
                   >
@@ -704,6 +706,9 @@ export function CartSidebar({
                           <RadioGroupItem value={pm.value} id={`payment-${pm.value}`} className="sr-only" disabled={disabled} />
                           <span className="shrink-0">{pm.icon}</span>
                           <span className="font-medium truncate">{pm.label}</span>
+                          {pm.badge && (
+                            <span className="text-[8px] px-1 py-0.5 rounded-full bg-primary/10 text-primary font-semibold leading-none">{pm.badge}</span>
+                          )}
                         </Label>
                       )
                     })}
@@ -717,21 +722,23 @@ export function CartSidebar({
                 </div>
 
                 {/* Transfer reference number */}
-                {['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && (
+                {['TRANSFER', 'NEQUI', 'DAVIPLATA', 'WOMPI'].includes(paymentMethod) && (
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
                       <ArrowRightLeft className="h-3.5 w-3.5" />
-                      Número de {paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod}
+                      {paymentMethod === 'WOMPI' ? 'Referencia Wompi' : `Número de ${paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod}`}
                       <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       value={transferRef}
                       onChange={(e) => setTransferRef(e.target.value)}
-                      placeholder={paymentMethod === 'TRANSFER' ? 'Ej: 000123456789' : 'Ej: 3111234567'}
+                      placeholder={paymentMethod === 'WOMPI' ? 'Ej: 31416_10947' : paymentMethod === 'TRANSFER' ? 'Ej: 000123456789' : 'Ej: 3111234567'}
                       className="text-sm tabular-nums"
                     />
                     <p className="text-xs text-muted-foreground">
-                      {paymentMethod === 'TRANSFER'
+                      {paymentMethod === 'WOMPI'
+                        ? 'Referencia de la transacción Wompi (opcional para verificación)'
+                        : paymentMethod === 'TRANSFER'
                         ? 'Número de referencia de la transferencia bancaria'
                         : paymentMethod === 'NEQUI'
                           ? 'Número de transacción o celular asociado'

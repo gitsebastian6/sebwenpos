@@ -46,6 +46,7 @@ import {
   AlertTriangle,
   Wallet,
   X,
+  Shield,
 } from 'lucide-react'
 import type { TableSession, OpenCashRegister } from '@/hooks/use-tables-data'
 import { usePaySession } from '@/hooks/api/use-tables'
@@ -114,6 +115,7 @@ export function PaymentDialog({
     DAVIPLATA: Smartphone,
     NEQUI: Smartphone,
     CARD: CreditCard,
+    WOMPI: Shield,
     TRANSFER: ArrowRightLeft,
     FIADO: Users,
   }
@@ -164,7 +166,7 @@ export function PaymentDialog({
       return
     }
 
-    // Transfer/Nequi/Daviplata require reference number
+    // Transfer/Nequi/Daviplata require reference number (Wompi ref is optional)
     if (['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && !transferRef.trim()) {
       toast.error(`Ingresa el número de ${paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod}`)
       return
@@ -614,6 +616,7 @@ export function PaymentDialog({
                 { value: 'DAVIPLATA', label: 'Daviplata', Icon: Smartphone },
                 { value: 'NEQUI', label: 'Nequi', Icon: Smartphone },
                 { value: 'CARD', label: 'Tarjeta', Icon: CreditCard },
+                { value: 'WOMPI', label: 'Wompi', Icon: Shield },
                 { value: 'TRANSFER', label: 'Transferencia', Icon: ArrowRightLeft },
                 { value: 'FIADO', label: 'Fiado', Icon: Users },
               ].map((method) => {
@@ -628,12 +631,13 @@ export function PaymentDialog({
                     onClick={() => {
                       if (fiadoDisabled) return
                       setPaymentMethod(method.value)
-                      if (!['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(method.value)) setTransferRef('')
+                      if (!['TRANSFER', 'NEQUI', 'DAVIPLATA', 'WOMPI'].includes(method.value)) setTransferRef('')
                     }}
                     disabled={fiadoDisabled}
                   >
                     <method.Icon className="h-4 w-4 shrink-0" />
                     {method.label}
+                    {method.value === 'WOMPI' && <span className="text-[8px] ml-1 px-1 py-0.5 rounded-full bg-primary/10 text-primary font-semibold leading-none">Online</span>}
                     {fiadoDisabled && <span className="text-[9px] ml-auto opacity-60">Sin cliente</span>}
                   </Button>
                 )
@@ -648,21 +652,23 @@ export function PaymentDialog({
           </div>
 
           {/* Transfer reference number */}
-          {['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && (
+          {['TRANSFER', 'NEQUI', 'DAVIPLATA', 'WOMPI'].includes(paymentMethod) && (
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
                 <ArrowRightLeft className="h-3.5 w-3.5" />
-                Número de {paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod}
-                <span className="text-destructive">*</span>
+                {paymentMethod === 'WOMPI' ? 'Referencia Wompi' : `Número de ${paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod}`}
+                {paymentMethod !== 'WOMPI' && <span className="text-destructive">*</span>}
               </Label>
               <Input
                 value={transferRef}
                 onChange={(e) => setTransferRef(e.target.value)}
-                placeholder={paymentMethod === 'TRANSFER' ? 'Ej: 000123456789' : 'Ej: 3111234567'}
+                placeholder={paymentMethod === 'WOMPI' ? 'Ej: 31416_10947' : paymentMethod === 'TRANSFER' ? 'Ej: 000123456789' : 'Ej: 3111234567'}
                 className="text-sm tabular-nums"
               />
               <p className="text-xs text-muted-foreground">
-                {paymentMethod === 'TRANSFER'
+                {paymentMethod === 'WOMPI'
+                  ? 'Referencia de la transacción Wompi (opcional para verificación)'
+                  : paymentMethod === 'TRANSFER'
                   ? 'Número de referencia de la transferencia bancaria'
                   : paymentMethod === 'NEQUI'
                     ? 'Número de transacción o celular asociado'

@@ -89,6 +89,13 @@ export function paymentMethodLabel(method: string): string {
     MIXED: 'Mixto',
     CREDIT: 'Crédito',
     OTHER: 'Otro',
+    // Wompi payment methods
+    WOMPI_CARD: 'Tarjeta (Wompi)',
+    WOMPI_NEQUI: 'Nequi (Wompi)',
+    WOMPI_DAVIPLATA: 'Daviplata (Wompi)',
+    WOMPI_PSE: 'PSE (Wompi)',
+    WOMPI_BANCOLOMBIA: 'Bancolombia (Wompi)',
+    WOMPI: 'Wompi',
     // DIAN numeric codes
     '1': 'Efectivo',
     '2': 'Tarjeta',

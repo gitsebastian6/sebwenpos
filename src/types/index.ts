@@ -140,6 +140,7 @@ export const PAYMENT_METHODS = [
   'MIXED',
   'CREDIT',
   'OTHER',
+  'WOMPI',
 ] as const
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]

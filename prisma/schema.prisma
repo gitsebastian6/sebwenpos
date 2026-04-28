@@ -218,6 +218,7 @@ model Store {
   purchasePayments    PurchasePayment[]
   costHistories       CostHistory[]
   storeEventLogs     StoreEventLog[]
+  wompiTransactions  WompiTransaction[]
 
   @@map("stores")
 }
@@ -279,6 +280,7 @@ model Subscription {
   paymentReceipts PaymentReceipt[]
   subscriptionHistories SubscriptionHistory[]
   billingRecords  BillingRecord[]
+  wompiTransactions  WompiTransaction[]
 
   @@index([planId])
   @@map("subscriptions")
@@ -368,6 +370,7 @@ model PaymentReceipt {
   subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
   billingRecords BillingRecord[]
+  wompiTransaction   WompiTransaction?
 
   @@index([subscriptionId])
   @@index([storeId, status])
@@ -904,6 +907,7 @@ model Order {
   orderItems         OrderItem[]
   inventoryMovements InventoryMovement[] @relation("OrderMovements")
   invoice            Invoice?
+  wompiTransaction   WompiTransaction?
 
   @@unique([storeId, orderNumber])
   @@index([storeId, createdAt])
@@ -1257,4 +1261,50 @@ model SystemSetting {
   updatedAt DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+// ----------------------------------------------
+// CONTEXTO: TRANSACCIONES WOMPI (Payment Gateway)
+// ----------------------------------------------
+
+model WompiTransaction {
+  id              Int       @id @default(autoincrement())
+  storeId         Int       @map("store_id")
+  subscriptionId  Int?      @map("subscription_id")  // For subscription payments
+  orderId         Int?      @unique @map("order_id")          // For POS payments
+  receiptId       Int?      @unique @map("receipt_id")         // Linked PaymentReceipt
+  wompiId         String?   @map("wompi_id")          // Wompi's transaction ID
+  wompiPaymentLinkId String? @map("wompi_payment_link_id")
+  reference       String    @map("reference")          // Our internal reference
+  amount          Int       // COP (Wompi uses cents, we store as whole COP)
+  amountInCents   Int       @map("amount_in_cents")    // Wompi format (COP * 100)
+  currency        String    @default("COP") @map("currency")
+  paymentMethod   String?   @map("payment_method")    // CARD, NEQUI, DAVIPLATA, PSE, BANCOLOMBIA
+  paymentMethodType String? @map("payment_method_type") // CARD, NEQUI, etc from Wompi
+  status          String    @default("PENDING")        // PENDING, APPROVED, DECLINED, VOIDED, ERROR
+  wompiStatus     String?   @map("wompi_status")       // Raw status from Wompi
+  customerEmail   String?   @map("customer_email")
+  customerName    String?   @map("customer_name")
+  customerPhone   String?   @map("customer_phone")
+  customerDocument String?  @map("customer_document")  // Cédula/NIT
+  metadata        String    @default("{}") @map("metadata") // JSON with extra context
+  wompiResponse   String?   @map("wompi_response")     // Full Wompi response JSON
+  paidAt          DateTime? @map("paid_at")
+  expiresAt       DateTime? @map("expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt
+
+  store        Store?         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  subscription Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  order        Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  receipt      PaymentReceipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+
+  @@unique([reference])
+  @@index([storeId])
+  @@index([subscriptionId])
+  @@index([orderId])
+  @@index([wompiId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("wompi_transactions")
 }

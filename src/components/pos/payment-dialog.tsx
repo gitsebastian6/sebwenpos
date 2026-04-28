@@ -29,15 +29,17 @@ import {
   Hash,
   Percent,
   Loader2,
+  Shield,
 } from 'lucide-react'
 
 // ─── Payment method labels ──────────────────────────────
 
-const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.ReactNode }[] = [
+const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.ReactNode; badge?: string }[] = [
   { value: 'CASH', label: 'Efectivo', icon: <Banknote className="h-4 w-4" /> },
   { value: 'DAVIPLATA', label: 'Daviplata', icon: <Smartphone className="h-4 w-4" /> },
   { value: 'NEQUI', label: 'Nequi', icon: <Smartphone className="h-4 w-4" /> },
   { value: 'CARD', label: 'Tarjeta', icon: <CreditCard className="h-4 w-4" /> },
+  { value: 'WOMPI', label: 'Wompi', icon: <Shield className="h-4 w-4" />, badge: 'Online' },
   { value: 'TRANSFER', label: 'Transferencia', icon: <ArrowRightLeft className="h-4 w-4" /> },
   { value: 'FIADO', label: 'Fiado', icon: <Users className="h-4 w-4" /> },
 ]
@@ -253,8 +255,13 @@ export function PaymentDialog({
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Método de pago</span>
-                  <span className="font-medium">
+                  <span className="font-medium flex items-center gap-1.5">
                     {PAYMENT_METHODS.find((pm) => pm.value === paymentMethod)?.label}
+                    {PAYMENT_METHODS.find((pm) => pm.value === paymentMethod)?.badge && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                        {PAYMENT_METHODS.find((pm) => pm.value === paymentMethod)?.badge}
+                      </span>
+                    )}
                   </span>
                 </div>
                 {selectedCustomer !== 'none' && (
