@@ -57,7 +57,6 @@ export function SuperAdminShell() {
       hasSeededRef[1](true)
       seedPlans.mutate()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── Derived data from queries ──

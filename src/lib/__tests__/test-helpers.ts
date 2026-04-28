@@ -135,6 +135,6 @@ export function createMockDb() {
     employee: {
       delete: vi.fn(),
     },
-    $transaction: vi.fn((cb: Function) => cb(mockTx)),
+    $transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTx)),
   }
 }

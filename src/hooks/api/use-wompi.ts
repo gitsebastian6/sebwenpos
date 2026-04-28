@@ -14,6 +14,8 @@ export interface WompiPaymentLinkResponse {
   amountInCents: number
   currency: string
   expiresAt: string | null
+  demoMode?: boolean
+  demoMessage?: string
 }
 
 export interface WompiTransactionData {

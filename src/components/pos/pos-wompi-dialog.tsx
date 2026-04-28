@@ -57,6 +57,7 @@ export function PosWompiDialog({
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
   const [reference, setReference] = useState<string | null>(null)
   const [linkError, setLinkError] = useState<string>('')
+  const [isDemoMode, setIsDemoMode] = useState(false)
 
   // ── Polling ──
   const isPolling = userAction === 'pending' && wompiTransactionId !== null
@@ -116,10 +117,16 @@ export function PosWompiDialog({
       setWompiTransactionId(result.wompiTransactionId)
       setCheckoutUrl(result.checkoutUrl)
       setReference(result.reference)
+      setIsDemoMode(!!result.demoMode)
 
-      // Abrir checkout de Wompi en nueva pestaña
-      window.open(result.checkoutUrl, '_blank', 'noopener,noreferrer')
-      toast.info('Se abrió la página de pago de Wompi. Completa el pago en esa ventana.')
+      // In demo mode, the checkout URL is a hash fragment — no external page to open
+      if (result.demoMode) {
+        toast.info('Modo Demo: el pago se aprobará automáticamente en unos segundos...')
+      } else {
+        // Abrir checkout de Wompi en nueva pestaña (real mode only)
+        window.open(result.checkoutUrl, '_blank', 'noopener,noreferrer')
+        toast.info('Se abrió la página de pago de Wompi. Completa el pago en esa ventana.')
+      }
     } catch (err) {
       setUserAction('idle')
       const msg = err instanceof Error ? err.message : 'Error al crear enlace de pago'
@@ -143,6 +150,7 @@ export function PosWompiDialog({
       setCheckoutUrl(null)
       setReference(null)
       setLinkError('')
+      setIsDemoMode(false)
       hasCreatedRef.current = false
       notifiedApprovalRef.current = null
     }
@@ -236,8 +244,8 @@ export function PosWompiDialog({
               )}
             </div>
 
-            {/* Enlace de pago + QR-like reference display */}
-            {checkoutUrl && (
+            {/* Enlace de pago + QR-like reference display (real mode only) */}
+            {checkoutUrl && !isDemoMode && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/30">
                   <QrCode className="h-8 w-8 text-emerald-600 shrink-0" />
@@ -257,12 +265,24 @@ export function PosWompiDialog({
             {/* Polling indicator */}
             <div className="flex items-center gap-2 justify-center text-xs text-amber-600 dark:text-amber-400">
               <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Consultando estado del pago cada 5 segundos...</span>
+              <span>
+                {isDemoMode
+                  ? 'El pago demo se aprobará automáticamente en ~10 segundos...'
+                  : 'Consultando estado del pago cada 5 segundos...'}
+              </span>
             </div>
+
+            {/* Demo mode badge */}
+            {isDemoMode && (
+              <div className="flex items-center justify-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                <Beaker className="h-3.5 w-3.5" />
+                Modo Demo — no se conecta a Wompi real
+              </div>
+            )}
 
             {/* Acciones */}
             <div className="flex flex-col gap-2">
-              {checkoutUrl && (
+              {checkoutUrl && !isDemoMode && (
                 <Button
                   variant="outline"
                   className="w-full"
@@ -390,8 +410,17 @@ export function PosWompiDialog({
 
         {/* Badge footer */}
         <div className="flex items-center justify-center gap-2 pt-2 border-t">
-          <Shield className="h-3.5 w-3.5 text-emerald-500" />
-          <span className="text-[11px] text-muted-foreground">Pago seguro vía Wompi — Tarjeta · Nequi · Daviplata · PSE</span>
+          {isDemoMode ? (
+            <>
+              <Beaker className="h-3.5 w-3.5 text-amber-500" />
+              <span className="text-[11px] text-amber-600 dark:text-amber-400">Modo Demo — pago simulado</span>
+            </>
+          ) : (
+            <>
+              <Shield className="h-3.5 w-3.5 text-emerald-500" />
+              <span className="text-[11px] text-muted-foreground">Pago seguro vía Wompi — Tarjeta · Nequi · Daviplata · PSE</span>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

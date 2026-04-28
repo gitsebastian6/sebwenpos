@@ -129,7 +129,7 @@ function setupSuccessfulTransactionMocks() {
   // Cash register (open shift)
   mockDb.cashRegister.findFirst.mockResolvedValue(mockCashRegister)
   // Transaction callback
-  mockDb.$transaction.mockImplementation(async (cb: Function) => {
+  mockDb.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
     const mockTx = {
       order: { create: vi.fn().mockResolvedValue(mockCreatedOrder) },
       product: {

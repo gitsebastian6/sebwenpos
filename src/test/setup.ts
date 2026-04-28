@@ -21,7 +21,7 @@ console.error = (...args: unknown[]) => {
 
 // Polyfill TextEncoder / TextDecoder for jsdom (needed by some internals)
 if (typeof globalThis.TextEncoder === 'undefined') {
-  const { TextEncoder, TextDecoder } = require('util')
+  const { TextEncoder, TextDecoder } = await import('util')
   globalThis.TextEncoder = TextEncoder
   globalThis.TextDecoder = TextDecoder as any
 }
