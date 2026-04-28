@@ -73,7 +73,8 @@ export function useCreateWompiPaymentLink() {
       customerName?: string
       customerDocument?: string
     }) =>
-      mutationFetch<WompiPaymentLinkResponse>(`/api/payments/wompi/create-link?storeId=${storeId}`, 'POST', {
+      mutationFetch<WompiPaymentLinkResponse>('/api/payments/wompi/create-link', 'POST', {
+        storeId,
         amount,
         planId,
         planName,

@@ -21,6 +21,7 @@ import {
   Shield,
   RotateCcw,
   ArrowRight,
+  Beaker,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/format'
 import { useCreateWompiPaymentLink, useWompiTransactionStatus } from '@/hooks/api/use-wompi'
@@ -28,8 +29,7 @@ import { BILLING_PERIODS } from '@/components/settings/subscription-payment-pane
 
 // ── Wompi Checkout Component ──
 // Componente de checkout para pagos con Wompi.
-// Muestra resumen de pago, crea enlace de pago, y consulta estado.
-// El estado se deriva de los datos de la transacción (no de effects con setState).
+// Soporta modo Demo (auto-aprobación) y modo Real (Wompi API).
 
 interface WompiCheckoutProps {
   storeId: number
@@ -40,6 +40,7 @@ interface WompiCheckoutProps {
   customerEmail?: string
   customerName?: string
   customerDocument?: string
+  demoMode?: boolean
   onPaymentComplete: () => void
   onManualUpload: () => void  // Fallback a subida manual de comprobante
 }
@@ -55,6 +56,7 @@ export function WompiCheckout({
   customerEmail,
   customerName,
   customerDocument,
+  demoMode,
   onPaymentComplete,
   onManualUpload,
 }: WompiCheckoutProps) {
@@ -141,16 +143,21 @@ export function WompiCheckout({
       setWompiTransactionId(result.wompiTransactionId)
       setCheckoutUrl(result.checkoutUrl)
 
-      // Abrir checkout de Wompi en nueva pestaña
-      window.open(result.checkoutUrl, '_blank', 'noopener,noreferrer')
-      toast.info('Se abrió la página de pago de Wompi. Completa el pago en esa ventana.')
+      if (demoMode) {
+        // In demo mode, just wait for auto-approval
+        toast.info('Modo Demo: el pago se aprobará automáticamente en unos segundos...')
+      } else {
+        // In real mode, open Wompi checkout in a new tab
+        window.open(result.checkoutUrl, '_blank', 'noopener,noreferrer')
+        toast.info('Se abrió la página de pago de Wompi. Completa el pago en esa ventana.')
+      }
     } catch (err) {
       setUserAction('idle')
       const msg = err instanceof Error ? err.message : 'Error al crear enlace de pago'
       setLinkError(msg)
       toast.error(msg)
     }
-  }, [storeId, amount, planId, planName, billingPeriod, customerEmail, customerName, customerDocument, createLinkMutation])
+  }, [storeId, amount, planId, planName, billingPeriod, customerEmail, customerName, customerDocument, createLinkMutation, demoMode])
 
   // ── Reintentar pago ──
   const handleRetry = useCallback(() => {
@@ -163,27 +170,46 @@ export function WompiCheckout({
 
   // ── Reabrir checkout ──
   const handleReopenCheckout = useCallback(() => {
-    if (checkoutUrl) {
+    if (checkoutUrl && !demoMode) {
       window.open(checkoutUrl, '_blank', 'noopener,noreferrer')
       toast.info('Se abrió la página de pago de Wompi.')
     }
-  }, [checkoutUrl])
+  }, [checkoutUrl, demoMode])
 
   const step = derivedStep
   const errorMessage = derivedErrorMessage
 
   return (
     <div className="space-y-4">
+      {/* ── Demo Mode Banner ── */}
+      {demoMode && step === 'summary' && (
+        <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/20 p-3 flex items-start gap-3">
+          <Beaker className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Modo Demo</p>
+            <p className="text-[11px] text-amber-600 dark:text-amber-400/80 mt-0.5">
+              Los pagos se simulan automáticamente. No se conecta a Wompi real. Cambia WOMPI_ENV a &quot;sandbox&quot; o &quot;production&quot; cuando tengas tus llaves.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Paso 1: Resumen del pago ── */}
       {step === 'summary' && (
         <Card className="border-primary/20">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <CreditCard className="h-4 w-4 text-primary" />
-              Pago con Wompi
+              {demoMode ? (
+                <Beaker className="h-4 w-4 text-amber-500" />
+              ) : (
+                <CreditCard className="h-4 w-4 text-primary" />
+              )}
+              {demoMode ? 'Pago Demo' : 'Pago con Wompi'}
             </CardTitle>
             <CardDescription>
-              Paga de forma segura a través de Wompi — tarjeta, Nequi, Daviplata, PSE y más.
+              {demoMode
+                ? 'Simulación de pago para desarrollo. Se aprobará automáticamente.'
+                : 'Paga de forma segura a través de Wompi — tarjeta, Nequi, Daviplata, PSE y más.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -204,10 +230,19 @@ export function WompiCheckout({
             </div>
 
             {/* Métodos de pago aceptados */}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Shield className="h-3.5 w-3.5 text-emerald-500" />
-              <span>Tarjeta · Nequi · Daviplata · PSE · Bancolombia</span>
-            </div>
+            {!demoMode && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Shield className="h-3.5 w-3.5 text-emerald-500" />
+                <span>Tarjeta · Nequi · Daviplata · PSE · Bancolombia</span>
+              </div>
+            )}
+
+            {demoMode && (
+              <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                <Beaker className="h-3.5 w-3.5" />
+                <span>Simulación — se aprobará en ~10 segundos</span>
+              </div>
+            )}
 
             {/* Botón de pago */}
             <Button
@@ -219,50 +254,60 @@ export function WompiCheckout({
               {createLinkMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Creando enlace de pago...
+                  {demoMode ? 'Creando pago demo...' : 'Creando enlace de pago...'}
                 </>
               ) : (
                 <>
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  Pagar con Wompi
+                  {demoMode ? <Beaker className="h-4 w-4 mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
+                  {demoMode ? 'Simular Pago' : 'Pagar con Wompi'}
                 </>
               )}
             </Button>
 
             {/* Enlace alternativo: subida manual */}
-            <div className="relative flex items-center justify-center my-2">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <span className="relative bg-background px-3 text-xs text-muted-foreground">ó</span>
-            </div>
+            {!demoMode && (
+              <>
+                <div className="relative flex items-center justify-center my-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <span className="relative bg-background px-3 text-xs text-muted-foreground">ó</span>
+                </div>
 
-            <button
-              type="button"
-              onClick={onManualUpload}
-              className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-            >
-              Subir comprobante manualmente
-            </button>
+                <button
+                  type="button"
+                  onClick={onManualUpload}
+                  className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                >
+                  Subir comprobante manualmente
+                </button>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
 
       {/* ── Paso 2: Esperando pago ── */}
       {step === 'pending' && (
-        <Card className="border-amber-200 dark:border-amber-800/40">
+        <Card className={demoMode ? 'border-amber-200 dark:border-amber-800/40' : 'border-amber-200 dark:border-amber-800/40'}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
-              Esperando pago...
+              {demoMode ? 'Procesando pago demo...' : 'Esperando pago...'}
             </CardTitle>
             <CardDescription>
-              Completa el pago en la ventana de Wompi. Verificaremos el estado automáticamente.
+              {demoMode
+                ? 'El pago demo se aprobará automáticamente en unos segundos.'
+                : 'Completa el pago en la ventana de Wompi. Verificaremos el estado automáticamente.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Resumen */}
-            <div className="rounded-lg border bg-amber-50/50 dark:bg-amber-950/10 p-4 space-y-2">
+            <div className={`rounded-lg border p-4 space-y-2 ${
+              demoMode
+                ? 'border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/10'
+                : 'border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/10'
+            }`}>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Plan</span>
                 <span className="text-sm font-semibold">{planName}</span>
@@ -277,17 +322,30 @@ export function WompiCheckout({
                   <span className="text-xs font-mono text-muted-foreground">#{wompiTransactionId}</span>
                 </div>
               )}
+              {demoMode && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Modo</span>
+                  <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 dark:border-amber-700">
+                    <Beaker className="h-3 w-3 mr-1" />
+                    Demo
+                  </Badge>
+                </div>
+              )}
             </div>
 
             {/* Indicador de polling */}
             <div className="flex items-center gap-2 justify-center text-xs text-amber-600 dark:text-amber-400">
               <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Consultando estado del pago cada 5 segundos...</span>
+              <span>
+                {demoMode
+                  ? 'El pago se aprobará automáticamente en ~10 segundos...'
+                  : 'Consultando estado del pago cada 5 segundos...'}
+              </span>
             </div>
 
             {/* Botones de acción */}
             <div className="flex flex-col gap-2">
-              {checkoutUrl && (
+              {!demoMode && checkoutUrl && (
                 <Button
                   variant="outline"
                   className="w-full"
@@ -319,7 +377,9 @@ export function WompiCheckout({
               ¡Pago aprobado!
             </CardTitle>
             <CardDescription>
-              Tu pago ha sido confirmado por Wompi y tu suscripción ha sido activada.
+              {demoMode
+                ? 'El pago demo fue aprobado automáticamente. Tu suscripción ha sido activada.'
+                : 'Tu pago ha sido confirmado por Wompi y tu suscripción ha sido activada.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -335,7 +395,7 @@ export function WompiCheckout({
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Estado</span>
                 <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400 border-0">
-                  Aprobado
+                  Aprobado {demoMode && '(Demo)'}
                 </Badge>
               </div>
             </div>
@@ -372,13 +432,15 @@ export function WompiCheckout({
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Intentar de nuevo
               </Button>
-              <button
-                type="button"
-                onClick={onManualUpload}
-                className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-              >
-                Subir comprobante manualmente
-              </button>
+              {!demoMode && (
+                <button
+                  type="button"
+                  onClick={onManualUpload}
+                  className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                >
+                  Subir comprobante manualmente
+                </button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -408,13 +470,15 @@ export function WompiCheckout({
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Intentar de nuevo
               </Button>
-              <button
-                type="button"
-                onClick={onManualUpload}
-                className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-              >
-                Subir comprobante manualmente
-              </button>
+              {!demoMode && (
+                <button
+                  type="button"
+                  onClick={onManualUpload}
+                  className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                >
+                  Subir comprobante manualmente
+                </button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -424,7 +488,6 @@ export function WompiCheckout({
 }
 
 // ── Wompi Checkout Dialog ──
-// Diálogo que envuelve WompiCheckout para uso en subscription-payment-panel y plan-change-dialog
 
 interface WompiCheckoutDialogProps {
   open: boolean
@@ -437,6 +500,7 @@ interface WompiCheckoutDialogProps {
   customerEmail?: string
   customerName?: string
   customerDocument?: string
+  demoMode?: boolean
   onPaymentComplete: () => void
   onManualUpload: () => void
 }
@@ -452,6 +516,7 @@ export function WompiCheckoutDialog({
   customerEmail,
   customerName,
   customerDocument,
+  demoMode,
   onPaymentComplete,
   onManualUpload,
 }: WompiCheckoutDialogProps) {
@@ -460,11 +525,17 @@ export function WompiCheckoutDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CreditCard className="h-4 w-4 text-primary" />
-            Pago con Wompi
+            {demoMode ? (
+              <Beaker className="h-4 w-4 text-amber-500" />
+            ) : (
+              <CreditCard className="h-4 w-4 text-primary" />
+            )}
+            {demoMode ? 'Pago Demo' : 'Pago con Wompi'}
           </DialogTitle>
           <DialogDescription>
-            Realiza tu pago de forma segura a través de Wompi
+            {demoMode
+              ? 'Simulación de pago para desarrollo'
+              : 'Realiza tu pago de forma segura a través de Wompi'}
           </DialogDescription>
         </DialogHeader>
         <WompiCheckout
@@ -476,6 +547,7 @@ export function WompiCheckoutDialog({
           customerEmail={customerEmail}
           customerName={customerName}
           customerDocument={customerDocument}
+          demoMode={demoMode}
           onPaymentComplete={() => {
             onPaymentComplete()
             onOpenChange(false)

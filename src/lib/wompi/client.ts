@@ -1,13 +1,15 @@
 // ---------------------------------------------------------------------------
-// Ventify POS — Wompi Payment Gateway Client
+// Ventify POS — Wompi Payment Gateway Client (Demo + Real)
 // ---------------------------------------------------------------------------
-// Wraps the Wompi REST API (sandbox + production) for:
-//   - Creating payment links (for subscription/POS payments)
-//   - Querying transaction status
-//   - Verifying webhook signatures (HMAC-SHA256)
+// Supports three modes via WOMPI_ENV:
+//   - "demo"       → Simulates Wompi API (no keys needed, auto-approves)
+//   - "sandbox"    → Wompi sandbox API (test keys required)
+//   - "production" → Wompi production API (real keys required)
 //
-// Wompi API Docs: https://docs.wompi.co/
-// Environment vars: WOMPI_PRIVATE_KEY, WOMPI_PUBLIC_KEY, WOMPI_WEBHOOK_SECRET, WOMPI_ENV
+// The demo mode uses the Strategy pattern:
+//   - All business logic (validations, DB writes) is IDENTICAL
+//   - Only the external API call is replaced with a mock response
+//   - Switching to production = change WOMPI_ENV, no code changes
 // ---------------------------------------------------------------------------
 
 import { logger } from '@/lib/logger'
@@ -20,10 +22,21 @@ const BASE_URLS = {
   production: 'https://production.wompi.co/v1',
 } as const
 
-type WompiEnv = keyof typeof BASE_URLS
+type WompiEnv = 'demo' | 'sandbox' | 'production'
+
+function getWompiEnvValue(): WompiEnv {
+  const env = (process.env.WOMPI_ENV || 'demo') as WompiEnv
+  if (env === 'demo' || env === 'sandbox' || env === 'production') return env
+  return 'demo'
+}
+
+function isDemoMode(): boolean {
+  return getWompiEnvValue() === 'demo'
+}
 
 function getBaseUrl(): string {
-  const env = (process.env.WOMPI_ENV || 'sandbox') as WompiEnv
+  const env = getWompiEnvValue()
+  if (env === 'demo') return 'https://demo.wompi.local/v1' // never actually called
   return BASE_URLS[env] || BASE_URLS.sandbox
 }
 
@@ -119,10 +132,25 @@ export interface CreatePaymentLinkParams {
   customerDocument?: string
 }
 
-// ── API Client ──
+// ── Custom Error ──
+
+export class WompiApiError extends Error {
+  statusCode: number
+  details: unknown
+
+  constructor(message: string, statusCode: number, details?: unknown) {
+    super(message)
+    this.name = 'WompiApiError'
+    this.statusCode = statusCode
+    this.details = details
+  }
+}
+
+// ── API Client (Real Wompi) ──
 
 /**
  * Make an authenticated request to the Wompi API.
+ * Only called when WOMPI_ENV is 'sandbox' or 'production'.
  */
 async function wompiRequest<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
@@ -167,17 +195,59 @@ async function wompiRequest<T>(
   }
 }
 
-// ── Custom Error ──
+// ── Demo Mode Helpers ──
 
-export class WompiApiError extends Error {
-  statusCode: number
-  details: unknown
+/** Generate a unique demo ID */
+function demoId(): number {
+  return Math.floor(Math.random() * 9000000) + 1000000
+}
 
-  constructor(message: string, statusCode: number, details?: unknown) {
-    super(message)
-    this.name = 'WompiApiError'
-    this.statusCode = statusCode
-    this.details = details
+/** Demo auto-approval delay in milliseconds (10 seconds) */
+const DEMO_APPROVAL_DELAY_MS = 10_000
+
+/**
+ * Create a mock payment link for demo mode.
+ * Returns a simulated Wompi payment link with a demo checkout URL.
+ */
+function createDemoPaymentLink(params: CreatePaymentLinkParams): WompiPaymentLink {
+  const id = demoId()
+  const now = new Date()
+
+  logger.info(`[Wompi Demo] Created demo payment link: ${id} — ref: ${params.reference}`)
+
+  return {
+    id,
+    createdAt: now.toISOString(),
+    name: params.name,
+    description: params.description,
+    amountInCents: params.amountInCents,
+    currency: params.currency || 'COP',
+    status: 'ACTIVE',
+    singleUse: params.singleUse !== undefined ? params.singleUse : true,
+    checkoutUrl: `#demo-checkout-${id}`,
+    reference: params.reference,
+    expiresAt: params.expiresAt,
+  }
+}
+
+/**
+ * Create a mock transaction for demo mode.
+ * Initially PENDING — will auto-approve after DEMO_APPROVAL_DELAY_MS.
+ */
+function createDemoTransaction(reference: string, amountInCents: number): WompiTransaction {
+  const id = demoId()
+  return {
+    id,
+    createdAt: new Date().toISOString(),
+    amountInCents,
+    reference,
+    currency: 'COP',
+    status: 'PENDING',
+    paymentMethodType: 'CARD',
+    paymentMethod: {
+      type: 'CARD',
+      extra: { brand: 'VISA', last_four: '4242' },
+    },
   }
 }
 
@@ -195,11 +265,18 @@ interface WompiTransactionResponse {
 
 /**
  * Create a payment link for subscription or POS payments.
- * Wompi docs: POST /payment_links
+ * In demo mode, returns a simulated payment link.
+ * In sandbox/production, calls the real Wompi API.
  */
 export async function createPaymentLink(
   params: CreatePaymentLinkParams,
 ): Promise<WompiPaymentLink> {
+  // ── Demo Mode ──
+  if (isDemoMode()) {
+    return createDemoPaymentLink(params)
+  }
+
+  // ── Real Wompi API ──
   const payload: Record<string, unknown> = {
     name: params.name,
     description: params.description,
@@ -226,12 +303,30 @@ export async function createPaymentLink(
 }
 
 /**
- * Get transaction details from Wompi.
- * Wompi docs: GET /transactions/{id}
+ * Get transaction details.
+ * In demo mode, simulates status transitions (PENDING → APPROVED after delay).
  */
 export async function getTransaction(
   transactionId: number | string,
 ): Promise<WompiTransaction> {
+  // ── Demo Mode ──
+  if (isDemoMode()) {
+    // Demo transactions auto-approve after DEMO_APPROVAL_DELAY_MS
+    // The status/[id] route handles the actual logic of checking timing
+    // Here we just return a basic transaction — the route will determine status
+    return {
+      id: Number(transactionId),
+      createdAt: new Date().toISOString(),
+      amountInCents: 0,
+      reference: `demo-${transactionId}`,
+      currency: 'COP',
+      status: 'PENDING',
+      paymentMethodType: 'CARD',
+      paymentMethod: null,
+    }
+  }
+
+  // ── Real Wompi API ──
   const response = await wompiRequest<WompiTransactionResponse>(
     'GET',
     `/transactions/${transactionId}`,
@@ -242,9 +337,24 @@ export async function getTransaction(
 
 /**
  * Void (cancel) a Wompi transaction before it's settled.
- * Wompi docs: POST /transactions/{id}/void
  */
 export async function voidTransaction(transactionId: number | string): Promise<WompiTransaction> {
+  // ── Demo Mode ──
+  if (isDemoMode()) {
+    logger.info(`[Wompi Demo] Transaction ${transactionId} voided`)
+    return {
+      id: Number(transactionId),
+      createdAt: new Date().toISOString(),
+      amountInCents: 0,
+      reference: `demo-${transactionId}`,
+      currency: 'COP',
+      status: 'VOIDED',
+      paymentMethodType: 'CARD',
+      paymentMethod: null,
+    }
+  }
+
+  // ── Real Wompi API ──
   const response = await wompiRequest<WompiTransactionResponse>(
     'POST',
     `/transactions/${transactionId}/void`,
@@ -255,28 +365,22 @@ export async function voidTransaction(transactionId: number | string): Promise<W
 
 /**
  * Verify a Wompi webhook signature using HMAC-SHA256.
- *
- * Wompi sends a checksum in the `signature.checksum` field of the webhook payload.
- * The checksum is computed as HMAC-SHA256 of the event properties listed in
- * `signature.properties`, concatenated with the event timestamp.
- *
- * Verification steps:
- * 1. Extract the property values from the event data in the order specified by signature.properties
- * 2. Concatenate them with the timestamp
- * 3. Compute HMAC-SHA256 using the webhook secret
- * 4. Compare with the provided checksum
+ * In demo mode, always returns true (no real webhooks).
  */
 export function verifyWebhookSignature(
   payload: WompiWebhookEvent,
   checksum: string,
   timestamp: number,
 ): boolean {
+  // ── Demo Mode: skip signature verification ──
+  if (isDemoMode()) {
+    logger.debug('[Wompi Demo] Skipping webhook signature verification')
+    return true
+  }
+
   try {
     const secret = getWebhookSecret()
 
-    // Build the string to sign from the event properties
-    // Wompi verification: concatenate transaction properties + timestamp
-    // The signature properties define which fields are included in the checksum
     const signatureProperties = payload.signature?.properties || [
       'transaction.id',
       'transaction.status',
@@ -284,7 +388,6 @@ export function verifyWebhookSignature(
       'transaction.reference',
     ]
 
-    // Extract values from the payload based on the property paths
     const values: string[] = []
     for (const prop of signatureProperties) {
       const value = getNestedValue(payload as unknown as Record<string, unknown>, prop)
@@ -293,13 +396,10 @@ export function verifyWebhookSignature(
       }
     }
 
-    // Append the timestamp
     values.push(String(timestamp))
 
-    // Concatenate all values
     const message = values.join('')
 
-    // Compute HMAC-SHA256
     const hmac = createHmac('sha256', secret)
     hmac.update(message)
     const computed = hmac.digest('hex')
@@ -323,10 +423,8 @@ export function verifyWebhookSignature(
 
 /**
  * Extract a nested value from an object using dot notation path.
- * e.g., getNestedValue(obj, 'transaction.id') → obj.data.transaction.id
  */
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
-  // Wompi properties are relative to event.data
   const fullPath = `data.${path}`
   const keys = fullPath.split('.')
   let current: unknown = obj
@@ -341,33 +439,49 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   return current
 }
 
+// ── Environment & Config Helpers ──
+
 /**
- * Get the current Wompi environment (sandbox/production).
+ * Get the current Wompi environment (demo/sandbox/production).
  */
 export function getWompiEnv(): string {
-  return process.env.WOMPI_ENV || 'sandbox'
+  return getWompiEnvValue()
 }
 
 /**
- * Get the Wompi public key (for frontend use).
+ * Check if Wompi is in demo mode.
+ */
+export function isWompiDemoMode(): boolean {
+  return isDemoMode()
+}
+
+/**
+ * Get the Wompi public key (for server-side use).
  */
 export function getWompiPublicKey(): string {
+  if (isDemoMode()) return 'demo_public_key'
   return getPublicKey()
 }
 
 /**
  * Get the Wompi public key for browser use (NEXT_PUBLIC_ prefix).
- * Falls back to the server-side WOMPI_PUBLIC_KEY if NEXT_PUBLIC_ version is not set.
  */
 export function getWompiBrowserPublicKey(): string {
   return process.env.NEXT_PUBLIC_WOMPI_PUBLIC_KEY || process.env.WOMPI_PUBLIC_KEY || ''
 }
 
 /**
- * Check if Wompi API keys are configured (not placeholder values).
- * Returns { configured: boolean, missingKeys: string[] }
+ * Check if Wompi is configured and ready to use.
+ * In demo mode, always returns configured=true (no keys needed).
+ * In sandbox/production, checks that API keys are set and not placeholders.
  */
-export function isWompiConfigured(): { configured: boolean; missingKeys: string[] } {
+export function isWompiConfigured(): { configured: boolean; missingKeys: string[]; mode: string } {
+  // ── Demo Mode: always configured ──
+  if (isDemoMode()) {
+    return { configured: true, missingKeys: [], mode: 'demo' }
+  }
+
+  // ── Real Mode: check keys ──
   const missingKeys: string[] = []
   const placeholderPatterns = ['xxxxxxxxxxxxx', 'test_xxx', 'xxx', 'your_', 'replace_', 'changeme']
 
@@ -381,5 +495,42 @@ export function isWompiConfigured(): { configured: boolean; missingKeys: string[
     missingKeys.push('WOMPI_PUBLIC_KEY')
   }
 
-  return { configured: missingKeys.length === 0, missingKeys }
+  return {
+    configured: missingKeys.length === 0,
+    missingKeys,
+    mode: getWompiEnvValue(),
+  }
+}
+
+/**
+ * Get the demo auto-approval delay in seconds.
+ */
+export function getDemoApprovalDelay(): number {
+  return DEMO_APPROVAL_DELAY_MS / 1000
+}
+
+/**
+ * Check if a demo transaction should be auto-approved based on creation time.
+ * Returns the simulated WompiTransaction with appropriate status.
+ */
+export function getDemoTransactionStatus(
+  createdAt: Date,
+  amount: number,
+  reference: string,
+): { status: string; wompiStatus: string; paymentMethodType: string } {
+  const elapsed = Date.now() - new Date(createdAt).getTime()
+
+  if (elapsed >= DEMO_APPROVAL_DELAY_MS) {
+    return {
+      status: 'APPROVED',
+      wompiStatus: 'APPROVED',
+      paymentMethodType: 'CARD',
+    }
+  }
+
+  return {
+    status: 'PENDING',
+    wompiStatus: 'PENDING',
+    paymentMethodType: 'CARD',
+  }
 }

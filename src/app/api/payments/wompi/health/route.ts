@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { isWompiConfigured } from '@/lib/wompi/client'
+import { isWompiConfigured, isWompiDemoMode, getDemoApprovalDelay } from '@/lib/wompi/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,12 +7,19 @@ export const dynamic = 'force-dynamic'
 // Returns Wompi configuration status.
 // Public — no auth required (used by client to check if Wompi is available).
 export async function GET() {
-  const { configured, missingKeys } = isWompiConfigured()
-  const env = process.env.WOMPI_ENV || 'sandbox'
+  const { configured, missingKeys, mode } = isWompiConfigured()
+  const demoMode = isWompiDemoMode()
 
   return NextResponse.json({
     configured,
-    env,
+    mode,                             // "demo" | "sandbox" | "production"
+    demoMode,                         // boolean convenience flag
     missingKeys,
+    ...(demoMode && {
+      demoInfo: {
+        approvalDelaySeconds: getDemoApprovalDelay(),
+        description: 'Modo Demo — los pagos se auto-aprueban después de ' + getDemoApprovalDelay() + ' segundos. No se conecta a Wompi real.',
+      },
+    }),
   })
 }

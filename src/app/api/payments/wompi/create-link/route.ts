@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireAuthStoreId } from '@/lib/api-auth'
-import { createPaymentLink, WompiApiError, isWompiConfigured } from '@/lib/wompi/client'
+import { createPaymentLink, WompiApiError, isWompiConfigured, isWompiDemoMode } from '@/lib/wompi/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,6 +11,9 @@ export const dynamic = 'force-dynamic'
 // POST /api/payments/wompi/create-link
 // Creates a Wompi payment link for subscription or POS payments.
 // Requires authentication and store access.
+//
+// In demo mode: creates a simulated payment link that auto-approves.
+// In sandbox/production: calls the real Wompi API.
 // ---------------------------------------------------------------------------
 
 const createLinkSchema = z.object({
@@ -30,10 +33,11 @@ const createLinkSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    // ── Auth check ──
+    // ── Parse and validate body ──
     const body = await request.json()
     const data = createLinkSchema.parse(body)
 
+    // ── Auth check ──
     const storeIdOrErr = requireAuthStoreId(request, data.storeId)
     if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
     const storeId = storeIdOrErr
@@ -99,6 +103,7 @@ export async function POST(request: NextRequest) {
           billingPeriod: data.billingPeriod || null,
           storeName: store.name,
           storeNit: store.nit,
+          demoMode: isWompiDemoMode(),
         }),
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
       },
@@ -106,8 +111,9 @@ export async function POST(request: NextRequest) {
 
     // ── Check if Wompi is configured ──
     const wompiConfig = isWompiConfigured()
+
     if (!wompiConfig.configured) {
-      // Still create the WompiTransaction record (for tracking) but with ERROR status
+      // Wompi not configured and not in demo mode
       await db.wompiTransaction.update({
         where: { id: wompiTx.id },
         data: {
@@ -115,19 +121,19 @@ export async function POST(request: NextRequest) {
           wompiResponse: JSON.stringify({
             error: 'Wompi no configurado',
             missingKeys: wompiConfig.missingKeys,
-            hint: 'Configura las llaves de Wompi en .env para habilitar pagos. Obtén tus llaves en https://dashboard.wompi.co',
+            hint: 'Configura WOMPI_ENV=demo para desarrollo sin llaves, o configura las llaves reales en .env',
           }),
         },
       })
       return NextResponse.json({
         error: 'Wompi no está configurado',
-        details: `Faltan las siguientes variables de entorno: ${wompiConfig.missingKeys.join(', ')}. Configúralas en .env para habilitar pagos con Wompi.`,
-        hint: 'Obtén tus llaves en https://dashboard.wompi.co — usa llaves de sandbox para pruebas',
+        details: `Faltan las siguientes variables de entorno: ${wompiConfig.missingKeys.join(', ')}.`,
+        hint: 'Configura WOMPI_ENV=demo en .env para desarrollo sin llaves de Wompi, o configura las llaves reales.',
         missingKeys: wompiConfig.missingKeys,
-      }, { status: 503 })  // 503 Service Unavailable
+      }, { status: 503 })
     }
 
-    // ── Call Wompi API to create payment link ──
+    // ── Create payment link (demo or real) ──
     let paymentLink
     try {
       paymentLink = await createPaymentLink({
@@ -144,7 +150,6 @@ export async function POST(request: NextRequest) {
         customerDocument: data.customerDocument,
       })
     } catch (error) {
-      // If Wompi API fails, update our record to ERROR status
       await db.wompiTransaction.update({
         where: { id: wompiTx.id },
         data: {
@@ -175,7 +180,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    logger.info(`[Wompi] Payment link created: store=${storeId}, ref=${reference}, link=${paymentLink.id}`)
+    logger.info(`[Wompi] Payment link created: store=${storeId}, ref=${reference}, link=${paymentLink.id}, demo=${isWompiDemoMode()}`)
 
     return NextResponse.json({
       checkoutUrl: paymentLink.checkoutUrl,
@@ -186,6 +191,10 @@ export async function POST(request: NextRequest) {
       amountInCents,
       currency: 'COP',
       expiresAt: paymentLink.expiresAt,
+      ...(isWompiDemoMode() && {
+        demoMode: true,
+        demoMessage: `Modo Demo: el pago se auto-aprobará en unos segundos. No se conecta a Wompi real.`,
+      }),
     }, { status: 201 })
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {

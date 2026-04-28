@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Copy,
   QrCode,
+  Beaker,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/format'
 import { useCreateWompiPaymentLink, useWompiTransactionStatus } from '@/hooks/api/use-wompi'

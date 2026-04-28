@@ -390,7 +390,6 @@ export function SubscriptionPaymentPanel() {
                     className="w-full"
                     variant="default"
                     onClick={() => {
-                      // Buscar el plan actual para obtener planId
                       const currentPlan = plans.find(p => p.name === subInfo.planName)
                       setWompiCheckoutParams({
                         planId: currentPlan?.id || 0,
@@ -402,17 +401,28 @@ export function SubscriptionPaymentPanel() {
                       setShowWompiCheckout(true)
                     }}
                   >
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Pagar con Wompi
+                    {wompiHealth?.demoMode ? (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3h6v11l-3 3-3-3z"/><path d="M6 21h12"/><path d="M9 21v-4"/><path d="M15 21v-4"/></svg>
+                        Pagar con Wompi (Demo)
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="h-4 w-4 mr-2" />
+                        Pagar con Wompi
+                      </>
+                    )}
                   </Button>
                   <p className="text-[11px] text-center text-muted-foreground">
-                    Pago automático — tarjeta, Nequi, Daviplata, PSE y más
+                    {wompiHealth?.demoMode
+                      ? 'Modo Demo — pago simulado, se aprueba automáticamente'
+                      : 'Pago automático — tarjeta, Nequi, Daviplata, PSE y más'}
                   </p>
                 </>
               ) : (
                 <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-700 dark:text-amber-400">
                   <p className="font-medium">Wompi no configurado</p>
-                  <p className="text-xs mt-1">Configura las llaves de Wompi en el archivo .env para habilitar pagos en línea. <a href="https://dashboard.wompi.co" target="_blank" rel="noopener noreferrer" className="underline">Obtener llaves</a></p>
+                  <p className="text-xs mt-1">Configura WOMPI_ENV=demo en .env para pruebas, o las llaves reales para pagos en línea. <a href="https://dashboard.wompi.co" target="_blank" rel="noopener noreferrer" className="underline">Obtener llaves</a></p>
                 </div>
               )}
 
@@ -541,6 +551,7 @@ export function SubscriptionPaymentPanel() {
           planName={wompiCheckoutParams.planName}
           amount={wompiCheckoutParams.amount}
           billingPeriod={wompiCheckoutParams.billingPeriod}
+          demoMode={wompiHealth?.demoMode}
           onPaymentComplete={() => {
             qc.invalidateQueries({ queryKey: ['subscription-current', store!.id] })
             qc.invalidateQueries({ queryKey: ['payment-receipts', store!.id] })
