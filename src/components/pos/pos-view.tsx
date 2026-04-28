@@ -426,6 +426,7 @@ export function POSView() {
         selectedCashRegisterId={selectedCashRegisterId}
         setSelectedCashRegisterId={setSelectedCashRegisterId}
         currencyCode={currencyCode}
+        storeId={storeId}
         printLastOrderTicket={printLastOrderTicket}
         returnDialogRef={returnDialogRef}
       />

@@ -83,7 +83,8 @@ export function paymentMethodLabel(method: string): string {
     CARD: 'Tarjeta',
     NEQUI: 'Nequi',
     DAVIPLATA: 'Daviplata',
-    BANCOLIBRO: 'Bancolibro',
+    BANCOLOMBIA: 'Bancolombia',
+    BANCOLIBRO: 'Bancolombia', // Backward compat: old records still render correctly
     TRANSFER: 'Transferencia',
     FIADO: 'Fiado',
     MIXED: 'Mixto',

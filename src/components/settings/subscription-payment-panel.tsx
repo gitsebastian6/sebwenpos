@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -57,6 +57,7 @@ import { ReceiptsHistoryCard } from '@/components/settings/receipts-history-card
 import type { ReceiptItem } from '@/components/settings/receipts-history-card'
 import { PlanChangeDialog } from '@/components/settings/plan-change-dialog'
 import { WompiCheckoutDialog } from '@/components/settings/wompi-checkout'
+import { WompiTransactionsCard } from '@/components/settings/wompi-transactions-card'
 import { CreditCard } from 'lucide-react'
 
 // ── Subscription Payment Panel ──
@@ -109,6 +110,13 @@ export function SubscriptionPaymentPanel() {
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const cancelling = cancelMutation.isPending
+
+  // ── Wompi health check ──
+  const { data: wompiHealth } = useQuery({
+    queryKey: ['wompi-health'],
+    queryFn: () => fetch('/api/payments/wompi/health').then(r => r.json()),
+    staleTime: 60_000,
+  })
 
   // ── Wompi checkout state ──
   const [showWompiCheckout, setShowWompiCheckout] = useState(false)
@@ -214,6 +222,11 @@ export function SubscriptionPaymentPanel() {
         canUpload={!!subInfo}
         hasPendingReceipt={hasPendingReceipt}
       />
+
+      {/* Wompi Transaction History */}
+      {store?.id && (
+        <WompiTransactionsCard storeId={store.id} />
+      )}
 
       {/* Plan Comparison Card */}
       {plans.length > 0 && (
@@ -371,28 +384,37 @@ export function SubscriptionPaymentPanel() {
           {/* ── Opción Wompi ── */}
           {subInfo && (
             <div className="space-y-3">
-              <Button
-                className="w-full"
-                variant="default"
-                onClick={() => {
-                  // Buscar el plan actual para obtener planId
-                  const currentPlan = plans.find(p => p.name === subInfo.planName)
-                  setWompiCheckoutParams({
-                    planId: currentPlan?.id || 0,
-                    planName: subInfo.planName,
-                    amount: subInfo.planPrice,
-                    billingPeriod: subInfo.billingPeriod || 'MONTHLY',
-                  })
-                  setShowUploadDialog(false)
-                  setShowWompiCheckout(true)
-                }}
-              >
-                <CreditCard className="h-4 w-4 mr-2" />
-                Pagar con Wompi
-              </Button>
-              <p className="text-[11px] text-center text-muted-foreground">
-                Pago automático — tarjeta, Nequi, Daviplata, PSE y más
-              </p>
+              {wompiHealth?.configured ? (
+                <>
+                  <Button
+                    className="w-full"
+                    variant="default"
+                    onClick={() => {
+                      // Buscar el plan actual para obtener planId
+                      const currentPlan = plans.find(p => p.name === subInfo.planName)
+                      setWompiCheckoutParams({
+                        planId: currentPlan?.id || 0,
+                        planName: subInfo.planName,
+                        amount: subInfo.planPrice,
+                        billingPeriod: subInfo.billingPeriod || 'MONTHLY',
+                      })
+                      setShowUploadDialog(false)
+                      setShowWompiCheckout(true)
+                    }}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Pagar con Wompi
+                  </Button>
+                  <p className="text-[11px] text-center text-muted-foreground">
+                    Pago automático — tarjeta, Nequi, Daviplata, PSE y más
+                  </p>
+                </>
+              ) : (
+                <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-700 dark:text-amber-400">
+                  <p className="font-medium">Wompi no configurado</p>
+                  <p className="text-xs mt-1">Configura las llaves de Wompi en el archivo .env para habilitar pagos en línea. <a href="https://dashboard.wompi.co" target="_blank" rel="noopener noreferrer" className="underline">Obtener llaves</a></p>
+                </div>
+              )}
 
               {/* Divisor "ó" */}
               <div className="relative flex items-center justify-center">

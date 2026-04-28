@@ -98,7 +98,7 @@ export const paymentMethodSchema = z.enum([
   'CARD',
   'NEQUI',
   'DAVIPLATA',
-  'BANCOLIBRO',
+  'BANCOLOMBIA',
   'TRANSFER',
   'MIXED',
   'CREDIT',

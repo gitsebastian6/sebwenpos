@@ -258,6 +258,7 @@ export const PUBLIC_PATHS = [
   '/api/health',
   '/api/subscription/plans',
   '/api/webhooks/wompi',
+  '/api/payments/wompi/health',
   // DEV-ONLY: Test endpoints (only accessible in development mode)
   ...(process.env.NODE_ENV === 'development' ? ['/api/test'] : []),
   // NOTE: /api/auth/register is NOT public — user creation is ONLY

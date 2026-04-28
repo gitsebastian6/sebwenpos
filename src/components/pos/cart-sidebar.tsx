@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useCallback } from 'react'
 import { formatCurrency } from '@/lib/auth'
 import type { DiscountType } from '@/hooks/pos/use-pos-cart'
 import type { OpenCashRegister } from '@/hooks/pos/use-pos-data'
@@ -54,6 +55,7 @@ import {
   Shield,
 } from 'lucide-react'
 import type { POSReturnDialogRef } from '@/components/pos/pos-return-dialog'
+import { PosWompiDialog } from '@/components/pos/pos-wompi-dialog'
 
 // ─── Payment method labels ──────────────────────────────
 
@@ -137,6 +139,7 @@ export interface CartSidebarProps {
   selectedCashRegisterId: string
   setSelectedCashRegisterId: (v: string) => void
   currencyCode: string
+  storeId?: number
 
   // Callbacks
   printLastOrderTicket: () => void
@@ -194,10 +197,36 @@ export function CartSidebar({
   selectedCashRegisterId,
   setSelectedCashRegisterId,
   currencyCode,
+  storeId,
   printLastOrderTicket,
   returnDialogRef,
 }: CartSidebarProps) {
+  // ── Wompi POS dialog state ──
+  const [posWompiDialogOpen, setPosWompiDialogOpen] = useState(false)
+
+  // Handle "Cobrar" button click
+  const handleCobrar = useCallback(() => {
+    if (paymentMethod === 'WOMPI' && storeId) {
+      setPosWompiDialogOpen(true)
+    } else {
+      setShowChargeDialog(true)
+    }
+  }, [paymentMethod, storeId, setShowChargeDialog])
+
+  // When Wompi payment is complete, set reference and open charge dialog
+  const handleWompiPaymentComplete = useCallback((wompiReference: string) => {
+    if (wompiReference) {
+      setTransferRef(wompiReference)
+    }
+    setShowChargeDialog(true)
+  }, [setTransferRef, setShowChargeDialog])
+
+  // When Wompi dialog is cancelled
+  const handleWompiCancel = useCallback(() => {
+    setPosWompiDialogOpen(false)
+  }, [])
   return (
+    <>
     <Sheet open={cartSheetOpen} onOpenChange={setCartSheetOpen}>
       <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0">
         <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
@@ -768,9 +797,9 @@ export function CartSidebar({
                   <Button
                     className="w-full h-12 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white active:scale-[0.98] transition-all duration-150 shadow-lg shadow-emerald-600/20 hover:shadow-xl hover:shadow-emerald-600/30"
                     disabled={cart.length === 0 || openCashRegisters.length === 0}
-                    onClick={() => setShowChargeDialog(true)}
+                    onClick={handleCobrar}
                   >
-                    <CreditCard className="h-5 w-5 mr-2" />
+                    {paymentMethod === 'WOMPI' ? <Shield className="h-5 w-5 mr-2" /> : <CreditCard className="h-5 w-5 mr-2" />}
                     Cobrar {formatCurrency(total, currencyCode)}
                   </Button>
 
@@ -823,5 +852,18 @@ export function CartSidebar({
         )}
       </SheetContent>
     </Sheet>
+
+    {/* POS Wompi Payment Dialog */}
+    {storeId && (
+      <PosWompiDialog
+        open={posWompiDialogOpen}
+        onOpenChange={setPosWompiDialogOpen}
+        storeId={storeId}
+        amount={total}
+        onPaymentComplete={handleWompiPaymentComplete}
+        onCancel={handleWompiCancel}
+      />
+    )}
+    </>
   )
 }

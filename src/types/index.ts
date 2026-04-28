@@ -134,7 +134,7 @@ export const PAYMENT_METHODS = [
   'CARD',
   'NEQUI',
   'DAVIPLATA',
-  'BANCOLIBRO',
+  'BANCOLOMBIA',
   'TRANSFER',
   'FIADO',
   'MIXED',

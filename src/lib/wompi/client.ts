@@ -241,6 +241,19 @@ export async function getTransaction(
 }
 
 /**
+ * Void (cancel) a Wompi transaction before it's settled.
+ * Wompi docs: POST /transactions/{id}/void
+ */
+export async function voidTransaction(transactionId: number | string): Promise<WompiTransaction> {
+  const response = await wompiRequest<WompiTransactionResponse>(
+    'POST',
+    `/transactions/${transactionId}/void`,
+  )
+  logger.info(`[Wompi] Transaction ${transactionId} voided`)
+  return response.data
+}
+
+/**
  * Verify a Wompi webhook signature using HMAC-SHA256.
  *
  * Wompi sends a checksum in the `signature.checksum` field of the webhook payload.
@@ -340,4 +353,33 @@ export function getWompiEnv(): string {
  */
 export function getWompiPublicKey(): string {
   return getPublicKey()
+}
+
+/**
+ * Get the Wompi public key for browser use (NEXT_PUBLIC_ prefix).
+ * Falls back to the server-side WOMPI_PUBLIC_KEY if NEXT_PUBLIC_ version is not set.
+ */
+export function getWompiBrowserPublicKey(): string {
+  return process.env.NEXT_PUBLIC_WOMPI_PUBLIC_KEY || process.env.WOMPI_PUBLIC_KEY || ''
+}
+
+/**
+ * Check if Wompi API keys are configured (not placeholder values).
+ * Returns { configured: boolean, missingKeys: string[] }
+ */
+export function isWompiConfigured(): { configured: boolean; missingKeys: string[] } {
+  const missingKeys: string[] = []
+  const placeholderPatterns = ['xxxxxxxxxxxxx', 'test_xxx', 'xxx', 'your_', 'replace_', 'changeme']
+
+  const privateKey = process.env.WOMPI_PRIVATE_KEY || ''
+  const publicKey = process.env.WOMPI_PUBLIC_KEY || ''
+
+  if (!privateKey || placeholderPatterns.some(p => privateKey.includes(p))) {
+    missingKeys.push('WOMPI_PRIVATE_KEY')
+  }
+  if (!publicKey || placeholderPatterns.some(p => publicKey.includes(p))) {
+    missingKeys.push('WOMPI_PUBLIC_KEY')
+  }
+
+  return { configured: missingKeys.length === 0, missingKeys }
 }

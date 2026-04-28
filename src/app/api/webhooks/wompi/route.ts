@@ -40,11 +40,14 @@ export async function POST(request: NextRequest) {
     const timestamp = payload.timestamp
 
     if (!checksum || !timestamp) {
-      logger.warn('[Wompi Webhook] Missing signature or timestamp — skipping verification (development mode)')
-      // In production, you should reject unsigned webhooks
-      if (process.env.WOMPI_ENV === 'production') {
+      logger.warn('[Wompi Webhook] Missing signature or timestamp')
+      // Always require signature in production
+      // In sandbox, allow missing signature ONLY if WOMPI_SKIP_SIGNATURE is explicitly set
+      const skipSig = process.env.WOMPI_SKIP_SIGNATURE === 'true'
+      if (process.env.WOMPI_ENV === 'production' || !skipSig) {
         return NextResponse.json({ error: 'Missing signature' }, { status: 401 })
       }
+      logger.warn('[Wompi Webhook] Signature verification SKIPPED (WOMPI_SKIP_SIGNATURE=true)')
     } else if (!verifyWebhookSignature(payload, checksum, timestamp)) {
       logger.error('[Wompi Webhook] Invalid signature — possible tampering')
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
@@ -107,6 +110,9 @@ async function processTransactionUpdate(transaction: WompiTransaction): Promise<
       subscription: {
         include: { plan: true },
       },
+      order: {
+        select: { id: true, orderNumber: true, status: true, total: true, paymentMethod: true, notes: true },
+      },
     },
   })
 
@@ -115,9 +121,12 @@ async function processTransactionUpdate(transaction: WompiTransaction): Promise<
     return
   }
 
-  // Skip if already processed with same status
-  if (wompiTx.wompiStatus === wompiStatus && wompiTx.status !== 'PENDING') {
-    logger.info(`[Wompi Webhook] Transaction ${wompiId} already processed with status ${wompiStatus}`)
+  // ── Idempotency check ──
+  // If the transaction is already in a terminal state (APPROVED, DECLINED, VOIDED)
+  // AND the wompiStatus matches, skip processing
+  const terminalStates = ['APPROVED', 'DECLINED', 'VOIDED']
+  if (terminalStates.includes(wompiTx.status) && wompiTx.wompiStatus === wompiStatus) {
+    logger.info(`[Wompi Webhook] Idempotency: Transaction ${wompiId} already processed as ${wompiTx.status}`)
     return
   }
 
@@ -188,10 +197,33 @@ async function handleApprovedTransaction(
       startDate: Date
       plan: { id: number; name: string; price: number }
     } | null
+    order: {
+      id: number
+      orderNumber: string
+      status: string
+      total: number
+      paymentMethod: string
+      notes: string | null
+    } | null
   },
 ): Promise<void> {
   const receipt = wompiTx.receipt
   const subscription = wompiTx.subscription || receipt?.subscription
+
+  // ── Handle POS order (if linked) ──
+  if (wompiTx.order && !wompiTx.subscription && !wompiTx.receipt) {
+    // This is a POS order payment - update the order's payment method info
+    await db.order.update({
+      where: { id: wompiTx.order.id },
+      data: {
+        // Store Wompi reference in the order's notes
+        notes: [wompiTx.order.notes, `Pago Wompi aprobado — Ref: ${wompiTx.reference}`].filter(Boolean).join('\n'),
+      },
+    })
+
+    logger.info(`[Wompi Webhook] POS order ${wompiTx.order.orderNumber} payment approved — ref: ${wompiTx.reference}`)
+    return
+  }
 
   if (!subscription) {
     logger.warn(`[Wompi Webhook] No subscription found for WompiTransaction ${wompiTx.id}`)

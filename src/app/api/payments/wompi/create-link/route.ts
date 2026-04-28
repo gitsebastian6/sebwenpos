@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireAuthStoreId } from '@/lib/api-auth'
-import { createPaymentLink, WompiApiError } from '@/lib/wompi/client'
+import { createPaymentLink, WompiApiError, isWompiConfigured } from '@/lib/wompi/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -103,6 +103,29 @@ export async function POST(request: NextRequest) {
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
       },
     })
+
+    // ── Check if Wompi is configured ──
+    const wompiConfig = isWompiConfigured()
+    if (!wompiConfig.configured) {
+      // Still create the WompiTransaction record (for tracking) but with ERROR status
+      await db.wompiTransaction.update({
+        where: { id: wompiTx.id },
+        data: {
+          status: 'ERROR',
+          wompiResponse: JSON.stringify({
+            error: 'Wompi no configurado',
+            missingKeys: wompiConfig.missingKeys,
+            hint: 'Configura las llaves de Wompi en .env para habilitar pagos. Obtén tus llaves en https://dashboard.wompi.co',
+          }),
+        },
+      })
+      return NextResponse.json({
+        error: 'Wompi no está configurado',
+        details: `Faltan las siguientes variables de entorno: ${wompiConfig.missingKeys.join(', ')}. Configúralas en .env para habilitar pagos con Wompi.`,
+        hint: 'Obtén tus llaves en https://dashboard.wompi.co — usa llaves de sandbox para pruebas',
+        missingKeys: wompiConfig.missingKeys,
+      }, { status: 503 })  // 503 Service Unavailable
+    }
 
     // ── Call Wompi API to create payment link ──
     let paymentLink

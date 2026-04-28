@@ -71,6 +71,11 @@ cmd_ensure_env() {
   ensure_var "DATABASE_URL" "file:./db/custom.db"
   ensure_secret "INTERNAL_SECRET"
   ensure_secret "AUTH_SECRET"
+  ensure_var "WOMPI_PUBLIC_KEY" ""
+  ensure_var "WOMPI_PRIVATE_KEY" ""
+  ensure_var "WOMPI_WEBHOOK_SECRET" ""
+  ensure_var "WOMPI_ENV" "sandbox"
+  ensure_var "NEXT_PUBLIC_WOMPI_PUBLIC_KEY" ""
   ok "Environment variables verified"
 }
 

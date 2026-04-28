@@ -43,6 +43,7 @@ export const HISTORY_EVENTS = {
   EXPIRED: 'EXPIRED',
   REACTIVATED: 'REACTIVATED',
   GRACE_STARTED: 'GRACE_STARTED',
+  PAST_DUE: 'PAST_DUE',
   BILLING_PERIOD_CHANGED: 'BILLING_PERIOD_CHANGED',
 } as const
 
@@ -67,6 +68,7 @@ export const EVENT_LABELS: Record<string, string> = {
   EXPIRED: 'Suscripción Expirada',
   REACTIVATED: 'Suscripción Reactivada',
   GRACE_STARTED: 'Período de Gracia',
+  PAST_DUE: 'Suscripción Vencida',
   BILLING_PERIOD_CHANGED: 'Período de Facturación Cambiado',
 }
 
