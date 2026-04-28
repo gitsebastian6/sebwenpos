@@ -67,6 +67,16 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       # ── Alerts ──
       ALERT_API_BASE: ${ALERT_API_BASE:-http://localhost:3010}
+      # ── Wompi Payment Gateway ──
+      WOMPI_ENV: ${WOMPI_ENV:-demo}
+      WOMPI_PUBLIC_KEY: ${WOMPI_PUBLIC_KEY:-}
+      WOMPI_PRIVATE_KEY: ${WOMPI_PRIVATE_KEY:-}
+      WOMPI_WEBHOOK_SECRET: ${WOMPI_WEBHOOK_SECRET:-}
+      NEXT_PUBLIC_WOMPI_PUBLIC_KEY: ${NEXT_PUBLIC_WOMPI_PUBLIC_KEY:-}
+      # ── Super Admin (seeds on first run) ──
+      SUPERADMIN_CEDULA: ${SUPERADMIN_CEDULA:-}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+      SUPERADMIN_NAME: ${SUPERADMIN_NAME:-}
     depends_on:
       postgres:
         condition: service_healthy
