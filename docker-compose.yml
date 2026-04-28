@@ -9,11 +9,12 @@
 #   docker compose down -v           → Stop and DELETE all data (volumes)
 #
 # After first boot:
-#   1. The app auto-creates tables (prisma db push)
-#   2. The app auto-seeds data on first run
+#   1. The migrate container runs prisma db push (creates tables)
+#   2. The app container auto-seeds data on first run
 #   3. Open http://localhost:3000
 #
 # pgAdmin (database GUI):
+#   docker compose --profile tools up -d
 #   http://localhost:5050  →  admin@ventifypos.com / admin
 #
 # To migrate existing SQLite data:
@@ -40,6 +41,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ── Database Migration (one-shot init container) ────────────────────────
+  # Uses the "deps" build stage which has full node_modules (including
+  # the prisma CLI and all its transitive dependencies like "effect").
+  # Runs prisma db push, then exits. The app waits for this to succeed.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps
+    container_name: ventifypos-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://ventifypos:${POSTGRES_PASSWORD:-ventifypos_secret_2025}@postgres:5432/ventifypos?schema=public
+    command: ["node", "./node_modules/prisma/build/index.js", "db", "push", "--accept-data-loss"]
 
   # ── Next.js Application ────────────────────────────────────────────────
   app:
@@ -78,8 +97,8 @@ services:
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
       SUPERADMIN_NAME: ${SUPERADMIN_NAME:-}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - uploads:/app/uploads
     healthcheck:

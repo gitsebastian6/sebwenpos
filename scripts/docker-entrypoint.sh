@@ -3,17 +3,20 @@
 # VentifyPOS — Docker Entrypoint
 # ---------------------------------------------------------------------------
 # Runs on container startup:
-#   1. Wait for PostgreSQL to be ready (raw connection test)
-#   2. Push Prisma schema (creates/migrates tables)
-#   3. Seed plans and super admin if DB is empty
-#   4. Start the Next.js standalone server
+#   1. Wait for PostgreSQL to be ready (TCP check)
+#   2. Seed plans and super admin if DB is empty
+#   3. Start the Next.js standalone server
+#
+# NOTE: Prisma schema push (db push) runs in a SEPARATE init container
+#       (see docker-compose.yml → migrate service). The app container
+#       only needs to wait for PG + seed + start.
 # ---------------------------------------------------------------------------
 
 echo "╔══════════════════════════════════════════════════╗"
 echo "║         VentifyPOS — Starting Container          ║"
 echo "╚══════════════════════════════════════════════════╝"
 
-# ── 1. Wait for PostgreSQL (simple TCP check via node) ──
+# ── 1. Wait for PostgreSQL (simple TCP check) ──
 if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "postgresql"; then
   echo "⏳ Waiting for PostgreSQL..."
   MAX_RETRIES=30
@@ -39,29 +42,11 @@ if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "postgresql"; then
   done
 
   echo "✅ PostgreSQL is reachable"
-
-  # ── 2. Push Prisma schema ──
-  echo "📦 Pushing Prisma schema..."
-  PRISMA_RETRIES=5
-  PRISMA_COUNT=0
-
-  until node ./node_modules/prisma/build/index.js db push --accept-data-loss; do
-    PRISMA_COUNT=$((PRISMA_COUNT + 1))
-    if [ $PRISMA_COUNT -eq $PRISMA_RETRIES ]; then
-      echo "❌ Prisma db push failed after $PRISMA_RETRIES attempts"
-      echo "   Check the error messages above for details"
-      exit 1
-    fi
-    echo "   ⚠️ Prisma db push failed, retrying ($PRISMA_COUNT/$PRISMA_RETRIES)..."
-    sleep 3
-  done
-
-  echo "✅ Schema pushed successfully"
 else
-  echo "⚠️  No PostgreSQL URL detected — skipping DB setup"
+  echo "⚠️  No PostgreSQL URL detected — skipping DB check"
 fi
 
-# ── 3. Seed if empty ──
+# ── 2. Seed if empty ──
 PLAN_COUNT=$(node -e "
   const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
@@ -75,7 +60,6 @@ if [ "$PLAN_COUNT" = "0" ]; then
     const prisma = new PrismaClient();
 
     async function seed() {
-      // Create default plans
       const plans = [
         { name: 'Básico', description: 'Plan básico para negocios pequeños', price: 49000, maxStores: 1, maxEmployees: 3, maxProducts: 100, features: JSON.stringify({ pos: true, invoices: false, electronicInvoicing: false }), sortOrder: 1 },
         { name: 'Profesional', description: 'Plan profesional para negocios en crecimiento', price: 99000, maxStores: 2, maxEmployees: 10, maxProducts: 500, features: JSON.stringify({ pos: true, invoices: true, electronicInvoicing: false }), sortOrder: 2 },
@@ -92,7 +76,6 @@ if [ "$PLAN_COUNT" = "0" ]; then
 
       console.log('✅ Plans seeded');
 
-      // Create super admin if SUPERADMIN_CEDULA is set
       if (process.env.SUPERADMIN_CEDULA) {
         const bcrypt = require('bcryptjs');
         const existingAdmin = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
@@ -120,9 +103,9 @@ else
   echo "✅ Database already has $PLAN_COUNT plans — skipping seed"
 fi
 
-# ── 4. Ensure uploads directory exists ──
+# ── 3. Ensure uploads directory exists ──
 mkdir -p /app/uploads/receipts 2>/dev/null || true
 
-# ── 5. Start the server ──
+# ── 4. Start the server ──
 echo "🚀 Starting VentifyPOS server on port ${PORT:-3000}..."
 exec node server.js

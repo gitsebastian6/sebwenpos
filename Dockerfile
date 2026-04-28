@@ -101,17 +101,12 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Copy Prisma schema and client (for db push/migrate on startup)
+# Copy Prisma schema and client (for runtime queries)
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Copy prisma CLI binary (needed for "prisma db push" in entrypoint)
-# The standalone build does NOT include the prisma CLI
-# Note: In Prisma v5+, the CLI is bundled inside the `prisma` package (not @prisma/cli)
-COPY --from=deps /app/node_modules/prisma ./node_modules/prisma
-
-# Copy bcryptjs for seed script (native module, may not be in standalone)
+# Copy bcryptjs for seed script
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
 # Create uploads directory with proper ownership (before switching to nextjs user)
