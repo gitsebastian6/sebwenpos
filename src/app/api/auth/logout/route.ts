@@ -11,6 +11,7 @@ import {
   markRevocationSynced,
 } from '@/lib/auth-helpers'
 import { logger } from '@/lib/logger'
+import { auditLogFromRequest } from '@/lib/audit-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,6 +59,16 @@ export async function POST(req: NextRequest) {
     }
 
     logger.info(`Token revoked for user ${payload.userId}${revokeAll ? ' (all sessions)' : ''}`)
+
+    // Audit: user logout
+    auditLogFromRequest(req, {
+      userId: payload.userId,
+      storeId: payload.storeId,
+      action: 'LOGOUT',
+      entity: 'User',
+      entityId: payload.userId,
+      metadata: { revokeAll, reason: revokeAll ? 'ALL_SESSIONS' : 'SINGLE' },
+    }).catch(() => {})
 
     return NextResponse.json({
       success: true,

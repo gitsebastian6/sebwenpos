@@ -96,6 +96,32 @@ model RevokedToken {
 }
 
 // ----------------------------------------------
+// CONTEXTO: AUDITORIA (Audit Trail)
+// ----------------------------------------------
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  storeId    Int?     @map("store_id")
+  userId     Int?     @map("user_id")
+  action     String                        // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, CANCEL, ADJUST, RETURN, etc.
+  entity     String                        // Order, Invoice, Product, Customer, InventoryMovement, etc.
+  entityId   Int?     @map("entity_id")    // ID of the affected entity
+  oldValue   String?  @map("old_value")    // JSON of previous state (for updates/deletes)
+  newValue   String?  @map("new_value")    // JSON of new state (for creates/updates)
+  ipAddress  String?  @map("ip_address")   // Client IP
+  userAgent  String?  @map("user_agent")   // Client browser/app
+  metadata   String   @default("{}") @map("metadata")  // Extra context (discount reason, payment method, etc.)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([storeId, entity, createdAt])
+  @@index([storeId, action, createdAt])
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ----------------------------------------------
 // CONTEXTO: OTP (One-Time Password) para WhatsApp
 // ----------------------------------------------
 

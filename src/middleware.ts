@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken, extractTokenFromRequest, isPublicPath, isSuperAdminPath, isInternalPath, isTokenRevoked } from '@/lib/auth-helpers'
 import { getInternalSecret } from '@/lib/env'
+import { rateLimit, getClientIp, type RateLimitConfig } from '@/lib/rate-limiter'
 
 // ---------------------------------------------------------------------------
-// Ventify POS — Auth + CORS + CSRF Middleware (Edge Runtime compatible)
+// Ventify POS — Auth + CORS + CSRF + Rate Limit Middleware
 // ---------------------------------------------------------------------------
 // Validates HMAC-SHA256 tokens on every API request.
 // Checks token revocation blacklist (in-memory cache synced from DB).
-// Validates CSRF tokens on state-changing requests (POST/PUT/DELETE/PATCH).
+// Validates CSRF tokens on state-changing requests.
+// Applies rate limiting to business-critical routes.
 // Public routes (login, register, init) are exempt from auth + CSRF.
 // Super Admin routes require SUPER_ADMIN role.
 // Store routes require matching storeId.
-// CORS headers on all API responses + OPTIONS preflight handling.
 // ---------------------------------------------------------------------------
 
 // Constant-time string comparison (Edge-compatible) to prevent timing attacks
@@ -54,37 +55,62 @@ function corsError(message: string, status: number): NextResponse {
 // ---------------------------------------------------------------------------
 // CSRF Protection — Double-Submit Cookie Pattern
 // ---------------------------------------------------------------------------
-// For state-changing requests (POST/PUT/DELETE/PATCH), we require either:
-// 1. A matching X-CSRF-Token header + csrf_token cookie (double-submit), OR
-// 2. A valid Authorization: Bearer token (API clients)
-//
-// Bearer tokens are inherently CSRF-safe because JavaScript on a different
-// origin cannot read the token from localStorage/httpOnly cookies (Same-Origin Policy).
-// The CSRF check is an additional layer for cookie-based sessions.
-// ---------------------------------------------------------------------------
 
 function validateCSRF(request: NextRequest): boolean {
   const method = request.method.toUpperCase()
 
-  // Safe methods don't need CSRF protection
   if (CSRF_SAFE_METHODS.has(method)) return true
 
-  // If the request uses Bearer token auth, it's inherently CSRF-safe
-  // (JS on another origin cannot read the Authorization header)
   const authHeader = request.headers.get('authorization')
   if (authHeader && authHeader.startsWith('Bearer ')) return true
 
-  // If using internal secret auth, it's also CSRF-safe
-  // (the internal secret is not accessible cross-origin)
   const internalSecret = request.headers.get('x-internal-secret')
   if (internalSecret) return true
 
-  // Double-submit cookie pattern: X-CSRF-Token header must match csrf_token cookie
   const csrfHeader = request.headers.get('x-csrf-token')
   const csrfCookie = request.cookies.get('csrf_token')?.value
 
   if (!csrfHeader || !csrfCookie) return false
   return timingSafeEqual(csrfHeader, csrfCookie)
+}
+
+// ---------------------------------------------------------------------------
+// Route-based rate limit configuration
+// ---------------------------------------------------------------------------
+
+const ROUTE_RATE_LIMITS: Array<{
+  pattern: RegExp
+  config: RateLimitConfig
+  key: string
+}> = [
+  // Business-critical routes
+  { pattern: /^\/api\/orders/, config: { maxRequests: 30, windowSeconds: 60 }, key: 'orders' },
+  { pattern: /^\/api\/invoices/, config: { maxRequests: 10, windowSeconds: 60 }, key: 'invoices' },
+  { pattern: /^\/api\/credit-notes/, config: { maxRequests: 10, windowSeconds: 60 }, key: 'credit-notes' },
+  { pattern: /^\/api\/contingency-invoices/, config: { maxRequests: 10, windowSeconds: 60 }, key: 'contingency' },
+  { pattern: /^\/api\/super-admin/, config: { maxRequests: 15, windowSeconds: 60 }, key: 'super-admin' },
+  { pattern: /^\/api\/products/, config: { maxRequests: 30, windowSeconds: 60 }, key: 'products' },
+  { pattern: /^\/api\/inventory/, config: { maxRequests: 20, windowSeconds: 60 }, key: 'inventory' },
+  { pattern: /^\/api\/purchases/, config: { maxRequests: 20, windowSeconds: 60 }, key: 'purchases' },
+  { pattern: /^\/api\/customers/, config: { maxRequests: 30, windowSeconds: 60 }, key: 'customers' },
+  { pattern: /^\/api\/stores/, config: { maxRequests: 20, windowSeconds: 60 }, key: 'stores' },
+]
+
+function checkRouteRateLimit(request: NextRequest, pathname: string): NextResponse | null {
+  for (const { pattern, config, key } of ROUTE_RATE_LIMITS) {
+    if (pattern.test(pathname)) {
+      const ip = getClientIp(request)
+      const result = rateLimit(key, ip, config)
+      if (!result.success) {
+        return corsError(
+          'Demasiados intentos. Por favor espere unos minutos.',
+          429
+        )
+      }
+      return null // Allowed
+    }
+  }
+  return null // No rate limit for this route — allowed
 }
 
 export async function middleware(request: NextRequest) {
@@ -138,7 +164,11 @@ export async function middleware(request: NextRequest) {
     return corsError('Token inválido o expirado', 401)
   }
 
-  // 5. Super Admin routes — require SUPER_ADMIN role
+  // 5. Route-based rate limiting (after auth, before business logic)
+  const rateLimitResult = checkRouteRateLimit(request, pathname)
+  if (rateLimitResult) return rateLimitResult
+
+  // 6. Super Admin routes — require SUPER_ADMIN role
   if (isSuperAdminPath(pathname)) {
     if (payload.role !== 'SUPER_ADMIN') {
       return corsError('Acceso restringido a Super Administrador', 403)
@@ -151,7 +181,7 @@ export async function middleware(request: NextRequest) {
     }), origin)
   }
 
-  // 6. Store routes — verify storeId matches token
+  // 7. Store routes — verify storeId matches token
   const url = new URL(request.url)
   const queryStoreId = url.searchParams.get('storeId')
 

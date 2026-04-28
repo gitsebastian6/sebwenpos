@@ -11,6 +11,7 @@ import { decryptField } from '@/lib/field-encryption'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { getSoftwareProviderNIT, DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
+import { auditLogFromRequest } from '@/lib/audit-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -406,6 +407,15 @@ export async function POST(
       // Credit note generation failed — log but don't fail the return
       logger.error('[Return→NC] Error auto-generating credit note:', ncErr)
     }
+
+    // Audit: order return
+    auditLogFromRequest(request, {
+      storeId: order.storeId,
+      action: 'RETURN',
+      entity: 'Order',
+      entityId: order.id,
+      newValue: { orderNumber: order.orderNumber, fullyReturned: results.fullyReturned, totalReturned: results.totalReturned },
+    }).catch(() => {})
 
     return NextResponse.json({
       message: results.fullyReturned

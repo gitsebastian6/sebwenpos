@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { transitionOverdueSubscriptions, getSubscriptionInfo } from '@/lib/subscription-helpers'
 import { generateCsrfToken } from '@/lib/csrf'
+import { auditLog, getClientContext } from '@/lib/audit-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,6 +77,19 @@ export async function POST(req: NextRequest) {
       storeId: null,
       role: user.role,
     })
+
+    // Audit: user login
+    const clientCtx = getClientContext(req)
+    auditLog({
+      userId: user.id,
+      storeId: null,
+      action: 'LOGIN',
+      entity: 'User',
+      entityId: user.id,
+      ipAddress: clientCtx.ipAddress,
+      userAgent: clientCtx.userAgent,
+      metadata: { cedula: user.cedula, role: user.role },
+    }).catch(() => {})
 
     // ========================================
     // SUPER ADMIN — No tiene tienda asociada

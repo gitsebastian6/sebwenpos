@@ -17,6 +17,7 @@ import { sendBillAsync, pollForStatus } from '@/lib/invoicing/soap-client'
 import { logger } from '@/lib/logger'
 import { decryptField } from '@/lib/field-encryption'
 import { getSoftwareProviderNIT, getSoftwareName, DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
+import { auditLogFromRequest } from '@/lib/audit-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -518,6 +519,15 @@ export async function POST(req: NextRequest) {
         }
       })()
     }
+
+    // Audit: invoice created
+    auditLogFromRequest(req, {
+      storeId: invoice.storeId,
+      action: 'CREATE',
+      entity: 'Invoice',
+      entityId: invoice.id,
+      newValue: { invoiceNumber: formatInvoiceNumber(invoice.prefix, invoice.consecutive), grandTotal: invoice.grandTotal, status: invoice.status, customerNit: invoice.customerNit },
+    }).catch(() => {})
 
     return NextResponse.json(
       {

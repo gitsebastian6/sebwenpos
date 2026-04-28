@@ -4,6 +4,7 @@ import { generateOrderNumber } from '@/lib/auth'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
+import { auditLogFromRequest } from '@/lib/audit-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -464,6 +465,16 @@ export async function POST(req: NextRequest) {
 
       return createdOrder
     })
+
+    // Audit: order created
+    auditLogFromRequest(req, {
+      storeId: data.storeId,
+      action: 'CREATE',
+      entity: 'Order',
+      entityId: order.id,
+      newValue: { orderNumber: order.orderNumber, total: order.total, paymentMethod: order.paymentMethod, discountType: order.discountType, discountAmount: order.discountAmount },
+      metadata: { itemcount: data.items.length },
+    }).catch(() => {})
 
     return NextResponse.json(
       {

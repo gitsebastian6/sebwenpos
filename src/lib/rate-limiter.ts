@@ -166,6 +166,38 @@ export const SETUP_RATE_LIMIT: RateLimitConfig = {
   windowSeconds: 300,
 }
 
+// ─── Business route rate limits ───────────────────
+
+/** Orders: 30 per minute per IP (high volume for POS) */
+export const ORDERS_RATE_LIMIT: RateLimitConfig = {
+  maxRequests: 30,
+  windowSeconds: 60,
+}
+
+/** Invoices: 10 per minute per IP (DIAN submissions are expensive) */
+export const INVOICES_RATE_LIMIT: RateLimitConfig = {
+  maxRequests: 10,
+  windowSeconds: 60,
+}
+
+/** Super Admin: 15 per minute per IP (admin panel operations) */
+export const SUPER_ADMIN_RATE_LIMIT: RateLimitConfig = {
+  maxRequests: 15,
+  windowSeconds: 60,
+}
+
+/** Products/CRUD: 30 per minute per IP (batch operations) */
+export const CRUD_RATE_LIMIT: RateLimitConfig = {
+  maxRequests: 30,
+  windowSeconds: 60,
+}
+
+/** Inventory adjustments: 20 per minute per IP */
+export const INVENTORY_RATE_LIMIT: RateLimitConfig = {
+  maxRequests: 20,
+  windowSeconds: 60,
+}
+
 // ─── Next.js helper: create a rate-limited response or null ───────────
 
 import { NextRequest, NextResponse } from 'next/server'
