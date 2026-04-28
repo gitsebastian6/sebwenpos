@@ -28,7 +28,7 @@ bun run db:push 2>&1 | tail -5 >> "$LOG"
 
 # ── Step 3: Ensure env vars (generates random secrets if missing) ──
 log "Ensuring .env variables (no hardcoded secrets)..."
-bash "$PROJECT_DIR/scripts/ensure-env.sh" 2>&1 | tee -a "$LOG"
+bash "$PROJECT_DIR/scripts/dev.sh" ensure-env 2>&1 | tee -a "$LOG"
 
 # Source the .env file so secrets are available as shell variables
 set -a

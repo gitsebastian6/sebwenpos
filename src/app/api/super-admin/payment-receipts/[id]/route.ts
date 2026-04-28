@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { logSubscriptionHistory, createBillingRecord, BILLING_PERIODS } from '@/lib/subscription-helpers'
 import { logStoreEvent, logSubscriptionChange, logPlanChange } from '@/lib/event-logger'
+import { deleteReceiptFile, readReceiptFile } from '@/lib/file-storage'
 
 export const dynamic = 'force-dynamic'
 
@@ -279,7 +280,27 @@ export async function GET(
 
     const receipt = await db.paymentReceipt.findUnique({
       where: { id: receiptId },
-      include: {
+      select: {
+        id: true,
+        subscriptionId: true,
+        storeId: true,
+        fileName: true,
+        fileSize: true,
+        fileType: true,
+        filePath: true,
+        // fileData is excluded from default response — use /api/files/[id] for file content
+        // But for backward compat with super admin preview, include it only if no filePath
+        fileData: true,
+        amount: true,
+        reference: true,
+        paymentMethod: true,
+        notes: true,
+        status: true,
+        reviewedBy: true,
+        reviewNotes: true,
+        reviewedAt: true,
+        createdAt: true,
+        updatedAt: true,
         store: {
           select: { id: true, name: true, nit: true, user: { select: { fullName: true, phone: true } } },
         },
@@ -291,6 +312,17 @@ export async function GET(
 
     if (!receipt) {
       return NextResponse.json({ error: 'Comprobante no encontrado' }, { status: 404 })
+    }
+
+    // If file is on disk, read it and return as base64 for backward compat with the preview component
+    // (the preview component expects fileData in the JSON response)
+    if (receipt.filePath && !receipt.fileData) {
+      try {
+        const buffer = await readReceiptFile(receipt.filePath)
+        receipt.fileData = buffer.toString('base64')
+      } catch {
+        receipt.fileData = null
+      }
     }
 
     return NextResponse.json(receipt)
@@ -322,6 +354,11 @@ export async function DELETE(
 
     if (receipt.status !== 'PENDING') {
       return NextResponse.json({ error: 'Solo se pueden eliminar comprobantes pendientes' }, { status: 409 })
+    }
+
+    // Delete file from disk if it exists
+    if (receipt.filePath) {
+      await deleteReceiptFile(receipt.filePath)
     }
 
     await db.paymentReceipt.delete({ where: { id: receiptId } })

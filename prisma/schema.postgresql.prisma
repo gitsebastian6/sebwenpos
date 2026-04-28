@@ -155,7 +155,8 @@ model PaymentReceipt {
   fileName       String    @map("file_name")     // Nombre original del archivo
   fileSize       Int       @map("file_size")     // Tamaño en bytes
   fileType       String    @map("file_type")     // MIME type: image/png, image/jpeg, application/pdf
-  fileData       String    @map("file_data") @db.Text // Base64 encoded
+  fileData       String?   @map("file_data") @db.Text // Deprecated: kept for migration compat, new records use filePath
+  filePath       String?   @map("file_path")     // Relative path in /uploads/ (e.g., "receipts/2024/01/abc-123.png")
   // Monto reportado por el cliente
   amount         Int       // Monto del pago en COP
   reference      String?   // Referencia del pago (número de transacción, consignación, etc.)

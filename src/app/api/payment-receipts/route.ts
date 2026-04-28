@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { saveReceiptFile } from '@/lib/file-storage'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,6 +56,7 @@ export async function GET(req: NextRequest) {
         fileName: true,
         fileSize: true,
         fileType: true,
+        filePath: true,
         amount: true,
         reference: true,
         paymentMethod: true,
@@ -78,6 +80,7 @@ export async function GET(req: NextRequest) {
 /**
  * POST /api/payment-receipts
  * Sube un comprobante de pago (desde la vista del owner)
+ * Now saves file to disk instead of base64 in DB.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -147,6 +150,19 @@ export async function POST(req: NextRequest) {
       }, { status: 409 })
     }
 
+    // Save file to disk instead of DB
+    let filePath: string | null = null
+    try {
+      filePath = await saveReceiptFile({
+        base64Data: rawBase64,
+        fileName: data.fileName,
+        fileType: data.fileType,
+      })
+    } catch (fsError) {
+      logger.error('[payment-receipts] Failed to save file to disk, storing in DB as fallback:', fsError)
+      // Fallback: store base64 in DB if disk save fails
+    }
+
     // Build notes with plan change metadata if provided
     let notesData = data.notes || null
     if (data.requestedPlanId && data.requestedPlanName) {
@@ -168,7 +184,8 @@ export async function POST(req: NextRequest) {
         fileName: data.fileName,
         fileSize: data.fileSize,
         fileType: data.fileType,
-        fileData: rawBase64,
+        filePath: filePath,
+        fileData: filePath ? null : rawBase64, // Only store base64 if disk save failed
         amount: data.amount,
         reference: data.reference || null,
         paymentMethod: data.paymentMethod,

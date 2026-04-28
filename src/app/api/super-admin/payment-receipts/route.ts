@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
+import { saveReceiptFile, deleteReceiptFile } from '@/lib/file-storage'
 
 export const dynamic = 'force-dynamic'
 
@@ -109,6 +110,7 @@ export async function GET(req: NextRequest) {
 /**
  * POST /api/super-admin/payment-receipts
  * El Super Admin registra un comprobante de pago en nombre de una tienda.
+ * Now saves file to disk instead of base64 in DB.
  * 
  * Si autoApprove=true (default):
  *   - Se crea como APROVED inmediatamente
@@ -180,6 +182,18 @@ export async function POST(req: NextRequest) {
       }, { status: 409 })
     }
 
+    // Save file to disk instead of DB
+    let filePath: string | null = null
+    try {
+      filePath = await saveReceiptFile({
+        base64Data: data.fileData,
+        fileName: data.fileName,
+        fileType: data.fileType,
+      })
+    } catch (fsError) {
+      logger.error('[super-admin/payment-receipts] Failed to save file to disk, storing in DB as fallback:', fsError)
+    }
+
     const now = new Date()
     const isAutoApprove = data.autoApprove !== false // default true
 
@@ -195,7 +209,8 @@ export async function POST(req: NextRequest) {
         fileName: data.fileName,
         fileSize: data.fileSize,
         fileType: data.fileType,
-        fileData: data.fileData,
+        filePath: filePath,
+        fileData: filePath ? null : data.fileData, // Only store base64 if disk save failed
         status: isAutoApprove ? 'APPROVED' : 'PENDING',
         reviewedBy: isAutoApprove ? 'SUPER_ADMIN' : null,
         reviewedAt: isAutoApprove ? now : null,

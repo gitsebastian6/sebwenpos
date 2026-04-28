@@ -352,7 +352,8 @@ model PaymentReceipt {
   fileName       String    @map("file_name")
   fileSize       Int       @map("file_size")
   fileType       String    @map("file_type")
-  fileData       String    @map("file_data")
+  fileData       String?   @map("file_data")   // Deprecated: kept for migration compat, new records use filePath
+  filePath       String?   @map("file_path")    // Relative path in /uploads/ (e.g., "receipts/2024/01/abc-123.png")
   amount         Int
   reference      String?
   paymentMethod  String    @default("OTHER") @map("payment_method")

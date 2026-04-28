@@ -55,7 +55,21 @@ test
 prompt
 
 server.log
+
 # Skills directory
-/skills/# Auto-push protection active
+/skills/
 
+# Generated artifacts — not source code
+/download/
+/agent-ctx/
+worklog.md
+.git-commit.log
 
+# File uploads (receipts, etc.)
+/uploads/
+
+# Backup files from DB migrations
+*.bak
+*.backup.*
+
+# Auto-push protection active

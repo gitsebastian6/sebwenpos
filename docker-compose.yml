@@ -70,6 +70,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
@@ -96,4 +98,6 @@ services:
 # ── Volumes ───────────────────────────────────────────────────────────────
 volumes:
   pgdata:
+    driver: local
+  uploads:
     driver: local
