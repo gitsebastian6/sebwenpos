@@ -108,8 +108,8 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 # Copy prisma CLI binary (needed for "prisma db push" in entrypoint)
 # The standalone build does NOT include the prisma CLI
+# Note: In Prisma v5+, the CLI is bundled inside the `prisma` package (not @prisma/cli)
 COPY --from=deps /app/node_modules/prisma ./node_modules/prisma
-COPY --from=deps /app/node_modules/@prisma/cli ./node_modules/@prisma/cli
 
 # Copy bcryptjs for seed script (native module, may not be in standalone)
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs

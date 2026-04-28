@@ -21,7 +21,7 @@ if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "postgresql"; then
   MAX_RETRIES=30
   RETRY_COUNT=0
 
-  until node ./node_modules/.bin/prisma db push --accept-data-loss 2>/dev/null || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
+  until node ./node_modules/prisma/build/index.js db push --accept-data-loss 2>/dev/null || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     echo "   Retry $RETRY_COUNT/$MAX_RETRIES..."
     sleep 2
