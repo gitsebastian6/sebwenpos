@@ -98,3 +98,42 @@ Stage Summary:
 - `.zscripts/dev.sh` updated: production mode + auto-restart + Prisma hash fix
 - `next.config.ts` updated: allowedDevOrigins + relaxed security headers for dev
 - Known sandbox limitation: process reaper kills server between sessions
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Phase 1 — Critical Security Fixes (5 issues resolved)
+
+Work Log:
+- Removed `ignoreBuildErrors: true` from next.config.ts — was masking 5 TypeScript errors
+- Set `reactStrictMode: true` (was false) — now catches double-effect bugs in dev
+- Fixed all 5 TS errors: test files used `ok` instead of `status` in ResponseInit, missing `vi` import
+- Eliminated ALL hardcoded auth fallbacks:
+  - auth-helpers.ts: removed 'ventify-dev-auth-INSECURE-CHANGE-ME' fallback, AUTH_SECRET now REQUIRED (crash if missing)
+  - ensure-env.sh: generates cryptographically random secrets via `openssl rand -hex 32`
+  - dev-start.sh, production-daemon.sh, sandbox-keepalive.sh, .zscripts/dev.sh: source secrets from .env, no hardcoded values
+  - .env regenerated with random AUTH_SECRET + INTERNAL_SECRET
+- Implemented JWT token revocation:
+  - Added RevokedToken model to Prisma schema (tokenJti, userId, reason, expiresAt)
+  - In-memory revocation cache in auth-helpers.ts (Edge Runtime compatible)
+  - verifyToken() checks revocation blacklist before accepting tokens
+  - New /api/auth/logout POST endpoint revokes current token in DB + memory
+  - /api/auth/logout?all=true revokes ALL sessions (for password change, account disable)
+  - User-level revocation markers for 'revoke all' scenarios
+  - Auto-cleanup of expired revocations (DB + memory)
+  - auth-store.logout() now calls /api/auth/logout (fire-and-forget)
+- Implemented CSRF protection (double-submit cookie pattern):
+  - New src/lib/csrf.ts — generates 32-byte random CSRF tokens
+  - Login response includes csrfToken + sets httpOnly csrf_token cookie (sameSite: strict)
+  - Middleware validates CSRF on all POST/PUT/DELETE/PATCH requests
+  - Bearer token requests exempt (inherently CSRF-safe per Same-Origin Policy)
+  - X-CSRF-Token header added to CORS allowed headers
+- Improved Prisma hash detection in .zscripts/dev.sh (dynamic instead of hardcoded hash)
+
+Stage Summary:
+- All 5 critical security issues resolved
+- TypeScript: 0 errors (was 5 masked by ignoreBuildErrors)
+- No hardcoded secrets anywhere in the codebase
+- Token revocation: full blacklist with DB + in-memory cache + Edge compatibility
+- CSRF: double-submit cookie pattern protecting all state-changing endpoints
+- Commit: e4951bc, pushed to origin/main
