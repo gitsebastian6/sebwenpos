@@ -21,7 +21,7 @@ if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "postgresql"; then
   MAX_RETRIES=30
   RETRY_COUNT=0
 
-  until npx prisma db push --accept-data-loss 2>/dev/null || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
+  until node ./node_modules/.bin/prisma db push --accept-data-loss 2>/dev/null || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     echo "   Retry $RETRY_COUNT/$MAX_RETRIES..."
     sleep 2
@@ -98,7 +98,7 @@ else
 fi
 
 # ── 3. Ensure uploads directory exists ──
-mkdir -p /app/uploads/receipts
+mkdir -p /app/uploads/receipts 2>/dev/null || true
 
 # ── 4. Start the server ──
 echo "🚀 Starting VentifyPOS server on port ${PORT:-3000}..."

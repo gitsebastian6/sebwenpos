@@ -21,7 +21,7 @@ FROM node:20-bookworm-slim AS deps
 
 WORKDIR /app
 
-# Install system dependencies for native modules (sharp)
+# Install system dependencies for native modules (sharp, bcryptjs)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3 \
@@ -106,9 +106,22 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Copy startup script
+# Copy prisma CLI binary (needed for "prisma db push" in entrypoint)
+# The standalone build does NOT include the prisma CLI
+COPY --from=deps /app/node_modules/prisma ./node_modules/prisma
+COPY --from=deps /app/node_modules/@prisma/cli ./node_modules/@prisma/cli
+
+# Copy bcryptjs for seed script (native module, may not be in standalone)
+COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
+
+# Create uploads directory with proper ownership (before switching to nextjs user)
+RUN mkdir -p /app/uploads/receipts && \
+    chown -R nextjs:nodejs /app/uploads
+
+# Copy startup script and ensure LF line endings + executable
 COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && \
+    chmod +x /app/docker-entrypoint.sh
 
 # Expose port
 EXPOSE 3000

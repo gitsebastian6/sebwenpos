@@ -1,0 +1,44 @@
+# ---------------------------------------------------------------------------
+# VentifyPOS — Git Attributes
+# ---------------------------------------------------------------------------
+# Enforce LF line endings for shell scripts to prevent CRLF issues in Docker.
+# Windows users: Git will auto-convert CRLF on checkout but these files will
+# always be committed with LF, preventing "no such file or directory" errors
+# when Docker copies them into Linux containers.
+# ---------------------------------------------------------------------------
+
+# Shell scripts MUST always use LF (Linux line endings) — never CRLF
+*.sh text eol=lf
+
+# Node.js files prefer LF
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+
+# Web files
+*.html text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Config files
+.env.* text eol=lf
+Dockerfile text eol=lf
+docker-compose*.yml text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Binary files (no normalization)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.p12 binary
+*.pfx binary
