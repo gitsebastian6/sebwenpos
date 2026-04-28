@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -51,8 +50,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Wrap with Sentry config (only enables source maps upload in production)
-export default withSentryConfig(nextConfig, {
-  // Disable automatic source map uploads during build (CI handles this)
-  silent: true,
-});
+export default nextConfig;
