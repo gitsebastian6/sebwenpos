@@ -270,7 +270,7 @@ describe('unwrapArray', () => {
   it('returns array when response is a plain array', async () => {
     const data = [{ id: 1 }, { id: 2 }]
     const response = new Response(JSON.stringify(data), {
-      ok: true,
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
 
@@ -281,7 +281,7 @@ describe('unwrapArray', () => {
   it('returns data property when response is wrapped in { data }', async () => {
     const items = [{ id: 1 }]
     const response = new Response(JSON.stringify({ data: items, total: 1 }), {
-      ok: true,
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
 
@@ -291,7 +291,7 @@ describe('unwrapArray', () => {
 
   it('returns empty array when data is undefined', async () => {
     const response = new Response(JSON.stringify({ data: undefined }), {
-      ok: true,
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
 

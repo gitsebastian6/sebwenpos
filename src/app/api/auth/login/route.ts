@@ -6,6 +6,7 @@ import { withRateLimit, LOGIN_RATE_LIMIT, attachRateLimitHeaders } from '@/lib/r
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { transitionOverdueSubscriptions, getSubscriptionInfo } from '@/lib/subscription-helpers'
+import { generateCsrfToken } from '@/lib/csrf'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,15 +81,29 @@ export async function POST(req: NextRequest) {
     // SUPER ADMIN — No tiene tienda asociada
     // ========================================
     if (user.role === 'SUPER_ADMIN') {
-      return NextResponse.json({
-        user: safeUser,
-        store: null,
-        token,
-        isSuperAdmin: true,
-        permissions: {
-          dashboard: true, manageStores: true,
-        },
+      const csrfToken = generateCsrfToken()
+      const response = attachRateLimitHeaders(
+        NextResponse.json({
+          user: safeUser,
+          store: null,
+          token,
+          csrfToken,
+          isSuperAdmin: true,
+          permissions: {
+            dashboard: true, manageStores: true,
+          },
+        }),
+        rl.result,
+      )
+      // Set CSRF cookie (httpOnly for security — JS cannot read it directly)
+      response.cookies.set('csrf_token', csrfToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 24 * 60 * 60, // 24 hours — matches token expiry
       })
+      return response
     }
 
     // ========================================
@@ -198,11 +213,13 @@ export async function POST(req: NextRequest) {
               role: user.role,
               employeeId,
             })
-            return attachRateLimitHeaders(
+            const csrfToken = generateCsrfToken()
+            const trialResponse = attachRateLimitHeaders(
               NextResponse.json({
                 user: safeUser,
                 store,
                 token: authToken,
+                csrfToken,
                 isSuperAdmin: false,
                 permissions,
                 roleId,
@@ -212,6 +229,14 @@ export async function POST(req: NextRequest) {
               }),
               rl.result,
             )
+            trialResponse.cookies.set('csrf_token', csrfToken, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: 'strict',
+              path: '/',
+              maxAge: 24 * 60 * 60,
+            })
+            return trialResponse
           }
         }
       } catch (autoAssignError: unknown) {
@@ -254,11 +279,15 @@ export async function POST(req: NextRequest) {
       employeeId,
     })
 
-    return attachRateLimitHeaders(
+    // Generate CSRF token for double-submit cookie pattern
+    const csrfToken = generateCsrfToken()
+
+    const response = attachRateLimitHeaders(
       NextResponse.json({
         user: safeUser,
         store,
         token: authToken,
+        csrfToken,
         isSuperAdmin: false,
         permissions,
         roleId,
@@ -268,6 +297,15 @@ export async function POST(req: NextRequest) {
       }),
       rl.result,
     )
+    // Set CSRF cookie (httpOnly for security)
+    response.cookies.set('csrf_token', csrfToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 24 * 60 * 60,
+    })
+    return response
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })

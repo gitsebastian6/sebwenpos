@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyToken, extractTokenFromRequest, isPublicPath, isSuperAdminPath, isInternalPath } from '@/lib/auth-helpers'
+import { verifyToken, extractTokenFromRequest, isPublicPath, isSuperAdminPath, isInternalPath, isTokenRevoked } from '@/lib/auth-helpers'
 import { getInternalSecret } from '@/lib/env'
 
 // ---------------------------------------------------------------------------
-// Ventify POS — Auth + CORS Middleware (Edge Runtime compatible)
+// Ventify POS — Auth + CORS + CSRF Middleware (Edge Runtime compatible)
 // ---------------------------------------------------------------------------
 // Validates HMAC-SHA256 tokens on every API request.
-// Public routes (login, register, init) are exempt.
+// Checks token revocation blacklist (in-memory cache synced from DB).
+// Validates CSRF tokens on state-changing requests (POST/PUT/DELETE/PATCH).
+// Public routes (login, register, init) are exempt from auth + CSRF.
 // Super Admin routes require SUPER_ADMIN role.
 // Store routes require matching storeId.
 // CORS headers on all API responses + OPTIONS preflight handling.
@@ -32,7 +34,8 @@ const ALLOWED_ORIGINS = [
 ].filter(Boolean) as string[]
 
 const CORS_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-const CORS_ALLOW_HEADERS = 'Content-Type, Authorization, X-Internal-Secret, X-Auth-User-Id, X-Auth-Role, X-Auth-Store-Id, X-TransformPort'
+const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+const CORS_ALLOW_HEADERS = 'Content-Type, Authorization, X-Internal-Secret, X-Auth-User-Id, X-Auth-Role, X-Auth-Store-Id, X-CSRF-Token, X-Transform-Port'
 
 function withCORS(response: NextResponse, origin?: string | null): NextResponse {
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
@@ -46,6 +49,42 @@ function withCORS(response: NextResponse, origin?: string | null): NextResponse 
 
 function corsError(message: string, status: number): NextResponse {
   return withCORS(NextResponse.json({ error: message }, { status }))
+}
+
+// ---------------------------------------------------------------------------
+// CSRF Protection — Double-Submit Cookie Pattern
+// ---------------------------------------------------------------------------
+// For state-changing requests (POST/PUT/DELETE/PATCH), we require either:
+// 1. A matching X-CSRF-Token header + csrf_token cookie (double-submit), OR
+// 2. A valid Authorization: Bearer token (API clients)
+//
+// Bearer tokens are inherently CSRF-safe because JavaScript on a different
+// origin cannot read the token from localStorage/httpOnly cookies (Same-Origin Policy).
+// The CSRF check is an additional layer for cookie-based sessions.
+// ---------------------------------------------------------------------------
+
+function validateCSRF(request: NextRequest): boolean {
+  const method = request.method.toUpperCase()
+
+  // Safe methods don't need CSRF protection
+  if (CSRF_SAFE_METHODS.has(method)) return true
+
+  // If the request uses Bearer token auth, it's inherently CSRF-safe
+  // (JS on another origin cannot read the Authorization header)
+  const authHeader = request.headers.get('authorization')
+  if (authHeader && authHeader.startsWith('Bearer ')) return true
+
+  // If using internal secret auth, it's also CSRF-safe
+  // (the internal secret is not accessible cross-origin)
+  const internalSecret = request.headers.get('x-internal-secret')
+  if (internalSecret) return true
+
+  // Double-submit cookie pattern: X-CSRF-Token header must match csrf_token cookie
+  const csrfHeader = request.headers.get('x-csrf-token')
+  const csrfCookie = request.cookies.get('csrf_token')?.value
+
+  if (!csrfHeader || !csrfCookie) return false
+  return timingSafeEqual(csrfHeader, csrfCookie)
 }
 
 export async function middleware(request: NextRequest) {
@@ -62,7 +101,7 @@ export async function middleware(request: NextRequest) {
     return withCORS(new NextResponse(null, { status: 204 }), origin)
   }
 
-  // 1. Public routes — no auth needed
+  // 1. Public routes — no auth needed, no CSRF needed
   if (isPublicPath(pathname)) {
     return withCORS(NextResponse.next(), origin)
   }
@@ -76,7 +115,12 @@ export async function middleware(request: NextRequest) {
     return withCORS(NextResponse.next(), origin)
   }
 
-  // 3. All other API routes require authentication
+  // 3. CSRF validation on all state-changing requests
+  if (!validateCSRF(request)) {
+    return corsError('Token CSRF inválido — posible ataque cross-site', 403)
+  }
+
+  // 4. All other API routes require authentication
   const authHeader = request.headers.get('authorization')
   const token = extractTokenFromRequest(authHeader)
 
@@ -84,12 +128,17 @@ export async function middleware(request: NextRequest) {
     return corsError('Token de autenticación requerido', 401)
   }
 
+  // Quick revocation check (in-memory cache — Edge-safe)
+  if (isTokenRevoked(token)) {
+    return corsError('Token revocado — inicie sesión de nuevo', 401)
+  }
+
   const payload = await verifyToken(token)
   if (!payload) {
     return corsError('Token inválido o expirado', 401)
   }
 
-  // 4. Super Admin routes — require SUPER_ADMIN role
+  // 5. Super Admin routes — require SUPER_ADMIN role
   if (isSuperAdminPath(pathname)) {
     if (payload.role !== 'SUPER_ADMIN') {
       return corsError('Acceso restringido a Super Administrador', 403)
@@ -102,7 +151,7 @@ export async function middleware(request: NextRequest) {
     }), origin)
   }
 
-  // 5. Store routes — verify storeId matches token
+  // 6. Store routes — verify storeId matches token
   const url = new URL(request.url)
   const queryStoreId = url.searchParams.get('storeId')
 

@@ -5,6 +5,10 @@ import { NextRequest, NextResponse } from 'next/server'
 // ---------------------------------------------------------------------------
 // Uses SubtleCrypto (Web Crypto API) which works in both Edge Runtime and Node.js.
 // Tokens are base64url-encoded JSON payloads with an HMAC-SHA256 signature.
+//
+// Token Revocation: Revoked tokens are checked via an in-memory cache that is
+// populated by API routes (Node.js runtime) and consumed by the Edge middleware.
+// The cache syncs from the database on first check and periodically thereafter.
 // ---------------------------------------------------------------------------
 
 const TOKEN_VERSION = 'v1'
@@ -16,18 +20,17 @@ let _hmacKeyPromise: Promise<CryptoKey> | null = null
 async function getHmacKey(): Promise<CryptoKey> {
   if (_hmacKeyPromise) return _hmacKeyPromise
 
-  // AUTH_SECRET is required — validated at startup by env.ts
-  // We read directly from process.env here because this module loads
-  // before env.ts in the Edge Runtime, and the import would be circular.
+  // AUTH_SECRET is REQUIRED — no fallback, no exceptions.
+  // Missing AUTH_SECRET will crash the server immediately, which is
+  // the correct behavior: a POS without a proper signing key is insecure.
   const secret = process.env.AUTH_SECRET
   if (!secret || secret.trim().length === 0) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('[ENV] FATAL: AUTH_SECRET is required but not set. Add it to your .env file.')
-    }
-    // Dev-only fallback with loud warning
-    console.warn('\n[ENV] WARNING: AUTH_SECRET is not set. Using insecure dev fallback. FIX BEFORE PRODUCTION.\n')
+    throw new Error(
+      '[ENV] FATAL: AUTH_SECRET is required but not set. ' +
+      'Add it to your .env file. The server cannot start without it.'
+    )
   }
-  const secretValue = secret?.trim() || 'ventify-dev-auth-INSECURE-CHANGE-ME'
+  const secretValue = secret.trim()
 
   // Encode the secret as UTF-8 bytes
   const encoder = new TextEncoder()
@@ -54,6 +57,101 @@ export interface AuthPayload {
   employeeId?: number | null
   iat: number            // issued at (ms)
   exp: number            // expires at (ms)
+}
+
+// ---------------------------------------------------------------------------
+// Token Revocation — In-memory blacklist (synced from DB by Node.js routes)
+// ---------------------------------------------------------------------------
+// The Edge Runtime middleware cannot access Prisma, so we maintain an
+// in-memory set of revoked token JTIs. API routes (Node.js) populate this
+// set when they revoke tokens or when they need to check revocation.
+
+const revokedTokens = new Map<string, number>() // jti -> expiresAt (ms)
+let lastSyncTime = 0
+const SYNC_INTERVAL_MS = 60_000 // Sync from DB every 60 seconds
+
+/**
+ * Compute a unique token identifier (JTI) from a token string.
+ * Uses the version + payloadBase64 as the identifier (signature is derived from these).
+ * This is deterministic — same token always produces the same JTI.
+ */
+export function getTokenJti(token: string): string {
+  const parts = token.split('.')
+  if (parts.length < 2) return ''
+  return `${parts[0]}.${parts[1]}` // version.payloadBase64
+}
+
+/**
+ * Check if a token has been revoked (in-memory check, Edge-safe).
+ * This is fast O(1) lookup against the in-memory cache.
+ */
+export function isTokenRevoked(token: string): boolean {
+  const jti = getTokenJti(token)
+  if (!jti) return true // Malformed tokens are treated as revoked
+
+  const expiresAt = revokedTokens.get(jti)
+  if (expiresAt === undefined) return false // Not in blacklist
+
+  // If the token would have expired by now, clean up the entry
+  if (Date.now() > expiresAt) {
+    revokedTokens.delete(jti)
+    return false
+  }
+
+  return true
+}
+
+/**
+ * Add a token to the in-memory revocation list.
+ * Called from Node.js API routes when a token is revoked (logout, password change, etc.)
+ */
+export function revokeTokenInMemory(token: string, expiresAtMs: number): void {
+  const jti = getTokenJti(token)
+  if (jti) {
+    revokedTokens.set(jti, expiresAtMs)
+  }
+}
+
+/**
+ * Bulk load revoked tokens into the in-memory cache.
+ * Called by API routes after syncing from the database.
+ */
+export function bulkRevokeTokens(entries: Array<{ jti: string; expiresAtMs: number }>): void {
+  const now = Date.now()
+  for (const entry of entries) {
+    // Skip already-expired entries
+    if (entry.expiresAtMs > now) {
+      revokedTokens.set(entry.jti, entry.expiresAtMs)
+    }
+  }
+  lastSyncTime = now
+}
+
+/**
+ * Get the last sync timestamp (for periodic DB sync in API routes).
+ */
+export function getLastRevocationSyncTime(): number {
+  return lastSyncTime
+}
+
+/**
+ * Mark that a sync has been performed (called after DB sync).
+ */
+export function markRevocationSynced(): void {
+  lastSyncTime = Date.now()
+}
+
+/**
+ * Clean up expired entries from the in-memory revocation list.
+ * Should be called periodically (e.g., on every sync).
+ */
+export function cleanupExpiredRevocations(): void {
+  const now = Date.now()
+  for (const [jti, expiresAt] of revokedTokens.entries()) {
+    if (now > expiresAt) {
+      revokedTokens.delete(jti)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -97,9 +195,13 @@ export async function generateToken(payload: {
 
 // ---------------------------------------------------------------------------
 // verifyToken — Validate and decode a token (works in Edge Runtime)
+// Also checks the in-memory revocation blacklist.
 // ---------------------------------------------------------------------------
 export async function verifyToken(token: string, graceMs: number = 0): Promise<AuthPayload | null> {
   try {
+    // 1. Check revocation blacklist first (fast in-memory check)
+    if (isTokenRevoked(token)) return null
+
     const parts = token.split('.')
     if (parts.length !== 3) return null
     const [version, payloadB64, signature] = parts
@@ -152,6 +254,7 @@ export const PUBLIC_PATHS = [
   '/api/auth/send-otp',
   '/api/auth/verify-otp',
   '/api/auth/otp-status',
+  '/api/auth/logout',  // Logout is public — it only needs the token itself
   '/api/health',
   '/api/subscription/plans',
   // DEV-ONLY: Test endpoints (only accessible in development mode)

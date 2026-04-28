@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
-  reactStrictMode: false,
+  reactStrictMode: true,
   output: 'standalone',
   allowedDevOrigins: [
     '.space-z.ai',
@@ -11,8 +11,9 @@ const nextConfig: NextConfig = {
     // Strip debug/info logs in production, keep error/warn for monitoring
     removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
   },
+  // TypeScript errors are caught in CI — no silent masking
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   // Exclude examples folder from build
   outputFileTracingExcludes: {

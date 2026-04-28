@@ -78,6 +78,24 @@ model User {
 }
 
 // ----------------------------------------------
+// CONTEXTO: REVOCACION DE TOKENS (Token Blacklist)
+// ----------------------------------------------
+
+model RevokedToken {
+  id        Int      @id @default(autoincrement())
+  tokenJti  String   @unique @map("token_jti")  // Unique token identifier (version.payloadHash)
+  userId    Int      @map("user_id")
+  reason    String   @default("LOGOUT")  // LOGOUT, PASSWORD_CHANGE, ACCOUNT_DISABLED, SECURITY_BREACH
+  expiresAt DateTime @map("expires_at")  // When the token would have expired — for cleanup
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tokenJti])
+  @@index([expiresAt])  // For cleanup cron: DELETE WHERE expiresAt < NOW
+  @@index([userId])
+  @@map("revoked_tokens")
+}
+
+// ----------------------------------------------
 // CONTEXTO: OTP (One-Time Password) para WhatsApp
 // ----------------------------------------------
 

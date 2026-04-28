@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ensure-env.sh — Guarantees required env vars exist in .env before starting the app.
-# If a variable is missing, it appends the safe dev-default so the server never 500s.
+# If a SECRET variable is missing, generates a cryptographically random value.
+# Never uses hardcoded defaults for secrets.
 
 ENV_FILE=".env"
 
@@ -18,6 +19,26 @@ ensure_var() {
   fi
 }
 
+ensure_secret() {
+  local key="$1"
+  if ! grep -q "^${key}=" "$ENV_FILE"; then
+    # Generate a cryptographically random 32-byte hex string
+    local random_value
+    if command -v openssl &> /dev/null; then
+      random_value=$(openssl rand -hex 32)
+    elif [ -f /dev/urandom ]; then
+      random_value=$(head -c 32 /dev/urandom | xxd -p -c 64)
+    else
+      random_value="CHANGE-ME-$(date +%s)-$RANDOM$RANDOM$RANDOM"
+    fi
+    echo "${key}=${random_value}" >> "$ENV_FILE"
+    echo "[ensure-env] Generated random ${key} in ${ENV_FILE}"
+  fi
+}
+
+# Non-secret: safe default
 ensure_var "DATABASE_URL" "file:./db/custom.db"
-ensure_var "INTERNAL_SECRET" "ventify-internal-secret-2025"
-ensure_var "AUTH_SECRET" "ventify-auth-secret-key-2025-secure"
+
+# Secrets: always generate random values — NEVER use hardcoded defaults
+ensure_secret "INTERNAL_SECRET"
+ensure_secret "AUTH_SECRET"

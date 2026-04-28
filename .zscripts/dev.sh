@@ -26,9 +26,20 @@ bun install 2>&1 | tail -3 >> "$LOG"
 log "Pushing database schema..."
 bun run db:push 2>&1 | tail -5 >> "$LOG"
 
-# ── Step 3: Ensure env vars ──
-log "Ensuring .env variables..."
+# ── Step 3: Ensure env vars (generates random secrets if missing) ──
+log "Ensuring .env variables (no hardcoded secrets)..."
 bash "$PROJECT_DIR/scripts/ensure-env.sh" 2>&1 | tee -a "$LOG"
+
+# Source the .env file so secrets are available as shell variables
+set -a
+source "$PROJECT_DIR/.env" 2>/dev/null
+set +a
+
+# ── Step 3b: Validate required secrets ──
+if [ -z "$AUTH_SECRET" ] || [ -z "$INTERNAL_SECRET" ]; then
+  log "FATAL: AUTH_SECRET and INTERNAL_SECRET must be set in .env. Cannot start server."
+  exit 1
+fi
 
 # ── Step 4: Build production standalone (if needed) ──
 if [ ! -f "$PROJECT_DIR/.next/standalone/server.js" ]; then
@@ -49,38 +60,37 @@ cp "$PROJECT_DIR/.env" "$PROJECT_DIR/.next/standalone/.env" 2>/dev/null
 
 # ── Step 4b: Fix Prisma client for standalone ──
 # Next.js Turbopack externalizes @prisma/client with a hashed name
-# (e.g., @prisma/client-2c3a283f134fdcb6) but standalone output only
-# includes @prisma/client. We must create the hashed copy.
-PRISMA_HASH="client-2c3a283f134fdcb6"
+# but standalone output only includes @prisma/client.
+# We detect the hash dynamically instead of hardcoding it.
 STANDALONE_NM="$PROJECT_DIR/.next/standalone/node_modules"
-if [ -d "$STANDALONE_NM/.prisma/client" ] && [ ! -d "$STANDALONE_NM/.prisma/$PRISMA_HASH" ]; then
-  log "Creating hashed Prisma client: .prisma/$PRISMA_HASH"
-  cp -r "$STANDALONE_NM/.prisma/client" "$STANDALONE_NM/.prisma/$PRISMA_HASH"
-fi
-if [ -d "$STANDALONE_NM/@prisma/client" ] && [ ! -d "$STANDALONE_NM/@prisma/$PRISMA_HASH" ]; then
-  log "Creating hashed Prisma package: @prisma/$PRISMA_HASH"
-  cp -r "$STANDALONE_NM/@prisma/client" "$STANDALONE_NM/@prisma/$PRISMA_HASH"
+if [ -d "$STANDALONE_NM/.prisma" ]; then
+  # Find any hashed Prisma client directories that already exist
+  EXISTING_HASH=$(ls -d "$STANDALONE_NM/.prisma/"client-* 2>/dev/null | head -1)
+  if [ -z "$EXISTING_HASH" ] && [ -d "$STANDALONE_NM/.prisma/client" ]; then
+    # No hashed copy exists — create one by detecting what Next.js expects
+    # Check the standalone server bundle for the hashed import pattern
+    HASHED_NAME=$(grep -oP '@prisma/client-[a-f0-9]+' "$PROJECT_DIR/.next/standalone/.next/server/**/*.js" 2>/dev/null | head -1 | sed 's/@prisma\///')
+    if [ -n "$HASHED_NAME" ]; then
+      log "Detected Prisma hash: $HASHED_NAME — creating symlink"
+      ln -sf "$STANDALONE_NM/.prisma/client" "$STANDALONE_NM/.prisma/$HASHED_NAME"
+      ln -sf "$STANDALONE_NM/@prisma/client" "$STANDALONE_NM/@prisma/$HASHED_NAME" 2>/dev/null
+    fi
+  fi
 fi
 
 # ── Step 5: Keepalive production server loop ──
 # NOTE: This sandbox (Kata Containers) aggressively kills background processes
 # that aren't children of the main init tree. The server WILL die periodically.
 # The while-true loop ensures it restarts immediately (production starts in ~70ms).
-# The `wait $DEV_PID` ensures this script stays alive as long as the server runs,
-# preventing the sandbox from killing the entire process tree.
 RETRIES=0
 
 while true; do
   log "Starting Next.js production server (attempt $((RETRIES + 1))/$MAX_RETRIES)..."
 
-  # Start production standalone server in FOREGROUND (not background)
-  # This is critical: `wait` keeps the bash session alive which prevents
-  # the sandbox process reaper from killing the whole tree.
-  # NOTE: 4096MB needed because SSR page rendering spikes memory in this sandbox
+  # Start production standalone server in FOREGROUND
+  # Secrets come from sourced .env — NEVER hardcoded in this script
   NODE_OPTIONS="--max-old-space-size=4096" \
   DATABASE_URL="file:$PROJECT_DIR/db/custom.db" \
-  AUTH_SECRET="ventify-auth-secret-key-2025-secure" \
-  INTERNAL_SECRET="ventify-internal-secret-2025" \
   NODE_ENV=production \
   PORT=3000 \
   HOSTNAME=0.0.0.0 \

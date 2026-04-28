@@ -70,13 +70,14 @@ interface AuthState {
   user: AuthUser | null
   store: StoreInfo | null
   token: string | null
+  csrfToken: string | null
   permissions: Record<string, boolean>
   isSuperAdmin: boolean
   isAuthenticated: boolean
   isLoading: boolean
   subscription: SubscriptionInfo | null
   availableStores: AvailableStore[]
-  login: (user: AuthUser, store: StoreInfo | null, token: string, permissions?: Record<string, boolean>, isSuperAdmin?: boolean, subscription?: SubscriptionInfo | null, availableStores?: AvailableStore[] | null) => void
+  login: (user: AuthUser, store: StoreInfo | null, token: string, permissions?: Record<string, boolean>, isSuperAdmin?: boolean, subscription?: SubscriptionInfo | null, availableStores?: AvailableStore[] | null, csrfToken?: string | null) => void
   logout: () => void
   setLoading: (loading: boolean) => void
   updateStore: (store: StoreInfo) => void
@@ -144,6 +145,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       store: null,
       token: null,
+      csrfToken: null,
       permissions: {},
       isSuperAdmin: false,
       isAuthenticated: false,
@@ -151,9 +153,9 @@ export const useAuthStore = create<AuthState>()(
       subscription: null,
       availableStores: [],
 
-      login: (user, store, token, permissions, isSuperAdmin = false, subscription = null, availableStores = null) =>
+      login: (user, store, token, permissions, isSuperAdmin = false, subscription = null, availableStores = null, csrfToken = null) =>
         set({
-          user, store, token,
+          user, store, token, csrfToken,
           permissions: permissions || DEFAULT_PERMISSIONS,
           isSuperAdmin,
           isAuthenticated: true, isLoading: false,
@@ -164,8 +166,18 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         // Reset app view to dashboard on logout
         try { useAppStore.getState().setView('dashboard') } catch { /* ignore circular dependency during SSR */ }
+
+        // Revoke the token on the server (fire-and-forget)
+        const currentState = get()
+        if (currentState.token && typeof window !== 'undefined') {
+          fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${currentState.token}` },
+          }).catch(() => { /* fire-and-forget */ })
+        }
+
         set({
-          user: null, store: null, token: null,
+          user: null, store: null, token: null, csrfToken: null,
           permissions: {}, isSuperAdmin: false,
           isAuthenticated: false, isLoading: false,
           subscription: null,
@@ -256,6 +268,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         store: state.store,
         token: state.token,
+        csrfToken: state.csrfToken,
         permissions: state.permissions,
         isSuperAdmin: state.isSuperAdmin,
         isAuthenticated: state.isAuthenticated,

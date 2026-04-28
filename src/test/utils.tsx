@@ -7,6 +7,7 @@ import React from 'react'
 import { renderHook, type RenderHookResult } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import { vi } from 'vitest'
 
 /**
  * Create a fresh QueryClient for each test (no cache sharing between tests).

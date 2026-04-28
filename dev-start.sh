@@ -13,13 +13,29 @@ fi
 mkdir -p .next/standalone/db
 ln -sf /home/z/my-project/db/custom.db .next/standalone/db/custom.db 2>/dev/null
 
+# Ensure secrets exist (generates random values if missing)
+bash scripts/ensure-env.sh
+
+# Source .env for the variables
+set -a
+source .env
+set +a
+
+# Validate that secrets are set (fail fast if not)
+if [ -z "$AUTH_SECRET" ]; then
+  echo "FATAL: AUTH_SECRET is not set. Check your .env file."
+  exit 1
+fi
+if [ -z "$INTERNAL_SECRET" ]; then
+  echo "FATAL: INTERNAL_SECRET is not set. Check your .env file."
+  exit 1
+fi
+
 # Start production server with auto-restart
 while true; do
   echo "[$(date)] Starting production server..."
   NODE_OPTIONS="--max-old-space-size=4096" \
   DATABASE_URL="file:/home/z/my-project/db/custom.db" \
-  AUTH_SECRET="ventify-auth-secret-key-2025-secure" \
-  INTERNAL_SECRET="ventify-internal-secret-2025" \
   NODE_ENV=production \
   PORT=3000 \
   HOSTNAME=0.0.0.0 \
