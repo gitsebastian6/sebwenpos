@@ -3,42 +3,65 @@
 # VentifyPOS — Docker Entrypoint
 # ---------------------------------------------------------------------------
 # Runs on container startup:
-#   1. Wait for PostgreSQL to be ready
+#   1. Wait for PostgreSQL to be ready (raw connection test)
 #   2. Push Prisma schema (creates/migrates tables)
 #   3. Seed plans and super admin if DB is empty
 #   4. Start the Next.js standalone server
 # ---------------------------------------------------------------------------
 
-set -e
-
 echo "╔══════════════════════════════════════════════════╗"
 echo "║         VentifyPOS — Starting Container          ║"
 echo "╚══════════════════════════════════════════════════╝"
 
-# ── 1. Wait for PostgreSQL ──
+# ── 1. Wait for PostgreSQL (simple TCP check via node) ──
 if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "postgresql"; then
   echo "⏳ Waiting for PostgreSQL..."
   MAX_RETRIES=30
   RETRY_COUNT=0
 
-  until node ./node_modules/prisma/build/index.js db push --accept-data-loss 2>/dev/null || [ $RETRY_COUNT -eq $MAX_RETRIES ]; do
+  until node -e "
+    const net = require('net');
+    const url = new URL(process.env.DATABASE_URL);
+    const socket = net.createConnection({ host: url.hostname, port: parseInt(url.port || '5432') }, () => {
+      socket.end();
+      process.exit(0);
+    });
+    socket.on('error', () => { process.exit(1); });
+    socket.setTimeout(2000, () => { socket.destroy(); process.exit(1); });
+  " 2>/dev/null; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     echo "   Retry $RETRY_COUNT/$MAX_RETRIES..."
     sleep 2
+    if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+      echo "❌ Could not connect to PostgreSQL after $MAX_RETRIES retries"
+      exit 1
+    fi
   done
 
-  if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    echo "❌ Could not connect to PostgreSQL after $MAX_RETRIES retries"
-    exit 1
-  fi
+  echo "✅ PostgreSQL is reachable"
 
-  echo "✅ PostgreSQL connected and schema pushed"
+  # ── 2. Push Prisma schema ──
+  echo "📦 Pushing Prisma schema..."
+  PRISMA_RETRIES=5
+  PRISMA_COUNT=0
+
+  until node ./node_modules/prisma/build/index.js db push --accept-data-loss; do
+    PRISMA_COUNT=$((PRISMA_COUNT + 1))
+    if [ $PRISMA_COUNT -eq $PRISMA_RETRIES ]; then
+      echo "❌ Prisma db push failed after $PRISMA_RETRIES attempts"
+      echo "   Check the error messages above for details"
+      exit 1
+    fi
+    echo "   ⚠️ Prisma db push failed, retrying ($PRISMA_COUNT/$PRISMA_RETRIES)..."
+    sleep 3
+  done
+
+  echo "✅ Schema pushed successfully"
 else
   echo "⚠️  No PostgreSQL URL detected — skipping DB setup"
 fi
 
-# ── 2. Seed if empty ──
-# Check if the plans table has data; if not, seed
+# ── 3. Seed if empty ──
 PLAN_COUNT=$(node -e "
   const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
@@ -92,14 +115,14 @@ if [ "$PLAN_COUNT" = "0" ]; then
     }
 
     seed().catch(e => { console.error('Seed error:', e); process.exit(1); });
-  " 2>/dev/null || echo "⚠️  Seed skipped (may need manual setup)"
+  " || echo "⚠️  Seed skipped (may need manual setup)"
 else
   echo "✅ Database already has $PLAN_COUNT plans — skipping seed"
 fi
 
-# ── 3. Ensure uploads directory exists ──
+# ── 4. Ensure uploads directory exists ──
 mkdir -p /app/uploads/receipts 2>/dev/null || true
 
-# ── 4. Start the server ──
+# ── 5. Start the server ──
 echo "🚀 Starting VentifyPOS server on port ${PORT:-3000}..."
 exec node server.js
