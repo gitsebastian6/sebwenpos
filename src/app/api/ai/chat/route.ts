@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// VentifyPOS — AI Chat Route (GLM Chat Provider)
+// VentifyPOS — AI Chat Route (GLM Chat Provider via Z.ai Gateway)
 // ---------------------------------------------------------------------------
-// Backend that consumes the GLM API via z-ai-web-dev-sdk with:
+// Backend that consumes the GLM API via direct fetch to Z.ai gateway with:
 // ✅ Context handling (session history from DB)
 // ✅ Cost control (daily token budget per user)
 // ✅ Error handling (timeouts, API errors, graceful fallbacks)
@@ -12,7 +12,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuthUser } from '@/lib/api-auth'
-import { AuthUser } from '@/lib/api-auth'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -20,6 +22,43 @@ const DAILY_TOKEN_LIMIT = parseInt(process.env.AI_DAILY_TOKEN_LIMIT || '100000',
 const MAX_CONTEXT_MESSAGES = parseInt(process.env.AI_MAX_CONTEXT_MESSAGES || '20', 10)
 const MAX_MESSAGE_LENGTH = 2000
 const API_TIMEOUT_MS = 30000 // 30s timeout for GLM API calls
+
+// ─── Z.ai Gateway Config Loader ────────────────────────────────────────────
+
+interface ZaiConfig {
+  baseUrl: string
+  apiKey: string
+  chatId?: string
+  userId?: string
+  token?: string
+}
+
+let _cachedConfig: ZaiConfig | null = null
+
+function loadZaiConfig(): ZaiConfig {
+  if (_cachedConfig) return _cachedConfig
+
+  const configPaths = [
+    path.join(process.cwd(), '.z-ai-config'),
+    path.join(os.homedir(), '.z-ai-config'),
+    '/etc/.z-ai-config',
+  ]
+
+  for (const filePath of configPaths) {
+    try {
+      const configStr = fs.readFileSync(filePath, 'utf-8')
+      const config = JSON.parse(configStr)
+      if (config.baseUrl && config.apiKey) {
+        _cachedConfig = config
+        return config
+      }
+    } catch {
+      // continue to next path
+    }
+  }
+
+  throw new Error('Z.ai config not found. Checked: ' + configPaths.join(', '))
+}
 
 // ─── VentifyPOS System Prompt ──────────────────────────────────────────────
 
@@ -147,7 +186,7 @@ async function checkTokenBudget(userId: number): Promise<{
   }
 }
 
-// ─── GLM API Call with Error Handling ───────────────────────────────────────
+// ─── GLM API Call via Direct Fetch to Z.ai Gateway ─────────────────────────
 
 interface GlmMessage {
   role: 'system' | 'user' | 'assistant'
@@ -159,10 +198,25 @@ async function callGlmApi(messages: GlmMessage[]): Promise<{
   tokens: number
   model: string
 }> {
-  // Dynamic import to avoid SSR issues
-  const ZAI = (await import('z-ai-web-dev-sdk')).default
+  const config = loadZaiConfig()
 
-  const zai = await ZAI.create()
+  const url = `${config.baseUrl}/chat/completions`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${config.apiKey}`,
+    'X-Z-AI-From': 'Z',
+  }
+
+  if (config.chatId) headers['X-Chat-Id'] = config.chatId
+  if (config.userId) headers['X-User-Id'] = config.userId
+  if (config.token) headers['X-Token'] = config.token
+
+  const requestBody = {
+    model: 'glm-4-flash',
+    messages: messages.map(m => ({ role: m.role, content: m.content })),
+    thinking: { type: 'disabled' },
+    stream: false,
+  }
 
   const startTime = Date.now()
 
@@ -172,18 +226,36 @@ async function callGlmApi(messages: GlmMessage[]): Promise<{
   )
 
   try {
-    const completion = await Promise.race([
-      zai.chat.completions.create({
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
-        thinking: { type: 'disabled' },
-        stream: false,
+    const response = await Promise.race([
+      fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
       }),
       timeoutPromise,
     ])
 
+    if (!response.ok) {
+      const errorBody = await response.text()
+      const errorMsg = `API request failed with status ${response.status}: ${errorBody}`
+      console.error(`[GLM Chat] API error: ${errorMsg}`)
+
+      if (response.status === 429) {
+        throw new Error('Demasiadas solicitudes. Espera un momento antes de intentar de nuevo.')
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('Error de autenticación con el servicio de IA. Contacta al administrador.')
+      }
+      if (response.status >= 500) {
+        throw new Error('El servicio de IA no está disponible temporalmente. Intenta más tarde.')
+      }
+      throw new Error(errorMsg)
+    }
+
+    const completion = await response.json()
     const latencyMs = Date.now() - startTime
     const reply = completion.choices?.[0]?.message?.content || ''
-    const tokens = completion.usage?.total_tokens || Math.ceil(reply.length / 4) // estimate if not provided
+    const tokens = completion.usage?.total_tokens || Math.ceil(reply.length / 4)
     const model = completion.model || 'glm-4-flash'
 
     console.log(`[GLM Chat] ${latencyMs}ms, ~${tokens} tokens, model: ${model}`)
@@ -227,6 +299,10 @@ function getFallbackResponse(userMessage: string, context: { currentPage?: strin
 
   if (lowerMsg.includes('producto') || lowerMsg.includes('inventario') || lowerMsg.includes('agregar')) {
     return '**Para agregar un producto:**\n\n1. Ve a **Productos** en el menú lateral\n2. Haz clic en **+ Nuevo Producto**\n3. Completa nombre, precio de venta, costo, IVA\n4. Asigna una categoría y proveedor\n5. Configura stock mínimo para alertas\n6. Guarda el producto\n\n📦 El inventario se actualiza automáticamente con cada venta o compra.'
+  }
+
+  if (lowerMsg.includes('cotización') || lowerMsg.includes('cotizar') || lowerMsg.includes('cotizacion')) {
+    return '**Para crear una cotización:**\n\n1. Ve a **Cotizaciones** en el menú lateral\n2. Haz clic en **Nueva Cotización**\n3. Selecciona el cliente\n4. Agrega los productos o servicios con sus cantidades\n5. Aplica descuentos si aplica\n6. Define la validez de la cotización\n7. Guarda y envía al cliente\n\n💡 Puedes convertir una cotización en una venta directamente desde el detalle.'
   }
 
   if (lowerMsg.includes('suscripción') || lowerMsg.includes('plan') || lowerMsg.includes('precio')) {
@@ -339,7 +415,7 @@ export async function POST(req: NextRequest) {
 
     // Add conversation history (context)
     const historyMessages = session.messages
-      .filter(m => m.role !== 'system') // system messages are not part of history for the API
+      .filter(m => m.role !== 'system')
       .slice(-MAX_CONTEXT_MESSAGES)
 
     for (const msg of historyMessages) {
@@ -374,7 +450,7 @@ export async function POST(req: NextRequest) {
       aiContent = 'Lo siento, no pude generar una respuesta. Por favor intenta reformular tu pregunta.'
     }
 
-    const startTime = Date.now()
+    const replyStart = Date.now()
 
     // ── Save assistant message ──
     await db.chatMessage.create({
@@ -384,7 +460,7 @@ export async function POST(req: NextRequest) {
         content: aiContent,
         tokens: tokensUsed,
         model,
-        latencyMs: Date.now() - startTime,
+        latencyMs: Date.now() - replyStart,
       },
     })
 
