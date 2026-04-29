@@ -44,6 +44,7 @@ import dynamic from 'next/dynamic'
 import { ViewErrorBoundary } from '@/components/shared/error-boundary'
 import { SubscriptionGate } from '@/components/subscription/subscription-gate'
 
+const AiAssistant = dynamic(() => import('@/components/ai-assistant/ai-assistant').then(m => ({ default: m.AiAssistant })), { ssr: false })
 const DashboardView = dynamic(() => import('@/components/dashboard/dashboard-view').then(m => ({ default: m.DashboardView })), { ssr: false })
 const POSView = dynamic(() => import('@/components/pos/pos-view').then(m => ({ default: m.POSView })), { ssr: false })
 const ProductsView = dynamic(() => import('@/components/products/products-view').then(m => ({ default: m.ProductsView })), { ssr: false })
@@ -507,6 +508,8 @@ export function AppShell() {
           <ViewRouter key={store?.id} currentView={currentView} />
         </main>
       </SidebarInset>
+      {/* ── AI Assistant (floating chat) ── */}
+      <AiAssistant />
     </SidebarProvider>
   )
 }

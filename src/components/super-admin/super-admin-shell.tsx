@@ -11,6 +11,8 @@ import {
   LogOut, Moon, Sun,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import dynamic from 'next/dynamic'
+const AiAssistant = dynamic(() => import('@/components/ai-assistant/ai-assistant').then(m => ({ default: m.AiAssistant })), { ssr: false })
 import type { StoreOwner } from './types'
 import { StatsView } from './stats-view'
 import { ConfigView } from './config-view'
@@ -253,6 +255,9 @@ export function SuperAdminShell() {
       <footer className="border-t py-3 px-4 sm:px-6 text-center text-xs text-muted-foreground">
         Ventify POS · Sistema Multi-Tienda · Super Administrador
       </footer>
+
+      {/* AI Assistant */}
+      <AiAssistant />
     </div>
   )
 }
