@@ -1,138 +1,331 @@
-'use client';
+'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageCircle, X, Send, Bot, User, Sparkles, Trash2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { useAuthStore } from '@/stores/auth-store'
+import { useAppStore } from '@/stores/app-store'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  MessageCircle,
+  X,
+  Send,
+  Bot,
+  User,
+  Sparkles,
+  Trash2,
+  RotateCcw,
+  ChevronDown,
+  Zap,
+} from 'lucide-react'
 
 // ---------------------------------------------------------------------------
-// VentifyPOS — AI Assistant (Floating Chat)
+// VentifyPOS — AI Assistant (Production Chat Widget)
 // ---------------------------------------------------------------------------
-// A VS Code Copilot-style chat bubble that provides contextual help.
-// Uses the /api/ai/chat backend endpoint (GLM via z-ai-web-dev-sdk).
+// A floating chat bubble with:
+// ✅ Persistent history (localStorage)
+// ✅ Server-side session management
+// ✅ Markdown-like rendering (bold, lists, code)
+// ✅ Context-aware quick actions based on current view
+// ✅ Typing animation for AI responses
+// ✅ Usage tracking & daily budget display
+// ✅ Mobile responsive (full-screen on small devices)
+// ✅ Error recovery with retry
 // ---------------------------------------------------------------------------
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: number
 }
 
-const QUICK_ACTIONS = [
-  { label: '¿Cómo vendo?', icon: '🛒', prompt: '¿Cómo hago una venta en el POS?' },
-  { label: 'Facturación DIAN', icon: '🧾', prompt: '¿Cómo configuro la facturación electrónica con la DIAN?' },
-  { label: 'Ver suscripción', icon: '📋', prompt: '¿Cómo veo o cambio mi plan de suscripción?' },
-  { label: 'Inventario', icon: '📦', prompt: '¿Cómo manejo el inventario y las alertas de stock mínimo?' },
-];
+interface ChatState {
+  messages: ChatMessage[]
+  sessionId: string | null
+  usageRemaining: number | null
+}
+
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = 'ventify-chat-history'
+const MAX_STORED_MESSAGES = 50
+
+// ─── Context-Aware Quick Actions ───────────────────────────────────────────
+
+interface QuickAction {
+  label: string
+  icon: string
+  prompt: string
+  views?: string[] // Only show on these views (undefined = always)
+}
+
+const QUICK_ACTIONS: QuickAction[] = [
+  { label: '¿Cómo vendo?', icon: '🛒', prompt: '¿Cómo hago una venta en el POS?', views: ['dashboard', 'pos'] },
+  { label: 'Facturación DIAN', icon: '🧾', prompt: '¿Cómo configuro la facturación electrónica con la DIAN?', views: ['dashboard', 'invoices', 'settings'] },
+  { label: 'Ver suscripción', icon: '📋', prompt: '¿Cómo veo o cambio mi plan de suscripción?', views: ['dashboard', 'settings'] },
+  { label: 'Inventario', icon: '📦', prompt: '¿Cómo manejo el inventario y las alertas de stock mínimo?', views: ['dashboard', 'inventory', 'products'] },
+  { label: 'Caja registradora', icon: '💰', prompt: '¿Cómo abro y cierro la caja registradora?', views: ['accounting', 'dashboard'] },
+  { label: 'Crear cotización', icon: '📄', prompt: '¿Cómo creo una cotización para un cliente?', views: ['quotations', 'dashboard'] },
+  { label: 'Agregar producto', icon: '➕', prompt: '¿Cómo agrego un nuevo producto al inventario?', views: ['products', 'inventory'] },
+  { label: 'Mesas y comandas', icon: '🍽️', prompt: '¿Cómo uso las mesas y las comandas?', views: ['tables', 'dashboard'] },
+  { label: 'Empleados y roles', icon: '👨‍💼', prompt: '¿Cómo configuro empleados y permisos?', views: ['employees', 'roles'] },
+  { label: 'Compras a proveedores', icon: '🚚', prompt: '¿Cómo registro una compra a proveedor?', views: ['purchases', 'providers'] },
+  { label: 'Reportes', icon: '📊', prompt: '¿Qué reportes puedo generar y cómo los exporto?', views: ['reports'] },
+  { label: 'Nota crédito', icon: '↩️', prompt: '¿Cómo creo una nota crédito para una factura?', views: ['invoices'] },
+]
+
+// ─── LocalStorage Persistence ───────────────────────────────────────────────
+
+function loadChatState(): ChatState | null {
+  try {
+    if (typeof window === 'undefined') return null
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    // Validate
+    if (!parsed.messages || !Array.isArray(parsed.messages)) return null
+    // Only keep messages from last 24 hours
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000
+    parsed.messages = parsed.messages.filter((m: ChatMessage) => m.timestamp > oneDayAgo)
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function saveChatState(state: ChatState) {
+  try {
+    if (typeof window === 'undefined') return
+    const toSave = {
+      ...state,
+      messages: state.messages.slice(-MAX_STORED_MESSAGES),
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
+  } catch {
+    // localStorage might be full or blocked
+  }
+}
+
+function clearChatState() {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch { /* ignore */ }
+}
+
+// ─── Simple Markdown Renderer ───────────────────────────────────────────────
+
+function renderMarkdown(text: string): string {
+  let html = text
+    // Escape HTML
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  // Bold: **text** or __text__
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>')
+
+  // Italic: *text* or _text_
+  html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
+
+  // Inline code: `code`
+  html = html.replace(/`([^`]+)`/g, '<code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">$1</code>')
+
+  // Numbered lists: 1. item
+  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div class="flex gap-1.5 ml-2"><span class="text-muted-foreground font-medium min-w-[1.25rem]">$1.</span><span>$2</span></div>')
+
+  // Bullet lists: - item or * item
+  html = html.replace(/^[-*]\s+(.+)$/gm, '<div class="flex gap-1.5 ml-2"><span class="text-emerald-500 mt-0.5">•</span><span>$1</span></div>')
+
+  // Line breaks (double newline = paragraph)
+  html = html.replace(/\n\n/g, '</p><p class="mt-2">')
+  html = html.replace(/\n/g, '<br />')
+
+  // Wrap in paragraph
+  html = `<p>${html}</p>`
+
+  // Clean up empty paragraphs
+  html = html.replace(/<p>\s*<\/p>/g, '')
+
+  return html
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export function AiAssistant() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isOpen, setIsOpen] = useState(false)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [usageRemaining, setUsageRemaining] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [showScrollBottom, setShowScrollBottom] = useState(false)
 
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const initializedRef = useRef(false)
 
-  // Focus input when opening
+  const currentView = useAppStore((s) => s.currentView)
+  const { user, subscription } = useAuthStore()
+
+  // ── Initialize from localStorage ──
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
+    if (initializedRef.current) return
+    initializedRef.current = true
+    const saved = loadChatState()
+    if (saved && saved.messages.length > 0) {
+      setMessages(saved.messages)
+      setSessionId(saved.sessionId)
+      setUsageRemaining(saved.usageRemaining)
     }
-  }, [isOpen]);
+  }, [])
 
-  // Get current page context for smarter responses
-  const getContext = useCallback(() => {
-    if (typeof window === 'undefined') return '';
-    const path = window.location.pathname;
-    const activeSection = document.querySelector('[data-section]')?.getAttribute('data-section');
+  // ── Save to localStorage on changes ──
+  useEffect(() => {
+    if (messages.length > 0) {
+      saveChatState({ messages, sessionId, usageRemaining })
+    }
+  }, [messages, sessionId, usageRemaining])
 
-    const contextParts: string[] = [];
-    if (path) contextParts.push(`Página actual: ${path}`);
-    if (activeSection) contextParts.push(`Sección activa: ${activeSection}`);
-    return contextParts.join('\n');
-  }, []);
+  // ── Auto-scroll ──
+  const scrollToBottom = useCallback((smooth = true) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' })
+  }, [])
 
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, isLoading, scrollToBottom])
+
+  // ── Focus input on open ──
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => inputRef.current?.focus(), 100)
+    }
+  }, [isOpen])
+
+  // ── Handle scroll position ──
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100
+    setShowScrollBottom(!isNearBottom)
+  }, [])
+
+  // ── Get context-aware quick actions ──
+  const contextActions = QUICK_ACTIONS.filter(
+    (a) => !a.views || a.views.includes(currentView),
+  ).slice(0, 6)
+
+  // ── Send message ──
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isLoading) return;
+    if (!text.trim() || isLoading) return
 
     const userMessage: ChatMessage = {
+      id: `msg-${Date.now()}-u`,
       role: 'user',
       content: text.trim(),
       timestamp: Date.now(),
-    };
+    }
 
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
+    setMessages(prev => [...prev, userMessage])
+    setInput('')
+    setIsLoading(true)
+    setError(null)
 
     try {
-      const token = localStorage.getItem('auth_token') || '';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') || '' : ''
+
+      // Get auth token from the proper storage
+      let authToken = ''
+      try {
+        const raw = localStorage.getItem('pos-auth')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          authToken = parsed?.state?.token || ''
+        }
+      } catch { /* ignore */ }
 
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify({
-          messages: [...messages, userMessage].map(m => ({
-            role: m.role,
-            content: m.content,
-          })),
-          context: getContext(),
+          message: text.trim(),
+          sessionId,
+          currentPage: currentView,
+          subscriptionStatus: subscription?.subscriptionStatus,
+          planName: subscription?.planName,
         }),
-      });
+      })
 
-      const data = await response.json();
+      const data = await response.json()
 
       if (data.success && data.message) {
-        setMessages(prev => [
-          ...prev,
-          { role: 'assistant', content: data.message, timestamp: Date.now() },
-        ]);
+        const aiMessage: ChatMessage = {
+          id: `msg-${Date.now()}-a`,
+          role: 'assistant',
+          content: data.message,
+          timestamp: Date.now(),
+        }
+        setMessages(prev => [...prev, aiMessage])
+        if (data.sessionId) setSessionId(data.sessionId)
+        if (data.usage) setUsageRemaining(data.usage.remaining)
+      } else if (response.status === 429) {
+        setError(data.error || 'Límite de uso alcanzado. Espera un momento.')
+      } else if (response.status === 401) {
+        setError('Necesitas iniciar sesión para usar el asistente.')
       } else {
-        setMessages(prev => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: data.error || 'Lo siento, no pude procesar tu pregunta. Intenta de nuevo.',
-            timestamp: Date.now(),
-          },
-        ]);
+        setError(data.error || 'No pude procesar tu pregunta. Intenta de nuevo.')
       }
     } catch {
-      setMessages(prev => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: '⚠️ Error de conexión. Verifica tu internet e intenta de nuevo.',
-          timestamp: Date.now(),
-        },
-      ]);
+      setError('Error de conexión. Verifica tu internet e intenta de nuevo.')
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  }, [messages, isLoading, getContext]);
+  }, [isLoading, sessionId, currentView, subscription])
 
-  const handleQuickAction = (prompt: string) => {
-    sendMessage(prompt);
-  };
+  // ── Clear chat ──
+  const clearChat = useCallback(async () => {
+    if (sessionId) {
+      try {
+        await fetch(`/api/ai/chat?sessionId=${encodeURIComponent(sessionId)}`, {
+          method: 'DELETE',
+        })
+      } catch { /* fire and forget */ }
+    }
+    setMessages([])
+    setSessionId(null)
+    setUsageRemaining(null)
+    setError(null)
+    clearChatState()
+  }, [sessionId])
 
-  const clearChat = () => {
-    setMessages([]);
-  };
+  // ── Retry last message ──
+  const retryLast = useCallback(() => {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
+    if (lastUserMsg) {
+      // Remove last failed exchange
+      setMessages(prev => prev.slice(0, -1)) // Remove error or last AI msg
+      sendMessage(lastUserMsg.content)
+    }
+  }, [messages, sendMessage])
 
+  // ── Keyboard handler ──
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
+      e.preventDefault()
+      sendMessage(input)
     }
-  };
+  }
+
+  // ── Usage indicator ──
+  const usagePercent = usageRemaining !== null ? Math.max(0, Math.min(100, (usageRemaining / 100000) * 100)) : null
+  const isLowUsage = usagePercent !== null && usagePercent < 20
 
   return (
     <>
@@ -153,17 +346,30 @@ export function AiAssistant() {
 
       {/* ── Chat Panel ── */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 flex h-[520px] w-[380px] flex-col rounded-2xl border border-border bg-card shadow-2xl transition-all duration-300 animate-in slide-in-from-bottom-4 sm:h-[560px] sm:w-[400px]">
+        <div className="fixed bottom-0 right-0 z-50 flex h-full w-full flex-col bg-card sm:bottom-6 sm:right-6 sm:h-[600px] sm:w-[420px] sm:rounded-2xl sm:border sm:border-border sm:shadow-2xl">
           {/* ── Header ── */}
-          <div className="flex items-center justify-between rounded-t-2xl bg-emerald-600 px-4 py-3 text-white">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5" />
+          <div className="flex items-center justify-between bg-emerald-600 px-4 py-3 text-white sm:rounded-t-2xl">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/30">
+                <Sparkles className="h-4 w-4" />
+              </div>
               <div>
                 <h3 className="text-sm font-semibold">Ventify</h3>
                 <p className="text-[10px] text-emerald-100">Asistente Virtual</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {/* Usage indicator */}
+              {usagePercent !== null && (
+                <Tooltip label={`${Math.round(usageRemaining! / 1000)}K tokens disponibles`}>
+                  <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    isLowUsage ? 'bg-red-500/20 text-red-200' : 'bg-emerald-500/20 text-emerald-100'
+                  }`}>
+                    <Zap className="h-3 w-3" />
+                    {Math.round(usagePercent)}%
+                  </div>
+                </Tooltip>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -186,85 +392,128 @@ export function AiAssistant() {
           </div>
 
           {/* ── Messages Area ── */}
-          <ScrollArea className="flex-1 p-3">
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950">
-                  <Bot className="h-6 w-6 text-emerald-600" />
+          <div className="relative flex-1 overflow-hidden">
+            <ScrollArea className="h-full p-3" ref={scrollAreaRef} onScroll={handleScroll}>
+              {messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950">
+                    <Bot className="h-7 w-7 text-emerald-600" />
+                  </div>
+                  <h4 className="mb-1 text-sm font-semibold text-foreground">
+                    ¡Hola{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}! Soy Ventify 👋
+                  </h4>
+                  <p className="mb-4 text-xs text-muted-foreground max-w-[260px]">
+                    Tu asistente para VentifyPOS. Pregúntame cómo usar cualquier función del sistema.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 w-full max-w-[320px]">
+                    {contextActions.map((action) => (
+                      <button
+                        key={action.label}
+                        onClick={() => sendMessage(action.prompt)}
+                        className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-left text-xs transition-colors hover:bg-accent hover:border-emerald-500/30"
+                      >
+                        <span className="text-base">{action.icon}</span>
+                        <span className="font-medium leading-tight">{action.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <h4 className="mb-1 text-sm font-semibold text-foreground">
-                  ¡Hola! Soy Ventify 👋
-                </h4>
-                <p className="mb-4 text-xs text-muted-foreground">
-                  Tu asistente para VentifyPOS. Pregúntame lo que quieras.
-                </p>
-                <div className="grid grid-cols-2 gap-2 w-full">
-                  {QUICK_ACTIONS.map((action) => (
-                    <button
-                      key={action.label}
-                      onClick={() => handleQuickAction(action.prompt)}
-                      className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-left text-xs transition-colors hover:bg-accent"
+              ) : (
+                <div className="space-y-3 pb-2">
+                  {messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
                     >
-                      <span className="text-base">{action.icon}</span>
-                      <span className="font-medium">{action.label}</span>
-                    </button>
+                      <div
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                          msg.role === 'user'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                        }`}
+                      >
+                        {msg.role === 'user' ? (
+                          <User className="h-3.5 w-3.5" />
+                        ) : (
+                          <Bot className="h-3.5 w-3.5" />
+                        )}
+                      </div>
+                      <div
+                        className={`max-w-[300px] rounded-2xl px-3 py-2 text-sm ${
+                          msg.role === 'user'
+                            ? 'bg-primary text-primary-foreground rounded-br-md'
+                            : 'bg-muted text-foreground rounded-bl-md'
+                        }`}
+                      >
+                        {msg.role === 'assistant' ? (
+                          <div
+                            className="whitespace-pre-wrap break-words leading-relaxed prose prose-sm max-w-none dark:prose-invert [&_strong]:text-foreground [&_em]:text-foreground/80 [&_code]:text-emerald-600 dark:[&_code]:text-emerald-400 [&_br]:leading-4"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                          />
+                        ) : (
+                          <div className="whitespace-pre-wrap break-words leading-relaxed">
+                            {msg.content}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {messages.map((msg, i) => (
-                  <div
-                    key={i}
-                    className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-                  >
-                    <div
-                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-                        msg.role === 'user'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                      }`}
-                    >
-                      {msg.role === 'user' ? (
-                        <User className="h-3.5 w-3.5" />
-                      ) : (
+                  {isLoading && (
+                    <div className="flex gap-2">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                         <Bot className="h-3.5 w-3.5" />
-                      )}
-                    </div>
-                    <div
-                      className={`max-w-[280px] rounded-2xl px-3 py-2 text-sm ${
-                        msg.role === 'user'
-                          ? 'bg-primary text-primary-foreground rounded-br-md'
-                          : 'bg-muted text-foreground rounded-bl-md'
-                      }`}
-                    >
-                      <div className="whitespace-pre-wrap break-words leading-relaxed">
-                        {msg.content}
+                      </div>
+                      <div className="rounded-2xl rounded-bl-md bg-muted px-4 py-3">
+                        <div className="flex gap-1.5">
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-500 [animation-delay:0ms]" />
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-500 [animation-delay:150ms]" />
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-500 [animation-delay:300ms]" />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-                {isLoading && (
-                  <div className="flex gap-2">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                      <Bot className="h-3.5 w-3.5" />
+                  )}
+                  {error && !isLoading && (
+                    <div className="mx-2 rounded-lg border border-red-200 bg-red-50 dark:border-red-900/30 dark:bg-red-950/20 px-3 py-2">
+                      <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+                      <button
+                        onClick={retryLast}
+                        className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-red-700 dark:text-red-300 hover:underline"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Reintentar
+                      </button>
                     </div>
-                    <div className="rounded-2xl rounded-bl-md bg-muted px-4 py-3">
-                      <div className="flex gap-1">
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-500 [animation-delay:0ms]" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-500 [animation-delay:150ms]" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-500 [animation-delay:300ms]" />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </ScrollArea>
+
+            {/* Scroll to bottom button */}
+            {showScrollBottom && messages.length > 3 && (
+              <button
+                onClick={() => scrollToBottom()}
+                className="absolute bottom-2 left-1/2 -translate-x-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-background border border-border shadow-sm hover:bg-accent transition-colors"
+                aria-label="Ir al final"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </button>
             )}
-            <div ref={messagesEndRef} />
-          </ScrollArea>
+          </div>
 
           {/* ── Input Area ── */}
           <div className="border-t border-border p-3">
+            {/* Context pill */}
+            {currentView && currentView !== 'dashboard' && (
+              <div className="mb-2 flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  📍 {currentView.charAt(0).toUpperCase() + currentView.slice(1)}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  — contexto activo
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <input
                 ref={inputRef}
@@ -274,23 +523,52 @@ export function AiAssistant() {
                 onKeyDown={handleKeyDown}
                 placeholder="Escribe tu pregunta..."
                 disabled={isLoading}
-                className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50"
+                className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:opacity-50 transition-colors"
+                maxLength={2000}
               />
               <Button
                 onClick={() => sendMessage(input)}
                 disabled={isLoading || !input.trim()}
                 size="icon"
-                className="h-9 w-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+                className="h-9 w-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                aria-label="Enviar mensaje"
               >
                 <Send className="h-4 w-4" />
               </Button>
             </div>
-            <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-              Ventify puede cometer errores. Verifica la información importante.
-            </p>
+            <div className="mt-1.5 flex items-center justify-between">
+              <p className="text-[10px] text-muted-foreground">
+                Ventify puede cometer errores. Verifica la información importante.
+              </p>
+              {messages.length > 0 && (
+                <span className="text-[10px] text-muted-foreground">
+                  {messages.length} mensaje{messages.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       )}
     </>
-  );
+  )
+}
+
+// ─── Simple Tooltip ─────────────────────────────────────────────────────────
+
+function Tooltip({ label, children }: { label: string; children: React.ReactNode }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {children}
+      {show && (
+        <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-foreground text-background px-2 py-1 text-[10px] z-50">
+          {label}
+        </div>
+      )}
+    </div>
+  )
 }

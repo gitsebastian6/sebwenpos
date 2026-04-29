@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: [
     '.space-z.ai',
   ],
+  // Prevent Turbopack from bundling server-only packages that use Node.js APIs
+  serverExternalPackages: ['z-ai-web-dev-sdk'],
   compiler: {
     // Strip debug/info logs in production, keep error/warn for monitoring
     removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
