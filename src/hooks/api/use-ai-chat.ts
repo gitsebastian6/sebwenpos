@@ -37,7 +37,7 @@ export function useAiChat() {
       return mutationFetch<AiChatResponse>(
         '/api/ai/chat',
         'POST',
-        body as Record<string, unknown>
+        body as unknown as Record<string, unknown>
       )
     },
     retry: 1,
