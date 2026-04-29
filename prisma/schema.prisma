@@ -1308,3 +1308,45 @@ model WompiTransaction {
   @@index([createdAt])
   @@map("wompi_transactions")
 }
+
+// ----------------------------------------------
+// CONTEXTO: ASISTENTE AI (GLM Chat Provider)
+// ----------------------------------------------
+
+model ChatSession {
+  id          Int       @id @default(autoincrement())
+  sessionId   String    @unique @map("session_id")  // UUID for client-side tracking
+  userId      Int       @map("user_id")
+  storeId     Int?      @map("store_id")
+  title       String?   // Auto-generated from first message
+  tokensUsed  Int       @default(0) @map("tokens_used")
+  messageCount Int      @default(0) @map("message_count")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt
+
+  messages ChatMessage[]
+
+  @@index([userId])
+  @@index([storeId])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id          Int      @id @default(autoincrement())
+  sessionId   Int      @map("session_id")
+  role        String   // system, user, assistant
+  content     String
+  tokens      Int      @default(0)  // Token count for this message
+  model       String?  // GLM model used
+  latencyMs   Int?     @map("latency_ms")  // Response time in ms
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}

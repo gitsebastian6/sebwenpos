@@ -96,6 +96,10 @@ services:
       SUPERADMIN_CEDULA: ${SUPERADMIN_CEDULA:-}
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
       SUPERADMIN_NAME: ${SUPERADMIN_NAME:-}
+      # ── AI Chat Provider (GLM / ZhipuAI) ──
+      GLM_API_KEY: ${GLM_API_KEY:-}
+      AI_DAILY_TOKEN_LIMIT: ${AI_DAILY_TOKEN_LIMIT:-100000}
+      AI_MAX_CONTEXT_MESSAGES: ${AI_MAX_CONTEXT_MESSAGES:-20}
     depends_on:
       migrate:
         condition: service_completed_successfully
