@@ -1,34 +1,22 @@
 // ---------------------------------------------------------------------------
-// VentifyPOS — AI Chat Route (GLM Chat Provider via Z.ai Gateway)
+// VentifyPOS — AI Chat Route (GLM via z-ai CLI subprocess)
 // ---------------------------------------------------------------------------
-// Backend that consumes the GLM API via direct fetch to Z.ai gateway with:
-// ✅ Context handling (session history from DB)
-// ✅ Cost control (daily token budget per user)
-// ✅ Error handling (timeouts, API errors, graceful fallbacks)
-// ✅ System prompt with VentifyPOS domain knowledge
-// ✅ Session management (create, continue, clear)
+// Uses z-ai CLI tool via Bun.spawn to call GLM API.
+// Avoids all fetch/SDK calls inside Next.js that cause server crashes.
+// Context, session management, cost control handled here.
 // ---------------------------------------------------------------------------
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuthUser } from '@/lib/api-auth'
+import { spawn } from 'child_process'
+import { readFileSync, unlinkSync, existsSync } from 'fs'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const DAILY_TOKEN_LIMIT = parseInt(process.env.AI_DAILY_TOKEN_LIMIT || '100000', 10)
 const MAX_CONTEXT_MESSAGES = parseInt(process.env.AI_MAX_CONTEXT_MESSAGES || '20', 10)
 const MAX_MESSAGE_LENGTH = 2000
-const API_TIMEOUT_MS = 30000 // 30s timeout for GLM API calls
-
-// ─── Z.ai Gateway Config ───────────────────────────────────────────────────
-// Config is loaded from environment variables set by the Z.ai platform.
-// No fs/os/path imports needed — fully compatible with Next.js server runtime.
-
-const ZAI_BASE_URL = process.env.ZAI_BASE_URL || 'http://172.25.136.193:8080/v1'
-const ZAI_API_KEY = process.env.ZAI_API_KEY || 'Z.ai'
-const ZAI_CHAT_ID = process.env.ZAI_CHAT_ID || ''
-const ZAI_USER_ID = process.env.ZAI_USER_ID || ''
-const ZAI_TOKEN = process.env.ZAI_TOKEN || ''
 
 // ─── VentifyPOS System Prompt ──────────────────────────────────────────────
 
@@ -93,7 +81,6 @@ function buildSystemPrompt(context: {
 }): string {
   let prompt = VENTIFY_SYSTEM_PROMPT
 
-  // Add page-specific context
   if (context.currentPage && context.currentPage !== 'dashboard') {
     const pageContexts: Record<string, string> = {
       pos: '\n\n## Contexto actual: El usuario está en el Punto de Venta. Enfócate en ventas, carrito, cobro y facturación desde el POS.',
@@ -115,7 +102,6 @@ function buildSystemPrompt(context: {
     prompt += pageContexts[context.currentPage] || ''
   }
 
-  // Add subscription context
   if (context.subscriptionStatus) {
     prompt += `\n\n## Estado de suscripción: ${context.subscriptionStatus}. ${context.planName ? `Plan: ${context.planName}.` : ''}`
     if (context.subscriptionStatus === 'TRIAL') {
@@ -139,124 +125,93 @@ async function checkTokenBudget(userId: number): Promise<{
   todayStart.setHours(0, 0, 0, 0)
 
   const todaySessions = await db.chatSession.findMany({
-    where: {
-      userId,
-      createdAt: { gte: todayStart },
-    },
+    where: { userId, createdAt: { gte: todayStart } },
     select: { tokensUsed: true },
   })
 
   const usedToday = todaySessions.reduce((sum, s) => sum + s.tokensUsed, 0)
   const remaining = Math.max(0, DAILY_TOKEN_LIMIT - usedToday)
 
-  return {
-    allowed: usedToday < DAILY_TOKEN_LIMIT,
-    usedToday,
-    remaining,
-  }
+  return { allowed: usedToday < DAILY_TOKEN_LIMIT, usedToday, remaining }
 }
 
-// ─── GLM API Call via Direct Fetch to Z.ai Gateway ─────────────────────────
+// ─── GLM API via z-ai CLI subprocess ────────────────────────────────────────
+// This avoids fetch/SDK calls inside Next.js that crash the server.
 
-interface GlmMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
-
-async function callGlmApi(messages: GlmMessage[]): Promise<{
+async function callGlmCli(userMessage: string, systemPrompt: string): Promise<{
   content: string
   tokens: number
   model: string
 }> {
-  const url = `${ZAI_BASE_URL}/chat/completions`
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${ZAI_API_KEY}`,
-    'X-Z-AI-From': 'Z',
-  }
-
-  if (ZAI_CHAT_ID) headers['X-Chat-Id'] = ZAI_CHAT_ID
-  if (ZAI_USER_ID) headers['X-User-Id'] = ZAI_USER_ID
-  if (ZAI_TOKEN) headers['X-Token'] = ZAI_TOKEN
-
-  const requestBody = {
-    model: 'glm-4-flash',
-    messages: messages.map(m => ({ role: m.role, content: m.content })),
-    thinking: { type: 'disabled' },
-    stream: false,
-  }
-
   const startTime = Date.now()
-
-  // Race between API call and timeout
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('AI_API_TIMEOUT')), API_TIMEOUT_MS)
-  )
+  const outputFile = `/tmp/zai-chat-${Date.now()}.json`
 
   try {
-    const response = await Promise.race([
-      fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody),
-      }),
-      timeoutPromise,
-    ])
+    // Use Node.js child_process.spawn (works in Next.js runtime)
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const proc = spawn('z-ai', [
+        'chat',
+        '--prompt', userMessage,
+        '--system', systemPrompt,
+        '-o', outputFile,
+      ], {
+        env: { ...process.env },
+        stdio: 'pipe',
+      })
 
-    if (!response.ok) {
-      const errorBody = await response.text()
-      const errorMsg = `API request failed with status ${response.status}: ${errorBody}`
-      console.error(`[GLM Chat] API error: ${errorMsg}`)
+      // Set a 35s timeout
+      const timer = setTimeout(() => {
+        proc.kill('SIGTERM')
+        resolve(1)
+      }, 35000)
 
-      if (response.status === 429) {
-        throw new Error('Demasiadas solicitudes. Espera un momento antes de intentar de nuevo.')
-      }
-      if (response.status === 401 || response.status === 403) {
-        throw new Error('Error de autenticación con el servicio de IA. Contacta al administrador.')
-      }
-      if (response.status >= 500) {
-        throw new Error('El servicio de IA no está disponible temporalmente. Intenta más tarde.')
-      }
-      throw new Error(errorMsg)
+      proc.on('close', (code) => {
+        clearTimeout(timer)
+        resolve(code ?? 1)
+      })
+
+      proc.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+    })
+
+    const latencyMs = Date.now() - startTime
+
+    if (exitCode !== 0) {
+      console.error(`[GLM Chat] CLI exit ${exitCode} after ${latencyMs}ms`)
+      return { content: '', tokens: 0, model: 'error' }
     }
 
-    const completion = await response.json()
-    const latencyMs = Date.now() - startTime
-    const reply = completion.choices?.[0]?.message?.content || ''
-    const tokens = completion.usage?.total_tokens || Math.ceil(reply.length / 4)
-    const model = completion.model || 'glm-4-flash'
+    // Read output file
+    if (!existsSync(outputFile)) {
+      console.error('[GLM Chat] Output file not found')
+      return { content: '', tokens: 0, model: 'error' }
+    }
 
-    console.log(`[GLM Chat] ${latencyMs}ms, ~${tokens} tokens, model: ${model}`)
+    const result = JSON.parse(readFileSync(outputFile, 'utf-8')) as any
+    const reply = result.choices?.[0]?.message?.content || ''
+    const tokens = result.usage?.total_tokens || Math.ceil(reply.length / 4)
+    const model = result.model || 'glm-4-flash'
+
+    console.log(`[GLM Chat] CLI ${latencyMs}ms, ~${tokens} tokens, model: ${model}`)
+
+    // Clean up temp file
+    try { unlinkSync(outputFile) } catch { /* ignore */ }
 
     return { content: reply, tokens, model }
   } catch (error: any) {
     const latencyMs = Date.now() - startTime
-    console.error(`[GLM Chat] Error after ${latencyMs}ms:`, error?.message || error)
-
-    // Provide user-friendly error messages
-    if (error?.message?.includes('TIMEOUT') || error?.message?.includes('timeout')) {
-      throw new Error('El asistente está tardando demasiado. Intenta de nuevo en unos segundos.')
-    }
-    if (error?.message?.includes('429') || error?.message?.includes('rate_limit')) {
-      throw new Error('Demasiadas solicitudes. Espera un momento antes de intentar de nuevo.')
-    }
-    if (error?.message?.includes('401') || error?.message?.includes('auth')) {
-      throw new Error('Error de autenticación con el servicio de IA. Contacta al administrador.')
-    }
-    if (error?.message?.includes('500') || error?.message?.includes('502') || error?.message?.includes('503')) {
-      throw new Error('El servicio de IA no está disponible temporalmente. Intenta más tarde.')
-    }
-
-    throw new Error('No pude procesar tu pregunta. Intenta de nuevo.')
+    console.error(`[GLM Chat] CLI error after ${latencyMs}ms:`, error?.message || error)
+    return { content: '', tokens: 0, model: 'error' }
   }
 }
 
-// ─── Fallback Response (when API fails) ─────────────────────────────────────
+// ─── Fallback Response ──────────────────────────────────────────────────────
 
-function getFallbackResponse(userMessage: string, context: { currentPage?: string }): string {
+function getFallbackResponse(userMessage: string): string {
   const lowerMsg = userMessage.toLowerCase()
 
-  // Pattern matching for common questions
   if (lowerMsg.includes('vender') || lowerMsg.includes('venta') || lowerMsg.includes('cobrar')) {
     return '**Para hacer una venta en el POS:**\n\n1. Ve a la sección **POS** en el menú lateral\n2. Busca el producto por nombre o código de barras\n3. Haz clic en el producto para agregarlo al carrito\n4. Ajusta la cantidad si es necesario\n5. Aplica descuento o propina si aplica\n6. Haz clic en **Cobrar**\n7. Selecciona el método de pago\n8. Confirma la venta\n\n💡 Si quieres generar factura electrónica, activa la opción antes de cobrar.'
   }
@@ -265,12 +220,12 @@ function getFallbackResponse(userMessage: string, context: { currentPage?: strin
     return '**Para configurar facturación electrónica:**\n\n1. Ve a **Configuración → Facturación Electrónica**\n2. Ingresa los datos de la resolución DIAN\n3. Sube tu certificado digital (.p12)\n4. Configura el Proveedor Tecnológico (PTE)\n5. Activa el modo de conexión (OFFLINE/ONLINE)\n\n⚠️ Necesitas resolución vigente de la DIAN para emitir facturas válidas.'
   }
 
-  if (lowerMsg.includes('producto') || lowerMsg.includes('inventario') || lowerMsg.includes('agregar')) {
-    return '**Para agregar un producto:**\n\n1. Ve a **Productos** en el menú lateral\n2. Haz clic en **+ Nuevo Producto**\n3. Completa nombre, precio de venta, costo, IVA\n4. Asigna una categoría y proveedor\n5. Configura stock mínimo para alertas\n6. Guarda el producto\n\n📦 El inventario se actualiza automáticamente con cada venta o compra.'
-  }
-
   if (lowerMsg.includes('cotización') || lowerMsg.includes('cotizar') || lowerMsg.includes('cotizacion')) {
     return '**Para crear una cotización:**\n\n1. Ve a **Cotizaciones** en el menú lateral\n2. Haz clic en **Nueva Cotización**\n3. Selecciona el cliente\n4. Agrega los productos o servicios con sus cantidades\n5. Aplica descuentos si aplica\n6. Define la validez de la cotización\n7. Guarda y envía al cliente\n\n💡 Puedes convertir una cotización en una venta directamente desde el detalle.'
+  }
+
+  if (lowerMsg.includes('producto') || lowerMsg.includes('inventario') || lowerMsg.includes('agregar')) {
+    return '**Para agregar un producto:**\n\n1. Ve a **Productos** en el menú lateral\n2. Haz clic en **+ Nuevo Producto**\n3. Completa nombre, precio de venta, costo, IVA\n4. Asigna una categoría y proveedor\n5. Configura stock mínimo para alertas\n6. Guarda el producto\n\n📦 El inventario se actualiza automáticamente con cada venta o compra.'
   }
 
   if (lowerMsg.includes('suscripción') || lowerMsg.includes('plan') || lowerMsg.includes('precio')) {
@@ -288,317 +243,167 @@ function getFallbackResponse(userMessage: string, context: { currentPage?: strin
 
 export async function POST(req: NextRequest) {
   try {
-    // ── Auth check ──
     const auth = getAuthUser(req)
     if (!auth) {
-      return NextResponse.json(
-        { success: false, error: 'Autenticación requerida' },
-        { status: 401 }
-      )
+      return NextResponse.json({ success: false, error: 'Autenticación requerida' }, { status: 401 })
     }
 
-    // ── Parse body ──
     const body = await req.json()
     const { message, sessionId, currentPage, subscriptionStatus, planName } = body
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Mensaje vacío' },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: 'Mensaje vacío' }, { status: 400 })
     }
 
     if (message.length > MAX_MESSAGE_LENGTH) {
-      return NextResponse.json(
-        { success: false, error: `Mensaje muy largo (máximo ${MAX_MESSAGE_LENGTH} caracteres)` },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: `Mensaje muy largo (máximo ${MAX_MESSAGE_LENGTH} caracteres)` }, { status: 400 })
     }
 
-    // ── Check token budget ──
     const budget = await checkTokenBudget(auth.userId)
     if (!budget.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Límite diario de uso alcanzado. El asistente estará disponible mañana.',
-          usage: { remaining: 0, usedToday: budget.usedToday },
-        },
-        { status: 429 }
-      )
+      return NextResponse.json({
+        success: false,
+        error: 'Límite diario de uso alcanzado. El asistente estará disponible mañana.',
+        usage: { remaining: 0, usedToday: budget.usedToday },
+      }, { status: 429 })
     }
 
-    // ── Find or create session ──
+    // Find or create session
     let session
     if (sessionId) {
       session = await db.chatSession.findUnique({
         where: { sessionId },
-        include: {
-          messages: {
-            orderBy: { createdAt: 'asc' },
-            take: MAX_CONTEXT_MESSAGES,
-          },
-        },
+        include: { messages: { orderBy: { createdAt: 'asc' }, take: MAX_CONTEXT_MESSAGES } },
       })
-
-      // Validate session belongs to user
-      if (session && session.userId !== auth.userId) {
-        session = null // Don't leak other users' sessions
-      }
+      if (session && session.userId !== auth.userId) session = null
     }
 
     if (!session) {
       const newSessionId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
       session = await db.chatSession.create({
-        data: {
-          sessionId: newSessionId,
-          userId: auth.userId,
-          storeId: auth.storeId,
-          title: message.slice(0, 80),
-        },
+        data: { sessionId: newSessionId, userId: auth.userId, storeId: auth.storeId, title: message.slice(0, 80) },
         include: { messages: true },
       })
     }
 
-    // ── Save user message ──
+    // Save user message
     await db.chatMessage.create({
-      data: {
-        sessionId: session.id,
-        role: 'user',
-        content: message.trim(),
-        tokens: Math.ceil(message.length / 4), // estimate
-      },
+      data: { sessionId: session.id, role: 'user', content: message.trim(), tokens: Math.ceil(message.length / 4) },
     })
 
-    // ── Build messages array for GLM API ──
-    const systemPrompt = buildSystemPrompt({
-      currentPage,
-      subscriptionStatus,
-      planName,
-    })
+    // Build system prompt with context
+    const systemPrompt = buildSystemPrompt({ currentPage, subscriptionStatus, planName })
 
-    const glmMessages: GlmMessage[] = [
-      { role: 'system', content: systemPrompt },
-    ]
-
-    // Add conversation history (context)
-    const historyMessages = session.messages
+    // Build conversation summary for context (CLI only supports single prompt + system)
+    // Include recent history in the user message for continuity
+    const recentHistory = session.messages
       .filter(m => m.role !== 'system')
-      .slice(-MAX_CONTEXT_MESSAGES)
+      .slice(-6) // last 3 exchanges
 
-    for (const msg of historyMessages) {
-      if (msg.role === 'user' || msg.role === 'assistant') {
-        glmMessages.push({ role: msg.role, content: msg.content })
-      }
+    let contextMessage = message.trim()
+    if (recentHistory.length > 0) {
+      const historyText = recentHistory
+        .map(m => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
+        .join('\n')
+      contextMessage = `[Conversación previa]\n${historyText}\n\n[Usuario ahora]: ${message.trim()}`
     }
 
-    // Add current user message
-    glmMessages.push({ role: 'user', content: message.trim() })
-
-    // ── Call GLM API ──
+    // Call GLM via z-ai CLI subprocess (no fetch, no SDK — no crashes)
     let aiContent: string
     let tokensUsed: number
     let model: string
 
-    try {
-      const result = await callGlmApi(glmMessages)
+    const result = await callGlmCli(contextMessage, systemPrompt)
+
+    if (result.content && result.content.trim().length > 0) {
       aiContent = result.content
       tokensUsed = result.tokens
       model = result.model
-    } catch (error: any) {
-      // Use fallback response on API error
-      console.warn('[GLM Chat] Using fallback response:', error?.message)
-      aiContent = getFallbackResponse(message, { currentPage })
+    } else {
+      console.warn('[GLM Chat] Using fallback (CLI returned empty)')
+      aiContent = getFallbackResponse(message)
       tokensUsed = Math.ceil(aiContent.length / 4)
       model = 'fallback'
     }
 
-    // Ensure we have some content
-    if (!aiContent || aiContent.trim().length === 0) {
-      aiContent = 'Lo siento, no pude generar una respuesta. Por favor intenta reformular tu pregunta.'
-    }
-
-    const replyStart = Date.now()
-
-    // ── Save assistant message ──
+    // Save assistant message
     await db.chatMessage.create({
-      data: {
-        sessionId: session.id,
-        role: 'assistant',
-        content: aiContent,
-        tokens: tokensUsed,
-        model,
-        latencyMs: Date.now() - replyStart,
-      },
+      data: { sessionId: session.id, role: 'assistant', content: aiContent, tokens: tokensUsed, model },
     })
 
-    // ── Update session stats ──
+    // Update session stats
     await db.chatSession.update({
       where: { id: session.id },
-      data: {
-        tokensUsed: { increment: tokensUsed },
-        messageCount: { increment: 2 }, // user + assistant
-        updatedAt: new Date(),
-      },
+      data: { tokensUsed: { increment: tokensUsed }, messageCount: { increment: 2 }, updatedAt: new Date() },
     })
 
-    // ── Calculate remaining budget ──
     const updatedBudget = await checkTokenBudget(auth.userId)
 
     return NextResponse.json({
       success: true,
       message: aiContent,
       sessionId: session.sessionId,
-      usage: {
-        remaining: updatedBudget.remaining,
-        usedToday: updatedBudget.usedToday,
-        tokensThisMessage: tokensUsed,
-      },
+      usage: { remaining: updatedBudget.remaining, usedToday: updatedBudget.usedToday, tokensThisMessage: tokensUsed },
     })
   } catch (error: any) {
     console.error('[GLM Chat] Unhandled error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Error interno del servidor' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: 'Error interno del servidor' }, { status: 500 })
   }
 }
 
-// ─── DELETE Handler (Clear Session) ────────────────────────────────────────
+// ─── DELETE Handler ─────────────────────────────────────────────────────────
 
 export async function DELETE(req: NextRequest) {
   try {
     const auth = getAuthUser(req)
-    if (!auth) {
-      return NextResponse.json(
-        { error: 'Autenticación requerida' },
-        { status: 401 }
-      )
-    }
+    if (!auth) return NextResponse.json({ error: 'Autenticación requerida' }, { status: 401 })
 
     const { searchParams } = new URL(req.url)
     const sessionId = searchParams.get('sessionId')
+    if (!sessionId) return NextResponse.json({ error: 'sessionId requerido' }, { status: 400 })
 
-    if (!sessionId) {
-      return NextResponse.json(
-        { error: 'sessionId requerido' },
-        { status: 400 }
-      )
-    }
+    const session = await db.chatSession.findUnique({ where: { sessionId } })
+    if (!session || session.userId !== auth.userId) return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 })
 
-    // Find session and verify ownership
-    const session = await db.chatSession.findUnique({
-      where: { sessionId },
-    })
-
-    if (!session || session.userId !== auth.userId) {
-      return NextResponse.json(
-        { error: 'Sesión no encontrada' },
-        { status: 404 }
-      )
-    }
-
-    // Delete session (cascades to messages)
-    await db.chatSession.delete({
-      where: { id: session.id },
-    })
-
+    await db.chatSession.delete({ where: { id: session.id } })
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('[GLM Chat] DELETE error:', error)
-    return NextResponse.json(
-      { error: 'Error al limpiar la sesión' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Error al limpiar la sesión' }, { status: 500 })
   }
 }
 
-// ─── GET Handler (Session History) ─────────────────────────────────────────
+// ─── GET Handler ────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   try {
     const auth = getAuthUser(req)
-    if (!auth) {
-      return NextResponse.json(
-        { error: 'Autenticación requerida' },
-        { status: 401 }
-      )
-    }
+    if (!auth) return NextResponse.json({ error: 'Autenticación requerida' }, { status: 401 })
 
     const { searchParams } = new URL(req.url)
     const sessionId = searchParams.get('sessionId')
 
     if (!sessionId) {
-      // Return all active sessions for this user
       const sessions = await db.chatSession.findMany({
-        where: {
-          userId: auth.userId,
-          isActive: true,
-        },
+        where: { userId: auth.userId, isActive: true },
         orderBy: { updatedAt: 'desc' },
         take: 10,
-        select: {
-          sessionId: true,
-          title: true,
-          messageCount: true,
-          tokensUsed: true,
-          createdAt: true,
-          updatedAt: true,
-        },
+        select: { sessionId: true, title: true, messageCount: true, tokensUsed: true, createdAt: true, updatedAt: true },
       })
-
       const budget = await checkTokenBudget(auth.userId)
-
-      return NextResponse.json({
-        sessions,
-        usage: {
-          remaining: budget.remaining,
-          usedToday: budget.usedToday,
-          dailyLimit: DAILY_TOKEN_LIMIT,
-        },
-      })
+      return NextResponse.json({ sessions, usage: { remaining: budget.remaining, usedToday: budget.usedToday, dailyLimit: DAILY_TOKEN_LIMIT } })
     }
 
-    // Return messages for a specific session
     const session = await db.chatSession.findUnique({
       where: { sessionId },
-      include: {
-        messages: {
-          orderBy: { createdAt: 'asc' },
-          select: {
-            id: true,
-            role: true,
-            content: true,
-            tokens: true,
-            model: true,
-            latencyMs: true,
-            createdAt: true,
-          },
-        },
-      },
+      include: { messages: { orderBy: { createdAt: 'asc' }, select: { id: true, role: true, content: true, tokens: true, model: true, latencyMs: true, createdAt: true } } },
     })
 
-    if (!session || session.userId !== auth.userId) {
-      return NextResponse.json(
-        { error: 'Sesión no encontrada' },
-        { status: 404 }
-      )
-    }
+    if (!session || session.userId !== auth.userId) return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 })
 
-    return NextResponse.json({
-      session: {
-        sessionId: session.sessionId,
-        title: session.title,
-        messageCount: session.messageCount,
-        tokensUsed: session.tokensUsed,
-        messages: session.messages,
-      },
-    })
+    return NextResponse.json({ session: { sessionId: session.sessionId, title: session.title, messageCount: session.messageCount, tokensUsed: session.tokensUsed, messages: session.messages } })
   } catch (error: any) {
     console.error('[GLM Chat] GET error:', error)
-    return NextResponse.json(
-      { error: 'Error al obtener historial' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Error al obtener historial' }, { status: 500 })
   }
 }

@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useAppStore } from '@/stores/app-store'
+import { useAiChat, useAiChatClear } from '@/hooks/api/use-ai-chat'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   MessageCircle,
   X,
@@ -21,15 +21,9 @@ import {
 // ---------------------------------------------------------------------------
 // VentifyPOS — AI Assistant (Production Chat Widget)
 // ---------------------------------------------------------------------------
-// A floating chat bubble with:
-// ✅ Persistent history (localStorage)
-// ✅ Server-side session management
-// ✅ Markdown-like rendering (bold, lists, code)
-// ✅ Context-aware quick actions based on current view
-// ✅ Typing animation for AI responses
-// ✅ Usage tracking & daily budget display
-// ✅ Mobile responsive (full-screen on small devices)
-// ✅ Error recovery with retry
+// Uses TanStack Query (useMutation) for API calls — consistent with the rest
+// of the app. Includes: session management, context-aware quick actions,
+// markdown rendering, usage tracking, mobile responsive, error recovery.
 // ---------------------------------------------------------------------------
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -58,7 +52,7 @@ interface QuickAction {
   label: string
   icon: string
   prompt: string
-  views?: string[] // Only show on these views (undefined = always)
+  views?: string[]
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
@@ -84,9 +78,7 @@ function loadChatState(): ChatState | null {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
-    // Validate
     if (!parsed.messages || !Array.isArray(parsed.messages)) return null
-    // Only keep messages from last 24 hours
     const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000
     parsed.messages = parsed.messages.filter((m: ChatMessage) => m.timestamp > oneDayAgo)
     return parsed
@@ -103,86 +95,72 @@ function saveChatState(state: ChatState) {
       messages: state.messages.slice(-MAX_STORED_MESSAGES),
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
-  } catch {
-    // localStorage might be full or blocked
-  }
+  } catch { /* ignore */ }
 }
 
 function clearChatState() {
-  try {
-    localStorage.removeItem(STORAGE_KEY)
-  } catch { /* ignore */ }
+  try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
 }
 
 // ─── Simple Markdown Renderer ───────────────────────────────────────────────
 
 function renderMarkdown(text: string): string {
   let html = text
-    // Escape HTML
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 
-  // Bold: **text** or __text__
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
   html = html.replace(/__(.+?)__/g, '<strong>$1</strong>')
-
-  // Italic: *text* or _text_
   html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
-
-  // Inline code: `code`
   html = html.replace(/`([^`]+)`/g, '<code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">$1</code>')
-
-  // Numbered lists: 1. item
   html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div class="flex gap-1.5 ml-2"><span class="text-muted-foreground font-medium min-w-[1.25rem]">$1.</span><span>$2</span></div>')
-
-  // Bullet lists: - item or * item
   html = html.replace(/^[-*]\s+(.+)$/gm, '<div class="flex gap-1.5 ml-2"><span class="text-emerald-500 mt-0.5">•</span><span>$1</span></div>')
-
-  // Line breaks (double newline = paragraph)
   html = html.replace(/\n\n/g, '</p><p class="mt-2">')
   html = html.replace(/\n/g, '<br />')
-
-  // Wrap in paragraph
   html = `<p>${html}</p>`
-
-  // Clean up empty paragraphs
   html = html.replace(/<p>\s*<\/p>/g, '')
-
   return html
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function AiAssistant() {
-  const [isOpen, setIsOpen] = useState(false)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === 'undefined') return []
+    const saved = loadChatState()
+    return saved?.messages ?? []
+  })
   const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [usageRemaining, setUsageRemaining] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    const saved = loadChatState()
+    return saved?.sessionId ?? null
+  })
+  const [usageRemaining, setUsageRemaining] = useState<number | null>(() => {
+    if (typeof window === 'undefined') return null
+    const saved = loadChatState()
+    return saved?.usageRemaining ?? null
+  })
   const [showScrollBottom, setShowScrollBottom] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const initializedRef = useRef(false)
 
   const currentView = useAppStore((s) => s.currentView)
   const { user, subscription } = useAuthStore()
 
+  // ── TanStack Query mutations ──
+  const chatMutation = useAiChat()
+  const clearMutation = useAiChatClear()
+
+  const isLoading = chatMutation.isPending
+  const error = chatMutation.error?.message || null
+
   // ── Initialize from localStorage ──
-  useEffect(() => {
-    if (initializedRef.current) return
-    initializedRef.current = true
-    const saved = loadChatState()
-    if (saved && saved.messages.length > 0) {
-      setMessages(saved.messages)
-      setSessionId(saved.sessionId)
-      setUsageRemaining(saved.usageRemaining)
-    }
-  }, [])
+  // State is initialized from localStorage via useState initializers above.
+  // No effect needed — this avoids the lint warning about setState in effects.
 
   // ── Save to localStorage on changes ──
   useEffect(() => {
@@ -219,7 +197,7 @@ export function AiAssistant() {
     (a) => !a.views || a.views.includes(currentView),
   ).slice(0, 6)
 
-  // ── Send message ──
+  // ── Send message via TanStack Query ──
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isLoading) return
 
@@ -232,85 +210,56 @@ export function AiAssistant() {
 
     setMessages(prev => [...prev, userMessage])
     setInput('')
-    setIsLoading(true)
-    setError(null)
 
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') || '' : ''
-
-      // Get auth token from the proper storage
-      let authToken = ''
-      try {
-        const raw = localStorage.getItem('pos-auth')
-        if (raw) {
-          const parsed = JSON.parse(raw)
-          authToken = parsed?.state?.token || ''
-        }
-      } catch { /* ignore */ }
-
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    chatMutation.mutate(
+      {
+        message: text.trim(),
+        sessionId,
+        currentPage: currentView,
+        subscriptionStatus: subscription?.subscriptionStatus,
+        planName: subscription?.planName,
+      },
+      {
+        onSuccess: (data) => {
+          if (data.success && data.message) {
+            const aiMessage: ChatMessage = {
+              id: `msg-${Date.now()}-a`,
+              role: 'assistant',
+              content: data.message,
+              timestamp: Date.now(),
+            }
+            setMessages(prev => [...prev, aiMessage])
+            if (data.sessionId) setSessionId(data.sessionId)
+            if (data.usage) setUsageRemaining(data.usage.remaining)
+          }
         },
-        body: JSON.stringify({
-          message: text.trim(),
-          sessionId,
-          currentPage: currentView,
-          subscriptionStatus: subscription?.subscriptionStatus,
-          planName: subscription?.planName,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (data.success && data.message) {
-        const aiMessage: ChatMessage = {
-          id: `msg-${Date.now()}-a`,
-          role: 'assistant',
-          content: data.message,
-          timestamp: Date.now(),
-        }
-        setMessages(prev => [...prev, aiMessage])
-        if (data.sessionId) setSessionId(data.sessionId)
-        if (data.usage) setUsageRemaining(data.usage.remaining)
-      } else if (response.status === 429) {
-        setError(data.error || 'Límite de uso alcanzado. Espera un momento.')
-      } else if (response.status === 401) {
-        setError('Necesitas iniciar sesión para usar el asistente.')
-      } else {
-        setError(data.error || 'No pude procesar tu pregunta. Intenta de nuevo.')
       }
-    } catch {
-      setError('Error de conexión. Verifica tu internet e intenta de nuevo.')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [isLoading, sessionId, currentView, subscription])
+    )
+  }, [isLoading, sessionId, currentView, subscription, chatMutation])
 
-  // ── Clear chat ──
+  // ── Clear chat via TanStack Query ──
   const clearChat = useCallback(async () => {
     if (sessionId) {
-      try {
-        await fetch(`/api/ai/chat?sessionId=${encodeURIComponent(sessionId)}`, {
-          method: 'DELETE',
-        })
-      } catch { /* fire and forget */ }
+      clearMutation.mutate(sessionId)
     }
     setMessages([])
     setSessionId(null)
     setUsageRemaining(null)
-    setError(null)
     clearChatState()
-  }, [sessionId])
+  }, [sessionId, clearMutation])
 
   // ── Retry last message ──
   const retryLast = useCallback(() => {
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
     if (lastUserMsg) {
-      // Remove last failed exchange
-      setMessages(prev => prev.slice(0, -1)) // Remove error or last AI msg
+      // Remove last AI message or error
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        if (last?.role === 'assistant' || last?.role === 'user') {
+          return prev.slice(0, -1)
+        }
+        return prev
+      })
       sendMessage(lastUserMsg.content)
     }
   }, [messages, sendMessage])
@@ -359,7 +308,6 @@ export function AiAssistant() {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              {/* Usage indicator */}
               {usagePercent !== null && (
                 <Tooltip label={`${Math.round(usageRemaining! / 1000)}K tokens disponibles`}>
                   <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
@@ -393,7 +341,7 @@ export function AiAssistant() {
 
           {/* ── Messages Area ── */}
           <div className="relative flex-1 overflow-hidden">
-            <ScrollArea className="h-full p-3" ref={scrollAreaRef} onScroll={handleScroll}>
+            <div className="h-full overflow-y-auto p-3" ref={scrollAreaRef} onScroll={handleScroll}>
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950">
@@ -487,7 +435,7 @@ export function AiAssistant() {
                   <div ref={messagesEndRef} />
                 </div>
               )}
-            </ScrollArea>
+            </div>
 
             {/* Scroll to bottom button */}
             {showScrollBottom && messages.length > 3 && (
@@ -503,7 +451,6 @@ export function AiAssistant() {
 
           {/* ── Input Area ── */}
           <div className="border-t border-border p-3">
-            {/* Context pill */}
             {currentView && currentView !== 'dashboard' && (
               <div className="mb-2 flex items-center gap-1.5">
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
