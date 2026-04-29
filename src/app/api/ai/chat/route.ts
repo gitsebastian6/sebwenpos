@@ -12,9 +12,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuthUser } from '@/lib/api-auth'
-import fs from 'fs'
-import os from 'os'
-import path from 'path'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -23,42 +20,15 @@ const MAX_CONTEXT_MESSAGES = parseInt(process.env.AI_MAX_CONTEXT_MESSAGES || '20
 const MAX_MESSAGE_LENGTH = 2000
 const API_TIMEOUT_MS = 30000 // 30s timeout for GLM API calls
 
-// ─── Z.ai Gateway Config Loader ────────────────────────────────────────────
+// ─── Z.ai Gateway Config ───────────────────────────────────────────────────
+// Config is loaded from environment variables set by the Z.ai platform.
+// No fs/os/path imports needed — fully compatible with Next.js server runtime.
 
-interface ZaiConfig {
-  baseUrl: string
-  apiKey: string
-  chatId?: string
-  userId?: string
-  token?: string
-}
-
-let _cachedConfig: ZaiConfig | null = null
-
-function loadZaiConfig(): ZaiConfig {
-  if (_cachedConfig) return _cachedConfig
-
-  const configPaths = [
-    path.join(process.cwd(), '.z-ai-config'),
-    path.join(os.homedir(), '.z-ai-config'),
-    '/etc/.z-ai-config',
-  ]
-
-  for (const filePath of configPaths) {
-    try {
-      const configStr = fs.readFileSync(filePath, 'utf-8')
-      const config = JSON.parse(configStr)
-      if (config.baseUrl && config.apiKey) {
-        _cachedConfig = config
-        return config
-      }
-    } catch {
-      // continue to next path
-    }
-  }
-
-  throw new Error('Z.ai config not found. Checked: ' + configPaths.join(', '))
-}
+const ZAI_BASE_URL = process.env.ZAI_BASE_URL || 'http://172.25.136.193:8080/v1'
+const ZAI_API_KEY = process.env.ZAI_API_KEY || 'Z.ai'
+const ZAI_CHAT_ID = process.env.ZAI_CHAT_ID || ''
+const ZAI_USER_ID = process.env.ZAI_USER_ID || ''
+const ZAI_TOKEN = process.env.ZAI_TOKEN || ''
 
 // ─── VentifyPOS System Prompt ──────────────────────────────────────────────
 
@@ -198,18 +168,16 @@ async function callGlmApi(messages: GlmMessage[]): Promise<{
   tokens: number
   model: string
 }> {
-  const config = loadZaiConfig()
-
-  const url = `${config.baseUrl}/chat/completions`
+  const url = `${ZAI_BASE_URL}/chat/completions`
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${config.apiKey}`,
+    'Authorization': `Bearer ${ZAI_API_KEY}`,
     'X-Z-AI-From': 'Z',
   }
 
-  if (config.chatId) headers['X-Chat-Id'] = config.chatId
-  if (config.userId) headers['X-User-Id'] = config.userId
-  if (config.token) headers['X-Token'] = config.token
+  if (ZAI_CHAT_ID) headers['X-Chat-Id'] = ZAI_CHAT_ID
+  if (ZAI_USER_ID) headers['X-User-Id'] = ZAI_USER_ID
+  if (ZAI_TOKEN) headers['X-Token'] = ZAI_TOKEN
 
   const requestBody = {
     model: 'glm-4-flash',
