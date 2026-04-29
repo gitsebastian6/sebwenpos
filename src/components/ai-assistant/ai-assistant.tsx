@@ -142,6 +142,7 @@ export function AiAssistant() {
     const saved = loadChatState()
     return saved?.usageRemaining ?? null
   })
+  const [open, setOpen] = useState(false)
   const [showScrollBottom, setShowScrollBottom] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -180,10 +181,10 @@ export function AiAssistant() {
 
   // ── Focus input on open ──
   useEffect(() => {
-    if (isOpen) {
+    if (open) {
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [isOpen])
+  }, [open])
 
   // ── Handle scroll position ──
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -279,9 +280,9 @@ export function AiAssistant() {
   return (
     <>
       {/* ── Floating Bubble Button ── */}
-      {!isOpen && (
+      {!open && (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => setOpen(true)}
           className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg transition-all duration-300 hover:bg-emerald-700 hover:shadow-xl hover:scale-105 active:scale-95"
           aria-label="Abrir asistente Ventify"
         >
@@ -294,7 +295,7 @@ export function AiAssistant() {
       )}
 
       {/* ── Chat Panel ── */}
-      {isOpen && (
+      {open && (
         <div className="fixed bottom-0 right-0 z-50 flex h-full w-full flex-col bg-card sm:bottom-6 sm:right-6 sm:h-[600px] sm:w-[420px] sm:rounded-2xl sm:border sm:border-border sm:shadow-2xl">
           {/* ── Header ── */}
           <div className="flex items-center justify-between bg-emerald-600 px-4 py-3 text-white sm:rounded-t-2xl">
@@ -330,7 +331,7 @@ export function AiAssistant() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setIsOpen(false)}
+                onClick={() => setOpen(false)}
                 className="h-7 w-7 text-emerald-100 hover:text-white hover:bg-emerald-700"
                 title="Cerrar"
               >
