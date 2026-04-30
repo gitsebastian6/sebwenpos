@@ -58,7 +58,8 @@ import type { ReceiptItem } from '@/components/settings/receipts-history-card'
 import { PlanChangeDialog } from '@/components/settings/plan-change-dialog'
 import { WompiCheckoutDialog } from '@/components/settings/wompi-checkout'
 import { WompiTransactionsCard } from '@/components/settings/wompi-transactions-card'
-import { CreditCard } from 'lucide-react'
+import { CreditCard, Beaker } from 'lucide-react'
+import { WompiPaymentMethodsGrid, WompiPoweredBy } from '@/components/payments/wompi-payment-methods'
 
 // ── Subscription Payment Panel ──
 // Shows subscription info (Trial/Active/Expired) with countdown.
@@ -387,8 +388,7 @@ export function SubscriptionPaymentPanel() {
               {wompiHealth?.configured ? (
                 <>
                   <Button
-                    className="w-full"
-                    variant="default"
+                    className="w-full h-12 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-semibold shadow-lg shadow-emerald-600/25 transition-all"
                     onClick={() => {
                       const currentPlan = plans.find(p => p.name === subInfo.planName)
                       setWompiCheckoutParams({
@@ -402,22 +402,15 @@ export function SubscriptionPaymentPanel() {
                     }}
                   >
                     {wompiHealth?.demoMode ? (
-                      <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3h6v11l-3 3-3-3z"/><path d="M6 21h12"/><path d="M9 21v-4"/><path d="M15 21v-4"/></svg>
-                        Pagar con Wompi (Demo)
-                      </>
+                      <><Beaker className="h-5 w-5 mr-2" /> Pagar con Wompi (Demo)</>
                     ) : (
-                      <>
-                        <CreditCard className="h-4 w-4 mr-2" />
-                        Pagar con Wompi
-                      </>
+                      <><CreditCard className="h-5 w-5 mr-2" /> Pagar con Wompi</>
                     )}
                   </Button>
-                  <p className="text-[11px] text-center text-muted-foreground">
-                    {wompiHealth?.demoMode
-                      ? 'Modo Demo — pago simulado, se aprueba automáticamente'
-                      : 'Pago automático — tarjeta, Nequi, Daviplata, PSE y más'}
-                  </p>
+                  {!wompiHealth?.demoMode && (
+                    <WompiPaymentMethodsGrid />
+                  )}
+                  <WompiPoweredBy />
                 </>
               ) : (
                 <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-700 dark:text-amber-400">

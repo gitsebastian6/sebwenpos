@@ -18,11 +18,11 @@ import {
   AlertTriangle,
   RotateCcw,
   Copy,
-  QrCode,
   Beaker,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/format'
 import { useCreateWompiPaymentLink, useWompiTransactionStatus } from '@/hooks/api/use-wompi'
+import { WompiPaymentMethodsGrid, WompiPoweredBy } from '@/components/payments/wompi-payment-methods'
 
 // ── POS Wompi Payment Dialog ──
 // Diálogo específico para el flujo POS de pagos Wompi.
@@ -195,8 +195,44 @@ export function PosWompiDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent
+        className={`sm:max-w-[420px] p-0 overflow-hidden transition-all duration-700 ${
+          step === 'creating'
+            ? 'border-2 border-emerald-300 dark:border-emerald-700'
+            : ''
+        }`}
+        style={
+          step === 'creating'
+            ? { animation: 'pos-border-pulse 2s ease-in-out infinite' }
+            : undefined
+        }
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        {/* Inline keyframes for animations */}
+        <style dangerouslySetInnerHTML={{
+          __html: `
+            @keyframes pos-border-pulse {
+              0%, 100% { border-color: rgb(167 243 208 / 1); }
+              50% { border-color: rgb(52 211 153 / 1); }
+            }
+            @keyframes pos-glow-spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+            @keyframes pos-dot-pulse {
+              0%, 100% { opacity: 1; transform: scale(1); }
+              50% { opacity: 0.5; transform: scale(1.4); }
+            }
+            @keyframes pos-check-pop {
+              0% { transform: scale(0); opacity: 0; }
+              60% { transform: scale(1.15); }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `,
+        }} />
+
+        {/* ── Header (minimal, contextual) ── */}
+        <DialogHeader className="sr-only">
           <DialogTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-emerald-600" />
             Pago Wompi POS
@@ -210,162 +246,214 @@ export function PosWompiDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* ── Step 1: Creating link ── */}
+        {/* ════════════════════════════════════════════════════════════════
+            STEP 1 — CREATING: Payment Terminal Initialization
+            ════════════════════════════════════════════════════════════════ */}
         {step === 'creating' && (
-          <div className="flex flex-col items-center justify-center py-8 gap-4">
-            <div className="h-16 w-16 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+          <div className="flex flex-col items-center justify-center py-12 px-6 gap-6">
+            {/* Large spinner with glow ring */}
+            <div className="relative h-20 w-20 flex items-center justify-center">
+              {/* Outer glow ring */}
+              <div className="absolute inset-0 rounded-full bg-emerald-400/20 dark:bg-emerald-500/15 blur-xl animate-pulse" />
+              {/* Spinning glow ring */}
+              <div
+                className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-emerald-500 border-r-emerald-400"
+                style={{ animation: 'pos-glow-spin 1.2s linear infinite' }}
+              />
+              {/* Inner spinner */}
+              <Loader2 className="h-10 w-10 animate-spin text-emerald-600 dark:text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
             </div>
-            <div className="text-center space-y-1">
-              <p className="text-sm font-semibold">Creando enlace de pago</p>
-              <p className="text-xs text-muted-foreground">
-                Monto: <span className="font-mono font-bold text-emerald-600">{formatCOP(amount)}</span>
+
+            {/* Text */}
+            <div className="text-center space-y-2">
+              <p className="text-sm font-semibold text-foreground">
+                Iniciando pasarela de pago...
+              </p>
+              <p className="text-3xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight">
+                {formatCOP(amount)}
               </p>
             </div>
           </div>
         )}
 
-        {/* ── Step 2: Awaiting payment ── */}
+        {/* ════════════════════════════════════════════════════════════════
+            STEP 2 — AWAITING: Professional Payment Waiting
+            ════════════════════════════════════════════════════════════════ */}
         {step === 'awaiting' && (
-          <div className="space-y-4">
-            {/* Monto y referencia */}
-            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50/50 dark:bg-emerald-950/10 p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Monto</span>
-                <span className="text-sm font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                  {formatCOP(amount)}
-                </span>
-              </div>
-              {reference && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Referencia</span>
-                  <span className="text-xs font-mono text-muted-foreground">{reference}</span>
+          <div className="flex flex-col gap-5 px-6 pt-6 pb-5">
+            {/* ── Receipt-style card ── */}
+            <div className="relative rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-sm overflow-hidden">
+              {/* Dashed top border (receipt tear-off) */}
+              <div className="h-0 w-full border-t-[3px] border-dashed border-border" />
+
+              <div className="px-5 py-4 space-y-4">
+                {/* Amount row */}
+                <div className="text-center">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-1">
+                    Monto
+                  </p>
+                  <p className="text-3xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight">
+                    {formatCOP(amount)}
+                  </p>
                 </div>
-              )}
+
+                {/* Divider */}
+                <div className="border-t border-dashed border-border" />
+
+                {/* Reference row */}
+                {reference && (
+                  <div className="text-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-1">
+                      Referencia
+                    </p>
+                    <p className="text-sm font-mono text-muted-foreground tracking-wide select-all">
+                      {reference}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Enlace de pago + QR-like reference display (real mode only) */}
-            {checkoutUrl && !isDemoMode && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/30">
-                  <QrCode className="h-8 w-8 text-emerald-600 shrink-0" />
-                  <a
-                    href={checkoutUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline break-all flex-1 min-w-0"
-                  >
-                    {checkoutUrl}
-                  </a>
-                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </div>
-              </div>
-            )}
+            {/* ── Payment methods grid ── */}
+            <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground mb-2.5">
+                Métodos de pago aceptados
+              </p>
+              <WompiPaymentMethodsGrid />
+            </div>
 
-            {/* Polling indicator */}
-            <div className="flex items-center gap-2 justify-center text-xs text-amber-600 dark:text-amber-400">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span>
+            {/* ── Pulsing status indicator ── */}
+            <div className="flex items-center justify-center gap-2.5">
+              <span
+                className="inline-block h-2 w-2 rounded-full bg-amber-500"
+                style={{ animation: 'pos-dot-pulse 1.5s ease-in-out infinite' }}
+              />
+              <span className="text-xs font-medium text-muted-foreground">
                 {isDemoMode
-                  ? 'El pago demo se aprobará automáticamente en ~10 segundos...'
-                  : 'Consultando estado del pago cada 5 segundos...'}
+                  ? 'Pago demo — aprobación automática...'
+                  : 'Esperando confirmación...'}
               </span>
             </div>
 
-            {/* Demo mode badge */}
-            {isDemoMode && (
-              <div className="flex items-center justify-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
-                <Beaker className="h-3.5 w-3.5" />
-                Modo Demo — no se conecta a Wompi real
-              </div>
-            )}
-
-            {/* Acciones */}
-            <div className="flex flex-col gap-2">
+            {/* ── Action buttons (horizontal row) ── */}
+            <div className="flex items-center gap-2">
               {checkoutUrl && !isDemoMode && (
                 <Button
                   variant="outline"
-                  className="w-full"
+                  size="sm"
+                  className="flex-1 h-9 text-xs"
                   onClick={() => window.open(checkoutUrl, '_blank', 'noopener,noreferrer')}
                 >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Reabrir página de Wompi
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                  Reabrir Wompi
                 </Button>
               )}
               <Button
                 variant="outline"
-                className="w-full"
+                size="sm"
+                className="flex-1 h-9 text-xs"
                 onClick={handleCopyLink}
                 disabled={!checkoutUrl}
               >
-                <Copy className="h-4 w-4 mr-2" />
-                Copiar enlace
+                <Copy className="h-3.5 w-3.5 mr-1.5" />
+                Copiar Link
               </Button>
               <Button
                 variant="ghost"
-                className="w-full text-destructive hover:text-destructive"
+                size="sm"
+                className="h-9 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={handleCancel}
               >
                 Cancelar
               </Button>
             </div>
+
+            {/* ── Footer ── */}
+            <WompiPoweredBy />
           </div>
         )}
 
-        {/* ── Step 3a: Success ── */}
+        {/* ════════════════════════════════════════════════════════════════
+            STEP 3a — SUCCESS: Clean Success Screen
+            ════════════════════════════════════════════════════════════════ */}
         {step === 'success' && (
-          <div className="space-y-4">
-            <div className="flex flex-col items-center justify-center py-6 gap-3">
-              <div className="h-16 w-16 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
-                <CheckCircle2 className="h-8 w-8 text-emerald-600" />
-              </div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">¡Pago aprobado!</p>
-                <p className="text-xs text-muted-foreground">
-                  Monto: <span className="font-mono font-bold">{formatCOP(amount)}</span>
-                </p>
-                {(reference || txStatus?.reference) && (
-                  <p className="text-xs text-muted-foreground">
-                    Ref: <span className="font-mono">{reference || txStatus?.reference}</span>
-                  </p>
-                )}
-              </div>
+          <div className="flex flex-col items-center px-6 pt-8 pb-6 gap-5">
+            {/* Large emerald checkmark */}
+            <div
+              className="h-20 w-20 rounded-full bg-emerald-50 dark:bg-emerald-500/15 flex items-center justify-center ring-4 ring-emerald-100 dark:ring-emerald-500/25 shadow-[0_0_24px_rgba(16,185,129,0.15)]"
+              style={{ animation: 'pos-check-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards' }}
+            >
+              <CheckCircle2 className="h-10 w-10 text-emerald-600 dark:text-emerald-400" />
             </div>
+
+            {/* Text content */}
+            <div className="text-center space-y-2">
+              <h3 className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                ¡Pago Completado!
+              </h3>
+              <p className="text-2xl font-bold font-mono tracking-tight text-foreground">
+                {formatCOP(amount)}
+              </p>
+              {(reference || txStatus?.reference) && (
+                <p className="text-xs font-mono text-muted-foreground mt-1">
+                  Ref: {reference || txStatus?.reference}
+                </p>
+              )}
+            </div>
+
+            {/* CTA button */}
             <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="w-full h-12 rounded-xl text-sm font-semibold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 transition-all duration-200"
               onClick={handlePaymentComplete}
             >
               Continuar y registrar venta
             </Button>
+
+            {/* Approved badge */}
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-800/40 px-3 py-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                Transacción aprobada por Wompi
+              </span>
+            </div>
           </div>
         )}
 
-        {/* ── Step 3b: Declined ── */}
+        {/* ════════════════════════════════════════════════════════════════
+            STEP 3b — DECLINED
+            ════════════════════════════════════════════════════════════════ */}
         {step === 'declined' && (
-          <div className="space-y-4">
-            <div className="flex flex-col items-center justify-center py-4 gap-3">
-              <div className="h-14 w-14 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
-                <AlertTriangle className="h-7 w-7 text-red-600" />
-              </div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-semibold text-red-700 dark:text-red-400">Pago rechazado</p>
-                {derivedDeclineReason && (
-                  <p className="text-xs text-muted-foreground">{derivedDeclineReason}</p>
-                )}
-              </div>
+          <div className="flex flex-col items-center px-6 pt-8 pb-6 gap-5">
+            {/* Large red icon */}
+            <div className="h-16 w-16 rounded-full bg-red-50 dark:bg-red-500/15 flex items-center justify-center ring-4 ring-red-100 dark:ring-red-500/25 shadow-[0_0_24px_rgba(239,68,68,0.1)]">
+              <AlertTriangle className="h-8 w-8 text-red-600 dark:text-red-400" />
             </div>
-            <div className="flex flex-col gap-2">
+
+            {/* Text content */}
+            <div className="text-center space-y-1.5">
+              <h3 className="text-lg font-bold text-red-700 dark:text-red-400">
+                Pago Rechazado
+              </h3>
+              {derivedDeclineReason && (
+                <p className="text-sm text-muted-foreground max-w-[280px]">
+                  {derivedDeclineReason}
+                </p>
+              )}
+            </div>
+
+            {/* Buttons */}
+            <div className="flex items-center gap-2 w-full">
               <Button
-                className="w-full"
                 variant="outline"
+                className="flex-1 h-10 text-sm"
                 onClick={handleRetry}
               >
                 <RotateCcw className="h-4 w-4 mr-2" />
-                Reintentar pago
+                Reintentar
               </Button>
               <Button
                 variant="ghost"
-                className="w-full text-destructive hover:text-destructive"
+                className="flex-1 h-10 text-sm text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={handleCancel}
               >
                 Cancelar
@@ -374,32 +462,41 @@ export function PosWompiDialog({
           </div>
         )}
 
-        {/* ── Step 3c: Error ── */}
+        {/* ════════════════════════════════════════════════════════════════
+            STEP 3c — ERROR
+            ════════════════════════════════════════════════════════════════ */}
         {step === 'error' && (
-          <div className="space-y-4">
-            <div className="flex flex-col items-center justify-center py-4 gap-3">
-              <div className="h-14 w-14 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
-                <AlertTriangle className="h-7 w-7 text-red-600" />
-              </div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-semibold text-red-700 dark:text-red-400">Error en el pago</p>
-                {linkError && (
-                  <p className="text-xs text-muted-foreground">{linkError}</p>
-                )}
-              </div>
+          <div className="flex flex-col items-center px-6 pt-8 pb-6 gap-5">
+            {/* Large red icon */}
+            <div className="h-16 w-16 rounded-full bg-red-50 dark:bg-red-500/15 flex items-center justify-center ring-4 ring-red-100 dark:ring-red-500/25 shadow-[0_0_24px_rgba(239,68,68,0.1)]">
+              <AlertTriangle className="h-8 w-8 text-red-600 dark:text-red-400" />
             </div>
-            <div className="flex flex-col gap-2">
+
+            {/* Text content */}
+            <div className="text-center space-y-1.5">
+              <h3 className="text-lg font-bold text-red-700 dark:text-red-400">
+                Error en el pago
+              </h3>
+              {linkError && (
+                <p className="text-sm text-muted-foreground max-w-[280px]">
+                  {linkError}
+                </p>
+              )}
+            </div>
+
+            {/* Buttons */}
+            <div className="flex items-center gap-2 w-full">
               <Button
-                className="w-full"
                 variant="outline"
+                className="flex-1 h-10 text-sm"
                 onClick={handleRetry}
               >
                 <RotateCcw className="h-4 w-4 mr-2" />
-                Reintentar pago
+                Reintentar
               </Button>
               <Button
                 variant="ghost"
-                className="w-full text-destructive hover:text-destructive"
+                className="flex-1 h-10 text-sm text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={handleCancel}
               >
                 Cancelar
@@ -408,20 +505,23 @@ export function PosWompiDialog({
           </div>
         )}
 
-        {/* Badge footer */}
-        <div className="flex items-center justify-center gap-2 pt-2 border-t">
-          {isDemoMode ? (
-            <>
-              <Beaker className="h-3.5 w-3.5 text-amber-500" />
-              <span className="text-[11px] text-amber-600 dark:text-amber-400">Modo Demo — pago simulado</span>
-            </>
-          ) : (
-            <>
-              <Shield className="h-3.5 w-3.5 text-emerald-500" />
-              <span className="text-[11px] text-muted-foreground">Pago seguro vía Wompi — Tarjeta · Nequi · Daviplata · PSE</span>
-            </>
-          )}
-        </div>
+        {/* ════════════════════════════════════════════════════════════════
+            DIALOG FOOTER
+            ════════════════════════════════════════════════════════════════ */}
+        {step !== 'awaiting' && step !== 'success' && (
+          <div className="flex items-center justify-center px-6 py-3 border-t border-border bg-muted/20">
+            {isDemoMode ? (
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-800/40 px-3 py-1.5">
+                <Beaker className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                  Modo Demo
+                </span>
+              </div>
+            ) : (
+              <WompiPoweredBy />
+            )}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

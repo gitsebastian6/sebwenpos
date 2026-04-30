@@ -10,10 +10,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Inbox,
+  CheckCircle2,
+  Clock,
+  XCircle,
 } from 'lucide-react'
 import { formatCOP, formatDateTime, paymentMethodLabel } from '@/lib/format'
 import { useWompiTransactions } from '@/hooks/api/use-wompi'
 import type { WompiTransactionData } from '@/hooks/api/use-wompi'
+import { WompiPoweredBy } from '@/components/payments/wompi-payment-methods'
 
 // ── Status badge colors ──
 
@@ -42,6 +46,38 @@ function statusBadge(status: string) {
   }
   const c = config[status] || { label: status, className: 'bg-gray-100 text-gray-600 border-0' }
   return <Badge className={c.className}>{c.label}</Badge>
+}
+
+// ── Status icon for transaction row ──
+
+function statusIcon(status: string) {
+  if (status === 'APPROVED') {
+    return (
+      <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-500/15 flex items-center justify-center shrink-0">
+        <CheckCircle2 className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
+      </div>
+    )
+  }
+  if (status === 'PENDING') {
+    return (
+      <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-500/15 flex items-center justify-center shrink-0">
+        <Clock className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
+      </div>
+    )
+  }
+  return (
+    <div className="h-9 w-9 rounded-full bg-red-100 dark:bg-red-500/15 flex items-center justify-center shrink-0">
+      <XCircle className="h-4.5 w-4.5 text-red-600 dark:text-red-400" />
+    </div>
+  )
+}
+
+// ── Status left-border hover accent class ──
+
+function hoverBorderClass(status: string) {
+  if (status === 'APPROVED') return 'hover:border-l-emerald-500'
+  if (status === 'PENDING') return 'hover:border-l-amber-500'
+  return 'hover:border-l-red-500'
 }
 
 // ── Filter buttons ──
@@ -76,100 +112,135 @@ export function WompiTransactionsCard({ storeId }: WompiTransactionsCardProps) {
   const transactions = data?.transactions ?? []
   const pagination = data?.pagination
 
+  const pendingCount = pagination?.total && statusFilter === ''
+    ? undefined
+    : undefined
+
   return (
-    <Card className="border-border/50 hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Shield className="h-4 w-4 text-emerald-600" />
-          Transacciones Wompi
-        </CardTitle>
-        <CardDescription>Historial de pagos realizados a través de Wompi</CardDescription>
+    <Card className="border-border/50 hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl overflow-hidden">
+      {/* Gradient accent bar */}
+      <div className="h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
+
+      <CardHeader className="pb-3 pt-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-500/15 flex items-center justify-center">
+              <Shield className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <CardTitle className="text-lg font-bold leading-tight">
+                Transacciones Wompi
+              </CardTitle>
+              <CardDescription className="mt-0.5">
+                Historial de pagos realizados a través de Wompi
+              </CardDescription>
+            </div>
+          </div>
+          {pagination && pagination.total > 0 && (
+            <Badge
+              variant="secondary"
+              className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400 border-0 text-xs font-semibold tabular-nums"
+            >
+              {pagination.total} transacción{pagination.total !== 1 ? 'es' : ''}
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Status filter buttons */}
+        {/* Status filter pills */}
         <div className="flex flex-wrap gap-1.5">
-          {STATUS_FILTERS.map((filter) => (
-            <Button
-              key={filter.value}
-              variant={statusFilter === filter.value ? 'default' : 'outline'}
-              size="sm"
-              className={`h-7 text-xs px-2.5 ${
-                statusFilter === filter.value
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  : 'hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300'
-              }`}
-              onClick={() => {
-                setStatusFilter(filter.value)
-                setPage(1)
-              }}
-            >
-              {filter.label}
-            </Button>
-          ))}
+          {STATUS_FILTERS.map((filter) => {
+            const isActive = statusFilter === filter.value
+            const showBadge = filter.value === 'PENDING' && !isActive && pendingCount
+            return (
+              <Button
+                key={filter.value}
+                variant="ghost"
+                size="sm"
+                className={`h-8 text-xs px-4 rounded-full transition-all duration-200 ${
+                  isActive
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/20'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                onClick={() => {
+                  setStatusFilter(filter.value)
+                  setPage(1)
+                }}
+              >
+                {filter.label}
+                {showBadge && (
+                  <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold leading-none">
+                    {pendingCount}
+                  </span>
+                )}
+              </Button>
+            )
+          })}
         </div>
 
         {/* Loading state */}
         {isLoading && (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+            <p className="text-xs text-muted-foreground">Cargando transacciones…</p>
           </div>
         )}
 
         {/* Empty state */}
         {!isLoading && transactions.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-8 gap-3 text-muted-foreground">
-            <Inbox className="h-10 w-10 opacity-20" />
-            <p className="text-sm font-medium">No hay transacciones Wompi aún</p>
-            <p className="text-xs opacity-60">Las transacciones aparecerán aquí cuando se realicen pagos</p>
+          <div className="flex flex-col items-center justify-center py-14 gap-4">
+            <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center">
+              <Inbox className="h-8 w-8 text-muted-foreground/40" />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-sm font-semibold text-foreground/80">
+                Sin transacciones
+              </p>
+              <p className="text-xs text-muted-foreground max-w-[260px]">
+                Las transacciones aparecerán aquí automáticamente cuando los clientes realicen pagos a través de Wompi.
+              </p>
+            </div>
           </div>
         )}
 
         {/* Transactions list */}
         {!isLoading && transactions.length > 0 && (
           <>
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {transactions.map((tx: WompiTransactionData) => (
+            <div className="space-y-0.5 max-h-96 overflow-y-auto">
+              {transactions.map((tx: WompiTransactionData, index: number) => (
                 <div
                   key={tx.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors"
+                  className={`group flex items-center gap-4 px-4 py-3 rounded-lg border-l-[3px] border-l-transparent transition-all duration-150 cursor-default ${
+                    index % 2 === 1 ? 'bg-muted/20' : ''
+                  } ${hoverBorderClass(tx.status)} hover:bg-muted/40`}
                 >
                   {/* Status icon */}
-                  <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
-                    tx.status === 'APPROVED'
-                      ? 'bg-emerald-100 dark:bg-emerald-500/15'
-                      : tx.status === 'PENDING'
-                        ? 'bg-amber-100 dark:bg-amber-500/15'
-                        : 'bg-red-100 dark:bg-red-500/15'
-                  }`}>
-                    <Shield className={`h-4 w-4 ${
-                      tx.status === 'APPROVED'
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : tx.status === 'PENDING'
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-red-600 dark:text-red-400'
-                    }`} />
-                  </div>
+                  {statusIcon(tx.status)}
 
                   {/* Details */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold truncate">
-                        {tx.reference}
-                      </p>
-                      {statusBadge(tx.status)}
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <span className="text-xs font-mono font-bold text-foreground">
-                        {formatCOP(tx.amount)}
-                      </span>
+                    <p className="text-sm font-semibold truncate text-foreground/90">
+                      {tx.reference}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
                       {tx.paymentMethod && (
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {paymentMethodLabel(tx.paymentMethod)}
                         </span>
                       )}
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {formatDateTime(tx.createdAt)}
                       </span>
+                    </div>
+                  </div>
+
+                  {/* Amount + Status */}
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                      {formatCOP(tx.amount)}
+                    </p>
+                    <div className="mt-0.5">
+                      {statusBadge(tx.status)}
                     </div>
                   </div>
                 </div>
@@ -178,27 +249,36 @@ export function WompiTransactionsCard({ storeId }: WompiTransactionsCardProps) {
 
             {/* Pagination */}
             {pagination && pagination.totalPages > 1 && (
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between pt-2 border-t border-border/50">
                 <p className="text-xs text-muted-foreground">
-                  {((pagination.page - 1) * pagination.limit) + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} de {pagination.total}
+                  Mostrando{' '}
+                  <span className="font-medium tabular-nums text-foreground/70">
+                    {((pagination.page - 1) * pagination.limit) + 1}
+                    –
+                    {Math.min(pagination.page * pagination.limit, pagination.total)}
+                  </span>
+                  {' '}de{' '}
+                  <span className="font-medium tabular-nums text-foreground/70">
+                    {pagination.total}
+                  </span>
                 </p>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-7 w-7"
+                    className="h-8 w-8 rounded-full"
                     disabled={pagination.page <= 1}
                     onClick={() => setPage(pagination.page - 1)}
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </Button>
-                  <span className="text-xs font-medium px-2">
+                  <span className="text-xs font-medium px-2 tabular-nums text-foreground/70">
                     {pagination.page} / {pagination.totalPages}
                   </span>
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-7 w-7"
+                    className="h-8 w-8 rounded-full"
                     disabled={pagination.page >= pagination.totalPages}
                     onClick={() => setPage(pagination.page + 1)}
                   >
@@ -210,6 +290,11 @@ export function WompiTransactionsCard({ storeId }: WompiTransactionsCardProps) {
           </>
         )}
       </CardContent>
+
+      {/* Footer */}
+      <div className="px-6 py-4 border-t border-border/30 bg-muted/10">
+        <WompiPoweredBy />
+      </div>
     </Card>
   )
 }
