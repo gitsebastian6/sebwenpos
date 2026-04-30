@@ -26,7 +26,7 @@ const createOrderSchema = z.object({
   storeId: z.number().int().positive(),
   customerId: z.number().int().positive().nullable().optional(),
   cashRegisterId: z.number().int().positive().optional(),
-  paymentMethod: z.enum(['CASH', 'DAVIPLATA', 'NEQUI', 'CARD', 'TRANSFER', 'MIXED', 'CREDIT', 'FIADO']),
+  paymentMethod: z.enum(['CASH', 'DAVIPLATA', 'NEQUI', 'CARD', 'TRANSFER', 'MIXED', 'CREDIT', 'FIADO', 'WOMPI_PENDING']),
   tipAmount: z.number().int().min(0).default(0),
   discountType: z.enum(['NONE', 'PERCENTAGE', 'FIXED']).default('NONE'),
   discountAmount: z.number().int().min(0).default(0),
@@ -315,7 +315,11 @@ export async function POST(req: NextRequest) {
           discountType: data.discountType,
           discountReason: data.discountReason ?? null,
           total,
-          status: (data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO') ? 'CREDIT' : 'COMPLETED',
+          status: (data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO')
+            ? 'CREDIT'
+            : data.paymentMethod === 'WOMPI_PENDING'
+              ? 'PENDING_PAYMENT'
+              : 'COMPLETED',
           paymentMethod: data.paymentMethod,
           notes: data.notes ?? null,
           orderItems: { create: orderItemsData },

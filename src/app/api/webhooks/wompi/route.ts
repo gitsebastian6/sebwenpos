@@ -22,9 +22,10 @@ export const dynamic = 'force-dynamic'
  * This is a PUBLIC endpoint — Wompi calls it directly without authentication.
  */
 export async function POST(request: NextRequest) {
+  let payload: WompiWebhookEvent
+
   try {
     const rawBody = await request.text()
-    let payload: WompiWebhookEvent
 
     try {
       payload = JSON.parse(rawBody)
@@ -41,8 +42,6 @@ export async function POST(request: NextRequest) {
 
     if (!checksum || !timestamp) {
       logger.warn('[Wompi Webhook] Missing signature or timestamp')
-      // Always require signature in production
-      // In sandbox, allow missing signature ONLY if WOMPI_SKIP_SIGNATURE is explicitly set
       const skipSig = process.env.WOMPI_SKIP_SIGNATURE === 'true'
       if (process.env.WOMPI_ENV === 'production' || !skipSig) {
         return NextResponse.json({ error: 'Missing signature' }, { status: 401 })
@@ -66,12 +65,15 @@ export async function POST(request: NextRequest) {
       logger.info(`[Wompi Webhook] Unhandled event type: ${payload.event}`)
     }
 
-    // Always return 200 so Wompi doesn't retry
     return NextResponse.json({ received: true })
   } catch (error) {
-    logger.error('[Wompi Webhook] Error processing webhook:', error)
-    // Still return 200 to prevent Wompi retries — we'll reconcile manually
-    return NextResponse.json({ received: true, error: 'Processing error' })
+    // CRITICAL FIX: Return 500 so Wompi RETRIES.
+    // Previously returned 200 which caused lost payments.
+    logger.error('[Wompi Webhook] UNRECOVERABLE error — returning 500 for Wompi retry:', error)
+    return NextResponse.json(
+      { error: 'Internal processing error — Wompi will retry' },
+      { status: 500 },
+    )
   }
 }
 
@@ -121,21 +123,19 @@ async function processTransactionUpdate(transaction: WompiTransaction): Promise<
     return
   }
 
-  // ── Idempotency check ──
-  // If the transaction is already in a terminal state (APPROVED, DECLINED, VOIDED)
-  // AND the wompiStatus matches, skip processing
+  // ── Idempotency check with atomic update ──
+  // CRITICAL FIX: Use a single atomic query to prevent double-processing.
+  // If the transaction is already in a terminal state AND matches, skip.
+  // This prevents race conditions when Wompi sends duplicate webhooks.
   const terminalStates = ['APPROVED', 'DECLINED', 'VOIDED']
-  if (terminalStates.includes(wompiTx.status) && wompiTx.wompiStatus === wompiStatus) {
-    logger.info(`[Wompi Webhook] Idempotency: Transaction ${wompiId} already processed as ${wompiTx.status}`)
-    return
-  }
-
-  // Map Wompi status to our internal status
   const internalStatus = mapWompiStatus(wompiStatus)
 
-  // Update the WompiTransaction record
-  await db.wompiTransaction.update({
-    where: { id: wompiTx.id },
+  // Atomic: only update if NOT already in a matching terminal state
+  const updatedCount = await db.wompiTransaction.updateMany({
+    where: {
+      id: wompiTx.id,
+      status: { notIn: terminalStates },
+    },
     data: {
       status: internalStatus,
       wompiStatus,
@@ -149,6 +149,12 @@ async function processTransactionUpdate(transaction: WompiTransaction): Promise<
       paidAt: internalStatus === 'APPROVED' ? new Date() : null,
     },
   })
+
+  if (updatedCount.count === 0) {
+    // Already processed by another webhook — skip
+    logger.info(`[Wompi Webhook] Idempotency (atomic): Transaction ${wompiId} already in terminal state, skipped`)
+    return
+  }
 
   // ── Process based on status ──
   if (internalStatus === 'APPROVED') {
@@ -212,16 +218,23 @@ async function handleApprovedTransaction(
 
   // ── Handle POS order (if linked) ──
   if (wompiTx.order && !wompiTx.subscription && !wompiTx.receipt) {
-    // This is a POS order payment - update the order's payment method info
+    // CRITICAL FIX: When Wompi approves a POS payment, mark the order as COMPLETED
+    // and update payment method. Previously only appended a note.
+    const order = wompiTx.order
+    const wasPending = order.status === 'PENDING_PAYMENT'
+
     await db.order.update({
       where: { id: wompiTx.order.id },
       data: {
-        // Store Wompi reference in the order's notes
+        ...(wasPending ? {
+          status: 'COMPLETED',
+          paymentMethod: 'WOMPI',
+        } : {}),
         notes: [wompiTx.order.notes, `Pago Wompi aprobado — Ref: ${wompiTx.reference}`].filter(Boolean).join('\n'),
       },
     })
 
-    logger.info(`[Wompi Webhook] POS order ${wompiTx.order.orderNumber} payment approved — ref: ${wompiTx.reference}`)
+    logger.info(`[Wompi Webhook] POS order ${wompiTx.order.orderNumber}: ${wasPending ? 'PENDING_PAYMENT→COMPLETED' : 'already completed'} — ref: ${wompiTx.reference}`)
     return
   }
 
@@ -381,9 +394,26 @@ async function handleDeclinedTransaction(
       id: number
       status: string
     } | null
+    order: {
+      id: number
+      orderNumber: string
+      status: string
+    } | null
   },
 ): Promise<void> {
   const receipt = wompiTx.receipt
+
+  // CRITICAL FIX: Handle POS order decline — cancel the pending order
+  if (wompiTx.order && wompiTx.order.status === 'PENDING_PAYMENT') {
+    await db.order.update({
+      where: { id: wompiTx.order.id },
+      data: {
+        status: 'CANCELLED',
+        notes: [`Pago Wompi rechazado/voidado — Ref: ${wompiTx.reference}`].filter(Boolean).join('\n'),
+      },
+    })
+    logger.info(`[Wompi Webhook] POS order ${wompiTx.order.orderNumber} CANCELLED (Wompi declined) — ref: ${wompiTx.reference}`)
+  }
 
   if (receipt && receipt.status === 'PENDING') {
     await db.paymentReceipt.update({
