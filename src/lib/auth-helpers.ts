@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireEnv } from '@/lib/env'
 
 // ---------------------------------------------------------------------------
 // Ventify POS — Auth Helpers (Web Crypto API for Edge Runtime compatibility)
@@ -20,17 +21,8 @@ let _hmacKeyPromise: Promise<CryptoKey> | null = null
 async function getHmacKey(): Promise<CryptoKey> {
   if (_hmacKeyPromise) return _hmacKeyPromise
 
-  // AUTH_SECRET is REQUIRED — no fallback, no exceptions.
-  // Missing AUTH_SECRET will crash the server immediately, which is
-  // the correct behavior: a POS without a proper signing key is insecure.
-  const secret = process.env.AUTH_SECRET
-  if (!secret || secret.trim().length === 0) {
-    throw new Error(
-      '[ENV] FATAL: AUTH_SECRET is required but not set. ' +
-      'Add it to your .env file. The server cannot start without it.'
-    )
-  }
-  const secretValue = secret.trim()
+  // AUTH_SECRET is REQUIRED — uses requireEnv() which warns in dev, throws in prod.
+  const secretValue = requireEnv('AUTH_SECRET')
 
   // Encode the secret as UTF-8 bytes
   const encoder = new TextEncoder()
