@@ -25,6 +25,7 @@ const GLM_API_KEY = process.env.GLM_API_KEY || ''  // Format: {id}.{secret}
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
+const AI_MODEL = process.env.AI_CHAT_MODEL || 'glm-4.7-flash'  // FREE model — change to glm-4-plus for premium
 const MAX_CONTEXT_MESSAGES = parseInt(process.env.AI_MAX_CONTEXT_MESSAGES || '20', 10)
 const MAX_MESSAGE_LENGTH = 2000
 
@@ -173,7 +174,7 @@ async function callZaiGateway(
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ model: 'glm-4-plus', messages }),
+      body: JSON.stringify({ model: AI_MODEL, messages }),
       signal: AbortSignal.timeout(15000), // short timeout — fail fast if unreachable
     })
 
@@ -188,7 +189,7 @@ async function callZaiGateway(
     const result = await response.json() as any
     const reply = result.choices?.[0]?.message?.content || ''
     const tokens = result.usage?.total_tokens || Math.ceil(reply.length / 4)
-    const model = result.model || 'glm-4-plus'
+    const model = result.model || AI_MODEL
 
     console.log(`[GLM Chat] Z.ai gateway ${latencyMs}ms, ${tokens} tokens, model: ${model}`)
     return { content: reply, tokens, model }
@@ -215,7 +216,7 @@ async function callZhipuDirect(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${jwt}`,
       },
-      body: JSON.stringify({ model: 'glm-4-plus', messages }),
+      body: JSON.stringify({ model: AI_MODEL, messages }),
       signal: AbortSignal.timeout(35000),
     })
 
@@ -230,7 +231,7 @@ async function callZhipuDirect(
     const result = await response.json() as any
     const reply = result.choices?.[0]?.message?.content || ''
     const tokens = result.usage?.total_tokens || Math.ceil(reply.length / 4)
-    const model = result.model || 'glm-4-plus'
+    const model = result.model || AI_MODEL
 
     console.log(`[GLM Chat] ZhipuAI direct ${latencyMs}ms, ${tokens} tokens, model: ${model}`)
     return { content: reply, tokens, model }

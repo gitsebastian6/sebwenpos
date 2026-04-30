@@ -38,6 +38,13 @@ if ! grep -q '^AUTH_SECRET=' "$ENV_FILE"; then
   NEEDS_WRITE=true
 fi
 
+# Ensure AI_CHAT_MODEL (GLM model for chat — defaults to free model)
+if ! grep -q '^AI_CHAT_MODEL=' "$ENV_FILE"; then
+  echo "AI_CHAT_MODEL=glm-4.7-flash" >> "$ENV_FILE"
+  echo "[ensure-env] Added AI_CHAT_MODEL (free tier)"
+  NEEDS_WRITE=true
+fi
+
 # Ensure db directory exists
 mkdir -p /home/z/my-project/db
 
