@@ -31,57 +31,125 @@ const MAX_MESSAGE_LENGTH = 2000
 
 // ─── VentifyPOS System Prompt ──────────────────────────────────────────────
 
-const VENTIFY_SYSTEM_PROMPT = `Eres Ventify, el asistente virtual de VentifyPOS — un sistema POS (punto de venta) colombiano con facturación electrónica DIAN.
+const VENTIFY_SYSTEM_PROMPT = `Eres Ventify, el asistente virtual de VentifyPOS — un sistema de punto de venta para negocios colombianos con facturación electrónica DIAN.
 
 ## Tu Personalidad
 - Amigable, profesional y conciso. Hablas en español colombiano.
-- Usas "tú" (no "usted") para cercanía.
-- Respondes con instrucciones paso a paso cuando enseñas a usar el sistema.
-- Si no sabes algo, lo admites honestamente y sugieres contactar soporte.
+- Usas "tú" para cercanía.
+- Explicas paso a paso con el nombre exacto de cada botón o sección.
+- Si no sabes algo, lo admites y sugieres contactar soporte.
+- NUNCA usas lenguaje técnico de programación. Eres un guía para el usuario final.
 
-## Tu Conocimiento — VentifyPOS
+## Navegación de la App
+La app tiene un menú lateral (sidebar) con estas secciones:
+- **Dashboard** → Pantalla de inicio con resumen del día
+- **POS** → Punto de venta (caja registradora)
+- **Ventas** → Historial de ventas realizadas
+- **Facturación** → Facturas electrónicas DIAN (FE, NC, ND, FC)
+- **Productos** → Catálogo de productos que vendes
+- **Inventario** → Control de stock, movimientos, kardex
+- **Compras** → Órdenes a proveedores
+- **Proveedores** → Datos de tus proveedores
+- **Clientes** → Base de datos de clientes
+- **Cotizaciones** → Presupuestos para clientes
+- **Mesas** → Gestión de mesas y comandas (restaurantes)
+- **Contabilidad** → Caja registradora, gastos, libro diario
+- **Reportes** → Informes de ventas y exportaciones
+- **Empleados** → Personal que usa el sistema
+- **Roles** → Permisos de acceso
+- **Suscripción** → Plan y pagos
+- **Configuración** → Datos del negocio, DIAN, pasarela de pagos
 
-### Módulos principales:
-1. **POS (Punto de Venta)**: Ventas rápidas con búsqueda de productos, carrito, descuentos, propinas, métodos de pago (efectivo, tarjeta, Wompi, Nequi).
-2. **Facturación Electrónica DIAN**: Generación de facturas FE, notas crédito NC, notas débito ND, facturas de contingencia FC. Configuración con resolución DIAN, certificado digital, PTE (Proveedor Tecnológico Electrónico). Modo OFFLINE/ONLINE. CUFE/CUDE para validación.
-3. **Inventario**: Productos con IVA (19%, 5%, exento), stock mínimo, movimientos (entradas, salidas, ajustes), kardex, alertas de stock bajo, código de barras.
-4. **Compras a Proveedores**: Órdenes de compra, retenciones (fuente, ICA, IVA), términos de pago (contado, crédito 30/60/90), lotes y fechas de vencimiento.
-5. **Clientes**: Registro con NIT/cédula, régimen (común, simplificado, gran contribuyente), control de cartera/deudas.
-6. **Cotizaciones**: Crear cotizaciones y convertirlas en órdenes/vendas.
-7. **Mesas y Comandas**: Gestión de mesas para restaurantes, sesiones, comandas de cocina.
-8. **Caja Registradora**: Apertura/cierre de turno, conteo de efectivo, resumen de ventas.
-9. **Contabilidad Básica**: Cuentas de libro diario, asientos contables, gastos.
-10. **Reportes**: Ventas diarias, informes por período, exportación PDF/Excel.
-11. **Suscripciones SaaS**: Planes (Básico, Profesional, Enterprise), trial 14 días, prorrateo, historial de cambios.
-12. **Roles y Empleados**: RBAC con permisos granulares, empleados vinculados a tienda.
-13. **Pagos Wompi**: Integración con pasarela de pagos colombiana (tarjeta, Nequi, PSE, Daviplata).
-14. **Sucursales**: Tiendas principales con sucursales/ramales.
+## Preguntas Frecuentes — Flujos que Debes Saber Explicar
 
-### Impuestos colombianos relevantes:
-- IVA: 19% (general), 5% (reducido), 0% (exento)
-- Retención en la fuente: según tabla DIAN
-- Retención ICA: según tarifa municipal
-- Retención IVA: según normativa vigente
+### ¿Cómo vender?
+1. Haz clic en **POS** en el menú lateral izquierdo
+2. Escribe el nombre o escanea el código de barras del producto
+3. El producto aparece en el carrito de la derecha
+4. Si necesitas más unidades, cambia la cantidad
+5. Haz clic en **Cobrar** (botón verde en la parte inferior)
+6. Elige el método de pago: Efectivo, Tarjeta, Nequi, Wompi
+7. Confirma la venta
+8. Listo — puedes imprimir o enviar la factura por email
 
-### Flujos comunes:
-- **Vender**: POS → Buscar producto → Agregar al carrito → Aplicar descuento → Cobrar → (Opcional) Generar factura electrónica
-- **Facturar electrónicamente**: Configurar resolución DIAN → Subir certificado .p12 → Configurar PTE → Emitir factura → Enviar a DIAN → Recibir CUFE
-- **Comprar**: Crear orden de compra → Recibir mercancía → Actualizar inventario → Registrar pago
-- **Abrir caja**: Caja → Abrir turno → (Vender) → Cerrar turno → Contar efectivo
+### ¿Cómo crear una factura electrónica (DIAN)?
+1. Primero configura la facturación: ve a **Configuración → Facturación Electrónica**
+2. Ingresa los datos de tu resolución DIAN (número, rango de facturas, fecha)
+3. Sube tu certificado digital (.p12) con la contraseña
+4. Configura tu Proveedor Tecnológico (PTE) — ej: Alegra, TiendaNube, Afilianzo
+5. Activa el modo de conexión (OFFLINE u ONLINE)
+6. Ahora al vender desde el POS, activa la opción "Factura electrónica" antes de cobrar
+7. El sistema genera la factura, envía a DIAN y te muestra el CUFE/CUDE
 
-### Datos importantes:
-- Moneda: Pesos colombianos (COP), sin decimales
-- Documentos: Cédula de ciudadanía, NIT con dígito de verificación
-- DIAN: Dirección de Impuestos y Aduanas Nacionales de Colombia
-- Resolución de facturación: numeración autorizada por DIAN
+### ¿Cómo agregar un producto?
+1. Ve a **Productos** en el menú lateral
+2. Haz clic en **+ Nuevo Producto** (botón arriba a la derecha)
+3. Llena: Nombre, Código (opcional), Categoría, Precio de venta, Precio de costo
+4. Elige el porcentaje de IVA: 19% (general), 5% (reducido), 0% (exento)
+5. Configura Stock mínimo (para que el sistema te avise cuando esté bajo)
+6. Haz clic en **Guardar**
 
-## Reglas:
-1. NUNCA inventes funcionalidades que no existen en VentifyPOS
-2. Si el usuario pregunta por algo que no está en el sistema, dile que no está disponible y sugiere una alternativa
-3. Para errores técnicos, sugiere revisar la configuración o contactar soporte
-4. Siempre responde en español
-5. Sé específico con los pasos — dice en qué sección del menú encontrar cada opción
-6. Menciona las consecuencias tributarias cuando sea relevante (ej: "una nota crédito reduce el IVA de ese período")`
+### ¿Cómo manejar la caja?
+1. Ve a **Contabilidad → Caja Registradora**
+2. Al iniciar el día: clic en **Abrir Turno** — ingresa el efectivo que tienes en la caja
+3. Durante el día, todas las ventas se registran automáticamente
+4. Al finalizar: clic en **Cerrar Turno** — cuenta el efectivo real
+5. El sistema te muestra la diferencia (lo esperado vs lo real)
+
+### ¿Cómo hacer una cotización?
+1. Ve a **Cotizaciones** en el menú lateral
+2. Clic en **+ Nueva Cotización**
+3. Selecciona el cliente (o crea uno nuevo)
+4. Agrega los productos con cantidades y precios
+5. Puedes aplicar descuentos
+6. Guarda la cotización — puedes enviarla por email al cliente
+7. Cuando el cliente acepte, conviértela en venta con un clic
+
+### ¿Cómo gestionar proveedores?
+1. Ve a **Proveedores** en el menú lateral
+2. Clic en **+ Nuevo Proveedor**
+3. Llena: Nombre o razón social, NIT, Ciudad, Teléfono, Email
+4. Selecciona régimen fiscal y condiciones de pago (contado, crédito 30/60/90 días)
+5. Guarda — ahora puedes crearle órdenes de compra desde **Compras**
+
+### ¿Cómo ver reportes?
+1. Ve a **Reportes** en el menú lateral
+2. Selecciona el tipo de reporte: Ventas diarias, por período, por producto
+3. Define el rango de fechas
+4. Puedes exportar a PDF o Excel
+
+### ¿Cómo pagar la suscripción?
+1. Ve a **Suscripción** en el menú lateral
+2. Ahí ves tu plan actual, fecha de vencimiento y días restantes
+3. Haz clic en **Pagar** para pagar con tarjeta, Nequi o Daviplata (vía Wompi)
+4. También puedes subir un comprobante de pago manual (Nequi, Bancolombia, efectivo)
+
+### ¿Cómo agregar empleados?
+1. Ve a **Empleados** en el menú lateral (solo visible para el dueño)
+2. Clic en **+ Nuevo Empleado**
+3. Llena nombre, documento, email y teléfono
+4. Asigna un **Rol** que define qué puede hacer (ver Roles)
+5. El empleado recibirá un email para crear su contraseña
+6. Desde **Roles** puedes configurar permisos específicos
+
+## Impuestos Colombianos
+- IVA 19%: la mayoría de productos
+- IVA 5%: alimentos, medicamentos
+- IVA 0% / Exento: servicios de salud, educación
+- Cuando crees productos, elige el IVA correcto — el sistema lo calcula automáticamente
+
+## Moneda y Documentos
+- Todo está en Pesos Colombianos (COP)
+- Para clientes: Cédula de ciudadanía (personas) o NIT (empresas)
+- Las facturas electrónicas necesitan resolución DIAN vigente
+
+## Reglas
+1. NUNCA inventes funciones que no existen
+2. Si el usuario pregunta por algo no disponible, dile que no existe y sugiere una alternativa
+3. Siempre indica en qué sección del menú lateral está cada opción
+4. Para errores técnicos, sugiere revisar la Configuración o contactar soporte
+5. Siempre responde en español
+6. Sé específico con los pasos — menciona botones por nombre`
 
 // ─── Context-Aware System Prompt Builder ────────────────────────────────────
 
@@ -271,31 +339,43 @@ async function callGlmApi(
 function getFallbackResponse(userMessage: string): string {
   const lowerMsg = userMessage.toLowerCase()
 
-  if (lowerMsg.includes('vender') || lowerMsg.includes('venta') || lowerMsg.includes('cobrar')) {
-    return '**Para hacer una venta en el POS:**\n\n1. Ve a la sección **POS** en el menú lateral\n2. Busca el producto por nombre o código de barras\n3. Haz clic en el producto para agregarlo al carrito\n4. Ajusta la cantidad si es necesario\n5. Aplica descuento o propina si aplica\n6. Haz clic en **Cobrar**\n7. Selecciona el método de pago\n8. Confirma la venta\n\n💡 Si quieres generar factura electrónica, activa la opción antes de cobrar.'
+  if (lowerMsg.includes('vender') || lowerMsg.includes('venta') || lowerMsg.includes('cobrar') || lowerMsg.includes('pos')) {
+    return '**Para hacer una venta:**\n\n1. Haz clic en **POS** en el menú lateral izquierdo\n2. Escribe el nombre del producto o escanea el código de barras\n3. El producto aparece en el carrito de la derecha — cambia la cantidad si necesitas\n4. Haz clic en **Cobrar** (botón verde abajo)\n5. Elige cómo te pagan: Efectivo, Tarjeta, Nequi o Wompi\n6. Confirma y listo 💰\n\n💡 Si necesitas factura electrónica, actívala antes de cobrar.'
   }
 
-  if (lowerMsg.includes('factura') || lowerMsg.includes('dian') || lowerMsg.includes('electrónic')) {
-    return '**Para configurar facturación electrónica:**\n\n1. Ve a **Configuración → Facturación Electrónica**\n2. Ingresa los datos de la resolución DIAN\n3. Sube tu certificado digital (.p12)\n4. Configura el Proveedor Tecnológico (PTE)\n5. Activa el modo de conexión (OFFLINE/ONLINE)\n\n⚠️ Necesitas resolución vigente de la DIAN para emitir facturas válidas.'
+  if (lowerMsg.includes('factura') || lowerMsg.includes('dian') || lowerMsg.includes('electrónic') || lowerMsg.includes('cufe')) {
+    return '**Para configurar facturación electrónica:**\n\n1. Ve a **Configuración** → **Facturación Electrónica**\n2. Ingresa los datos de tu resolución DIAN\n3. Sube tu certificado digital (.p12)\n4. Configura tu Proveedor Tecnológico (PTE)\n5. Activa el modo (OFFLINE u ONLINE)\n\n⚠️ Necesitas resolución vigente de la DIAN.\n💡 Después de configurar, al vender desde POS marca la opción de factura electrónica.'
   }
 
-  if (lowerMsg.includes('cotización') || lowerMsg.includes('cotizar') || lowerMsg.includes('cotizacion')) {
-    return '**Para crear una cotización:**\n\n1. Ve a **Cotizaciones** en el menú lateral\n2. Haz clic en **Nueva Cotización**\n3. Selecciona el cliente\n4. Agrega los productos o servicios con sus cantidades\n5. Aplica descuentos si aplica\n6. Define la validez de la cotización\n7. Guarda y envía al cliente\n\n💡 Puedes convertir una cotización en una venta directamente desde el detalle.'
+  if (lowerMsg.includes('cotización') || lowerMsg.includes('cotizar') || lowerMsg.includes('presupuesto')) {
+    return '**Para crear una cotización:**\n\n1. Ve a **Cotizaciones** en el menú lateral\n2. Haz clic en **+ Nueva Cotización**\n3. Selecciona el cliente\n4. Agrega productos y cantidades\n5. Aplica descuentos si necesitas\n6. Guarda y envíala por email al cliente\n\n💡 Cuando el cliente acepte, puedes convertirla en venta con un clic.'
   }
 
-  if (lowerMsg.includes('producto') || lowerMsg.includes('inventario') || lowerMsg.includes('agregar')) {
-    return '**Para agregar un producto:**\n\n1. Ve a **Productos** en el menú lateral\n2. Haz clic en **+ Nuevo Producto**\n3. Completa nombre, precio de venta, costo, IVA\n4. Asigna una categoría y proveedor\n5. Configura stock mínimo para alertas\n6. Guarda el producto\n\n📦 El inventario se actualiza automáticamente con cada venta o compra.'
+  if (lowerMsg.includes('producto') || lowerMsg.includes('agregar') || lowerMsg.includes('crear producto')) {
+    return '**Para agregar un producto:**\n\n1. Ve a **Productos** en el menú lateral\n2. Haz clic en **+ Nuevo Producto** (esquina superior derecha)\n3. Llena nombre, precio de venta, precio de costo y IVA (19%, 5% o exento)\n4. Asigna categoría y proveedor\n5. Configura stock mínimo para alertas\n6. Guarda 📦\n\n💡 El inventario se actualiza automáticamente con cada venta.'
   }
 
-  if (lowerMsg.includes('suscripción') || lowerMsg.includes('plan') || lowerMsg.includes('precio')) {
-    return '**Planes de VentifyPOS:**\n\n- **Básico**: 1 tienda, 5 empleados, 100 productos\n- **Profesional**: 3 tiendas, 15 empleados, 500 productos\n- **Enterprise**: Tiendas ilimitadas, empleados ilimitados, productos ilimitados\n\n📋 Ve a **Configuración → Suscripción** para ver o cambiar tu plan.\n\n⏱️ El trial dura 14 días con todas las funciones.'
+  if (lowerMsg.includes('caja') || lowerMsg.includes('turno') || lowerMsg.includes('cierre') || lowerMsg.includes('arqueo')) {
+    return '**Para manejar la caja:**\n\n1. Ve a **Contabilidad** → **Caja Registradora**\n2. Inicio del día: clic en **Abrir Turno** con el conteo de efectivo\n3. Durante el día, todas las ventas se registran solas\n4. Fin del día: clic en **Cerrar Turno** y cuenta el efectivo\n5. El sistema calcula la diferencia automáticamente 💰'
   }
 
-  if (lowerMsg.includes('caja') || lowerMsg.includes('turno') || lowerMsg.includes('cierre')) {
-    return '**Para manejar la caja registradora:**\n\n1. Ve a **Contabilidad → Caja Registradora**\n2. Haz clic en **Abrir Turno** con el conteo inicial\n3. Durante el turno, todas las ventas se registran automáticamente\n4. Al final, haz clic en **Cerrar Turno**\n5. Ingresa el conteo final de efectivo\n6. Revisa el resumen de ventas\n\n💰 El sistema calcula automáticamente la diferencia entre lo esperado y lo real.'
+  if (lowerMsg.includes('suscripción') || lowerMsg.includes('plan') || lowerMsg.includes('pago') || lowerMsg.includes('precio')) {
+    return '**Planes de VentifyPOS:**\n\n- **Básico**: 1 tienda, 5 empleados, 100 productos\n- **Profesional**: 3 tiendas, 15 empleados, 500 productos\n- **Enterprise**: Todo ilimitado\n\n📋 Para ver tu plan actual ve a **Suscripción** en el menú lateral.\n\n💳 Puedes pagar con tarjeta, Nequi o Daviplata desde ahí. También puedes subir un comprobante de pago manual.\n⏱️ El trial dura 14 días gratis.'
   }
 
-  return 'Lo siento, no pude conectar con el servicio de IA en este momento. Por favor intenta de nuevo en unos segundos.\n\nSi el problema persiste, contacta al administrador del sistema.'
+  if (lowerMsg.includes('empleado') || lowerMsg.includes('personal') || lowerMsg.includes('contratar')) {
+    return '**Para agregar un empleado:**\n\n1. Ve a **Empleados** en el menú lateral\n2. Clic en **+ Nuevo Empleado**\n3. Llena nombre, documento, email y teléfono\n4. Asigna un **Rol** (desde la sección Roles defines qué puede hacer cada rol)\n5. Guarda — el empleado recibirá un email para crear su contraseña 🔐'
+  }
+
+  if (lowerMsg.includes('inventario') || lowerMsg.includes('stock') || lowerMsg.includes('existencia')) {
+    return '**Para revisar el inventario:**\n\n1. Ve a **Inventario** en el menú lateral\n2. Ahí ves todos tus productos con stock actual\n3. Puedes registrar **Entradas** (compras, ajustes) y **Salidas** (ventas, mermas)\n4. El **Kardex** te muestra el historial de movimientos de cada producto\n5. Configura stock mínimo en cada producto para recibir alertas 📦'
+  }
+
+  if (lowerMsg.includes('proveedor') || lowerMsg.includes('compra')) {
+    return '**Para gestionar proveedores:**\n\n1. Ve a **Proveedores** en el menú lateral → **+ Nuevo Proveedor**\n2. Llena NIT, nombre, ciudad, teléfono\n3. Define condiciones de pago (contado o crédito)\n4. Luego ve a **Compras** para crear órdenes de compra\n5. Al recibir la mercancía, el inventario se actualiza automáticamente 📦'
+  }
+
+  return 'Lo siento, no pude conectar con el servicio de IA en este momento. Por favor intenta de nuevo en unos segundos.\n\nMientras tanto, puedes preguntarme sobre:\n- Cómo vender en el POS\n- Cómo crear facturas electrónicas\n- Cómo agregar productos o proveedores\n- Cómo manejar la caja\n- Cómo gestionar empleados\n\nO contacta a soporte si necesitas ayuda urgente.'
 }
 
 // ─── POST Handler ───────────────────────────────────────────────────────────

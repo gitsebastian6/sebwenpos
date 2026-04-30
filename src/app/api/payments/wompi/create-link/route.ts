@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic'
 
 const createLinkSchema = z.object({
   storeId: z.number().int().positive(),
-  amount: z.number().int().positive(), // COP (whole pesos, not cents)
+  amount: z.number().positive('El monto debe ser mayor a 0'), // Accepts floats — rounded to COP
   planId: z.number().int().positive().optional(),
   planName: z.string().max(100).optional(),
   billingPeriod: z.enum(['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL']).optional(),
@@ -29,6 +29,14 @@ const createLinkSchema = z.object({
   customerDocument: z.string().max(50).optional(), // Cédula/NIT
   description: z.string().max(500).optional(),
   expiresAt: z.string().optional(), // ISO 8601
+}).superRefine((data, ctx) => {
+  if (data.amount < 100) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'El monto mínimo es $100 COP',
+      path: ['amount'],
+    })
+  }
 })
 
 export async function POST(request: NextRequest) {
@@ -70,8 +78,9 @@ export async function POST(request: NextRequest) {
     // ── Generate unique reference ──
     const reference = `VNT-${storeId}-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
 
-    // ── Convert COP to cents for Wompi ──
-    const amountInCents = data.amount * 100
+    // ── Round to whole pesos and convert to cents for Wompi ──
+    const amountCOP = Math.round(data.amount)
+    const amountInCents = amountCOP * 100
 
     // ── Build payment link name/description ──
     const linkName = data.type === 'SUBSCRIPTION'
@@ -88,7 +97,7 @@ export async function POST(request: NextRequest) {
         storeId,
         subscriptionId,
         reference,
-        amount: data.amount,
+        amount: amountCOP,
         amountInCents,
         currency: 'COP',
         status: 'PENDING',
@@ -190,7 +199,7 @@ export async function POST(request: NextRequest) {
       reference,
       wompiTransactionId: wompiTx.id,
       wompiPaymentLinkId: paymentLink.id,
-      amount: data.amount,
+      amount: amountCOP,
       amountInCents,
       currency: 'COP',
       expiresAt: paymentLink.expiresAt,
@@ -201,8 +210,10 @@ export async function POST(request: NextRequest) {
     }, { status: 201 })
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
+      const firstIssue = error.issues[0]
+      const field = firstIssue.path.join('.')
       return NextResponse.json(
-        { error: error.issues[0].message },
+        { error: `Campo inválido: ${field}. ${firstIssue.message}` },
         { status: 400 },
       )
     }
