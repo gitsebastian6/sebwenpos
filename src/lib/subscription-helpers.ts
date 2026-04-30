@@ -81,6 +81,25 @@ export const BILLING_PERIODS: Record<string, { label: string; days: number; mont
   ANNUAL: { label: 'Anual', days: 365, months: 12, discount: 15 },
 }
 
+// ── Billing Price Calculator ──
+
+/**
+ * Calculate the billing price for a plan + billing period with discount.
+ * This is the single source of truth for pricing calculations.
+ *
+ * @param monthlyPrice  Plan's monthly price in COP
+ * @param billingPeriod MONTHLY | QUARTERLY | SEMI_ANNUAL | ANNUAL
+ * @returns { fullPrice, discount, discountedPrice } — all in COP
+ */
+export function calculateBillingPrice(monthlyPrice: number, billingPeriod: string) {
+  const period = BILLING_PERIODS[billingPeriod]
+  const months = period?.months ?? 1
+  const discount = period?.discount ?? 0
+  const fullPrice = monthlyPrice * months
+  const discountedPrice = Math.round(fullPrice * (1 - discount / 100))
+  return { fullPrice, discount, discountedPrice, months }
+}
+
 // ── Feature Check Helpers ──
 
 /**

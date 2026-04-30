@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { verifyWebhookSignature, type WompiWebhookEvent, type WompiTransaction } from '@/lib/wompi/client'
-import { logSubscriptionHistory, createBillingRecord, BILLING_PERIODS } from '@/lib/subscription-helpers'
+import { logSubscriptionHistory, createBillingRecord, BILLING_PERIODS, calculateBillingPrice } from '@/lib/subscription-helpers'
 import { logSubscriptionChange } from '@/lib/event-logger'
 
 export const dynamic = 'force-dynamic'
@@ -169,17 +169,23 @@ async function processTransactionUpdate(transaction: WompiTransaction): Promise<
 /**
  * Handle an APPROVED transaction:
  * 1. Auto-approve the linked PaymentReceipt (if exists)
- * 2. Extend the subscription
- * 3. Create a BillingRecord
+ * 2. Determine the PAID plan/period from metadata (not the existing subscription)
+ * 3. Apply billing period discounts correctly
+ * 4. Handle plan changes (upgrade/downgrade)
+ * 5. Extend the subscription
+ * 6. Create a BillingRecord with the ACTUAL charged amount
  */
 async function handleApprovedTransaction(
   wompiTx: {
     id: number
     storeId: number
+    amount: number
+    amountInCents: number
     wompiId: string | null
     reference: string
     subscriptionId: number | null
     receiptId: number | null
+    metadata: string
     receipt: {
       id: number
       status: string
@@ -218,8 +224,6 @@ async function handleApprovedTransaction(
 
   // ── Handle POS order (if linked) ──
   if (wompiTx.order && !wompiTx.subscription && !wompiTx.receipt) {
-    // CRITICAL FIX: When Wompi approves a POS payment, mark the order as COMPLETED
-    // and update payment method. Previously only appended a note.
     const order = wompiTx.order
     const wasPending = order.status === 'PENDING_PAYMENT'
 
@@ -259,14 +263,74 @@ async function handleApprovedTransaction(
     logger.info(`[Wompi Webhook] Auto-approved PaymentReceipt #${receipt.id}`)
   }
 
-  // ── Extend the subscription ──
-  const effectiveBillingPeriod = subscription.billingPeriod || 'MONTHLY'
-  if (effectiveBillingPeriod === 'TRIAL') {
-    // Trial period can't be extended via payment — upgrade to MONTHLY
-    logger.info(`[Wompi Webhook] Trial subscription ${subscription.id} — upgrading to MONTHLY on payment`)
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRICING FIX: Read the PAID plan/period from WompiTransaction metadata,
+  // NOT from the existing subscription. The user may be changing plans.
+  // ═══════════════════════════════════════════════════════════════════════
+  let txMetadata: Record<string, unknown> = {}
+  try {
+    txMetadata = JSON.parse(wompiTx.metadata)
+  } catch {
+    logger.warn(`[Wompi Webhook] Could not parse metadata for WompiTransaction ${wompiTx.id}`)
   }
 
-  const billingPeriodToUse = effectiveBillingPeriod === 'TRIAL' ? 'MONTHLY' : effectiveBillingPeriod
+  // What the user actually PAID FOR (from the checkout request)
+  const requestedPlanId = txMetadata.planId as number | undefined
+  const requestedBillingPeriod = txMetadata.billingPeriod as string | undefined
+  const txType = txMetadata.type as string | undefined // 'SUBSCRIPTION' or 'POS'
+
+  // Determine the effective plan and billing period to use
+  const currentPlan = subscription.plan
+  const previousPlanId = subscription.planId
+  const previousPlanName = currentPlan.name
+  const previousStatus = subscription.status
+
+  // Check if this is a plan change (different plan requested)
+  let effectivePlanId = subscription.planId
+  let effectivePlanName = currentPlan.name
+  let effectivePlanPrice = currentPlan.price
+  let isPlanChange = false
+
+  if (requestedPlanId && requestedPlanId !== subscription.planId) {
+    // Plan change requested — validate the target plan exists
+    const targetPlan = await db.plan.findUnique({
+      where: { id: requestedPlanId },
+      select: { id: true, name: true, price: true },
+    })
+    if (targetPlan) {
+      effectivePlanId = targetPlan.id
+      effectivePlanName = targetPlan.name
+      effectivePlanPrice = targetPlan.price
+      isPlanChange = true
+      logger.info(`[Wompi Webhook] Plan change detected: ${previousPlanName} → ${effectivePlanName} for store ${wompiTx.storeId}`)
+    } else {
+      logger.warn(`[Wompi Webhook] Requested planId=${requestedPlanId} not found, keeping current plan`)
+    }
+  }
+
+  // Determine billing period: use what was paid for, fallback to subscription's
+  let billingPeriodToUse: string
+  if (requestedBillingPeriod && requestedBillingPeriod !== 'TRIAL' && BILLING_PERIODS[requestedBillingPeriod]) {
+    billingPeriodToUse = requestedBillingPeriod
+  } else {
+    // Fallback: use the existing subscription's period, but never TRIAL for paid transactions
+    const subPeriod = subscription.billingPeriod || 'MONTHLY'
+    billingPeriodToUse = subPeriod === 'TRIAL' ? 'MONTHLY' : subPeriod
+  }
+
+  // ── Calculate price WITH discount using centralized calculator ──
+  const { fullPrice, discount: periodDiscount, discountedPrice } = calculateBillingPrice(
+    effectivePlanPrice,
+    billingPeriodToUse,
+  )
+
+  // The actual amount charged (use WompiTransaction.amount — what the user actually paid)
+  // This accounts for any proration credits applied at checkout
+  const actualAmountCharged = wompiTx.amount
+
+  // ── Calculate extension days ──
+  const periodInfo = BILLING_PERIODS[billingPeriodToUse]
+  const extensionDays = periodInfo?.days ?? 30
 
   let newEndDate: Date
   if (subscription.endDate && new Date(subscription.endDate) > now) {
@@ -274,110 +338,133 @@ async function handleApprovedTransaction(
   } else {
     newEndDate = new Date(now)
   }
-
-  const billingDays: Record<string, number> = {
-    TRIAL: 7, MONTHLY: 30, QUARTERLY: 90, SEMI_ANNUAL: 180, ANNUAL: 365,
-  }
-  const days = billingDays[billingPeriodToUse] || 30
-  newEndDate.setDate(newEndDate.getDate() + days)
+  newEndDate.setDate(newEndDate.getDate() + extensionDays)
 
   // Calculate nextBillingAt (1 day after new endDate)
   const newNextBillingAt = new Date(newEndDate)
   newNextBillingAt.setDate(newNextBillingAt.getDate() + 1)
 
-  // Calculate billing price from the plan
-  const plan = subscription.plan
-  const billingMonths: Record<string, number> = {
-    MONTHLY: 1, QUARTERLY: 3, SEMI_ANNUAL: 6, ANNUAL: 12,
+  // ── Update subscription ──
+  const subscriptionUpdateData: Record<string, unknown> = {
+    status: 'ACTIVE',
+    endDate: newEndDate,
+    nextBillingAt: newNextBillingAt,
+    lastBilledAt: now,
+    startDate: subscription.startDate || now,
+    billingPeriod: billingPeriodToUse,
+    billingPrice: actualAmountCharged, // Store ACTUAL amount charged (with discount + proration)
+    cancelReason: null,
+    alertSentAt3d: null,
+    alertSentAt1d: null,
   }
-  const months = billingMonths[billingPeriodToUse] || 1
-  const periodPrice = plan.price * months
 
-  // Update subscription
-  const previousStatus = subscription.status
-  const previousPlanName = plan.name
-  const previousPlanId = plan.id
+  // If grace period was active, clear it
+  if (previousStatus === 'EXPIRED' || previousStatus === 'PAST_DUE') {
+    subscriptionUpdateData.graceEndDate = null
+  }
+
+  // If plan changed, update planId
+  if (isPlanChange) {
+    subscriptionUpdateData.planId = effectivePlanId
+    subscriptionUpdateData.previousPlanId = previousPlanId
+    subscriptionUpdateData.previousPlanName = previousPlanName
+  }
 
   await db.subscription.update({
     where: { id: subscription.id },
-    data: {
-      status: 'ACTIVE',
-      endDate: newEndDate,
-      nextBillingAt: newNextBillingAt,
-      lastBilledAt: now,
-      startDate: subscription.startDate || now,
-      billingPeriod: billingPeriodToUse,
-      billingPrice: periodPrice,
-      cancelReason: null,
-      // Reset alert flags on renewal
-      alertSentAt3d: null,
-      alertSentAt1d: null,
-      ...(previousStatus === 'EXPIRED' || previousStatus === 'PAST_DUE' ? { graceEndDate: null } : {}),
-    },
+    data: subscriptionUpdateData,
   })
 
   // ── Log to subscription history ──
   const isReactivation = previousStatus === 'CANCELLED' || previousStatus === 'EXPIRED' || previousStatus === 'PAST_DUE'
+  const isPlanUpgrade = isPlanChange && effectivePlanPrice > currentPlan.price
+  const isPlanDowngrade = isPlanChange && effectivePlanPrice < currentPlan.price
 
   await logSubscriptionChange(wompiTx.storeId, previousStatus, 'ACTIVE', {
     wompiTransactionId: wompiTx.id,
     wompiReference: wompiTx.reference,
+    ...(isPlanChange ? { planChange: `${previousPlanName} → ${effectivePlanName}` } : {}),
   })
 
+  // Determine history event type
+  let historyEventType: string
   if (isReactivation) {
-    await logSubscriptionHistory({
-      storeId: wompiTx.storeId,
-      subscriptionId: subscription.id,
-      eventType: 'REACTIVATED',
-      previousStatus,
-      newStatus: 'ACTIVE',
-      previousPlanId,
-      newPlanId: plan.id,
-      previousPlanName,
-      newPlanName: plan.name,
-      description: `Suscripción reactivada por pago Wompi — referencia ${wompiTx.reference}`,
-      metadata: { wompiTransactionId: wompiTx.id, paymentMethod: 'WOMPI', wompiReference: wompiTx.reference },
-    })
+    historyEventType = 'REACTIVATED'
+  } else if (isPlanChange) {
+    historyEventType = 'PLAN_CHANGED'
   } else {
-    await logSubscriptionHistory({
-      storeId: wompiTx.storeId,
-      subscriptionId: subscription.id,
-      eventType: 'RENEWED',
-      previousStatus,
-      newStatus: 'ACTIVE',
-      previousPlanId,
-      newPlanId: plan.id,
-      previousPlanName,
-      newPlanName: plan.name,
-      description: `Suscripción renovada por ${BILLING_PERIODS[billingPeriodToUse]?.label || billingPeriodToUse} vía Wompi`,
-      metadata: { wompiTransactionId: wompiTx.id, paymentMethod: 'WOMPI', billingPeriod: billingPeriodToUse, wompiReference: wompiTx.reference },
-    })
+    historyEventType = 'RENEWED'
   }
 
-  // ── Create billing record ──
+  const historyDescription = isReactivation
+    ? `Suscripción reactivada por pago Wompi — referencia ${wompiTx.reference}`
+    : isPlanChange
+      ? `Plan cambiado de ${previousPlanName} a ${effectivePlanName} por pago Wompi — ${BILLING_PERIODS[billingPeriodToUse]?.label || billingPeriodToUse}`
+      : `Suscripción renovada por ${BILLING_PERIODS[billingPeriodToUse]?.label || billingPeriodToUse} vía Wompi`
+
+  await logSubscriptionHistory({
+    storeId: wompiTx.storeId,
+    subscriptionId: subscription.id,
+    eventType: historyEventType as 'CREATED' | 'TRIAL_STARTED' | 'RENEWED' | 'PLAN_CHANGED' | 'CANCELLED' | 'EXPIRED' | 'REACTIVATED' | 'GRACE_STARTED' | 'PAST_DUE' | 'BILLING_PERIOD_CHANGED',
+    previousStatus,
+    newStatus: 'ACTIVE',
+    previousPlanId: isPlanChange ? previousPlanId : undefined,
+    newPlanId: effectivePlanId,
+    previousPlanName: isPlanChange ? previousPlanName : undefined,
+    newPlanName: effectivePlanName,
+    description: historyDescription,
+    metadata: {
+      wompiTransactionId: wompiTx.id,
+      paymentMethod: 'WOMPI',
+      billingPeriod: billingPeriodToUse,
+      periodDiscount,
+      fullPrice,
+      discountedPrice,
+      actualAmountCharged,
+      isPlanChange,
+      ...(isPlanUpgrade ? { isPlanUpgrade: true } : {}),
+      ...(isPlanDowngrade ? { isPlanDowngrade: true } : {}),
+      wompiReference: wompiTx.reference,
+    },
+  })
+
+  // ── Create billing record with ACTUAL charged amount ──
   const periodStart = subscription.endDate && new Date(subscription.endDate) > now
     ? new Date(subscription.endDate)
     : new Date(now)
+
+  // Proration credit = full undiscounted price - actual charged amount
+  const prorationCredit = fullPrice - actualAmountCharged
 
   await createBillingRecord({
     storeId: wompiTx.storeId,
     subscriptionId: subscription.id,
     receiptId: receipt?.id ?? null,
-    planId: plan.id,
-    planName: plan.name,
+    planId: effectivePlanId,
+    planName: effectivePlanName,
     billingPeriod: billingPeriodToUse,
-    amount: periodPrice,
-    prorationCredit: 0,
+    amount: discountedPrice, // The "list price" for this period
+    prorationCredit: Math.max(0, prorationCredit), // Credit applied (from plan change proration etc.)
     status: 'PAID',
     paymentMethod: 'WOMPI',
     periodStart,
     periodEnd: newEndDate,
     notes: isReactivation
-      ? 'Reactivación de suscripción vía Wompi'
-      : `Renovación ${BILLING_PERIODS[billingPeriodToUse]?.label || billingPeriodToUse} vía Wompi`,
+      ? `Reactivación vía Wompi — cobro real: $${actualAmountCharged.toLocaleString('es-CO')} COP`
+      : isPlanChange
+        ? `Cambio ${previousPlanName}→${effectivePlanName} (${BILLING_PERIODS[billingPeriodToUse]?.label || billingPeriodToUse}) — cobro real: $${actualAmountCharged.toLocaleString('es-CO')} COP`
+        : `Renovación ${BILLING_PERIODS[billingPeriodToUse]?.label || billingPeriodToUse} vía Wompi — cobro real: $${actualAmountCharged.toLocaleString('es-CO')} COP`,
   })
 
-  logger.info(`[Wompi Webhook] Subscription ${subscription.id} extended to ${newEndDate.toISOString()} for store ${wompiTx.storeId}`)
+  logger.info(
+    `[Wompi Webhook] Subscription ${subscription.id} ` +
+    `${isPlanChange ? `[PLAN CHANGE: ${previousPlanName}→${effectivePlanName}] ` : ''}` +
+    `${isReactivation ? '[REACTIVATED] ' : ''}` +
+    `extended to ${newEndDate.toISOString()} | ` +
+    `period=${billingPeriodToUse} | discount=${periodDiscount}% | ` +
+    `discounted=${discountedPrice} | charged=${actualAmountCharged} | ` +
+    `store=${wompiTx.storeId}`
+  )
 }
 
 /**

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { calculateBillingPrice } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,24 +72,21 @@ export async function GET(req: NextRequest) {
       daysRemaining: prorationDays,
     }
 
-    // Target plan pricing (with volume discounts)
+    // Target plan pricing (with volume discounts) — using centralized calculator
     const periods = [
-      { key: 'MONTHLY', label: 'Mensual', months: 1, days: 30, discount: 0 },
-      { key: 'QUARTERLY', label: 'Trimestral', months: 3, days: 90, discount: 5 },
-      { key: 'SEMI_ANNUAL', label: 'Semestral', months: 6, days: 180, discount: 10 },
-      { key: 'ANNUAL', label: 'Anual', months: 12, days: 365, discount: 15 },
+      { key: 'MONTHLY', label: 'Mensual' },
+      { key: 'QUARTERLY', label: 'Trimestral' },
+      { key: 'SEMI_ANNUAL', label: 'Semestral' },
+      { key: 'ANNUAL', label: 'Anual' },
     ]
 
     const targetPricing = periods.map(p => {
-      const fullPrice = targetPlan.price * p.months
-      const discountedPrice = Math.round(fullPrice * (1 - p.discount / 100))
+      const { fullPrice, discount, discountedPrice } = calculateBillingPrice(targetPlan.price, p.key)
       const adjustedPrice = hasCredit ? Math.max(0, discountedPrice - prorationCredit) : discountedPrice
       return {
         period: p.key,
         label: p.label,
-        months: p.months,
-        days: p.days,
-        discount: p.discount,
+        discount,
         fullPrice,
         discountedPrice,
         prorationCredit: hasCredit ? prorationCredit : 0,

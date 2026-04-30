@@ -84,7 +84,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
     const discount = period?.discount || 0
     const months = selectedBillingPeriod === 'MONTHLY' ? 1 : selectedBillingPeriod === 'QUARTERLY' ? 3 : selectedBillingPeriod === 'SEMI_ANNUAL' ? 6 : 12
     const fullPrice = plan.price * months
-    const discountedPrice = Math.round(fullPrice * (1 - discount / 100))
+    const discountedPrice = Math.round(fullPrice * (1 - discount / 100)) // Match calculateBillingPrice exactly
     const credit = prorationInfo?.proration?.creditAmount || 0
     return {
       fullPrice,

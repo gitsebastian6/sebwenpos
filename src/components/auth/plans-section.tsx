@@ -1,13 +1,115 @@
 'use client'
 
+import { useQuery } from '@tanstack/react-query'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import {
   Check, Shield, Headphones, Star, Phone, MessageCircle, ArrowRight,
 } from 'lucide-react'
-import { PLANS, SUPPORT_PHONE, SUPPORT_WHATSAPP } from './auth-constants'
+import { PLANS, SUPPORT_PHONE, SUPPORT_WHATSAPP, type PlanInfo } from './auth-constants'
+import { formatCOP } from '@/lib/format'
+
+// ── API response shape ──────────────────────────────────────────────
+interface ApiPlan {
+  id: string
+  name: string
+  description: string
+  price: number
+  maxEmployees: number
+  maxProducts: number
+  features: Record<string, unknown>
+  isActive: boolean
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Convert the API `features` object into a flat string[] for display.
+ * Maps known feature keys to Spanish labels; uses key name for unknown ones.
+ */
+const FEATURE_LABELS: Record<string, string> = {
+  electronicInvoicing: 'Facturación Electrónica',
+  multiStore: 'Multi-Tienda',
+  reports: 'Reportes Avanzados',
+  advancedInventory: 'Inventario Avanzado',
+  api: 'Acceso API',
+  customBranding: 'Branding Personalizado',
+  multiCurrency: 'Multi-Moneda',
+  priority: 'Soporte Prioritario',
+}
+
+function extractFeatures(features: Record<string, unknown>): string[] {
+  return Object.entries(features).flatMap(([key, value]) => {
+    if (typeof value === 'boolean' && value) return [FEATURE_LABELS[key] || key]
+    if (typeof value === 'string' && value !== 'none') return [FEATURE_LABELS[value] || value]
+    return []
+  })
+}
+
+/**
+ * Merge a single API plan with the matching static plan so we preserve
+ * icon, colour classes, highlight flag, etc.  Falls back to a neutral
+ * style when the API plan has no static counterpart.
+ */
+function mapApiPlan(apiPlan: ApiPlan): PlanInfo | null {
+  const isTrial = apiPlan.name.toLowerCase() === 'trial'
+
+  const displayPrice = isTrial ? 'Gratis' : formatCOP(apiPlan.price)
+  const displayPeriod = isTrial ? '7 días' : '/mes'
+
+  const description =
+    apiPlan.description.length > 60
+      ? `${apiPlan.description.slice(0, 57)}...`
+      : apiPlan.description
+
+  // Match by name (case-insensitive) to pull icon / colour / border etc.
+  const staticPlan = PLANS.find(
+    (p) => p.name.toLowerCase() === apiPlan.name.toLowerCase(),
+  )
+
+  if (staticPlan) {
+    return {
+      ...staticPlan,
+      price: displayPrice,
+      period: displayPeriod,
+      description,
+      // Keep static plan's human-readable features (Spanish labels)
+      // Only use DB features as fallback for custom/unknown plans
+      features: staticPlan.features,
+    }
+  }
+
+  // No matching static plan – use neutral styling as last resort
+  return {
+    name: apiPlan.name,
+    price: displayPrice,
+    period: displayPeriod,
+    description,
+    features: extractFeatures(apiPlan.features),
+    highlight: false,
+    icon: Star,
+    color: 'text-zinc-400',
+    border: 'border-zinc-700/50',
+    bgIcon: 'bg-zinc-500/10',
+  }
+}
+
+// ── Component ───────────────────────────────────────────────────────
 
 export function PlansSection() {
+  const { data: apiPlans } = useQuery<ApiPlan[]>({
+    queryKey: ['public-plans'],
+    queryFn: () => fetch('/api/subscription/plans').then((r) => r.json()),
+  })
+
+  // Use API data when available; fall back to hardcoded PLANS while loading.
+  const displayPlans: PlanInfo[] = apiPlans
+    ? apiPlans
+        .filter((p) => p.isActive)
+        .map(mapApiPlan)
+        .filter((p): p is PlanInfo => p !== null)
+    : PLANS
+
   return (
     <>
       {/* ═══ Desktop Plans (right column) ═══ */}
@@ -15,7 +117,7 @@ export function PlansSection() {
 
         {/* Plan Cards */}
         <div className="flex flex-col gap-4">
-          {PLANS.map((plan) => {
+          {displayPlans.map((plan) => {
             const IconComp = plan.icon
             return (
               <div
@@ -132,7 +234,7 @@ export function PlansSection() {
           </div>
 
           <div className="flex flex-col gap-3">
-            {PLANS.map((plan) => {
+            {displayPlans.map((plan) => {
               const IconComp = plan.icon
               return (
                 <div
