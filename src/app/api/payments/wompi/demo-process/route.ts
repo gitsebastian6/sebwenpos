@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 import { processPendingDemoTransactions } from '@/lib/wompi/demo-processor'
-import { timingSafeEqual } from '@/lib/auth-helpers'
 
 export const dynamic = 'force-dynamic'
 
