@@ -242,7 +242,11 @@ export const useAuthStore = create<AuthState>()(
 
       loadAvailableStores: async () => {
         try {
-          const res = await fetch('/api/stores/available')
+          const token = get().token
+          if (!token) return
+          const res = await fetch('/api/stores/available', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          })
           if (!res.ok) return
           const data = await res.json()
           if (Array.isArray(data.stores)) {
