@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
-import { logSubscriptionHistory, createBillingRecord, BILLING_PERIODS } from '@/lib/subscription-helpers'
+import { logSubscriptionHistory, createBillingRecord, BILLING_PERIODS, calculateBillingPrice } from '@/lib/subscription-helpers'
 import { logStoreEvent, logSubscriptionChange, logPlanChange } from '@/lib/event-logger'
 import { deleteReceiptFile, readReceiptFile } from '@/lib/file-storage'
 
@@ -132,11 +132,8 @@ export async function PUT(
       // Calculate billing price from the plan
       const targetPlanForPrice = await db.plan.findUnique({ where: { id: effectivePlanId } })
       const billingPrice = targetPlanForPrice?.price || sub.plan?.price || 0
-      const billingMonths: Record<string, number> = {
-        MONTHLY: 1, QUARTERLY: 3, SEMI_ANNUAL: 6, ANNUAL: 12,
-      }
-      const months = billingMonths[effectiveBillingPeriod] || 1
-      const periodPrice = billingPrice * months
+      // Calculate billing price with discounts (single source of truth)
+      const periodPrice = calculateBillingPrice(billingPrice, effectiveBillingPeriod).discountedPrice
 
       // Update subscription: reactivate, extend, and change plan if requested
       const previousStatus = sub.status

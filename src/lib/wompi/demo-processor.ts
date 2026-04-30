@@ -12,6 +12,7 @@
 
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { calculateBillingPrice } from '@/lib/subscription-helpers'
 import { isWompiDemoMode, getDemoTransactionStatus } from '@/lib/wompi/client'
 
 /** Demo auto-approval delay in milliseconds (10 seconds) — matches client.ts */
@@ -133,11 +134,7 @@ export async function processDemoApproval(wompiTxId: number): Promise<boolean> {
   newNextBillingAt.setDate(newNextBillingAt.getDate() + 1)
 
   const plan = subscription.plan
-  const billingMonths: Record<string, number> = {
-    MONTHLY: 1, QUARTERLY: 3, SEMI_ANNUAL: 6, ANNUAL: 12,
-  }
-  const months = billingMonths[effectiveBillingPeriod] || 1
-  const periodPrice = plan.price * months
+  const periodPrice = calculateBillingPrice(plan.price, effectiveBillingPeriod).discountedPrice
 
   const previousStatus = subscription.status
 

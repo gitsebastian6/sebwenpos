@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
-import { logSubscriptionHistory } from '@/lib/subscription-helpers'
+import { logSubscriptionHistory, GRACE_PERIOD_DAYS } from '@/lib/subscription-helpers'
 import { logSubscriptionChange } from '@/lib/event-logger'
 
 export const dynamic = 'force-dynamic'
+
+// Constant-time string comparison to prevent timing attacks on secret check
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  const encoder = new TextEncoder()
+  const aBuf = encoder.encode(a)
+  const bBuf = encoder.encode(b)
+  const result = new Uint8Array(aBuf.length)
+  for (let i = 0; i < aBuf.length; i++) {
+    result[i] = aBuf[i] ^ bBuf[i]
+  }
+  return result.every(byte => byte === 0)
+}
 
 // POST /api/subscription/billing-check
 // Checks for overdue subscriptions and updates their status.
@@ -19,13 +32,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (internalSecret && internalSecret !== process.env.INTERNAL_SECRET) {
-    return NextResponse.json({ error: 'Invalid internal secret' }, { status: 401 })
+  if (internalSecret) {
+    const expected = process.env.INTERNAL_SECRET
+    if (!expected || !timingSafeEqual(internalSecret, expected)) {
+      return NextResponse.json({ error: 'Invalid internal secret' }, { status: 401 })
+    }
   }
 
   try {
     const now = new Date()
-    const gracePeriodDays = 3
+    const gracePeriodDays = GRACE_PERIOD_DAYS
     const results = {
       checked: 0,
       pastDue: 0,
