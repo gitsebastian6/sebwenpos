@@ -413,9 +413,10 @@ export function SubscriptionPaymentPanel() {
                   <WompiPoweredBy />
                 </>
               ) : (
-                <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-700 dark:text-amber-400">
-                  <p className="font-medium">Wompi no configurado</p>
-                  <p className="text-xs mt-1">Configura WOMPI_ENV=demo en .env para pruebas, o las llaves reales para pagos en línea. <a href="https://dashboard.wompi.co" target="_blank" rel="noopener noreferrer" className="underline">Obtener llaves</a></p>
+                <div className="rounded-lg border border-muted bg-muted/30 p-4 text-center">
+                  <CreditCard className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-muted-foreground">Pago en línea</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Próximamente disponible</p>
                 </div>
               )}
 

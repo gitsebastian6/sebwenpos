@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import {
   Store, Plus, Crown, Settings, TrendingUp, Shield,
-  LogOut, Moon, Sun,
+  LogOut, Moon, Sun, Wallet,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import dynamic from 'next/dynamic'
@@ -19,6 +19,7 @@ import { ConfigView } from './config-view'
 import { PlansView } from './plans-view'
 import { StoresKPICards, StoresTable, CreateStoreDialog, ResetPasswordDialog } from './stores-view'
 import { StoreDetailView } from './store-detail-view'
+import { PendingPaymentsView } from './pending-payments-view'
 import {
   useSuperAdminStores,
   useSuperAdminStatistics,
@@ -38,7 +39,7 @@ export function SuperAdminShell() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [selectedUser, setSelectedUser] = useState<StoreOwner | null>(null)
-  const [currentView, setCurrentView] = useState<'stores' | 'plans' | 'config' | 'stats'>('stores')
+  const [currentView, setCurrentView] = useState<'stores' | 'plans' | 'payments' | 'config' | 'stats'>('stores')
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null)
 
   // ── Query hooks ──
@@ -140,7 +141,7 @@ export function SuperAdminShell() {
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-                  {currentView === 'stores' ? 'Panel de Tiendas' : currentView === 'config' ? 'Configuración del Sistema' : currentView === 'stats' ? 'Estadísticas del SaaS' : 'Planes de Suscripción'}
+                  {currentView === 'stores' ? 'Panel de Tiendas' : currentView === 'config' ? 'Configuración del Sistema' : currentView === 'stats' ? 'Estadísticas del SaaS' : currentView === 'payments' ? 'Pagos y Comprobantes' : 'Planes de Suscripción'}
                 </h1>
               </div>
               <p className="text-muted-foreground">
@@ -150,6 +151,8 @@ export function SuperAdminShell() {
                   ? 'Integraciones y configuración global del sistema'
                   : currentView === 'stats'
                   ? 'Métricas globales de la plataforma y rendimiento del negocio'
+                  : currentView === 'payments'
+                  ? 'Revisa, aprueba o rechaza comprobantes de pago de todos los clientes'
                   : 'Gestión de planes y precios de suscripción'}
               </p>
             </div>
@@ -170,6 +173,14 @@ export function SuperAdminShell() {
                   onClick={() => setCurrentView('plans')}
                 >
                   <Crown className="h-3.5 w-3.5" />Planes
+                </Button>
+                <Button
+                  variant={currentView === 'payments' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="gap-1.5 h-8 transition-all duration-200"
+                  onClick={() => setCurrentView('payments')}
+                >
+                  <Wallet className="h-3.5 w-3.5" />Pagos
                 </Button>
                 <Button
                   variant={currentView === 'config' ? 'default' : 'ghost'}
@@ -221,6 +232,11 @@ export function SuperAdminShell() {
             {/* PLANS VIEW */}
             {currentView === 'plans' && (
               <PlansView plans={plans} onPlansChange={() => qc.invalidateQueries({ queryKey: ['super-admin-plans'] })} />
+            )}
+
+            {/* PAYMENTS VIEW */}
+            {currentView === 'payments' && (
+              <PendingPaymentsView />
             )}
 
             {/* CONFIG VIEW */}
