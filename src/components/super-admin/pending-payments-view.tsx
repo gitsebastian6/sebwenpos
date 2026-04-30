@@ -42,12 +42,12 @@ export function PendingPaymentsView() {
   // Receipt detail for preview dialog
   const [viewingReceiptId, setViewingReceiptId] = useState<number | null>(null)
   const { data: receiptDetail, isLoading: detailLoading } = useSuperAdminReceiptDetail(viewingReceiptId)
-  const receiptPreviewImage = useMemo(() => {
+  const receiptPreviewImage = (() => {
     if (!receiptDetail?.fileData) return null
     const mime = receiptDetail.fileType || 'application/octet-stream'
     if (mime.startsWith('image/')) return `data:${mime};base64,${receiptDetail.fileData}`
     return null
-  }, [receiptDetail])
+  })()
 
   // Mutations
   const updateReceipt = useUpdateReceipt()
