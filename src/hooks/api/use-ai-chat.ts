@@ -20,7 +20,6 @@ interface AiChatResponse {
   message: string
   sessionId: string
   usage: {
-    remaining: number
     usedToday: number
     tokensThisMessage: number
   }

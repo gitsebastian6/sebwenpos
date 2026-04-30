@@ -1,20 +1,26 @@
 // ---------------------------------------------------------------------------
-// VentifyPOS — AI Chat Route (GLM via z-ai CLI subprocess)
+// VentifyPOS — AI Chat Route (GLM via Z.ai Gateway — direct fetch)
 // ---------------------------------------------------------------------------
-// Uses z-ai CLI tool via Bun.spawn to call GLM API.
-// Avoids all fetch/SDK calls inside Next.js that cause server crashes.
-// Context, session management, cost control handled here.
+// Uses native fetch() to call the Z.ai gateway directly.
+// No SDK, no CLI subprocess, no fs imports — works in Docker too.
+// Multi-turn conversation with full message history.
+// No token limit — Z.ai is free, users can chat normally.
 // ---------------------------------------------------------------------------
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuthUser } from '@/lib/api-auth'
-import { spawn } from 'child_process'
-import { readFileSync, unlinkSync, existsSync } from 'fs'
+
+// ─── Z.ai Gateway Config (from env vars, set by Docker or .env) ─────────────
+
+const ZAI_BASE_URL = process.env.ZAI_BASE_URL || 'http://172.25.136.193:8080/v1'
+const ZAI_API_KEY  = process.env.ZAI_API_KEY  || 'Z.ai'
+const ZAI_CHAT_ID  = process.env.ZAI_CHAT_ID  || ''
+const ZAI_USER_ID  = process.env.ZAI_USER_ID  || ''
+const ZAI_TOKEN    = process.env.ZAI_TOKEN     || ''
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const DAILY_TOKEN_LIMIT = parseInt(process.env.AI_DAILY_TOKEN_LIMIT || '100000', 10)
 const MAX_CONTEXT_MESSAGES = parseInt(process.env.AI_MAX_CONTEXT_MESSAGES || '20', 10)
 const MAX_MESSAGE_LENGTH = 2000
 
@@ -114,95 +120,59 @@ function buildSystemPrompt(context: {
   return prompt
 }
 
-// ─── Token Budget Checker ───────────────────────────────────────────────────
+// ─── GLM API via direct fetch to Z.ai Gateway ──────────────────────────────
 
-async function checkTokenBudget(userId: number): Promise<{
-  allowed: boolean
-  usedToday: number
-  remaining: number
-}> {
-  const todayStart = new Date()
-  todayStart.setHours(0, 0, 0, 0)
-
-  const todaySessions = await db.chatSession.findMany({
-    where: { userId, createdAt: { gte: todayStart } },
-    select: { tokensUsed: true },
-  })
-
-  const usedToday = todaySessions.reduce((sum, s) => sum + s.tokensUsed, 0)
-  const remaining = Math.max(0, DAILY_TOKEN_LIMIT - usedToday)
-
-  return { allowed: usedToday < DAILY_TOKEN_LIMIT, usedToday, remaining }
-}
-
-// ─── GLM API via z-ai CLI subprocess ────────────────────────────────────────
-// This avoids fetch/SDK calls inside Next.js that crash the server.
-
-async function callGlmCli(userMessage: string, systemPrompt: string): Promise<{
-  content: string
-  tokens: number
-  model: string
-}> {
+async function callGlmApi(
+  messages: Array<{ role: string; content: string }>
+): Promise<{ content: string; tokens: number; model: string }> {
   const startTime = Date.now()
-  const outputFile = `/tmp/zai-chat-${Date.now()}.json`
 
   try {
-    // Use Node.js child_process.spawn (works in Next.js runtime)
-    const exitCode = await new Promise<number>((resolve, reject) => {
-      const proc = spawn('z-ai', [
-        'chat',
-        '--prompt', userMessage,
-        '--system', systemPrompt,
-        '-o', outputFile,
-      ], {
-        env: { ...process.env },
-        stdio: 'pipe',
-      })
+    const url = `${ZAI_BASE_URL}/chat/completions`
 
-      // Set a 35s timeout
-      const timer = setTimeout(() => {
-        proc.kill('SIGTERM')
-        resolve(1)
-      }, 35000)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${ZAI_API_KEY}`,
+      'X-Z-AI-From': 'Z',
+    }
 
-      proc.on('close', (code) => {
-        clearTimeout(timer)
-        resolve(code ?? 1)
-      })
+    // Add optional tracking headers if configured
+    if (ZAI_CHAT_ID) headers['X-Chat-Id'] = ZAI_CHAT_ID
+    if (ZAI_USER_ID) headers['X-User-Id'] = ZAI_USER_ID
+    if (ZAI_TOKEN)   headers['X-Token'] = ZAI_TOKEN
 
-      proc.on('error', (err) => {
-        clearTimeout(timer)
-        reject(err)
-      })
+    const body = JSON.stringify({
+      model: 'glm-4-plus',
+      messages,
+    })
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body,
+      signal: AbortSignal.timeout(35000),
     })
 
     const latencyMs = Date.now() - startTime
 
-    if (exitCode !== 0) {
-      console.error(`[GLM Chat] CLI exit ${exitCode} after ${latencyMs}ms`)
+    if (!response.ok) {
+      const status = response.status
+      const text = await response.text().catch(() => '')
+      console.error(`[GLM Chat] API ${status} after ${latencyMs}ms: ${text.slice(0, 300)}`)
       return { content: '', tokens: 0, model: 'error' }
     }
 
-    // Read output file
-    if (!existsSync(outputFile)) {
-      console.error('[GLM Chat] Output file not found')
-      return { content: '', tokens: 0, model: 'error' }
-    }
-
-    const result = JSON.parse(readFileSync(outputFile, 'utf-8')) as any
+    const result = await response.json() as any
     const reply = result.choices?.[0]?.message?.content || ''
     const tokens = result.usage?.total_tokens || Math.ceil(reply.length / 4)
-    const model = result.model || 'glm-4-flash'
+    const model = result.model || 'glm-4-plus'
 
-    console.log(`[GLM Chat] CLI ${latencyMs}ms, ~${tokens} tokens, model: ${model}`)
-
-    // Clean up temp file
-    try { unlinkSync(outputFile) } catch { /* ignore */ }
+    console.log(`[GLM Chat] API ${latencyMs}ms, ${tokens} tokens, model: ${model}`)
 
     return { content: reply, tokens, model }
   } catch (error: any) {
     const latencyMs = Date.now() - startTime
-    console.error(`[GLM Chat] CLI error after ${latencyMs}ms:`, error?.message || error)
+    console.error(`[GLM Chat] fetch error after ${latencyMs}ms:`, error?.message || error)
     return { content: '', tokens: 0, model: 'error' }
   }
 }
@@ -259,15 +229,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: `Mensaje muy largo (máximo ${MAX_MESSAGE_LENGTH} caracteres)` }, { status: 400 })
     }
 
-    const budget = await checkTokenBudget(auth.userId)
-    if (!budget.allowed) {
-      return NextResponse.json({
-        success: false,
-        error: 'Límite diario de uso alcanzado. El asistente estará disponible mañana.',
-        usage: { remaining: 0, usedToday: budget.usedToday },
-      }, { status: 429 })
-    }
-
     // Find or create session
     let session
     if (sessionId) {
@@ -294,33 +255,34 @@ export async function POST(req: NextRequest) {
     // Build system prompt with context
     const systemPrompt = buildSystemPrompt({ currentPage, subscriptionStatus, planName })
 
-    // Build conversation summary for context (CLI only supports single prompt + system)
-    // Include recent history in the user message for continuity
-    const recentHistory = session.messages
-      .filter(m => m.role !== 'system')
-      .slice(-6) // last 3 exchanges
+    // Build full message array for multi-turn conversation (like the SDK does)
+    const apiMessages: Array<{ role: string; content: string }> = [
+      { role: 'assistant', content: systemPrompt },
+    ]
 
-    let contextMessage = message.trim()
-    if (recentHistory.length > 0) {
-      const historyText = recentHistory
-        .map(m => `${m.role === 'user' ? 'Usuario' : 'Asistente'}: ${m.content}`)
-        .join('\n')
-      contextMessage = `[Conversación previa]\n${historyText}\n\n[Usuario ahora]: ${message.trim()}`
+    // Add conversation history from DB
+    for (const msg of session.messages) {
+      if (msg.role === 'user' || msg.role === 'assistant') {
+        apiMessages.push({ role: msg.role, content: msg.content })
+      }
     }
 
-    // Call GLM via z-ai CLI subprocess (no fetch, no SDK — no crashes)
+    // Add current user message
+    apiMessages.push({ role: 'user', content: message.trim() })
+
+    // Call GLM via Z.ai gateway (direct fetch — works in Docker)
     let aiContent: string
     let tokensUsed: number
     let model: string
 
-    const result = await callGlmCli(contextMessage, systemPrompt)
+    const result = await callGlmApi(apiMessages)
 
     if (result.content && result.content.trim().length > 0) {
       aiContent = result.content
       tokensUsed = result.tokens
       model = result.model
     } else {
-      console.warn('[GLM Chat] Using fallback (CLI returned empty)')
+      console.warn('[GLM Chat] Using fallback (API returned empty)')
       aiContent = getFallbackResponse(message)
       tokensUsed = Math.ceil(aiContent.length / 4)
       model = 'fallback'
@@ -337,13 +299,20 @@ export async function POST(req: NextRequest) {
       data: { tokensUsed: { increment: tokensUsed }, messageCount: { increment: 2 }, updatedAt: new Date() },
     })
 
-    const updatedBudget = await checkTokenBudget(auth.userId)
+    // Get usage stats (informational only — no limits)
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const todaySessions = await db.chatSession.findMany({
+      where: { userId: auth.userId, createdAt: { gte: todayStart } },
+      select: { tokensUsed: true },
+    })
+    const usedToday = todaySessions.reduce((sum, s) => sum + s.tokensUsed, 0)
 
     return NextResponse.json({
       success: true,
       message: aiContent,
       sessionId: session.sessionId,
-      usage: { remaining: updatedBudget.remaining, usedToday: updatedBudget.usedToday, tokensThisMessage: tokensUsed },
+      usage: { usedToday, tokensThisMessage: tokensUsed },
     })
   } catch (error: any) {
     console.error('[GLM Chat] Unhandled error:', error)
@@ -390,8 +359,7 @@ export async function GET(req: NextRequest) {
         take: 10,
         select: { sessionId: true, title: true, messageCount: true, tokensUsed: true, createdAt: true, updatedAt: true },
       })
-      const budget = await checkTokenBudget(auth.userId)
-      return NextResponse.json({ sessions, usage: { remaining: budget.remaining, usedToday: budget.usedToday, dailyLimit: DAILY_TOKEN_LIMIT } })
+      return NextResponse.json({ sessions })
     }
 
     const session = await db.chatSession.findUnique({

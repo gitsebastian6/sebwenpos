@@ -96,9 +96,12 @@ services:
       SUPERADMIN_CEDULA: ${SUPERADMIN_CEDULA:-}
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
       SUPERADMIN_NAME: ${SUPERADMIN_NAME:-}
-      # ── AI Chat Provider (GLM / ZhipuAI) ──
-      GLM_API_KEY: ${GLM_API_KEY:-}
-      AI_DAILY_TOKEN_LIMIT: ${AI_DAILY_TOKEN_LIMIT:-100000}
+      # ── AI Chat Provider (GLM via Z.ai Gateway) ──
+      ZAI_BASE_URL: ${ZAI_BASE_URL:-http://172.25.136.193:8080/v1}
+      ZAI_API_KEY: ${ZAI_API_KEY:-Z.ai}
+      ZAI_CHAT_ID: ${ZAI_CHAT_ID:-}
+      ZAI_USER_ID: ${ZAI_USER_ID:-}
+      ZAI_TOKEN: ${ZAI_TOKEN:-}
       AI_MAX_CONTEXT_MESSAGES: ${AI_MAX_CONTEXT_MESSAGES:-20}
     depends_on:
       migrate:

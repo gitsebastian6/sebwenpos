@@ -38,7 +38,7 @@ interface ChatMessage {
 interface ChatState {
   messages: ChatMessage[]
   sessionId: string | null
-  usageRemaining: number | null
+  usedToday: number | null
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -137,10 +137,10 @@ export function AiAssistant() {
     const saved = loadChatState()
     return saved?.sessionId ?? null
   })
-  const [usageRemaining, setUsageRemaining] = useState<number | null>(() => {
+  const [usedToday, setUsedToday] = useState<number | null>(() => {
     if (typeof window === 'undefined') return null
     const saved = loadChatState()
-    return saved?.usageRemaining ?? null
+    return saved?.usedToday ?? null
   })
   const [open, setOpen] = useState(false)
   const [showScrollBottom, setShowScrollBottom] = useState(false)
@@ -166,9 +166,9 @@ export function AiAssistant() {
   // ── Save to localStorage on changes ──
   useEffect(() => {
     if (messages.length > 0) {
-      saveChatState({ messages, sessionId, usageRemaining })
+      saveChatState({ messages, sessionId, usedToday })
     }
-  }, [messages, sessionId, usageRemaining])
+  }, [messages, sessionId, usedToday])
 
   // ── Auto-scroll ──
   const scrollToBottom = useCallback((smooth = true) => {
@@ -231,7 +231,7 @@ export function AiAssistant() {
             }
             setMessages(prev => [...prev, aiMessage])
             if (data.sessionId) setSessionId(data.sessionId)
-            if (data.usage) setUsageRemaining(data.usage.remaining)
+            if (data.usage) setUsedToday(data.usage.usedToday)
           }
         },
       }
@@ -245,7 +245,7 @@ export function AiAssistant() {
     }
     setMessages([])
     setSessionId(null)
-    setUsageRemaining(null)
+    setUsedToday(null)
     clearChatState()
   }, [sessionId, clearMutation])
 
@@ -273,9 +273,8 @@ export function AiAssistant() {
     }
   }
 
-  // ── Usage indicator ──
-  const usagePercent = usageRemaining !== null ? Math.max(0, Math.min(100, (usageRemaining / 100000) * 100)) : null
-  const isLowUsage = usagePercent !== null && usagePercent < 20
+  // ── Usage indicator (informational only — no limits) ──
+  const usedTodayK = usedToday !== null ? Math.round(usedToday / 1000) : null
 
   return (
     <>
@@ -309,13 +308,11 @@ export function AiAssistant() {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              {usagePercent !== null && (
-                <Tooltip label={`${Math.round(usageRemaining! / 1000)}K tokens disponibles`}>
-                  <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                    isLowUsage ? 'bg-red-500/20 text-red-200' : 'bg-emerald-500/20 text-emerald-100'
-                  }`}>
+              {usedTodayK !== null && (
+                <Tooltip label={`${usedTodayK}K tokens usados hoy`}>
+                  <div className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-emerald-500/20 text-emerald-100">
                     <Zap className="h-3 w-3" />
-                    {Math.round(usagePercent)}%
+                    {usedTodayK}K
                   </div>
                 </Tooltip>
               )}
