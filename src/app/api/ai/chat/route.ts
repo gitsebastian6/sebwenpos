@@ -1,23 +1,27 @@
 // ---------------------------------------------------------------------------
-// VentifyPOS — AI Chat Route (GLM via Z.ai Gateway — direct fetch)
+// VentifyPOS — AI Chat Route (GLM — dual provider: Z.ai gateway + ZhipuAI)
 // ---------------------------------------------------------------------------
-// Uses native fetch() to call the Z.ai gateway directly.
-// No SDK, no CLI subprocess, no fs imports — works in Docker too.
-// Multi-turn conversation with full message history.
-// No token limit — Z.ai is free, users can chat normally.
+// Provider auto-detection:
+//   1. Z.ai Gateway (ZAI_BASE_URL) — works in sandbox/dev environment
+//   2. ZhipuAI Direct (GLM_API_KEY) — works in Docker/production
+// Falls back to keyword-based responses if both fail.
+// No SDK, no CLI, no fs imports — pure fetch() + Web Crypto API.
+// No token limits — users can chat normally.
 // ---------------------------------------------------------------------------
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuthUser } from '@/lib/api-auth'
 
-// ─── Z.ai Gateway Config (from env vars, set by Docker or .env) ─────────────
+// ─── Provider Config (from env vars) ────────────────────────────────────────
 
-const ZAI_BASE_URL = process.env.ZAI_BASE_URL || 'http://172.25.136.193:8080/v1'
+const ZAI_BASE_URL = process.env.ZAI_BASE_URL || ''
 const ZAI_API_KEY  = process.env.ZAI_API_KEY  || 'Z.ai'
 const ZAI_CHAT_ID  = process.env.ZAI_CHAT_ID  || ''
 const ZAI_USER_ID  = process.env.ZAI_USER_ID  || ''
 const ZAI_TOKEN    = process.env.ZAI_TOKEN     || ''
+
+const GLM_API_KEY = process.env.GLM_API_KEY || ''  // Format: {id}.{secret}
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -120,45 +124,64 @@ function buildSystemPrompt(context: {
   return prompt
 }
 
-// ─── GLM API via direct fetch to Z.ai Gateway ──────────────────────────────
+// ─── ZhipuAI JWT Generation (Web Crypto API, no dependencies) ───────────────
 
-async function callGlmApi(
+async function generateZhipuJwt(apiKey: string): Promise<string> {
+  const [id, secret] = apiKey.split('.')
+  if (!id || !secret) throw new Error('Invalid GLM_API_KEY format (expected id.secret)')
+
+  const now = Date.now()
+  const header = { alg: 'HS256', sign_type: 'SIGN' }
+  const payload = { api_key: id, exp: now + 3600 * 1000, timestamp: now }
+
+  const encoder = new TextEncoder()
+  const toBase64url = (obj: object) =>
+    btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+  const headerB64 = toBase64url(header)
+  const payloadB64 = toBase64url(payload)
+  const signInput = `${headerB64}.${payloadB64}`
+
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(signInput))
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+  return `${headerB64}.${payloadB64}.${sigB64}`
+}
+
+// ─── GLM API — Provider 1: Z.ai Gateway ────────────────────────────────────
+
+async function callZaiGateway(
   messages: Array<{ role: string; content: string }>
 ): Promise<{ content: string; tokens: number; model: string }> {
   const startTime = Date.now()
 
   try {
     const url = `${ZAI_BASE_URL}/chat/completions`
-
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${ZAI_API_KEY}`,
       'X-Z-AI-From': 'Z',
     }
-
-    // Add optional tracking headers if configured
     if (ZAI_CHAT_ID) headers['X-Chat-Id'] = ZAI_CHAT_ID
     if (ZAI_USER_ID) headers['X-User-Id'] = ZAI_USER_ID
     if (ZAI_TOKEN)   headers['X-Token'] = ZAI_TOKEN
 
-    const body = JSON.stringify({
-      model: 'glm-4-plus',
-      messages,
-    })
-
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body,
-      signal: AbortSignal.timeout(35000),
+      body: JSON.stringify({ model: 'glm-4-plus', messages }),
+      signal: AbortSignal.timeout(15000), // short timeout — fail fast if unreachable
     })
 
     const latencyMs = Date.now() - startTime
 
     if (!response.ok) {
-      const status = response.status
       const text = await response.text().catch(() => '')
-      console.error(`[GLM Chat] API ${status} after ${latencyMs}ms: ${text.slice(0, 300)}`)
+      console.error(`[GLM Chat] Z.ai gateway ${response.status} after ${latencyMs}ms: ${text.slice(0, 200)}`)
       return { content: '', tokens: 0, model: 'error' }
     }
 
@@ -167,14 +190,79 @@ async function callGlmApi(
     const tokens = result.usage?.total_tokens || Math.ceil(reply.length / 4)
     const model = result.model || 'glm-4-plus'
 
-    console.log(`[GLM Chat] API ${latencyMs}ms, ${tokens} tokens, model: ${model}`)
-
+    console.log(`[GLM Chat] Z.ai gateway ${latencyMs}ms, ${tokens} tokens, model: ${model}`)
     return { content: reply, tokens, model }
   } catch (error: any) {
     const latencyMs = Date.now() - startTime
-    console.error(`[GLM Chat] fetch error after ${latencyMs}ms:`, error?.message || error)
+    console.error(`[GLM Chat] Z.ai gateway unreachable after ${latencyMs}ms:`, error?.message || error)
     return { content: '', tokens: 0, model: 'error' }
   }
+}
+
+// ─── GLM API — Provider 2: ZhipuAI Direct ──────────────────────────────────
+
+async function callZhipuDirect(
+  messages: Array<{ role: string; content: string }>
+): Promise<{ content: string; tokens: number; model: string }> {
+  const startTime = Date.now()
+
+  try {
+    const jwt = await generateZhipuJwt(GLM_API_KEY)
+
+    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${jwt}`,
+      },
+      body: JSON.stringify({ model: 'glm-4-plus', messages }),
+      signal: AbortSignal.timeout(35000),
+    })
+
+    const latencyMs = Date.now() - startTime
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      console.error(`[GLM Chat] ZhipuAI direct ${response.status} after ${latencyMs}ms: ${text.slice(0, 200)}`)
+      return { content: '', tokens: 0, model: 'error' }
+    }
+
+    const result = await response.json() as any
+    const reply = result.choices?.[0]?.message?.content || ''
+    const tokens = result.usage?.total_tokens || Math.ceil(reply.length / 4)
+    const model = result.model || 'glm-4-plus'
+
+    console.log(`[GLM Chat] ZhipuAI direct ${latencyMs}ms, ${tokens} tokens, model: ${model}`)
+    return { content: reply, tokens, model }
+  } catch (error: any) {
+    const latencyMs = Date.now() - startTime
+    console.error(`[GLM Chat] ZhipuAI direct error after ${latencyMs}ms:`, error?.message || error)
+    return { content: '', tokens: 0, model: 'error' }
+  }
+}
+
+// ─── GLM API — Auto-detect provider ────────────────────────────────────────
+
+async function callGlmApi(
+  messages: Array<{ role: string; content: string }>
+): Promise<{ content: string; tokens: number; model: string }> {
+  // Try Z.ai gateway first (fast in sandbox, unreachable in Docker)
+  if (ZAI_BASE_URL) {
+    const result = await callZaiGateway(messages)
+    if (result.content) return result
+    console.warn('[GLM Chat] Z.ai gateway failed, trying ZhipuAI direct...')
+  }
+
+  // Try ZhipuAI direct API (works anywhere with credits)
+  if (GLM_API_KEY) {
+    const result = await callZhipuDirect(messages)
+    if (result.content) return result
+    console.warn('[GLM Chat] ZhipuAI direct failed too')
+  }
+
+  // Both failed
+  console.error('[GLM Chat] All providers failed — using fallback')
+  return { content: '', tokens: 0, model: 'error' }
 }
 
 // ─── Fallback Response ──────────────────────────────────────────────────────
@@ -255,7 +343,7 @@ export async function POST(req: NextRequest) {
     // Build system prompt with context
     const systemPrompt = buildSystemPrompt({ currentPage, subscriptionStatus, planName })
 
-    // Build full message array for multi-turn conversation (like the SDK does)
+    // Build full message array for multi-turn conversation
     const apiMessages: Array<{ role: string; content: string }> = [
       { role: 'assistant', content: systemPrompt },
     ]
@@ -270,7 +358,7 @@ export async function POST(req: NextRequest) {
     // Add current user message
     apiMessages.push({ role: 'user', content: message.trim() })
 
-    // Call GLM via Z.ai gateway (direct fetch — works in Docker)
+    // Call GLM — auto-detects best available provider
     let aiContent: string
     let tokensUsed: number
     let model: string
@@ -282,7 +370,7 @@ export async function POST(req: NextRequest) {
       tokensUsed = result.tokens
       model = result.model
     } else {
-      console.warn('[GLM Chat] Using fallback (API returned empty)')
+      console.warn('[GLM Chat] Using fallback (all providers failed)')
       aiContent = getFallbackResponse(message)
       tokensUsed = Math.ceil(aiContent.length / 4)
       model = 'fallback'

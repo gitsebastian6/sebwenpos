@@ -96,12 +96,16 @@ services:
       SUPERADMIN_CEDULA: ${SUPERADMIN_CEDULA:-}
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
       SUPERADMIN_NAME: ${SUPERADMIN_NAME:-}
-      # ── AI Chat Provider (GLM via Z.ai Gateway) ──
-      ZAI_BASE_URL: ${ZAI_BASE_URL:-http://172.25.136.193:8080/v1}
+      # ── AI Chat Provider (dual: Z.ai gateway + ZhipuAI direct) ──
+      # Provider 1: Z.ai Gateway (sandbox/dev only — unreachable from Docker)
+      ZAI_BASE_URL: ${ZAI_BASE_URL:-}
       ZAI_API_KEY: ${ZAI_API_KEY:-Z.ai}
       ZAI_CHAT_ID: ${ZAI_CHAT_ID:-}
       ZAI_USER_ID: ${ZAI_USER_ID:-}
       ZAI_TOKEN: ${ZAI_TOKEN:-}
+      # Provider 2: ZhipuAI Direct API (works in Docker — needs credits)
+      # Get your key at https://open.bigmodel.cn/ → add credits
+      GLM_API_KEY: ${GLM_API_KEY:-}
       AI_MAX_CONTEXT_MESSAGES: ${AI_MAX_CONTEXT_MESSAGES:-20}
     depends_on:
       migrate:
