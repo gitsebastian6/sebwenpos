@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,6 +32,9 @@ import {
   Check,
   Upload,
   ArrowRight,
+  X,
+  MessageCircle,
+  Beaker,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/format'
 import { useSubscriptionProration, useUploadPaymentReceipt } from '@/hooks/api/use-settings'
@@ -80,6 +84,15 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
   const [wompiCheckoutParams, setWompiCheckoutParams] = useState<{
     planId: number; planName: string; amount: number; billingPeriod: string
   } | null>(null)
+
+  // ── Wompi health check ──
+  const { data: wompiHealth } = useQuery({
+    queryKey: ['wompi-health'],
+    queryFn: () => fetch('/api/payments/wompi/health').then(r => r.json()),
+    staleTime: 60_000,
+  })
+  const isWompiConfigured = wompiHealth?.configured === true
+  const isWompiDemo = wompiHealth?.demoMode === true
 
   // Track previous open state to reset on open
   const prevOpenRef = useRef(false)
@@ -174,9 +187,9 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-hidden p-0 gap-0 [&>button]:hidden">
-        {/* ─── Dialog Header ─── */}
-        <div className="px-6 pt-6 pb-4 border-b border-border/50 bg-gradient-to-b from-muted/30 to-background">
+      <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-hidden p-0 gap-0 [&>button]:hidden flex flex-col">
+        {/* ─── Dialog Header (fixed top) ─── */}
+        <div className="px-6 pt-6 pb-4 border-b border-border/50 bg-gradient-to-b from-muted/30 to-background shrink-0">
           <DialogHeader className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -192,16 +205,27 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                   </DialogDescription>
                 </div>
               </div>
-              <Badge variant="secondary" className="text-[11px] font-medium tabular-nums bg-muted/80 backdrop-blur-sm border-border/50">
-                Paso {activeStep} de 3
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-[11px] font-medium tabular-nums bg-muted/80 backdrop-blur-sm border-border/50">
+                  Paso {activeStep} de 3
+                </Badge>
+                <button
+                  type="button"
+                  onClick={() => onOpenChange(false)}
+                  className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors"
+                  aria-label="Cerrar"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </DialogHeader>
         </div>
 
-        {/* ─── Scrollable Content ─── */}
-        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6" style={{ scrollbarGutter: 'stable' }}>
-          <form onSubmit={handlePlanChange}>
+        {/* ─── Form wrapping scrollable content + footer ─── */}
+        <form onSubmit={handlePlanChange} className="flex flex-col flex-1 min-h-0">
+          {/* ─── Scrollable Content ─── */}
+          <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6" style={{ scrollbarGutter: 'stable' }}>
             <div className="space-y-6">
 
               {/* ═══ 1. PLAN SELECTION ═══ */}
@@ -444,46 +468,106 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                     <Label className="text-sm font-bold">Método de pago</Label>
                   </div>
 
-                  {/* ── Wompi CTA ── */}
-                  <div className="space-y-2">
-                    <Button
-                      className="w-full h-12 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/35 transition-all duration-200 border-0"
-                      size="lg"
-                      type="button"
-                      onClick={() => {
-                        const plan = plans.find(p => p.id === selectedPlanId)
-                        if (!plan) return
-                        const { adjustedPrice } = getPlanPriceWithProration(plan)
-                        setWompiCheckoutParams({
-                          planId: plan.id,
-                          planName: plan.name,
-                          amount: adjustedPrice,
-                          billingPeriod: selectedBillingPeriod,
-                        })
-                        setShowWompiCheckout(true)
-                      }}
-                    >
-                      <CreditCard className="h-4.5 w-4.5 mr-2" />
-                      Pagar con Wompi
-                    </Button>
-                    <div className="flex items-center gap-1.5 justify-center text-[11px] text-muted-foreground">
-                      <Shield className="h-3 w-3 text-emerald-500" />
-                      <span>Pago seguro · Tarjeta · Nequi · Daviplata · PSE · Bancolombia</span>
-                    </div>
-                  </div>
+                  {!isWompiConfigured ? (
+                    <>
+                      {/* ── Wompi NOT configured: Coming soon + manual payment info ── */}
 
-                  {/* Payment methods grid */}
-                  <WompiPaymentMethodsGrid />
+                      {/* Payments coming soon banner */}
+                      <div className="rounded-xl border border-dashed border-amber-300 dark:border-amber-700/50 bg-amber-50/50 dark:bg-amber-950/10 p-4 text-center space-y-3">
+                        <div className="h-12 w-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto">
+                          <CreditCard className="h-6 w-6 text-amber-500" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-amber-800 dark:text-amber-200">Pagos Online — Próximamente</h3>
+                          <p className="text-xs text-amber-700/70 dark:text-amber-300/60 mt-1 leading-relaxed">
+                            Estamos integrando pagos automatizados con nuestros aliados <span className="font-semibold">Wompi</span> y <span className="font-semibold">Stripe</span> para que puedas pagar directamente desde aquí.
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-center gap-3 pt-1">
+                          <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-3 py-1 rounded-full">Wompi</span>
+                          <span className="text-[11px] text-muted-foreground">+</span>
+                          <span className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 px-3 py-1 rounded-full">Stripe</span>
+                        </div>
+                      </div>
 
-                  {/* ── Divider "ó" ── */}
-                  <div className="relative flex items-center justify-center my-1">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t border-border/60" />
-                    </div>
-                    <span className="relative bg-background px-4 text-xs text-muted-foreground font-medium">ó</span>
-                  </div>
+                      {/* Divider */}
+                      <div className="relative flex items-center justify-center my-1">
+                        <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border/60" /></div>
+                        <span className="relative bg-background px-4 text-xs text-muted-foreground font-medium">Pago manual</span>
+                      </div>
 
-                  {/* ── Manual Upload ── */}
+                      {/* Manual payment info */}
+                      <div className="space-y-3">
+                        <div className="rounded-lg border border-border/50 p-3 space-y-2">
+                          <p className="text-xs font-semibold">Pasos para pagar manualmente:</p>
+                          <ol className="text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
+                            <li>Contacta a soporte por <strong>WhatsApp</strong> para recibir tu link de pago o datos bancarios (BREP)</li>
+                            <li>Realiza el pago por <strong>Nequi, Daviplata, transferencia bancaria</strong> o el método indicado</li>
+                            <li>Sube el <strong>comprobante de pago</strong> aquí mismo</li>
+                            <li>Espera la <strong>aprobación del administrador</strong> para activar tu plan</li>
+                          </ol>
+                        </div>
+                        <div className="rounded-lg border border-emerald-200/60 dark:border-emerald-800/40 bg-emerald-50/50 dark:bg-emerald-950/10 p-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <MessageCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">¿Necesitas datos de pago?</p>
+                          </div>
+                          <a href="https://wa.me/573012695457?text=Hola%2C%20quiero%20los%20datos%20de%20pago%20para%20mi%20suscripción%20Ventify%20POS" target="_blank" rel="noopener noreferrer"
+                             className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
+                            Escribir por WhatsApp →
+                          </a>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* ── Wompi IS configured: Show Wompi payment ── */}
+                      <div className="space-y-2">
+                        <Button
+                          className="w-full h-12 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg shadow-emerald-500/25 transition-all duration-200"
+                          size="lg"
+                          type="button"
+                          onClick={() => {
+                            const plan = plans.find(p => p.id === selectedPlanId)
+                            if (!plan) return
+                            const { adjustedPrice } = getPlanPriceWithProration(plan)
+                            setWompiCheckoutParams({
+                              planId: plan.id,
+                              planName: plan.name,
+                              amount: adjustedPrice,
+                              billingPeriod: selectedBillingPeriod,
+                            })
+                            setShowWompiCheckout(true)
+                          }}
+                        >
+                          {isWompiDemo ? <Beaker className="h-4 w-4 mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
+                          {isWompiDemo ? 'Pagar con Wompi (Demo)' : 'Pagar con Wompi'}
+                        </Button>
+                        <div className="flex items-center gap-1.5 justify-center text-[11px] text-muted-foreground">
+                          <Shield className="h-3 w-3 text-emerald-500" />
+                          <span>Pago seguro · Tarjeta · Nequi · Daviplata · PSE · Bancolombia</span>
+                        </div>
+                      </div>
+
+                      {/* Payment methods grid (only in real mode) */}
+                      {!isWompiDemo && <WompiPaymentMethodsGrid />}
+
+                      {/* Wompi Powered By */}
+                      <div className="flex justify-center pt-1">
+                        <WompiPoweredBy />
+                      </div>
+
+                      {/* ── Divider "ó" ── */}
+                      <div className="relative flex items-center justify-center my-1">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t border-border/60" />
+                        </div>
+                        <span className="relative bg-background px-4 text-xs text-muted-foreground font-medium">ó</span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── Manual Upload (always shown) ── */}
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
                     Sube la captura o foto de tu pago manualmente. El administrador lo verificará para activar tu nuevo plan.
                   </p>
@@ -596,37 +680,32 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                 </section>
               )}
             </div>
-
-            {/* ─── Footer ─── */}
-            <DialogFooter className="pt-5 pb-2 gap-2 flex-row">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={uploading}
-                className="flex-1 h-10 rounded-xl font-medium"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={uploading || !selectedPlanId || !uploadFile || !uploadAmount}
-                className="flex-1 h-10 rounded-xl font-semibold"
-              >
-                {uploading ? (
-                  <><Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Enviando...</>
-                ) : (
-                  <><Send className="h-4 w-4 mr-1.5" /> Enviar Solicitud</>
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-
-          {/* Wompi Powered By */}
-          <div className="flex justify-center pt-1 pb-2">
-            <WompiPoweredBy />
           </div>
-        </div>
+
+          {/* ─── Footer (fixed bottom) ─── */}
+          <DialogFooter className="px-6 pt-4 pb-5 border-t border-border/50 bg-background shrink-0 gap-2 flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={uploading}
+              className="flex-1 h-10 rounded-xl font-medium"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              disabled={uploading || !selectedPlanId || !uploadFile || !uploadAmount}
+              className="flex-1 h-10 rounded-xl font-semibold"
+            >
+              {uploading ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Enviando...</>
+              ) : (
+                <><Send className="h-4 w-4 mr-1.5" /> Enviar Solicitud</>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
 
       {/* Wompi Checkout Dialog */}

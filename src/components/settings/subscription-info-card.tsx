@@ -23,13 +23,14 @@ interface SubscriptionInfoCardProps {
   hasPendingReceipt: boolean
   onUpgrade: () => void
   onCancel: () => void
+  isOwner?: boolean
 }
 
 const VENTIFY_SUPPORT_PHONE = '573012695457'
 const SUPPORT_WHATSAPP = `https://wa.me/${VENTIFY_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, quiero actualizar mi plan de suscripción en Ventify POS')}`
 const SUPPORT_PHONE = VENTIFY_SUPPORT_PHONE.slice(2) // local 10-digit format
 
-export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, onCancel }: SubscriptionInfoCardProps) {
+export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, onCancel, isOwner = true }: SubscriptionInfoCardProps) {
   if (!subInfo) {
     return (
       <Card className="border-amber-200/60 dark:border-amber-800/40 rounded-2xl shadow-sm overflow-hidden">
@@ -173,14 +174,21 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
 
                 {/* Action buttons */}
                 <div className="flex flex-col sm:flex-row gap-2.5 mt-4">
-                  <Button
-                    onClick={onUpgrade}
-                    className="gap-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-200"
-                    disabled={hasPendingReceipt}
-                  >
-                    <Crown className="h-4 w-4" />
-                    {hasPendingReceipt ? 'Solicitud Pendiente...' : 'Actualizar Plan'}
-                  </Button>
+                  {isOwner && (
+                    <Button
+                      onClick={onUpgrade}
+                      className="gap-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-200"
+                      disabled={hasPendingReceipt}
+                    >
+                      <Crown className="h-4 w-4" />
+                      {hasPendingReceipt ? 'Solicitud Pendiente...' : 'Actualizar Plan'}
+                    </Button>
+                  )}
+                  {!isOwner && (
+                    <p className="text-xs text-muted-foreground">
+                      Contacta al propietario del negocio para gestionar la suscripción.
+                    </p>
+                  )}
                   <a
                     href={`tel:+57${SUPPORT_PHONE}`}
                     className="inline-flex items-center justify-center gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-sm font-semibold rounded-xl px-4 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-700 hover:shadow-sm transition-all duration-200 shadow-sm"
@@ -215,14 +223,21 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
                 Contacta al soporte para renovar y recuperar acceso completo al sistema.
               </p>
               <div className="mt-4">
-                <Button
-                  onClick={onUpgrade}
-                  disabled={hasPendingReceipt}
-                  className="w-full sm:w-auto gap-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-200"
-                >
-                  <Crown className="h-4 w-4" />
-                  {hasPendingReceipt ? 'Solicitud Pendiente...' : 'Renovar Plan'}
-                </Button>
+                {isOwner && (
+                  <Button
+                    onClick={onUpgrade}
+                    disabled={hasPendingReceipt}
+                    className="w-full sm:w-auto gap-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-200"
+                  >
+                    <Crown className="h-4 w-4" />
+                    {hasPendingReceipt ? 'Solicitud Pendiente...' : 'Renovar Plan'}
+                  </Button>
+                )}
+                {!isOwner && (
+                  <p className="text-xs text-muted-foreground">
+                    Contacta al propietario del negocio para gestionar la suscripción.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -319,24 +334,32 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
                     : '¿Necesitas más funcionalidades o cambiar tu plan?'}
               </p>
               <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  onClick={onUpgrade}
-                  size="sm"
-                  className="gap-1.5 text-xs rounded-lg"
-                  disabled={hasPendingReceipt}
-                >
-                  <Crown className="h-3.5 w-3.5" />
-                  {hasPendingReceipt ? 'Solicitud Pendiente...' : 'Cambiar Plan'}
-                </Button>
-                <Button
-                  onClick={onCancel}
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 text-xs text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5 rounded-lg"
-                >
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Cancelar
-                </Button>
+                {isOwner ? (
+                  <>
+                    <Button
+                      onClick={onUpgrade}
+                      size="sm"
+                      className="gap-1.5 text-xs rounded-lg"
+                      disabled={hasPendingReceipt}
+                    >
+                      <Crown className="h-3.5 w-3.5" />
+                      {hasPendingReceipt ? 'Solicitud Pendiente...' : 'Cambiar Plan'}
+                    </Button>
+                    <Button
+                      onClick={onCancel}
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-xs text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5 rounded-lg"
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Cancelar
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Contacta al propietario del negocio para gestionar la suscripción.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -354,15 +377,22 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
                 Tu suscripción fue cancelada. Puedes reactivarla automáticamente seleccionando un plan y subiendo tu comprobante de pago.
               </p>
               <div className="flex items-center gap-2.5 mt-3 pl-[38px]">
-                <Button
-                  onClick={onUpgrade}
-                  size="sm"
-                  className="gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200"
-                  disabled={hasPendingReceipt}
-                >
-                  <Crown className="h-3 w-3" />
-                  {hasPendingReceipt ? 'Solicitud Pendiente...' : 'Reactivar Suscripción'}
-                </Button>
+                {isOwner && (
+                  <Button
+                    onClick={onUpgrade}
+                    size="sm"
+                    className="gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200"
+                    disabled={hasPendingReceipt}
+                  >
+                    <Crown className="h-3 w-3" />
+                    {hasPendingReceipt ? 'Solicitud Pendiente...' : 'Reactivar Suscripción'}
+                  </Button>
+                )}
+                {!isOwner && (
+                  <p className="text-xs text-muted-foreground">
+                    Contacta al propietario del negocio para gestionar la suscripción.
+                  </p>
+                )}
                 <a
                   href={SUPPORT_WHATSAPP}
                   target="_blank"

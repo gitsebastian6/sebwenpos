@@ -78,7 +78,8 @@ export const BILLING_PERIODS = [
 ] as const
 
 export function SubscriptionPaymentPanel() {
-  const { store } = useAuthStore()
+  const { store, user } = useAuthStore()
+  const isOwner = user?.role === 'OWNER'
   const qc = useQueryClient()
 
   // ── TanStack Query hooks ──
@@ -206,6 +207,106 @@ export function SubscriptionPaymentPanel() {
 
   const hasPendingReceipt = receipts.some(r => r.status === 'PENDING')
 
+  // Non-OWNER users get a read-only view
+  if (!isOwner) {
+    return (
+      <div className="space-y-6">
+        <SubscriptionInfoCard
+          subInfo={subInfo}
+          hasPendingReceipt={hasPendingReceipt}
+          onUpgrade={() => {}}
+          onCancel={() => {}}
+          isOwner={false}
+        />
+
+        <ReceiptsHistoryCard
+          receipts={receipts}
+          onUpload={() => {}}
+          canUpload={false}
+          hasPendingReceipt={hasPendingReceipt}
+        />
+
+        {plans.length > 0 && (
+          <Card className="border-border/50 rounded-xl">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Crown className="h-4 w-4 text-amber-500" />
+                Comparación de Planes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2 pr-4 font-semibold text-muted-foreground">Funcionalidad</th>
+                      {plans.filter(p => p.isActive).map(plan => (
+                        <th key={plan.id} className={`text-center py-2 px-3 font-bold ${subInfo?.planName === plan.name ? 'text-primary' : ''}`}>
+                          {plan.name}
+                          {subInfo?.planName === plan.name && (
+                            <div className="text-[10px] font-normal text-primary/70 mt-0.5">Plan Actual</div>
+                          )}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-border/50">
+                      <td className="py-2.5 pr-4 text-muted-foreground">Precio/mes</td>
+                      {plans.filter(p => p.isActive).map(plan => (
+                        <td key={plan.id} className="text-center py-2.5 px-3 font-mono font-bold">
+                          {plan.price === 0 ? 'Gratis' : formatCOP(plan.price)}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-border/50">
+                      <td className="py-2.5 pr-4 text-muted-foreground">Empleados</td>
+                      {plans.filter(p => p.isActive).map(plan => (
+                        <td key={plan.id} className="text-center py-2.5 px-3 font-semibold">
+                          {plan.maxEmployees === -1 ? '∞' : plan.maxEmployees}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-border/50">
+                      <td className="py-2.5 pr-4 text-muted-foreground">Productos</td>
+                      {plans.filter(p => p.isActive).map(plan => (
+                        <td key={plan.id} className="text-center py-2.5 px-3 font-semibold">
+                          {plan.maxProducts === -1 ? '∞' : plan.maxProducts}
+                        </td>
+                      ))}
+                    </tr>
+                    {[
+                      { key: 'electronicInvoicing', label: 'Facturación Electrónica' },
+                      { key: 'multiStore', label: 'Multi-Tienda' },
+                      { key: 'reports', label: 'Reportes Avanzados' },
+                      { key: 'advancedInventory', label: 'Inventario Avanzado' },
+                      { key: 'api', label: 'Acceso API' },
+                      { key: 'customBranding', label: 'Branding Personalizado' },
+                      { key: 'multiCurrency', label: 'Multi-Moneda' },
+                    ].map(feature => (
+                      <tr key={feature.key} className="border-b border-border/50 last:border-0">
+                        <td className="py-2.5 pr-4 text-muted-foreground">{feature.label}</td>
+                        {plans.filter(p => p.isActive).map(plan => (
+                          <td key={plan.id} className="text-center py-2.5 px-3">
+                            {plan.features[feature.key] ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
+                            ) : (
+                              <span className="text-muted-foreground/40">—</span>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Subscription Info Card */}
@@ -214,13 +315,14 @@ export function SubscriptionPaymentPanel() {
         hasPendingReceipt={hasPendingReceipt}
         onUpgrade={() => setShowPlanChangeDialog(true)}
         onCancel={() => setShowCancelDialog(true)}
+        isOwner={true}
       />
 
       {/* Payment Receipts History */}
       <ReceiptsHistoryCard
         receipts={receipts}
         onUpload={() => { resetUploadForm(); setShowUploadDialog(true) }}
-        canUpload={!!subInfo}
+        canUpload={!!subInfo && isOwner}
         hasPendingReceipt={hasPendingReceipt}
       />
 
