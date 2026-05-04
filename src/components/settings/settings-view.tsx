@@ -10,7 +10,7 @@ import { TaxRatesPanel } from '@/components/settings/tax-rates-panel'
 
 export function SettingsView() {
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -23,26 +23,26 @@ export function SettingsView() {
       </div>
 
       <Tabs defaultValue="business" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
-          <TabsTrigger value="business" className="gap-2">
-            <Building2 className="h-4 w-4" />
-            <span className="text-xs">Negocio</span>
+        <TabsList className="w-full flex overflow-x-auto gap-1 md:inline-grid md:grid-cols-5 md:w-auto md:gap-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <TabsTrigger value="business" className="gap-0 shrink-0 md:gap-2 md:shrink">
+            <Building2 className="h-4 w-4 shrink-0" />
+            <span className="hidden md:inline text-xs whitespace-nowrap">Negocio</span>
           </TabsTrigger>
-          <TabsTrigger value="personal" className="gap-2">
-            <User className="h-4 w-4" />
-            <span className="text-xs">Personal</span>
+          <TabsTrigger value="personal" className="gap-0 shrink-0 md:gap-2 md:shrink">
+            <User className="h-4 w-4 shrink-0" />
+            <span className="hidden md:inline text-xs whitespace-nowrap">Personal</span>
           </TabsTrigger>
-          <TabsTrigger value="invoice" className="gap-2">
-            <Receipt className="h-4 w-4" />
-            <span className="text-xs">Facturación</span>
+          <TabsTrigger value="invoice" className="gap-0 shrink-0 md:gap-2 md:shrink">
+            <Receipt className="h-4 w-4 shrink-0" />
+            <span className="hidden md:inline text-xs whitespace-nowrap">Facturación</span>
           </TabsTrigger>
-          <TabsTrigger value="subscription" className="gap-2">
-            <CreditCard className="h-4 w-4" />
-            <span className="text-xs">Suscripción</span>
+          <TabsTrigger value="subscription" className="gap-0 shrink-0 md:gap-2 md:shrink">
+            <CreditCard className="h-4 w-4 shrink-0" />
+            <span className="hidden md:inline text-xs whitespace-nowrap">Suscripción</span>
           </TabsTrigger>
-          <TabsTrigger value="taxes" className="gap-2">
-            <Percent className="h-4 w-4" />
-            <span className="text-xs">IVA</span>
+          <TabsTrigger value="taxes" className="gap-0 shrink-0 md:gap-2 md:shrink">
+            <Percent className="h-4 w-4 shrink-0" />
+            <span className="hidden md:inline text-xs whitespace-nowrap">IVA</span>
           </TabsTrigger>
         </TabsList>
 

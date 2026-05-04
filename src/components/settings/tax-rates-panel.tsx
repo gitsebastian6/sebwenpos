@@ -454,7 +454,7 @@ export function TaxRatesPanel() {
             </div>
 
             {/* Rate Type + Rate */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="tax-rate-type">Tipo de Tasa</Label>
                 <Select value={taxRateType} onValueChange={setTaxRateType}>

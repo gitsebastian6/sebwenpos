@@ -683,7 +683,7 @@ function SubscriptionHistoryPanel() {
             <p className="text-xs text-muted-foreground text-center py-6">No hay registros de facturación</p>
           ) : (
             <>
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                   <div className="text-[10px] text-muted-foreground mb-1">Total Facturado</div>
                   <p className="text-sm font-bold font-mono">{billing.summary.totalBilledFormatted}</p>
