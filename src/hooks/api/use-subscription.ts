@@ -17,10 +17,14 @@ export interface SubscriptionCurrent {
   hasSubscription: boolean
   subscriptionId?: number
   subscriptionStatus?: string
+  planId?: number
   planName?: string
   planPrice?: number
   startDate?: string
   endDate?: string | null
+  trialEndDate?: string | null
+  graceEndDate?: string | null
+  graceDaysRemaining?: number | null
   billingPeriod?: string
   daysRemaining?: number | null
   planLimits?: PlanLimits | null
