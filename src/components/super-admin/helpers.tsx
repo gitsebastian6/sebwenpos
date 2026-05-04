@@ -11,15 +11,32 @@ export function formatLimit(val: number): string {
   return val === -1 ? '∞' : val.toLocaleString('es-CO')
 }
 
+const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
+  TRIAL: 'En Prueba',
+  ACTIVE: 'Activa',
+  PAST_DUE: 'Vencida',
+  EXPIRED: 'Expirada',
+  CANCELLED: 'Cancelada',
+}
+
 export function getSubscriptionStatusBadge(status: string) {
+  const label = SUBSCRIPTION_STATUS_LABELS[status] ?? status
   switch (status) {
-    case 'TRIAL': return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/20">{status}</Badge>
-    case 'ACTIVE': return <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/20">{status}</Badge>
-    case 'PAST_DUE': return <Badge className="bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/20">{status}</Badge>
-    case 'CANCELLED': return <Badge variant="secondary">{status}</Badge>
-    case 'EXPIRED': return <Badge className="bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/20">{status}</Badge>
-    default: return <Badge variant="outline">{status}</Badge>
+    case 'TRIAL': return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/20">{label}</Badge>
+    case 'ACTIVE': return <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/20">{label}</Badge>
+    case 'PAST_DUE': return <Badge className="bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/20">{label}</Badge>
+    case 'CANCELLED': return <Badge variant="secondary">{label}</Badge>
+    case 'EXPIRED': return <Badge className="bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/20">{label}</Badge>
+    default: return <Badge variant="outline">{label}</Badge>
   }
+}
+
+export const BILLING_PERIOD_LABELS: Record<string, string> = {
+  TRIAL: '7 días',
+  MONTHLY: 'Mensual',
+  QUARTERLY: 'Trimestral',
+  SEMI_ANNUAL: 'Semestral',
+  ANNUAL: 'Anual',
 }
 
 export const BILLING_PERIODS = [

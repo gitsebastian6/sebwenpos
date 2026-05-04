@@ -38,6 +38,10 @@ export interface SystemConfig {
     testMode: boolean
     template: string
   }
+  wompi: {
+    demoVisible: boolean
+    enabled: boolean
+  }
 }
 
 export interface BranchData {

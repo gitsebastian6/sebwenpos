@@ -21,7 +21,7 @@ import {
   CreditCard, User, Lock, Eye, EyeOff, Phone, Mail, MapPin, Hash,
   KeyRound, FileText, Receipt, AlertTriangle, XCircle, CheckCircle2, Upload,
 } from 'lucide-react'
-import { formatCOP, formatDate, getSubscriptionStatusBadge, BILLING_PERIODS } from './helpers'
+import { formatCOP, formatDate, getSubscriptionStatusBadge, BILLING_PERIODS, BILLING_PERIOD_LABELS } from './helpers'
 import type { StoreListItem, StoreOwner, PlanData, SubscriptionData } from './types'
 
 // ---- Stores KPI Cards ----
@@ -109,7 +109,7 @@ export function StoresTable({ stores, loading, onViewDetail, onResetPassword, on
                   <TableHead className="text-center min-w-[60px]">Prod.</TableHead>
                   <TableHead className="text-center min-w-[60px]">Ord.</TableHead>
                   <TableHead className="text-center min-w-[60px]">Clien.</TableHead>
-                  <TableHead className="min-w-[160px]">Plan / Estado</TableHead>
+                  <TableHead className="min-w-[200px]">Plan / Estado</TableHead>
                   <TableHead className="min-w-[90px]">Creada</TableHead>
                   <TableHead className="text-right min-w-[160px]">Acciones</TableHead>
                 </TableRow>
@@ -154,6 +154,11 @@ export function StoresTable({ stores, loading, onViewDetail, onResetPassword, on
                       {(() => {
                         const sub = (s as StoreListItem & { subscription?: (SubscriptionData & { inheritedFrom?: string }) | null }).subscription
                         if (!sub) return <Badge variant="secondary" className="text-xs opacity-60">Sin plan</Badge>
+                        const priceLabel = sub.plan.price === 0
+                          ? 'Gratis'
+                          : formatCOP(sub.billingPrice || sub.plan.price) + '/mes'
+                        const periodLabel = BILLING_PERIOD_LABELS[sub.billingPeriod] ?? sub.billingPeriod
+                        const displayDate = sub.status === 'TRIAL' ? sub.trialEndDate : sub.endDate
                         return (
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-1 flex-wrap">
@@ -168,6 +173,17 @@ export function StoresTable({ stores, loading, onViewDetail, onResetPassword, on
                               )}
                             </div>
                             {getSubscriptionStatusBadge(sub.status)}
+                            <div className="text-[11px] text-muted-foreground leading-tight">
+                              <span className="font-medium text-foreground/70">{priceLabel}</span>
+                              <span className="mx-1">·</span>
+                              <span>{periodLabel}</span>
+                              {displayDate && (
+                                <>
+                                  <span className="mx-1">·</span>
+                                  <span>Vence: {formatDate(displayDate)}</span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         )
                       })()}

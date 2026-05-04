@@ -524,48 +524,74 @@ export function SubscriptionPaymentPanel() {
           {/* ── Opción Wompi ── */}
           {subInfo && (
             <div className="space-y-3">
-              {wompiHealth?.configured ? (
-                <>
-                  <Button
-                    className="w-full h-12 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-semibold shadow-lg shadow-emerald-600/25 transition-all"
-                    onClick={() => {
-                      const currentPlan = plans.find(p => p.name === subInfo.planName)
-                      setWompiCheckoutParams({
-                        planId: currentPlan?.id || 0,
-                        planName: subInfo.planName,
-                        amount: subInfo.planPrice,
-                        billingPeriod: subInfo.billingPeriod || 'MONTHLY',
-                      })
-                      setShowUploadDialog(false)
-                      setShowWompiCheckout(true)
-                    }}
-                  >
-                    {wompiHealth?.demoMode ? (
-                      <><Beaker className="h-5 w-5 mr-2" /> Pagar con Wompi (Demo)</>
-                    ) : (
-                      <><CreditCard className="h-5 w-5 mr-2" /> Pagar con Wompi</>
-                    )}
-                  </Button>
-                  {!wompiHealth?.demoMode && (
-                    <WompiPaymentMethodsGrid />
-                  )}
-                  <WompiPoweredBy />
-                </>
-              ) : (
-                <div className="rounded-lg border border-muted bg-muted/30 p-4 text-center">
-                  <CreditCard className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-muted-foreground">Pago en línea</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">Próximamente disponible</p>
-                </div>
-              )}
+              {(() => {
+                const isDemo = wompiHealth?.demoMode === true
+                const demoVisible = wompiHealth?.demoVisible === true
+                const wompiEnabled = wompiHealth?.wompiEnabled === true
+                const showWompi = isDemo ? demoVisible : wompiEnabled
 
-              {/* Divisor "ó" */}
-              <div className="relative flex items-center justify-center">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <span className="relative bg-background px-3 text-xs text-muted-foreground">ó</span>
-              </div>
+                if (showWompi) {
+                  return (
+                    <>
+                      <Button
+                        className="w-full h-12 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-semibold shadow-lg shadow-emerald-600/25 transition-all"
+                        onClick={() => {
+                          const currentPlan = plans.find(p => p.name === subInfo.planName)
+                          setWompiCheckoutParams({
+                            planId: currentPlan?.id || 0,
+                            planName: subInfo.planName,
+                            amount: subInfo.planPrice,
+                            billingPeriod: subInfo.billingPeriod || 'MONTHLY',
+                          })
+                          setShowUploadDialog(false)
+                          setShowWompiCheckout(true)
+                        }}
+                      >
+                        {isDemo ? (
+                          <><Beaker className="h-5 w-5 mr-2" /> Pagar con Wompi (Demo)</>
+                        ) : (
+                          <><CreditCard className="h-5 w-5 mr-2" /> Pagar con Wompi</>
+                        )}
+                      </Button>
+                      {!isDemo && (
+                        <WompiPaymentMethodsGrid />
+                      )}
+                      <WompiPoweredBy />
+
+                      {/* Divisor "ó" */}
+                      <div className="relative flex items-center justify-center">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t" />
+                        </div>
+                        <span className="relative bg-background px-3 text-xs text-muted-foreground">ó</span>
+                      </div>
+                    </>
+                  )
+                }
+
+                return (
+                  <>
+                    <div className="rounded-lg border border-muted bg-muted/30 p-4 text-center">
+                      <CreditCard className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-muted-foreground">Pago en línea</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">Próximamente disponible con aliados</p>
+                      <div className="flex items-center justify-center gap-2 mt-2">
+                        <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">Wompi</span>
+                        <span className="text-[10px] text-muted-foreground">+</span>
+                        <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 rounded-full">Stripe</span>
+                      </div>
+                    </div>
+
+                    {/* Divisor "ó" */}
+                    <div className="relative flex items-center justify-center">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <span className="relative bg-background px-3 text-xs text-muted-foreground">ó</span>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           )}
 

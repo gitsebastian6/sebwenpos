@@ -11,6 +11,8 @@ const configKeys = [
   'messagebird_enabled',
   'messagebird_template',
   'messagebird_test_mode',
+  'wompi_demo_visible',
+  'wompi_enabled',
 ] as const
 
 const updateConfigSchema = z.object({
@@ -20,6 +22,10 @@ const updateConfigSchema = z.object({
     enabled: z.boolean().optional(),
     template: z.string().max(500, 'Máximo 500 caracteres').optional(),
     testMode: z.boolean().optional(),
+  }).optional(),
+  wompi: z.object({
+    demoVisible: z.boolean().optional(),
+    enabled: z.boolean().optional(),
   }).optional(),
 })
 
@@ -56,6 +62,10 @@ export async function GET() {
         template: settings['messagebird_template'] || 'Tu código de verificación para Ventify POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.',
         testMode: settings['messagebird_test_mode'] === 'true',
       },
+      wompi: {
+        demoVisible: settings['wompi_demo_visible'] === 'true',
+        enabled: settings['wompi_enabled'] === 'true',
+      },
     })
   } catch (error) {
     logger.error('Get system config error:', error)
@@ -68,26 +78,39 @@ export async function PUT(req: NextRequest) {
     const body = await req.json()
     const data = updateConfigSchema.parse(body)
     const mb = data.messagebird
+    const wp = data.wompi
 
-    if (!mb) {
-      return NextResponse.json({ error: 'Se requiere el objeto messagebird' }, { status: 400 })
+    if (!mb && !wp) {
+      return NextResponse.json({ error: 'Se requiere al menos un objeto de configuración' }, { status: 400 })
     }
 
-    // Update each provided setting
-    if (mb.apiKey !== undefined) {
-      await setSetting('messagebird_api_key', mb.apiKey)
+    // Update MessageBird settings
+    if (mb) {
+      if (mb.apiKey !== undefined) {
+        await setSetting('messagebird_api_key', mb.apiKey)
+      }
+      if (mb.phoneNumber !== undefined) {
+        await setSetting('messagebird_phone', mb.phoneNumber)
+      }
+      if (mb.enabled !== undefined) {
+        await setSetting('messagebird_enabled', mb.enabled.toString())
+      }
+      if (mb.template !== undefined) {
+        await setSetting('messagebird_template', mb.template)
+      }
+      if (mb.testMode !== undefined) {
+        await setSetting('messagebird_test_mode', mb.testMode.toString())
+      }
     }
-    if (mb.phoneNumber !== undefined) {
-      await setSetting('messagebird_phone', mb.phoneNumber)
-    }
-    if (mb.enabled !== undefined) {
-      await setSetting('messagebird_enabled', mb.enabled.toString())
-    }
-    if (mb.template !== undefined) {
-      await setSetting('messagebird_template', mb.template)
-    }
-    if (mb.testMode !== undefined) {
-      await setSetting('messagebird_test_mode', mb.testMode.toString())
+
+    // Update Wompi settings
+    if (wp) {
+      if (wp.demoVisible !== undefined) {
+        await setSetting('wompi_demo_visible', wp.demoVisible.toString())
+      }
+      if (wp.enabled !== undefined) {
+        await setSetting('wompi_enabled', wp.enabled.toString())
+      }
     }
 
     logger.info('System config updated by Super Admin')

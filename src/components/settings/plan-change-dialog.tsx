@@ -93,6 +93,11 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
   })
   const isWompiConfigured = wompiHealth?.configured === true
   const isWompiDemo = wompiHealth?.demoMode === true
+  // Super admin controls: demoVisible hides demo from customers, wompiEnabled enables real Wompi
+  const demoVisible = wompiHealth?.demoVisible === true
+  const wompiEnabled = wompiHealth?.wompiEnabled === true
+  // Show Wompi payment section only if demo is visible OR real Wompi is enabled
+  const showWompiPayment = isWompiDemo ? demoVisible : wompiEnabled
 
   // Track previous open state to reset on open
   const prevOpenRef = useRef(false)
@@ -468,9 +473,55 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                     <Label className="text-sm font-bold">Método de pago</Label>
                   </div>
 
-                  {!isWompiConfigured ? (
+                  {showWompiPayment ? (
                     <>
-                      {/* ── Wompi NOT configured: Coming soon + manual payment info ── */}
+                      {/* ── Wompi available (demo visible or real enabled) ── */}
+                      <div className="space-y-2">
+                        <Button
+                          className="w-full h-12 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg shadow-emerald-500/25 transition-all duration-200"
+                          size="lg"
+                          type="button"
+                          onClick={() => {
+                            const plan = plans.find(p => p.id === selectedPlanId)
+                            if (!plan) return
+                            const { adjustedPrice } = getPlanPriceWithProration(plan)
+                            setWompiCheckoutParams({
+                              planId: plan.id,
+                              planName: plan.name,
+                              amount: adjustedPrice,
+                              billingPeriod: selectedBillingPeriod,
+                            })
+                            setShowWompiCheckout(true)
+                          }}
+                        >
+                          {isWompiDemo ? <Beaker className="h-4 w-4 mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
+                          {isWompiDemo ? 'Pagar con Wompi (Demo)' : 'Pagar con Wompi'}
+                        </Button>
+                        <div className="flex items-center gap-1.5 justify-center text-[11px] text-muted-foreground">
+                          <Shield className="h-3 w-3 text-emerald-500" />
+                          <span>Pago seguro · Tarjeta · Nequi · Daviplata · PSE · Bancolombia</span>
+                        </div>
+                      </div>
+
+                      {/* Payment methods grid (only in real mode) */}
+                      {!isWompiDemo && <WompiPaymentMethodsGrid />}
+
+                      {/* Wompi Powered By */}
+                      <div className="flex justify-center pt-1">
+                        <WompiPoweredBy />
+                      </div>
+
+                      {/* ── Divider "ó" ── */}
+                      <div className="relative flex items-center justify-center my-1">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t border-border/60" />
+                        </div>
+                        <span className="relative bg-background px-4 text-xs text-muted-foreground font-medium">ó</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* ── Wompi NOT available: Coming soon + manual payment info ── */}
 
                       {/* Payments coming soon banner */}
                       <div className="rounded-xl border border-dashed border-amber-300 dark:border-amber-700/50 bg-amber-50/50 dark:bg-amber-950/10 p-4 text-center space-y-3">
@@ -517,52 +568,6 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                             Escribir por WhatsApp →
                           </a>
                         </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {/* ── Wompi IS configured: Show Wompi payment ── */}
-                      <div className="space-y-2">
-                        <Button
-                          className="w-full h-12 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg shadow-emerald-500/25 transition-all duration-200"
-                          size="lg"
-                          type="button"
-                          onClick={() => {
-                            const plan = plans.find(p => p.id === selectedPlanId)
-                            if (!plan) return
-                            const { adjustedPrice } = getPlanPriceWithProration(plan)
-                            setWompiCheckoutParams({
-                              planId: plan.id,
-                              planName: plan.name,
-                              amount: adjustedPrice,
-                              billingPeriod: selectedBillingPeriod,
-                            })
-                            setShowWompiCheckout(true)
-                          }}
-                        >
-                          {isWompiDemo ? <Beaker className="h-4 w-4 mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-                          {isWompiDemo ? 'Pagar con Wompi (Demo)' : 'Pagar con Wompi'}
-                        </Button>
-                        <div className="flex items-center gap-1.5 justify-center text-[11px] text-muted-foreground">
-                          <Shield className="h-3 w-3 text-emerald-500" />
-                          <span>Pago seguro · Tarjeta · Nequi · Daviplata · PSE · Bancolombia</span>
-                        </div>
-                      </div>
-
-                      {/* Payment methods grid (only in real mode) */}
-                      {!isWompiDemo && <WompiPaymentMethodsGrid />}
-
-                      {/* Wompi Powered By */}
-                      <div className="flex justify-center pt-1">
-                        <WompiPoweredBy />
-                      </div>
-
-                      {/* ── Divider "ó" ── */}
-                      <div className="relative flex items-center justify-center my-1">
-                        <div className="absolute inset-0 flex items-center">
-                          <span className="w-full border-t border-border/60" />
-                        </div>
-                        <span className="relative bg-background px-4 text-xs text-muted-foreground font-medium">ó</span>
                       </div>
                     </>
                   )}
