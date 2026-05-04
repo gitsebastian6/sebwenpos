@@ -67,7 +67,8 @@ export function useSubscriptionCurrent(storeId: number | undefined) {
     queryKey: ['subscription-current', storeId],
     queryFn: () => queryFetch<SubscriptionCurrent>(`/api/subscription/current?storeId=${storeId}`),
     enabled: !!storeId,
-    staleTime: 30_000, // auto-refresh is 30s
+    staleTime: 10_000, // auto-refresh every 10s for real-time subscription status
+    refetchOnWindowFocus: true,
   })
 }
 

@@ -694,41 +694,45 @@ export function WompiCheckoutDialog({
 }: WompiCheckoutDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {demoMode ? (
-              <Beaker className="h-4 w-4 text-amber-500" />
-            ) : (
-              <CreditCard className="h-4 w-4 text-primary" />
-            )}
-            {demoMode ? 'Pago Demo' : 'Pago con Wompi'}
-          </DialogTitle>
-          <DialogDescription>
-            {demoMode
-              ? 'Simulación de pago para desarrollo'
-              : 'Realiza tu pago de forma segura a través de Wompi'}
-          </DialogDescription>
-        </DialogHeader>
-        <WompiCheckout
-          storeId={storeId}
-          planId={planId}
-          planName={planName}
-          amount={amount}
-          billingPeriod={billingPeriod}
-          customerEmail={customerEmail}
-          customerName={customerName}
-          customerDocument={customerDocument}
-          demoMode={demoMode}
-          onPaymentComplete={() => {
-            onPaymentComplete()
-            onOpenChange(false)
-          }}
-          onManualUpload={() => {
-            onOpenChange(false)
-            onManualUpload()
-          }}
-        />
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-hidden p-0 gap-0 [&>button]:hidden flex flex-col">
+        <div className="px-6 pt-6 pb-4 border-b border-border/50 shrink-0">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {demoMode ? (
+                <Beaker className="h-4 w-4 text-amber-500" />
+              ) : (
+                <CreditCard className="h-4 w-4 text-primary" />
+              )}
+              {demoMode ? 'Pago Demo' : 'Pago con Wompi'}
+            </DialogTitle>
+            <DialogDescription>
+              {demoMode
+                ? 'Simulación de pago para desarrollo'
+                : 'Realiza tu pago de forma segura a través de Wompi'}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-5">
+          <WompiCheckout
+            storeId={storeId}
+            planId={planId}
+            planName={planName}
+            amount={amount}
+            billingPeriod={billingPeriod}
+            customerEmail={customerEmail}
+            customerName={customerName}
+            customerDocument={customerDocument}
+            demoMode={demoMode}
+            onPaymentComplete={() => {
+              onPaymentComplete()
+              onOpenChange(false)
+            }}
+            onManualUpload={() => {
+              onOpenChange(false)
+              onManualUpload()
+            }}
+          />
+        </div>
       </DialogContent>
     </Dialog>
   )

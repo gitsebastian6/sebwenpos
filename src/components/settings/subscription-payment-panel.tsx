@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
@@ -83,7 +83,7 @@ export function SubscriptionPaymentPanel() {
   const qc = useQueryClient()
 
   // ── TanStack Query hooks ──
-  const { data: subData } = useSubscriptionCurrent(store?.id)
+  const { data: subData, isFetching: isFetchingSub } = useSubscriptionCurrent(store?.id)
   const { data: receiptsData } = usePaymentReceipts(store?.id)
   const { data: plansData } = useSubscriptionPlans()
   const uploadReceiptMutation = useUploadPaymentReceipt()
@@ -94,9 +94,42 @@ export function SubscriptionPaymentPanel() {
   const subInfo: SubInfo | null = subData?.hasSubscription ? {
     id: subData.subscriptionId, status: subData.subscriptionStatus, planName: subData.planName, planPrice: subData.planPrice,
     startDate: subData.startDate, endDate: subData.endDate, billingPeriod: subData.billingPeriod, daysRemaining: subData.daysRemaining,
+    trialEndDate: subData.trialEndDate,
   } : null
 
   const loading = false // queries handle their own loading
+
+  // ── Sync fresh subscription data back to auth store ──
+  // This ensures the SubscriptionGate, sidebar badge, and top banner
+  // all reflect the latest subscription state from the database.
+  useEffect(() => {
+    if (subData?.hasSubscription) {
+      const { updateSubscription } = useAuthStore.getState()
+      updateSubscription({
+        hasSubscription: true,
+        subscriptionStatus: subData.subscriptionStatus,
+        subscriptionId: subData.subscriptionId,
+        planId: subData.planId,
+        planName: subData.planName,
+        planPrice: subData.planPrice,
+        startDate: subData.startDate,
+        endDate: subData.endDate,
+        trialEndDate: subData.trialEndDate,
+        graceEndDate: subData.graceEndDate,
+        graceDaysRemaining: subData.graceDaysRemaining,
+        billingPeriod: subData.billingPeriod,
+        daysRemaining: subData.daysRemaining,
+        planLimits: subData.planLimits,
+      })
+    }
+  }, [subData])
+
+  // ── Manual refresh subscription data ──
+  function handleRefreshSubscription() {
+    qc.invalidateQueries({ queryKey: ['subscription-current', store?.id] })
+    qc.invalidateQueries({ queryKey: ['payment-receipts', store?.id] })
+    toast.info('Actualizando información de suscripción...')
+  }
 
   // ── Payment receipt upload state ──
   const [showUploadDialog, setShowUploadDialog] = useState(false)
@@ -217,6 +250,8 @@ export function SubscriptionPaymentPanel() {
           onUpgrade={() => {}}
           onCancel={() => {}}
           isOwner={false}
+          isFetching={isFetchingSub}
+          onRefresh={handleRefreshSubscription}
         />
 
         <ReceiptsHistoryCard
@@ -316,6 +351,8 @@ export function SubscriptionPaymentPanel() {
         onUpgrade={() => setShowPlanChangeDialog(true)}
         onCancel={() => setShowCancelDialog(true)}
         isOwner={true}
+        isFetching={isFetchingSub}
+        onRefresh={handleRefreshSubscription}
       />
 
       {/* Payment Receipts History */}

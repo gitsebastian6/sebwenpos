@@ -718,6 +718,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
           planName={wompiCheckoutParams.planName}
           amount={wompiCheckoutParams.amount}
           billingPeriod={wompiCheckoutParams.billingPeriod}
+          demoMode={isWompiDemo}
           onPaymentComplete={() => {
             onOpenChange(false)
             onPlanChanged()

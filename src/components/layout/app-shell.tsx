@@ -39,6 +39,7 @@ import {
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useMemo, useState, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import dynamic from 'next/dynamic'
 import { ViewErrorBoundary } from '@/components/shared/error-boundary'
@@ -121,6 +122,62 @@ export function AppShell() {
   const { user, store, logout, hasPermission, subscription, availableStores, switchStore, loadAvailableStores } = useAuthStore()
   const { currentView, setView } = useAppStore()
   const { theme, setTheme } = useTheme()
+  const qc = useQueryClient()
+
+  // ── Periodically sync subscription data from API to auth store ──
+  // This keeps the sidebar badge, top banner, and SubscriptionGate up to date
+  // even when the user is NOT on the settings page.
+  useEffect(() => {
+    if (!store?.id) return
+
+    let intervalId: ReturnType<typeof setInterval> | null = null
+
+    async function syncSubscription() {
+      try {
+        const res = await fetch(`/api/subscription/current?storeId=${store.id}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.hasSubscription) {
+          useAuthStore.getState().updateSubscription({
+            hasSubscription: true,
+            subscriptionStatus: data.subscriptionStatus,
+            subscriptionId: data.subscriptionId,
+            planId: data.planId,
+            planName: data.planName,
+            planPrice: data.planPrice,
+            startDate: data.startDate,
+            endDate: data.endDate,
+            trialEndDate: data.trialEndDate,
+            graceEndDate: data.graceEndDate,
+            graceDaysRemaining: data.graceDaysRemaining,
+            billingPeriod: data.billingPeriod,
+            daysRemaining: data.daysRemaining,
+            planLimits: data.planLimits,
+          })
+        }
+      } catch {
+        // silent — don't disrupt the UI
+      }
+    }
+
+    // Sync immediately on mount, then every 60s
+    syncSubscription()
+    intervalId = setInterval(syncSubscription, 60_000)
+
+    return () => {
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [store?.id]) // only re-run when store changes
+
+  // ── Listen for query invalidation events (from store switch, etc.) ──
+  useEffect(() => {
+    function handleInvalidate() {
+      if (!store?.id) return
+      qc.invalidateQueries({ queryKey: ['subscription-current', store.id] })
+    }
+    window.addEventListener('ventify:invalidate-queries', handleInvalidate)
+    return () => window.removeEventListener('ventify:invalidate-queries', handleInvalidate)
+  }, [store?.id, qc])
 
   // ── Listen for error boundary navigation events ──
   useEffect(() => {

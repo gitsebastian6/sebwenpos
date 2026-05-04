@@ -10,12 +10,15 @@ import {
   AlertTriangle,
   Clock,
   Crown,
+  RefreshCw,
+  CheckCircle2,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/format'
 
 export interface SubInfo {
   id: number; status: string; planName: string; planPrice: number
   startDate: string; endDate: string | null; billingPeriod: string; daysRemaining: number | null
+  trialEndDate: string | null
 }
 
 interface SubscriptionInfoCardProps {
@@ -24,13 +27,15 @@ interface SubscriptionInfoCardProps {
   onUpgrade: () => void
   onCancel: () => void
   isOwner?: boolean
+  isFetching?: boolean
+  onRefresh?: () => void
 }
 
 const VENTIFY_SUPPORT_PHONE = '573012695457'
 const SUPPORT_WHATSAPP = `https://wa.me/${VENTIFY_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, quiero actualizar mi plan de suscripción en Ventify POS')}`
 const SUPPORT_PHONE = VENTIFY_SUPPORT_PHONE.slice(2) // local 10-digit format
 
-export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, onCancel, isOwner = true }: SubscriptionInfoCardProps) {
+export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, onCancel, isOwner = true, isFetching = false, onRefresh }: SubscriptionInfoCardProps) {
   if (!subInfo) {
     return (
       <Card className="border-amber-200/60 dark:border-amber-800/40 rounded-2xl shadow-sm overflow-hidden">
@@ -115,20 +120,26 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
   }
   const currentStatus = statusConfig[subInfo.status] || { label: subInfo.status, dotColor: 'bg-gray-500', badgeBg: 'bg-gray-100 dark:bg-gray-500/15', badgeText: 'text-gray-700 dark:text-gray-400' }
 
-  // Progress bar percentage — use 7 for trial, 30 for monthly/active
+  // Progress bar percentage — use 7 for trial, actual period for others
   const periodDays = subInfo.billingPeriod === 'TRIAL' ? 7
     : subInfo.billingPeriod === 'QUARTERLY' ? 90
     : subInfo.billingPeriod === 'SEMI_ANNUAL' ? 180
     : subInfo.billingPeriod === 'ANNUAL' ? 365
     : 30
-  const progressPercent = subInfo.daysRemaining !== null && subInfo.daysRemaining > 0
-    ? Math.min(100, Math.max(5, (subInfo.daysRemaining / periodDays) * 100))
+  const daysRem = subInfo.daysRemaining ?? 0
+  const progressPercent = daysRem > 0
+    ? Math.min(100, Math.max(5, (daysRem / periodDays) * 100))
     : 0
+
+  // For TRIAL status, show trialEndDate as "Vence"; otherwise show endDate
+  const displayEndDate = subInfo.status === 'TRIAL' && subInfo.trialEndDate
+    ? subInfo.trialEndDate
+    : subInfo.endDate
 
   return (
     <>
       {/* Trial Countdown Banner */}
-      {subInfo.status === 'TRIAL' && subInfo.daysRemaining !== null && subInfo.daysRemaining > 0 && (() => {
+      {subInfo.status === 'TRIAL' && daysRem > 0 && (() => {
         const colors = urgencyColors[trialUrgency!]
         return (
           <div className={`rounded-2xl border border-border/30 ${colors.border} ${colors.bg} p-5 shadow-sm`}>
@@ -139,18 +150,18 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 flex-wrap">
                   <h3 className={`font-bold text-sm ${colors.headingText}`}>
-                    {subInfo.daysRemaining <= 3
+                    {daysRem <= 3
                       ? `¡Tu prueba termina pronto!`
-                      : subInfo.daysRemaining <= 5
+                      : daysRem <= 5
                       ? `Período de prueba`
                       : `Período de prueba activo`}
                   </h3>
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${colors.pillBg} ${colors.pillText}`}>
-                    {subInfo.daysRemaining} día{subInfo.daysRemaining > 1 ? 's' : ''}
+                    {daysRem} día{daysRem > 1 ? 's' : ''}
                   </span>
                 </div>
                 <p className="text-xs mt-1.5 text-muted-foreground leading-relaxed">
-                  {subInfo.daysRemaining <= 3
+                  {daysRem <= 3
                     ? 'Actualiza tu plan antes de que expire para no perder acceso al sistema.'
                     : 'Estás evaluando Ventify POS. Puedes actualizar tu plan en cualquier momento.'}
                 </p>
@@ -160,11 +171,11 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
                   <div className="w-full h-3 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-700 relative ${colors.progressBg} ${
-                        subInfo.daysRemaining <= 3 ? 'animate-pulse' : ''
+                        daysRem <= 3 ? 'animate-pulse' : ''
                       }`}
                       style={{ width: `${progressPercent}%` }}
                     >
-                      {subInfo.daysRemaining <= 3 && (
+                      {daysRem <= 3 && (
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-[shimmer_2s_infinite]" />
                       )}
                     </div>
@@ -251,18 +262,35 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
 
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <CreditCard className="h-4 w-4 text-primary" />
-                </div>
-                Mi Suscripción
-              </CardTitle>
-              <CardDescription className="mt-1.5">Información de tu plan actual</CardDescription>
+            <div className="flex items-center gap-2">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <CreditCard className="h-4 w-4 text-primary" />
+                  </div>
+                  Mi Suscripción
+                </CardTitle>
+                <CardDescription className="mt-1.5">Información de tu plan actual</CardDescription>
+              </div>
             </div>
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${currentStatus.badgeBg} ${currentStatus.badgeText}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${currentStatus.dotColor}`} />
-              {currentStatus.label}
+            <div className="flex items-center gap-2">
+              <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${currentStatus.badgeBg} ${currentStatus.badgeText}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${currentStatus.dotColor}`} />
+                {currentStatus.label}
+              </div>
+              {/* Refresh button */}
+              {onRefresh && (
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={isFetching}
+                  className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                  aria-label="Actualizar información"
+                  title="Actualizar información de suscripción"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+                </button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -287,41 +315,76 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
             <div className="rounded-xl bg-muted/50 dark:bg-muted/30 p-3.5 border border-border/30">
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1">Vence</p>
               <p className="text-sm font-semibold">
-                {subInfo.endDate ? new Date(subInfo.endDate).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                {displayEndDate ? new Date(displayEndDate).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
               </p>
             </div>
           </div>
 
-          {/* Days Remaining Progress Bar */}
-          {subInfo.daysRemaining !== null && subInfo.daysRemaining > 0 && (
-            <div className="mt-5">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs text-muted-foreground font-medium">Tiempo restante</p>
-                <p className={`text-xs font-bold ${
-                  subInfo.daysRemaining <= 3 ? 'text-red-600 dark:text-red-400'
-                  : subInfo.daysRemaining <= 5 ? 'text-amber-600 dark:text-amber-400'
-                  : 'text-emerald-600 dark:text-emerald-400'
-                }`}>
-                  {subInfo.daysRemaining} día{subInfo.daysRemaining > 1 ? 's' : ''}
+          {/* Days Remaining — always show the section, with appropriate message for edge cases */}
+          <div className="mt-5">
+            {daysRem > 0 ? (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-muted-foreground font-medium">Tiempo restante</p>
+                  <p className={`text-xs font-bold ${
+                    daysRem <= 3 ? 'text-red-600 dark:text-red-400'
+                    : daysRem <= 5 ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                  }`}>
+                    {daysRem} día{daysRem > 1 ? 's' : ''}
+                  </p>
+                </div>
+                <div className="w-full h-2.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 relative ${
+                      daysRem <= 3 ? 'bg-red-500'
+                      : daysRem <= 5 ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${progressPercent}%` }}
+                  >
+                    {daysRem <= 3 && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-[shimmer_2s_infinite]" />
+                    )}
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1.5 text-right font-medium">{Math.round(progressPercent)}%</p>
+              </>
+            ) : subInfo.status === 'ACTIVE' && subInfo.planPrice > 0 ? (
+              /* Active paid plan without days remaining — likely needs renewal */
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                <p className="text-xs text-amber-700 dark:text-amber-300 font-medium">
+                  Tu suscripción necesita renovación. Actualiza tu plan para continuar.
                 </p>
               </div>
-              <div className="w-full h-2.5 rounded-full bg-muted overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 relative ${
-                    subInfo.daysRemaining <= 3 ? 'bg-red-500'
-                    : subInfo.daysRemaining <= 5 ? 'bg-amber-500'
-                    : 'bg-emerald-500'
-                  }`}
-                  style={{ width: `${progressPercent}%` }}
-                >
-                  {subInfo.daysRemaining <= 3 && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-[shimmer_2s_infinite]" />
-                  )}
-                </div>
+            ) : subInfo.status === 'ACTIVE' || (subInfo.status === 'TRIAL' && daysRem === 0) ? (
+              /* Active plan with 0 days — trial just ended or annual plan rolled over */
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border border-border/50">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                <p className="text-xs text-muted-foreground font-medium">
+                  {subInfo.status === 'TRIAL' ? 'Tu período de prueba ha terminado. Actualiza tu plan.' : 'Tu suscripción está al día.'}
+                </p>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1.5 text-right font-medium">{Math.round(progressPercent)}%</p>
-            </div>
-          )}
+            ) : subInfo.daysRemaining === null ? (
+              /* daysRemaining is null — data might not be available yet */
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border border-border/50">
+                <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                <p className="text-xs text-muted-foreground font-medium">
+                  Calculando tiempo restante...
+                </p>
+                {onRefresh && (
+                  <button
+                    type="button"
+                    onClick={onRefresh}
+                    className="ml-auto text-xs text-primary hover:underline font-medium"
+                  >
+                    Actualizar
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </div>
 
           {/* Active Plan — Upgrade CTA (cleaner inline row) */}
           {(subInfo.status === 'ACTIVE' || subInfo.status === 'TRIAL' || subInfo.status === 'PAST_DUE') && (
