@@ -311,11 +311,15 @@ export async function transitionOverdueSubscriptions() {
  */
 export async function transitionSingleSubscription(subscription: {
   id: number; status: string; endDate: Date | null; graceEndDate: Date | null;
-  cancelReason: string | null; billingPeriod: string;
+  trialEndDate: Date | null; cancelReason: string | null; billingPeriod: string;
 }) {
   const now = new Date()
-  const endDateInFuture = subscription.endDate && new Date(subscription.endDate) > now
-  const endDateInPast = subscription.endDate && new Date(subscription.endDate) <= now
+  // For TRIAL, use trialEndDate; otherwise use endDate
+  const effectiveEndDate = (subscription.status === 'TRIAL' && subscription.trialEndDate)
+    ? new Date(subscription.trialEndDate)
+    : (subscription.endDate ? new Date(subscription.endDate) : null)
+  const endDateInFuture = effectiveEndDate && effectiveEndDate > now
+  const endDateInPast = effectiveEndDate && effectiveEndDate <= now
 
   // Auto-heal
   if (
@@ -403,11 +407,17 @@ export function buildSubInfo(sub: {
 }) {
   const now = new Date()
   const endDate = sub.endDate ? new Date(sub.endDate) : null
+  const trialEndDate = sub.trialEndDate ? new Date(sub.trialEndDate) : null
   const graceEndDate = sub.graceEndDate ? new Date(sub.graceEndDate) : null
   let daysRemaining: number | null = null
   let graceDaysRemaining: number | null = null
 
-  if (endDate) {
+  // For TRIAL subscriptions, use trialEndDate for daysRemaining
+  if (sub.status === 'TRIAL' && trialEndDate) {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const trialEnd = new Date(trialEndDate.getFullYear(), trialEndDate.getMonth(), trialEndDate.getDate())
+    daysRemaining = Math.ceil((trialEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  } else if (endDate) {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
     daysRemaining = Math.ceil((endDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))

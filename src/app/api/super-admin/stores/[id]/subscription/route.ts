@@ -87,15 +87,17 @@ export async function PUT(
       return NextResponse.json({ error: 'Plan no encontrado' }, { status: 404 })
     }
 
-    // R-04 FIX: Preserve original startDate on reactivation (don't reset customer tenure)
-    // ─── Proration: credit for unused days on existing active subscription ───
-    // Fetch existing subscription first
+    // Fetch existing subscription
     const existingSubscription = await db.subscription.findUnique({
       where: { storeId },
       include: { plan: true },
     })
+
+    // R-04 FIX: Preserve original startDate on reactivation (don't reset customer tenure)
+    // EXCEPTION: When changing to TRIAL, always start from today to get correct 7-day countdown
     const isReactivation = existingSubscription?.status === 'CANCELLED' || existingSubscription?.status === 'EXPIRED'
-    const startDate = (isReactivation && existingSubscription?.startDate) ? new Date(existingSubscription.startDate) : new Date()
+    const isTrialChange = data.billingPeriod === 'TRIAL'
+    const startDate = (isReactivation && !isTrialChange && existingSubscription?.startDate) ? new Date(existingSubscription.startDate) : new Date()
 
     let endDate: Date | null = null
     let trialEndDate: Date | null = null

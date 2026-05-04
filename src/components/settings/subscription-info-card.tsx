@@ -114,9 +114,14 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
   }
   const currentStatus = statusConfig[subInfo.status] || { label: subInfo.status, dotColor: 'bg-gray-500', badgeBg: 'bg-gray-100 dark:bg-gray-500/15', badgeText: 'text-gray-700 dark:text-gray-400' }
 
-  // Progress bar percentage
+  // Progress bar percentage — use 7 for trial, 30 for monthly/active
+  const periodDays = subInfo.billingPeriod === 'TRIAL' ? 7
+    : subInfo.billingPeriod === 'QUARTERLY' ? 90
+    : subInfo.billingPeriod === 'SEMI_ANNUAL' ? 180
+    : subInfo.billingPeriod === 'ANNUAL' ? 365
+    : 30
   const progressPercent = subInfo.daysRemaining !== null && subInfo.daysRemaining > 0
-    ? Math.min(100, Math.max(5, (subInfo.daysRemaining / 7) * 100))
+    ? Math.min(100, Math.max(5, (subInfo.daysRemaining / periodDays) * 100))
     : 0
 
   return (

@@ -93,12 +93,17 @@ export async function GET(req: NextRequest) {
       billingPrice: subscription.billingPrice,
       prorationCredit: subscription.prorationCredit,
       previousPlanName: subscription.previousPlanName,
-      daysRemaining: subscription.endDate
-        ? Math.ceil(
-            (new Date(subscription.endDate).getTime() - Date.now()) /
-              (1000 * 60 * 60 * 24),
-          )
-        : null,
+      daysRemaining: (() => {
+        // For TRIAL subscriptions, use trialEndDate; otherwise use endDate
+        const referenceDate = subscription.status === 'TRIAL' && subscription.trialEndDate
+          ? subscription.trialEndDate
+          : subscription.endDate
+        if (!referenceDate) return null
+        const remaining = Math.ceil(
+          (new Date(referenceDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+        )
+        return remaining
+      })(),
       planLimits: {
         maxEmployees: subscription.plan.maxEmployees,
         maxProducts: subscription.plan.maxProducts,
