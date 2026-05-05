@@ -102,16 +102,6 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
   // Track whether user manually edited the amount (to avoid overwriting)
   const amountManuallyEditedRef = useRef(false)
 
-  // Auto-fill amount when plan/billing period changes (unless user edited it)
-  useEffect(() => {
-    if (!selectedPlanId || !selectedBillingPeriod) return
-    if (amountManuallyEditedRef.current) return
-    const plan = plans.find(p => p.id === selectedPlanId)
-    if (!plan) return
-    const { adjustedPrice } = getPlanPriceWithProration(plan)
-    setUploadAmount(String(adjustedPrice))
-  }, [selectedPlanId, selectedBillingPeriod, prorationInfo])
-
   // Track previous open state to reset on open
   const prevOpenRef = useRef(false)
   useEffect(() => {
@@ -133,6 +123,17 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
   const { data: prorationInfo, isLoading: loadingProration } = useSubscriptionProration(storeId, selectedPlanId)
   const uploadMutation = useUploadPaymentReceipt()
   const uploading = uploadMutation.isPending
+
+  // Auto-fill amount when plan/billing period changes (unless user manually edited it)
+  useEffect(() => {
+    if (!selectedPlanId || !selectedBillingPeriod) return
+    if (amountManuallyEditedRef.current) return
+    const plan = plans.find(p => p.id === selectedPlanId)
+    if (!plan) return
+    const { adjustedPrice } = getPlanPriceWithProration(plan)
+    setUploadAmount(String(adjustedPrice))
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only react to plan/period/proration changes
+  }, [selectedPlanId, selectedBillingPeriod, prorationInfo])
 
   // ── Plan price with proration adjustment ──
   function getPlanPriceWithProration(plan: PlanOption) {
