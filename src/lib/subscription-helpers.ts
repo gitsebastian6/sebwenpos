@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { db } from '@/lib/db'
+import { setSubscriptionStatus } from '@/lib/subscription-cache'
 
 // ── Plan Feature Keys ──
 export const PLAN_FEATURES = {
@@ -155,7 +156,10 @@ export async function storeHasFeature(storeId: number, featureKey: PlanFeatureKe
 export async function isSubscriptionActive(storeId: number): Promise<boolean> {
   const sub = await getStoreSubscription(storeId)
   if (!sub) return false
-  return ['ACTIVE', 'TRIAL', 'PAST_DUE'].includes(sub.status)
+  const active = ['ACTIVE', 'TRIAL', 'PAST_DUE'].includes(sub.status)
+  // Warm cache for middleware gating
+  setSubscriptionStatus(storeId, sub.status)
+  return active
 }
 
 // ── History Logging ──
@@ -377,6 +381,8 @@ export async function getSubscriptionInfo(storeId: number) {
   })
 
   if (!subscription) {
+    // Cache NO_SUBSCRIPTION so middleware can detect stores without plans
+    setSubscriptionStatus(storeId, 'NO_SUBSCRIPTION')
     return {
       hasSubscription: false,
       subscriptionStatus: null,
@@ -388,11 +394,15 @@ export async function getSubscriptionInfo(storeId: number) {
 
   // Use shared transition logic
   const updated = await transitionSingleSubscription(subscription)
-  if (updated) {
-    return buildSubInfo(updated)
+  const finalSub = updated || subscription
+  const result = buildSubInfo(finalSub)
+
+  // Warm cache with final subscription status for middleware gating
+  if (result.hasSubscription && result.subscriptionStatus) {
+    setSubscriptionStatus(storeId, result.subscriptionStatus)
   }
 
-  return buildSubInfo(subscription)
+  return result
 }
 
 /**

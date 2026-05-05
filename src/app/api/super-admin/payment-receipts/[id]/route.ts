@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger'
 import { logSubscriptionHistory, createBillingRecord, BILLING_PERIODS, calculateBillingPrice } from '@/lib/subscription-helpers'
 import { logStoreEvent, logSubscriptionChange, logPlanChange } from '@/lib/event-logger'
 import { deleteReceiptFile, readReceiptFile } from '@/lib/file-storage'
+import { invalidateSubscriptionCache } from '@/lib/subscription-cache'
 
 export const dynamic = 'force-dynamic'
 
@@ -243,6 +244,9 @@ export async function PUT(
       if (planChangeReq && newPlanName) {
         logger.info(`Plan changed for store ${receipt.storeId}: ${sub.plan.name} → ${newPlanName} (receipt #${receiptId})`)
       }
+
+      // Invalidate subscription cache so middleware picks up the new status
+      invalidateSubscriptionCache(receipt.storeId)
     }
 
     return NextResponse.json({

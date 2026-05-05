@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { logSubscriptionHistory } from '@/lib/subscription-helpers'
+import { invalidateSubscriptionCache } from '@/lib/subscription-cache'
 
 export const dynamic = 'force-dynamic'
 
@@ -99,6 +100,9 @@ export async function POST(req: NextRequest) {
     logger.info(
       `Owner cancelled subscription for store ${data.storeId} (reason: ${data.cancelReason})`,
     )
+
+    // Invalidate subscription cache so middleware blocks immediately
+    invalidateSubscriptionCache(data.storeId)
 
     return NextResponse.json({
       message: 'Suscripción cancelada correctamente.',

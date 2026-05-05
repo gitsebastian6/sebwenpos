@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken, extractTokenFromRequest, isPublicPath, isSuperAdminPath, isInternalPath, isTokenRevoked } from '@/lib/auth-helpers'
 import { getInternalSecret } from '@/lib/env'
 import { rateLimit, getClientIp, type RateLimitConfig } from '@/lib/rate-limiter'
+import { isSubscriptionBlocked } from '@/lib/subscription-cache'
 
 // ---------------------------------------------------------------------------
-// Ventify POS — Auth + CORS + CSRF + Rate Limit Middleware
+// Ventify POS — Auth + CORS + CSRF + Rate Limit + Subscription Middleware
 // ---------------------------------------------------------------------------
 // Validates HMAC-SHA256 tokens on every API request.
 // Checks token revocation blacklist (in-memory cache synced from DB).
 // Validates CSRF tokens on state-changing requests.
 // Applies rate limiting to business-critical routes.
+// Checks subscription status from in-memory cache (blocks EXPIRED/CANCELLED).
 // Public routes (login, register, init) are exempt from auth + CSRF.
 // Super Admin routes require SUPER_ADMIN role.
 // Store routes require matching storeId.
@@ -95,6 +97,29 @@ const ROUTE_RATE_LIMITS: Array<{
   { pattern: /^\/api\/customers/, config: { maxRequests: 30, windowSeconds: 60 }, key: 'customers' },
   { pattern: /^\/api\/stores/, config: { maxRequests: 20, windowSeconds: 60 }, key: 'stores' },
 ]
+
+// ---------------------------------------------------------------------------
+// Subscription-exempt paths: these work even with expired subscription
+// ---------------------------------------------------------------------------
+// A store with EXPIRED/CANCELLED subscription must still be able to:
+// - Check subscription status, upload payment receipts, manage payments
+// - Use auth endpoints (refresh, switch-store)
+// - Access store info (multi-store switching)
+// - View files (receipt images)
+
+const SUBSCRIPTION_EXEMPT_PATHS = [
+  '/api/subscription',
+  '/api/payment-receipts',
+  '/api/auth',
+  '/api/stores',
+  '/api/payments/wompi',
+  '/api/files',
+  '/api/webhooks',
+]
+
+function isSubscriptionExemptPath(pathname: string): boolean {
+  return SUBSCRIPTION_EXEMPT_PATHS.some(p => pathname.startsWith(p))
+}
 
 function checkRouteRateLimit(request: NextRequest, pathname: string): NextResponse | null {
   for (const { pattern, config, key } of ROUTE_RATE_LIMITS) {
@@ -189,6 +214,20 @@ export async function middleware(request: NextRequest) {
     const parsedStoreId = parseInt(queryStoreId, 10)
     if (!isNaN(parsedStoreId) && payload.role !== 'SUPER_ADMIN' && payload.storeId !== parsedStoreId) {
       return corsError('No tienes acceso a esta tienda', 403)
+    }
+  }
+
+  // 8. Subscription gating — block expired/cancelled stores mid-session
+  //    Uses in-memory cache populated by login/refresh/subscription routes.
+  //    Fail-open on cache miss (allows request, next route re-warms cache).
+  //    Exempt paths (subscription management, payments, auth) always pass.
+  if (payload.storeId && !isSubscriptionExemptPath(pathname)) {
+    const blocked = isSubscriptionBlocked(payload.storeId)
+    if (blocked === true) {
+      return corsError(
+        'Suscripción expirada o cancelada. Renueva tu plan para continuar.',
+        403,
+      )
     }
   }
 

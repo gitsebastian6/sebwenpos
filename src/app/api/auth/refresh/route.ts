@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateToken, verifyToken, extractTokenFromRequest } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { transitionOverdueSubscriptions, GRACE_PERIOD_DAYS } from '@/lib/subscription-helpers'
+import { setSubscriptionStatus } from '@/lib/subscription-cache'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,7 +72,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<RefreshRe
       })
 
       if (!subscription) {
-        // No subscription at all — force logout
+        // No subscription at all — cache and force logout
+        if (payload.storeId) setSubscriptionStatus(payload.storeId, 'NO_SUBSCRIPTION')
+        // force logout
         response.forceLogout = true
         response.subscriptionStatus = 'NO_SUBSCRIPTION'
         response.subscriptionWarning = 'No tienes una suscripción activa. Contacte al soporte.'
@@ -79,7 +82,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<RefreshRe
       }
 
       if (subscription.status === 'EXPIRED' || subscription.status === 'CANCELLED') {
-        // Fully expired — force logout
+        // Fully expired — cache status and force logout
+        if (payload.storeId) setSubscriptionStatus(payload.storeId, subscription.status)
+        // force logout
         response.forceLogout = true
         response.subscriptionStatus = subscription.status
         response.subscriptionWarning = 'Tu suscripción ha expirado. Contacta al administrador para renovar.'
@@ -87,7 +92,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<RefreshRe
       }
 
       if (subscription.status === 'PAST_DUE') {
-        // In grace period — allow but warn the frontend to show banner
+        // In grace period — cache status and allow but warn
+        if (payload.storeId) setSubscriptionStatus(payload.storeId, 'PAST_DUE')
+        // grace period the frontend to show banner
         const graceEnd = subscription.graceEndDate
           ? new Date(subscription.graceEndDate)
           : new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000)
@@ -95,7 +102,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<RefreshRe
         response.subscriptionStatus = 'PAST_DUE'
         response.subscriptionWarning = `Tu suscripción venció. Tienes ${daysLeft} día${daysLeft !== 1 ? 's' : ''} de gracia para renovar.`
       } else {
-        // Active or Trial — return status so frontend can update banner
+        // Active or Trial — cache status so frontend can update banner
+        if (payload.storeId) setSubscriptionStatus(payload.storeId, subscription.status)
         response.subscriptionStatus = subscription.status
       }
     }

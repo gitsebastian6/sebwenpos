@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { logSubscriptionHistory, transitionSingleSubscription, parsePlanFeatures, GRACE_PERIOD_DAYS } from '@/lib/subscription-helpers'
+import { setSubscriptionStatus } from '@/lib/subscription-cache'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,6 +76,9 @@ export async function GET(req: NextRequest) {
     const graceDaysRemaining = (graceEndDate && subscription.status === 'PAST_DUE')
       ? Math.ceil((new Date(graceEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
       : null
+
+    // Warm subscription cache for middleware gating
+    setSubscriptionStatus(storeId, subscription.status)
 
     return NextResponse.json({
       hasSubscription: true,
