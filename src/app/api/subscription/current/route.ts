@@ -4,32 +4,24 @@ import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { logSubscriptionHistory, transitionSingleSubscription, parsePlanFeatures, GRACE_PERIOD_DAYS } from '@/lib/subscription-helpers'
 import { setSubscriptionStatus } from '@/lib/subscription-cache'
+import { requireAuthStoreId } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
-
-const currentSubSchema = z.object({
-  storeId: z.coerce.number().int().positive('storeId requerido'),
-})
 
 /**
  * GET /api/subscription/current?storeId=1
  * Returns the active subscription info + plan limits for the given store.
  * Used by the frontend to enforce plan-based UI restrictions.
+ * Tenant-isolated: only the store owner (or super admin) can access.
  */
 export async function GET(req: NextRequest) {
   try {
+    // Tenant isolation: validate storeId against JWT
     const { searchParams } = req.nextUrl
-    const parsed = currentSubSchema.safeParse({
-      storeId: searchParams.get('storeId'),
-    })
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: 'storeId es requerido' },
-        { status: 400 },
-      )
-    }
-
-    const storeId = parsed.data.storeId
+    const rawStoreId = searchParams.get('storeId')
+    const storeIdOrErr = requireAuthStoreId(req, rawStoreId ? parseInt(rawStoreId, 10) : undefined)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeId = storeIdOrErr
 
     const subscription = await db.subscription.findUnique({
       where: { storeId },

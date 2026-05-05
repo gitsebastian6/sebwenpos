@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
 import { z } from 'zod'
+import { requireOwner } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Only OWNER or SUPER_ADMIN can reset employee passwords
+    const auth = requireOwner(req)
+    if (auth instanceof NextResponse) return auth
+
     const { id } = await params
     const userId = parseInt(id)
 

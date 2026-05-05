@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { calculatePlanDates } from '@/lib/plan-utils'
 import { z } from 'zod'
+import { requireOwner } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,12 +11,14 @@ const updatePlanSchema = z.object({
   days: z.number().int().min(1).optional(),
 })
 
-// PUT /api/stores/[id]/plan — Change a store's plan (super admin only via UI gate)
+// PUT /api/stores/[id]/plan — Change a store's plan (OWNER or SUPER_ADMIN only)
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = requireOwner(req)
+    if (auth instanceof NextResponse) return auth
     const { id } = await params
     const body = await req.json()
     const data = updatePlanSchema.parse(body)

@@ -2,25 +2,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { calculateBillingPrice } from '@/lib/subscription-helpers'
+import { requireAuthStoreId } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/subscription/proration?storeId=N&targetPlanId=M
- * Returns proration info for a plan change:
- * - How many days are unused on the current plan
- * - The credit amount in COP
- * - The new plan's price breakdown
- * - The adjusted price after credit
+ * Returns proration info for a plan change (tenant-isolated).
  */
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl
-    const storeId = parseInt(searchParams.get('storeId') || '0', 10)
+    const rawStoreId = searchParams.get('storeId')
+    const storeIdOrErr = requireAuthStoreId(req, rawStoreId ? parseInt(rawStoreId, 10) : undefined)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeId = storeIdOrErr
+
     const targetPlanId = parseInt(searchParams.get('targetPlanId') || '0', 10)
 
-    if (!storeId || !targetPlanId) {
-      return NextResponse.json({ error: 'storeId y targetPlanId son requeridos' }, { status: 400 })
+    if (!targetPlanId) {
+      return NextResponse.json({ error: 'targetPlanId es requerido' }, { status: 400 })
     }
 
     // Get current subscription with plan

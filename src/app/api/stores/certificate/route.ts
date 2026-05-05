@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { randomBytes, X509Certificate } from 'node:crypto'
 import crypto from 'node:crypto'
 import { encryptField, decryptField } from '@/lib/field-encryption'
+import { requireAuthStoreId } from '@/lib/api-auth'
 
 // Extract certificate info from .p12
 function extractCertInfo(p12Path: string, password: string): {
@@ -53,14 +54,13 @@ function ensureUploadDir() {
 
 export async function POST(request: NextRequest) {
   try {
-    const storeId = request.nextUrl.searchParams.get('storeId')
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
-    }
+    // Tenant isolation: validate storeId against JWT
+    const rawStoreId = request.nextUrl.searchParams.get('storeId')
+    const storeIdOrErr = requireAuthStoreId(request, rawStoreId ? parseInt(rawStoreId, 10) : undefined)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeId = storeIdOrErr
 
-    const store = await db.store.findUnique({
-      where: { id: parseInt(storeId) },
-    })
+    const store = await db.store.findUnique({ where: { id: storeId } })
 
     if (!store) {
       return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 })
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     // Remove certificate
     if (action === 'remove') {
       await db.store.update({
-        where: { id: parseInt(storeId) },
+        where: { id: storeId },
         data: {
           certificatePassword: null,
           certUploadedAt: null,
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
 
       // Store in database
       await db.store.update({
-        where: { id: parseInt(storeId) },
+        where: { id: storeId },
         data: {
           certificatePassword: encryptField(certPassword.trim()),
           certUploadedAt: new Date(),
@@ -187,13 +187,14 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const storeId = request.nextUrl.searchParams.get('storeId')
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
-    }
+    // Tenant isolation: validate storeId against JWT
+    const rawStoreId = request.nextUrl.searchParams.get('storeId')
+    const storeIdOrErr = requireAuthStoreId(request, rawStoreId ? parseInt(rawStoreId, 10) : undefined)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeId = storeIdOrErr
 
     const store = await db.store.findUnique({
-      where: { id: parseInt(storeId) },
+      where: { id: storeId },
       select: {
         certUploadedAt: true,
         certExpiresAt: true,

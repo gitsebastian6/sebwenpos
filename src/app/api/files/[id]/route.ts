@@ -4,6 +4,7 @@ import { readReceiptFile, getUploadsDir } from '@/lib/file-storage'
 import { logger } from '@/lib/logger'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
+import { getAuthUser } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,9 +25,8 @@ export async function GET(
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
 
-    // Get auth store ID from headers (set by middleware)
-    const authStoreId = req.headers.get('x-auth-store-id')
-    const authRole = req.headers.get('x-auth-role')
+    // Get auth info from headers (set by middleware) using api-auth helper
+    const auth = getAuthUser(req)
 
     // Fetch receipt from DB
     const receipt = await db.paymentReceipt.findUnique({
@@ -46,7 +46,7 @@ export async function GET(
     }
 
     // Authorization: owner of the store or super admin
-    if (authRole !== 'SUPER_ADMIN' && authStoreId !== receipt.storeId.toString()) {
+    if (!auth || (auth.role !== 'SUPER_ADMIN' && auth.storeId !== receipt.storeId)) {
       return NextResponse.json({ error: 'Sin permisos para ver este archivo' }, { status: 403 })
     }
 

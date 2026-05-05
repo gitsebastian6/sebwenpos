@@ -2,18 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { parsePlanFeatures } from '@/lib/subscription-helpers'
+import { requireAuthStoreId } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
-// GET: Obtener suscripción actual de la tienda
+// GET: Obtener suscripción actual de la tienda (tenant-isolated)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const storeId = Number(searchParams.get('storeId'))
-
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
-    }
+    const rawStoreId = searchParams.get('storeId')
+    const storeIdOrErr = requireAuthStoreId(request, rawStoreId ? Number(rawStoreId) : undefined)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeId = storeIdOrErr
 
     const subscription = await db.subscription.findUnique({
       where: { storeId },

@@ -267,6 +267,7 @@ export function isPublicPath(pathname: string): boolean {
 // ---------------------------------------------------------------------------
 export const SUPER_ADMIN_PATHS = [
   '/api/super-admin',
+  '/api/admin',
 ]
 
 export function isSuperAdminPath(pathname: string): boolean {
