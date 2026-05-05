@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { emitSessionOpened } from '@/lib/tables-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -141,6 +142,9 @@ export async function POST(req: NextRequest) {
         },
       },
     })
+
+    // Broadcast real-time event to all clients in this store
+    emitSessionOpened(data.storeId, { id: session.id, barTableId: data.barTableId })
 
     return NextResponse.json(
       {

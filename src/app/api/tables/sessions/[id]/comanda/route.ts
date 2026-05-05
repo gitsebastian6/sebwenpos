@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { emitComandaItemsAdded, emitComandaItemsUpdated, emitComandaItemsRemoved } from '@/lib/tables-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -304,6 +305,9 @@ export async function POST(
     const mergedCount = mergeResults.filter(r => r.merged).length
     const createdItemsList = mergeResults.filter(r => !r.merged)
 
+    // Broadcast real-time event
+    emitComandaItemsAdded(data.storeId, sid, session.barTableId)
+
     return NextResponse.json(
       {
         mergedCount,
@@ -415,6 +419,9 @@ export async function PATCH(
       data: updateData,
     })
 
+    // Broadcast real-time event
+    emitComandaItemsUpdated(session.storeId, sid, session.barTableId, data.status)
+
     return NextResponse.json({
       updated: existingItems.length,
       ...(data.status ? { status: data.status } : {}),
@@ -487,6 +494,9 @@ export async function DELETE(
     await db.comandaItem.deleteMany({
       where: { id: { in: data.itemIds } },
     })
+
+    // Broadcast real-time event
+    emitComandaItemsRemoved(session.storeId, sid, session.barTableId)
 
     return NextResponse.json({ deleted: existingItems.length })
   } catch (error: unknown) {

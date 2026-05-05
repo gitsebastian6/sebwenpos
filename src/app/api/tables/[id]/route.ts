@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { emitTableUpdated, emitTableDeleted } from '@/lib/tables-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -109,6 +110,9 @@ export async function PUT(
       },
     })
 
+    // Broadcast real-time event
+    emitTableUpdated(existing.storeId, tableId)
+
     return NextResponse.json(table)
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
@@ -152,6 +156,9 @@ export async function DELETE(
     }
 
     await db.barTable.delete({ where: { id: tableId } })
+
+    // Broadcast real-time event
+    emitTableDeleted(existing.storeId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

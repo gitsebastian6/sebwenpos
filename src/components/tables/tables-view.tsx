@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { playError } from '@/lib/pos-sounds'
 import { toast } from 'sonner'
 import { useCreateSession, useUpdateSession } from '@/hooks/api/use-tables'
+import { useTablesSync } from '@/hooks/use-tables-sync'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -36,6 +37,9 @@ import { ComandaPanel } from './comanda-panel'
 
 export function TablesView() {
   const { store } = useAuthStore()
+
+  // ── Real-time sync ──
+  useTablesSync(store?.id ?? null)
 
   // ── Data hook ──
   const {

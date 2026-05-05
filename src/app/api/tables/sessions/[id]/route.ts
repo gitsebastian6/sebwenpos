@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { emitSessionClosed, emitSessionUpdated, emitSessionDeleted } from '@/lib/tables-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -175,6 +176,9 @@ export async function PUT(
         },
       })
 
+      // Broadcast real-time event
+      emitSessionClosed(existing.storeId, { id: sessionId, barTableId: existing.barTableId })
+
       return NextResponse.json({
         id: session.id,
         storeId: session.storeId,
@@ -206,6 +210,9 @@ export async function PUT(
         },
       },
     })
+
+    // Broadcast real-time event
+    emitSessionUpdated(existing.storeId, { id: sessionId, barTableId: existing.barTableId })
 
     return NextResponse.json({
       id: session.id,
@@ -272,6 +279,9 @@ export async function DELETE(
     }
 
     await db.tableSession.delete({ where: { id: sessionId } })
+
+    // Broadcast real-time event
+    emitSessionDeleted(existing.storeId, existing.barTableId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

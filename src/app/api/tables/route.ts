@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { emitTableCreated } from '@/lib/tables-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -115,6 +116,9 @@ export async function POST(req: NextRequest) {
         zone: data.zone,
       },
     })
+
+    // Broadcast real-time event to all clients in this store
+    emitTableCreated(data.storeId, table.id)
 
     return NextResponse.json(table, { status: 201 })
   } catch (error: unknown) {

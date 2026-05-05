@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { isSubscriptionActive } from '@/lib/subscription-helpers'
+import { emitPaymentProcessed, emitComandaItemsUpdated } from '@/lib/tables-sync'
 
 export const dynamic = 'force-dynamic'
 
@@ -423,6 +424,10 @@ export async function POST(
 
     const totalCogs = profitability.reduce((sum, p) => sum + p.cogs, 0)
     const totalGrossProfit = profitability.reduce((sum, p) => sum + p.grossProfit, 0)
+
+    // Broadcast real-time events
+    emitComandaItemsUpdated(data.storeId, sid, session.barTableId, 'PAID')
+    emitPaymentProcessed(data.storeId, sid, session.barTableId, orderNumber)
 
     return NextResponse.json(
       {
