@@ -177,7 +177,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
       const plan = plans.find(p => p.id === selectedPlanId)
       await uploadMutation.mutateAsync({
         storeId,
-        data: {
+        body: {
           fileData: `data:${uploadFile.type};base64,${fileData}`,
           fileName: uploadFile.name,
           fileSize: uploadFile.size,
