@@ -75,10 +75,10 @@ services:
       - "3005:3005"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3006/health"]
-      interval: 30s
+      interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 30s
 
   # ── Next.js Application ────────────────────────────────────────────────
   app:
