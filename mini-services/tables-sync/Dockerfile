@@ -12,8 +12,10 @@ RUN npm install --omit=dev
 # Copy source
 COPY mini-services/tables-sync/index.ts ./
 
-# Install TypeScript runner
-RUN npm install -g typescript tsx
+# Install TypeScript runner + curl (for healthcheck)
+RUN npm install -g typescript tsx && \
+    apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
 
 EXPOSE 3005 3006
 
