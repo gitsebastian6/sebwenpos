@@ -3,6 +3,7 @@ import { verifyToken, extractTokenFromRequest, isPublicPath, isSuperAdminPath, i
 import { getInternalSecret } from '@/lib/env'
 import { rateLimit, getClientIp, type RateLimitConfig } from '@/lib/rate-limiter'
 import { isSubscriptionBlocked } from '@/lib/subscription-cache'
+import { safeStringEqual } from '@/lib/crypto-utils'
 
 // ---------------------------------------------------------------------------
 // Ventify POS — Auth + CORS + CSRF + Rate Limit + Subscription Middleware
@@ -16,19 +17,6 @@ import { isSubscriptionBlocked } from '@/lib/subscription-cache'
 // Super Admin routes require SUPER_ADMIN role.
 // Store routes require matching storeId.
 // ---------------------------------------------------------------------------
-
-// Constant-time string comparison (Edge-compatible) to prevent timing attacks
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  const encoder = new TextEncoder()
-  const aBuf = encoder.encode(a)
-  const bBuf = encoder.encode(b)
-  const result = new Uint8Array(aBuf.length)
-  for (let i = 0; i < aBuf.length; i++) {
-    result[i] = aBuf[i] ^ bBuf[i]
-  }
-  return result.every(byte => byte === 0)
-}
 
 // CORS configuration — restricted to known origins
 const ALLOWED_ORIGINS = [
@@ -73,7 +61,7 @@ function validateCSRF(request: NextRequest): boolean {
   const csrfCookie = request.cookies.get('csrf_token')?.value
 
   if (!csrfHeader || !csrfCookie) return false
-  return timingSafeEqual(csrfHeader, csrfCookie)
+  return safeStringEqual(csrfHeader, csrfCookie)
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +148,7 @@ export async function middleware(request: NextRequest) {
   // 2. Internal cron routes — check internal secret header (constant-time comparison)
   if (isInternalPath(pathname)) {
     const internalHeader = request.headers.get('x-internal-secret')
-    if (!internalHeader || !timingSafeEqual(internalHeader, getInternalSecret())) {
+    if (!internalHeader || !safeStringEqual(internalHeader, getInternalSecret())) {
       return corsError('Acceso no autorizado', 401)
     }
     return withCORS(NextResponse.next(), origin)

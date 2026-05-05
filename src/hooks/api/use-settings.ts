@@ -2,8 +2,19 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { mutationFetch, queryFetch } from './query-helpers'
-import { toast } from 'sonner'
-import type {
+
+// ─── Re-export subscription hooks from canonical source ───
+export {
+  useCurrentSubscription as useSubscriptionCurrent,
+  useSubscriptionPlans,
+  useSubscriptionHistory,
+  useBillingHistory,
+  useProration as useSubscriptionProration,
+  usePaymentReceipts,
+  useCancelSubscription,
+  useCreatePaymentReceipt as useUploadPaymentReceipt,
+} from './use-subscription'
+export type {
   SubscriptionCurrent,
   PlanOption,
   SubscriptionHistoryItem,
@@ -60,88 +71,7 @@ export function useUpdateSecurityQuestion() {
   })
 }
 
-// ─── Subscription ───
-
-export function useSubscriptionCurrent(storeId: number | undefined) {
-  return useQuery<SubscriptionCurrent>({
-    queryKey: ['subscription-current', storeId],
-    queryFn: () => queryFetch<SubscriptionCurrent>(`/api/subscription/current?storeId=${storeId}`),
-    enabled: !!storeId,
-    staleTime: 10_000, // auto-refresh every 10s for real-time subscription status
-    refetchOnWindowFocus: true,
-  })
-}
-
-export function usePaymentReceipts(storeId: number | undefined) {
-  return useQuery<ReceiptItem[]>({
-    queryKey: ['payment-receipts', storeId],
-    queryFn: () => queryFetch<ReceiptItem[]>(`/api/payment-receipts?storeId=${storeId}`),
-    enabled: !!storeId,
-    staleTime: 30_000,
-  })
-}
-
-export function useSubscriptionPlans() {
-  return useQuery<PlanOption[]>({
-    queryKey: ['subscription-plans'],
-    queryFn: () => queryFetch<PlanOption[]>('/api/subscription/plans'),
-    staleTime: 10 * 60_000,
-  })
-}
-
-export function useSubscriptionHistory(storeId: number | undefined) {
-  return useQuery<SubscriptionHistoryItem[]>({
-    queryKey: ['subscription-history', storeId],
-    queryFn: () => queryFetch<SubscriptionHistoryItem[]>(`/api/subscription/history?storeId=${storeId}`),
-    enabled: !!storeId,
-    staleTime: 60_000,
-  })
-}
-
-export function useBillingHistory(storeId: number | undefined) {
-  return useQuery<BillingHistory>({
-    queryKey: ['billing-history', storeId],
-    queryFn: () => queryFetch<BillingHistory>(`/api/subscription/billing-history?storeId=${storeId}`),
-    enabled: !!storeId,
-    staleTime: 60_000,
-  })
-}
-
-export function useUploadPaymentReceipt() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ storeId, data }: { storeId: number; data: Record<string, unknown> }) =>
-      mutationFetch(`/api/payment-receipts?storeId=${storeId}`, 'POST', data),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries({ queryKey: ['payment-receipts', variables.storeId] })
-      qc.invalidateQueries({ queryKey: ['subscription-current', variables.storeId] })
-    },
-  })
-}
-
-export function useCancelSubscription() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ storeId, cancelReason }: { storeId: number; cancelReason: string }) =>
-      mutationFetch(`/api/subscription/cancel?storeId=${storeId}`, 'POST', { cancelReason }),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries({ queryKey: ['subscription-current', variables.storeId] })
-      qc.invalidateQueries({ queryKey: ['subscription-history', variables.storeId] })
-      qc.invalidateQueries({ queryKey: ['billing-history', variables.storeId] })
-    },
-  })
-}
-
-export function useSubscriptionProration(storeId: number | undefined, targetPlanId: number | null) {
-  return useQuery<ProrationInfo>({
-    queryKey: ['subscription-proration', storeId, targetPlanId],
-    queryFn: () => queryFetch<ProrationInfo>(
-      `/api/subscription/proration?storeId=${storeId}&targetPlanId=${targetPlanId}`
-    ),
-    enabled: !!storeId && !!targetPlanId,
-    staleTime: 60_000,
-  })
-}
+// ─── Subscription hooks are now in use-subscription.ts (re-exported above) ───
 
 // ─── Electronic Invoicing ───
 

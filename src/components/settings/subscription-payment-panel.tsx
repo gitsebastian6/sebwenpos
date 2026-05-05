@@ -18,17 +18,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
-import {
   Receipt,
   Loader2,
   FileText,
@@ -40,8 +29,10 @@ import {
   AlertTriangle,
   BadgeCheck,
   Clock,
+  CreditCard,
+  Beaker,
 } from 'lucide-react'
-import { formatCOP } from '@/lib/format'
+import { Badge } from '@/components/ui/badge'
 import {
   useSubscriptionCurrent,
   usePaymentReceipts,
@@ -49,26 +40,22 @@ import {
   useSubscriptionHistory,
   useBillingHistory,
   useUploadPaymentReceipt,
-  useCancelSubscription,
 } from '@/hooks/api/use-settings'
 import { SubscriptionInfoCard } from '@/components/settings/subscription-info-card'
 import type { SubInfo } from '@/components/settings/subscription-info-card'
 import { ReceiptsHistoryCard } from '@/components/settings/receipts-history-card'
-import type { ReceiptItem } from '@/components/settings/receipts-history-card'
 import { PlanChangeDialog } from '@/components/settings/plan-change-dialog'
 import { WompiCheckoutDialog } from '@/components/settings/wompi-checkout'
 import { WompiTransactionsCard } from '@/components/settings/wompi-transactions-card'
-import { CreditCard, Beaker } from 'lucide-react'
+import { PlanComparisonTable } from '@/components/settings/plan-comparison-table'
+import { CancelSubscriptionDialog } from '@/components/settings/cancel-subscription-dialog'
 import { WompiPaymentMethodsGrid, WompiPoweredBy } from '@/components/payments/wompi-payment-methods'
 
 // ── Subscription Payment Panel ──
 // Shows subscription info (Trial/Active/Expired) with countdown.
 // Owners can upload payment receipts; Super Admin reviews them.
 
-export interface PlanOption {
-  id: number; name: string; description: string | null; price: number
-  maxEmployees: number; maxProducts: number; features: Record<string, boolean>; isActive: boolean
-}
+export { type PlanOption } from '@/hooks/api/use-subscription'
 
 export const BILLING_PERIODS = [
   { value: 'MONTHLY', label: 'Mensual', discount: 0 },
@@ -87,7 +74,6 @@ export function SubscriptionPaymentPanel() {
   const { data: receiptsData } = usePaymentReceipts(store?.id)
   const { data: plansData } = useSubscriptionPlans()
   const uploadReceiptMutation = useUploadPaymentReceipt()
-  const cancelMutation = useCancelSubscription()
 
   const receipts = Array.isArray(receiptsData) ? receiptsData : []
   const plans = Array.isArray(plansData) ? plansData : []
@@ -143,8 +129,6 @@ export function SubscriptionPaymentPanel() {
 
   // ── Cancel subscription state ──
   const [showCancelDialog, setShowCancelDialog] = useState(false)
-  const [cancelReason, setCancelReason] = useState('')
-  const cancelling = cancelMutation.isPending
 
   // ── Wompi health check ──
   const { data: wompiHealth } = useQuery({
@@ -211,23 +195,10 @@ export function SubscriptionPaymentPanel() {
     }
   }
 
-  // ── Cancel subscription handler ──
-  async function handleCancelSubscription() {
-    if (!store?.id || cancelReason.trim().length < 5) {
-      toast.error('Indica el motivo de cancelación (mínimo 5 caracteres)')
-      return
-    }
-    try {
-      await cancelMutation.mutateAsync({
-        storeId: store.id,
-        cancelReason: cancelReason.trim(),
-      })
-      toast.success('Suscripción cancelada correctamente')
-      setShowCancelDialog(false)
-      setCancelReason('')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error de conexión al cancelar suscripción')
-    }
+  // ── Handle cancel subscription completed ──
+  function handleCancelled() {
+    qc.invalidateQueries({ queryKey: ['subscription-current', store?.id] })
+    qc.invalidateQueries({ queryKey: ['payment-receipts', store?.id] })
   }
 
   if (loading) {
@@ -270,71 +241,10 @@ export function SubscriptionPaymentPanel() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 pr-4 font-semibold text-muted-foreground">Funcionalidad</th>
-                      {plans.filter(p => p.isActive).map(plan => (
-                        <th key={plan.id} className={`text-center py-2 px-3 font-bold ${subInfo?.planName === plan.name ? 'text-primary' : ''}`}>
-                          {plan.name}
-                          {subInfo?.planName === plan.name && (
-                            <div className="text-[10px] font-normal text-primary/70 mt-0.5">Plan Actual</div>
-                          )}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-b border-border/50">
-                      <td className="py-2.5 pr-4 text-muted-foreground">Precio/mes</td>
-                      {plans.filter(p => p.isActive).map(plan => (
-                        <td key={plan.id} className="text-center py-2.5 px-3 font-mono font-bold">
-                          {plan.price === 0 ? 'Gratis' : formatCOP(plan.price)}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr className="border-b border-border/50">
-                      <td className="py-2.5 pr-4 text-muted-foreground">Empleados</td>
-                      {plans.filter(p => p.isActive).map(plan => (
-                        <td key={plan.id} className="text-center py-2.5 px-3 font-semibold">
-                          {plan.maxEmployees === -1 ? '∞' : plan.maxEmployees}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr className="border-b border-border/50">
-                      <td className="py-2.5 pr-4 text-muted-foreground">Productos</td>
-                      {plans.filter(p => p.isActive).map(plan => (
-                        <td key={plan.id} className="text-center py-2.5 px-3 font-semibold">
-                          {plan.maxProducts === -1 ? '∞' : plan.maxProducts}
-                        </td>
-                      ))}
-                    </tr>
-                    {[
-                      { key: 'electronicInvoicing', label: 'Facturación Electrónica' },
-                      { key: 'multiStore', label: 'Multi-Tienda' },
-                      { key: 'reports', label: 'Reportes Avanzados' },
-                      { key: 'advancedInventory', label: 'Inventario Avanzado' },
-                      { key: 'api', label: 'Acceso API' },
-                      { key: 'customBranding', label: 'Branding Personalizado' },
-                      { key: 'multiCurrency', label: 'Multi-Moneda' },
-                    ].map(feature => (
-                      <tr key={feature.key} className="border-b border-border/50 last:border-0">
-                        <td className="py-2.5 pr-4 text-muted-foreground">{feature.label}</td>
-                        {plans.filter(p => p.isActive).map(plan => (
-                          <td key={plan.id} className="text-center py-2.5 px-3">
-                            {plan.features[feature.key] ? (
-                              <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
-                            ) : (
-                              <span className="text-muted-foreground/40">—</span>
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <PlanComparisonTable
+                plans={plans}
+                currentPlanName={subInfo?.planName}
+              />
             </CardContent>
           </Card>
         )}
@@ -379,71 +289,10 @@ export function SubscriptionPaymentPanel() {
             <CardDescription>Funcionalidades incluidas en cada plan</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 pr-4 font-semibold text-muted-foreground">Funcionalidad</th>
-                    {plans.filter(p => p.isActive).map(plan => (
-                      <th key={plan.id} className={`text-center py-2 px-3 font-bold ${subInfo?.planName === plan.name ? 'text-primary' : ''}`}>
-                        {plan.name}
-                        {subInfo?.planName === plan.name && (
-                          <div className="text-[10px] font-normal text-primary/70 mt-0.5">Plan Actual</div>
-                        )}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-border/50">
-                    <td className="py-2.5 pr-4 text-muted-foreground">Precio/mes</td>
-                    {plans.filter(p => p.isActive).map(plan => (
-                      <td key={plan.id} className="text-center py-2.5 px-3 font-mono font-bold">
-                        {plan.price === 0 ? 'Gratis' : formatCOP(plan.price)}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-border/50">
-                    <td className="py-2.5 pr-4 text-muted-foreground">Empleados</td>
-                    {plans.filter(p => p.isActive).map(plan => (
-                      <td key={plan.id} className="text-center py-2.5 px-3 font-semibold">
-                        {plan.maxEmployees === -1 ? '∞' : plan.maxEmployees}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-border/50">
-                    <td className="py-2.5 pr-4 text-muted-foreground">Productos</td>
-                    {plans.filter(p => p.isActive).map(plan => (
-                      <td key={plan.id} className="text-center py-2.5 px-3 font-semibold">
-                        {plan.maxProducts === -1 ? '∞' : plan.maxProducts}
-                      </td>
-                    ))}
-                  </tr>
-                  {[
-                    { key: 'electronicInvoicing', label: 'Facturación Electrónica' },
-                    { key: 'multiStore', label: 'Multi-Tienda' },
-                    { key: 'reports', label: 'Reportes Avanzados' },
-                    { key: 'advancedInventory', label: 'Inventario Avanzado' },
-                    { key: 'api', label: 'Acceso API' },
-                    { key: 'customBranding', label: 'Branding Personalizado' },
-                    { key: 'multiCurrency', label: 'Multi-Moneda' },
-                  ].map(feature => (
-                    <tr key={feature.key} className="border-b border-border/50 last:border-0">
-                      <td className="py-2.5 pr-4 text-muted-foreground">{feature.label}</td>
-                      {plans.filter(p => p.isActive).map(plan => (
-                        <td key={plan.id} className="text-center py-2.5 px-3">
-                          {plan.features[feature.key] ? (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
-                          ) : (
-                            <span className="text-muted-foreground/40">—</span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PlanComparisonTable
+              plans={plans}
+              currentPlanName={subInfo?.planName}
+            />
           </CardContent>
         </Card>
       )}
@@ -452,51 +301,15 @@ export function SubscriptionPaymentPanel() {
       <SubscriptionHistoryPanel />
 
       {/* Cancel Subscription Dialog */}
-      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Cancelar Suscripción
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              ¿Estás seguro de que deseas cancelar tu suscripción? Esta acción es irreversible y perderás acceso a las funciones de tu plan actual al finalizar el período.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-2 space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="cancel-reason" className="text-sm font-semibold">
-                Motivo de cancelación <span className="text-destructive">*</span>
-              </Label>
-              <Textarea
-                id="cancel-reason"
-                placeholder="Cuéntanos por qué deseas cancelar (mínimo 5 caracteres)..."
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                rows={3}
-                className="text-sm"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Tu motivo nos ayuda a mejorar Ventify POS.
-              </p>
-            </div>
-          </div>
-          <AlertDialogFooter className="gap-2">
-            <AlertDialogCancel disabled={cancelling}>Volver</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => { e.preventDefault(); handleCancelSubscription() }}
-              disabled={cancelling || cancelReason.trim().length < 5}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              {cancelling ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Cancelando...</>
-              ) : (
-                'Sí, Cancelar Suscripción'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {store?.id && subInfo?.planName && (
+        <CancelSubscriptionDialog
+          open={showCancelDialog}
+          onOpenChange={setShowCancelDialog}
+          storeId={store.id}
+          currentPlanName={subInfo.planName}
+          onCancelled={handleCancelled}
+        />
+      )}
 
       {/* Plan Change Dialog */}
       <PlanChangeDialog
