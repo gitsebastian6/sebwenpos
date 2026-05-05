@@ -78,8 +78,8 @@ server.log
 # Examples (not needed in production)
 examples/
 
-# Mini services (separate deployment)
-mini-services/
+# Mini services — keep source for Docker builds, exclude node_modules
+mini-services/*/node_modules
 
 # Prisma migrations (handled at startup)
 prisma/migrations/
