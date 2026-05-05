@@ -99,6 +99,19 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
   // Show Wompi payment section only if demo is visible OR real Wompi is enabled
   const showWompiPayment = isWompiDemo ? demoVisible : wompiEnabled
 
+  // Track whether user manually edited the amount (to avoid overwriting)
+  const amountManuallyEditedRef = useRef(false)
+
+  // Auto-fill amount when plan/billing period changes (unless user edited it)
+  useEffect(() => {
+    if (!selectedPlanId || !selectedBillingPeriod) return
+    if (amountManuallyEditedRef.current) return
+    const plan = plans.find(p => p.id === selectedPlanId)
+    if (!plan) return
+    const { adjustedPrice } = getPlanPriceWithProration(plan)
+    setUploadAmount(String(adjustedPrice))
+  }, [selectedPlanId, selectedBillingPeriod, prorationInfo])
+
   // Track previous open state to reset on open
   const prevOpenRef = useRef(false)
   useEffect(() => {
@@ -107,6 +120,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
       setSelectedPlanId(null)
       setSelectedBillingPeriod('MONTHLY')
       setUploadAmount('')
+      amountManuallyEditedRef.current = false
       setUploadReference('')
       setUploadMethod('NEQUI')
       setUploadNotes('')
@@ -275,6 +289,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                           type="button"
                           onClick={() => {
                             setSelectedPlanId(plan.id)
+                            amountManuallyEditedRef.current = false
                             if (plan.price === 0) setSelectedBillingPeriod('TRIAL')
                           }}
                           className={`w-full text-left rounded-xl border-2 p-4 transition-all duration-200 group ${
@@ -430,7 +445,10 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                         <button
                           key={period.value}
                           type="button"
-                          onClick={() => setSelectedBillingPeriod(period.value)}
+                          onClick={() => {
+                            setSelectedBillingPeriod(period.value)
+                            amountManuallyEditedRef.current = false
+                          }}
                           className={`relative rounded-xl border-2 p-3.5 text-left transition-all duration-200 group ${
                             isSelected
                               ? 'border-primary bg-primary/[0.04] dark:bg-primary/[0.07] shadow-sm shadow-primary/10'
@@ -627,9 +645,12 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                       <Input
                         id="plan-amount"
                         type="number"
-                        placeholder="69900"
+                        placeholder={selectedPlanId ? '0' : '69900'}
                         value={uploadAmount}
-                        onChange={(e) => setUploadAmount(e.target.value)}
+                        onChange={(e) => {
+                          amountManuallyEditedRef.current = true
+                          setUploadAmount(e.target.value)
+                        }}
                         min={1}
                         required
                         className="h-9 rounded-lg"
