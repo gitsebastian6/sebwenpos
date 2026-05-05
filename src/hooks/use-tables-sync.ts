@@ -5,13 +5,29 @@
 // Connects to the tables-sync Socket.IO server and listens for events.
 // When an event is received, it invalidates the relevant TanStack Query caches
 // so all employees see changes instantly.
+//
+// Environments:
+// - Sandbox (with Caddy): Uses XTransformPort query param through the gateway
+// - Docker (direct): Connects directly to localhost:3005
 // ---------------------------------------------------------------------------
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useQueryClient } from '@tanstack/react-query'
 
+// NEXT_PUBLIC_TABLES_SYNC_URL is set in docker-compose for Docker environments
+// In sandbox, we use XTransformPort through the Caddy gateway
 const SYNC_PORT = 3005
+const SYNC_URL = process.env.NEXT_PUBLIC_TABLES_SYNC_URL || null
+
+function getSocketUrl(): string {
+  if (SYNC_URL) {
+    // Docker: direct connection (e.g. http://localhost:3005)
+    return SYNC_URL
+  }
+  // Sandbox: through Caddy gateway with XTransformPort
+  return '/?XTransformPort=' + SYNC_PORT
+}
 
 interface SyncEvent {
   _sync: boolean
@@ -35,7 +51,7 @@ export function useTablesSync(storeId: number | null | undefined) {
     if (!storeId) return
 
     // Create socket connection
-    const socket = io('/?XTransformPort=' + SYNC_PORT, {
+    const socket = io(getSocketUrl(), {
       transports: ['websocket', 'polling'],
       forceNew: true,
       reconnection: true,

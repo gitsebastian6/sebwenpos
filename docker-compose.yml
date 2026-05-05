@@ -60,6 +60,26 @@ services:
       DATABASE_URL: postgresql://ventifypos:${POSTGRES_PASSWORD:-ventifypos_secret_2025}@postgres:5432/ventifypos?schema=public
     command: ["node", "./node_modules/prisma/build/index.js", "db", "push", "--accept-data-loss"]
 
+  # ── Tables Real-Time Sync (Socket.IO) ───────────────────────────────────
+  # WebSocket server that syncs table/session/comanda changes across all
+  # connected employees in a store. The Next.js app sends HTTP broadcasts
+  # to port 3006, which are then forwarded to frontend clients via
+  # Socket.IO on port 3005.
+  tables-sync:
+    build:
+      context: .
+      dockerfile: mini-services/tables-sync/Dockerfile
+    container_name: ventifypos-tables-sync
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3006/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   # ── Next.js Application ────────────────────────────────────────────────
   app:
     build:
@@ -107,9 +127,14 @@ services:
       # Get your key at https://open.bigmodel.cn/ → add credits
       GLM_API_KEY: ${GLM_API_KEY:-}
       AI_MAX_CONTEXT_MESSAGES: ${AI_MAX_CONTEXT_MESSAGES:-20}
+      # ── Tables Real-Time Sync ──
+      TABLES_SYNC_URL: http://tables-sync:3006
+      NEXT_PUBLIC_TABLES_SYNC_URL: http://localhost:3005
     depends_on:
       migrate:
         condition: service_completed_successfully
+      tables-sync:
+        condition: service_healthy
     volumes:
       - uploads:/app/uploads
     healthcheck:
