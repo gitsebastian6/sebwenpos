@@ -176,7 +176,7 @@ export function SubscriptionPaymentPanel() {
       const fileData = await base64Promise
       await uploadReceiptMutation.mutateAsync({
         storeId: store.id,
-        data: {
+        body: {
           fileData: `data:${uploadFile.type};base64,${fileData}`,
           fileName: uploadFile.name,
           fileSize: uploadFile.size,
