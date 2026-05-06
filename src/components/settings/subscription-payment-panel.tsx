@@ -44,6 +44,7 @@ import {
 import { SubscriptionInfoCard } from '@/components/settings/subscription-info-card'
 import type { SubInfo } from '@/components/settings/subscription-info-card'
 import { ReceiptsHistoryCard } from '@/components/settings/receipts-history-card'
+import { BillingPayCard } from '@/components/settings/billing-pay-card'
 import { PlanChangeDialog } from '@/components/settings/plan-change-dialog'
 import { WompiCheckoutDialog } from '@/components/settings/wompi-checkout'
 import { WompiTransactionsCard } from '@/components/settings/wompi-transactions-card'
@@ -262,6 +263,40 @@ export function SubscriptionPaymentPanel() {
         isFetching={isFetchingSub}
         onRefresh={handleRefreshSubscription}
       />
+
+      {/* Billing Pay Card — invoice + payment actions (shown when subscription needs payment) */}
+      {subInfo && store?.id && needsPaymentCard(subInfo.status, subInfo.daysRemaining) && (
+        <BillingPayCard
+          storeId={store.id}
+          planName={subInfo.planName}
+          planPrice={subInfo.planPrice}
+          billingPeriod={subInfo.billingPeriod}
+          billingPrice={calculatePeriodPrice(subInfo.planPrice, subInfo.billingPeriod)}
+          status={subInfo.status}
+          daysRemaining={subInfo.daysRemaining}
+          endDate={subInfo.endDate ?? null}
+          hasPendingReceipt={hasPendingReceipt}
+          showWompiPayment={(() => {
+            const d = wompiHealth?.demoMode === true
+            return d ? wompiHealth?.demoVisible === true : wompiHealth?.wompiEnabled === true
+          })()}
+          isWompiDemo={wompiHealth?.demoMode === true}
+          onPayWithWompi={() => {
+            const currentPlan = plans.find(p => p.name === subInfo.planName)
+            setWompiCheckoutParams({
+              planId: currentPlan?.id || 0,
+              planName: subInfo.planName,
+              amount: calculatePeriodPrice(subInfo.planPrice, subInfo.billingPeriod),
+              billingPeriod: subInfo.billingPeriod || 'MONTHLY',
+            })
+            setShowWompiCheckout(true)
+          }}
+          onReceiptUploaded={() => {
+            qc.invalidateQueries({ queryKey: ['payment-receipts', store.id] })
+            qc.invalidateQueries({ queryKey: ['subscription-current', store.id] })
+          }}
+        />
+      )}
 
       {/* Payment Receipts History */}
       <ReceiptsHistoryCard
@@ -534,6 +569,21 @@ export function SubscriptionPaymentPanel() {
       )}
     </div>
   )
+}
+
+// ── Helper: calculate period total price with discount ──
+function calculatePeriodPrice(monthlyPrice: number, billingPeriod: string): number {
+  const months = billingPeriod === 'QUARTERLY' ? 3 : billingPeriod === 'SEMI_ANNUAL' ? 6 : billingPeriod === 'ANNUAL' ? 12 : 1
+  const discount = billingPeriod === 'QUARTERLY' ? 5 : billingPeriod === 'SEMI_ANNUAL' ? 10 : billingPeriod === 'ANNUAL' ? 15 : 0
+  return Math.round(monthlyPrice * months * (1 - discount / 100))
+}
+
+// ── Helper: determine if billing pay card should show ──
+function needsPaymentCard(status: string, daysRemaining: number | null): boolean {
+  if (status === 'TRIAL') return true
+  if (status === 'PAST_DUE' || status === 'EXPIRED') return true
+  if (status === 'ACTIVE' && daysRemaining !== null && daysRemaining <= 5) return true
+  return false
 }
 
 // ── Subscription History & Billing History Panel ──
