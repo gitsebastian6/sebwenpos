@@ -276,8 +276,10 @@ export async function POST(req: NextRequest) {
         const selectedPlan = await tx.plan.findFirst({ where: { id: data.planId } })
         if (!selectedPlan) throw new Error('PLAN_NOT_FOUND')
 
-        const billingPeriod = data.billingPeriod || 'MONTHLY'
-        const isTrial = selectedPlan.price === 0 || billingPeriod === 'TRIAL'
+        // CRITICAL: If the plan is free (Trial), ALWAYS force billingPeriod = 'TRIAL'
+        // This prevents assigning a Trial plan with MONTHLY billing (which would give 30 days instead of 7)
+        const isTrial = selectedPlan.price === 0
+        const billingPeriod = isTrial ? 'TRIAL' : (data.billingPeriod || 'MONTHLY')
 
         // Calculate end date based on billing period
         const periodDays: Record<string, number> = {

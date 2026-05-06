@@ -96,7 +96,10 @@ export async function PUT(
     // R-04 FIX: Preserve original startDate on reactivation (don't reset customer tenure)
     // EXCEPTION: When changing to TRIAL, always start from today to get correct 7-day countdown
     const isReactivation = existingSubscription?.status === 'CANCELLED' || existingSubscription?.status === 'EXPIRED'
-    const isTrialChange = data.billingPeriod === 'TRIAL'
+    // CRITICAL: If the selected plan is free (Trial), ALWAYS force billingPeriod to 'TRIAL'
+    // This prevents assigning a Trial plan with MONTHLY billing (which would give 30 days instead of 7)
+    const effectiveBillingPeriod = plan.price === 0 ? 'TRIAL' : data.billingPeriod
+    const isTrialChange = effectiveBillingPeriod === 'TRIAL'
     const startDate = (isReactivation && !isTrialChange && existingSubscription?.startDate) ? new Date(existingSubscription.startDate) : new Date()
 
     let endDate: Date | null = null
@@ -119,7 +122,7 @@ export async function PUT(
       }
     }
 
-    switch (data.billingPeriod) {
+    switch (effectiveBillingPeriod) {
       case 'TRIAL':
         endDate = addDays(startDate, 7)
         trialEndDate = endDate
@@ -153,7 +156,7 @@ export async function PUT(
     // When Super Admin changes a plan, automatically reactivate from EXPIRED/CANCELLED
     // IMPORTANT: If endDate is in the future, status MUST be ACTIVE/TRIAL, never EXPIRED/CANCELLED
     let newStatus: string
-    if (data.billingPeriod === 'TRIAL') {
+    if (effectiveBillingPeriod === 'TRIAL') {
       newStatus = 'TRIAL'
     } else if (isReactivation) {
       newStatus = 'ACTIVE'
@@ -176,7 +179,7 @@ export async function PUT(
         startDate,
         endDate,
         trialEndDate,
-        billingPeriod: data.billingPeriod,
+        billingPeriod: effectiveBillingPeriod,
         billingPrice,
         nextBillingAt,
         // Store proration info
@@ -191,7 +194,7 @@ export async function PUT(
         startDate,
         endDate,
         trialEndDate,
-        billingPeriod: data.billingPeriod,
+        billingPeriod: effectiveBillingPeriod,
         billingPrice,
         nextBillingAt,
         // Store proration info

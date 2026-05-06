@@ -65,7 +65,7 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
         const end = new Date(subscription.endDate)
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
         const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate())
-        return Math.ceil((endDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        return Math.floor((endDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
       })()
     : null
 

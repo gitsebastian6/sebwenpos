@@ -1,3 +1,5 @@
+import { TRIAL_PERIOD_DAYS } from '@/lib/subscription/constants'
+
 // ── Plan Utilities ────────────────────────────────────────────────────────────
 // Helper functions for plan management: durations, expiration checks, and
 // automatic date calculations when a store's plan changes.
@@ -11,7 +13,7 @@ export type PlanType = 'TRIAL' | 'PRO' | 'EMPRESARIAL'
 
 /** Duration in days for each plan type (null = never expires) */
 export const PLAN_DURATIONS: Record<PlanType, number | null> = {
-  TRIAL: 7,
+  TRIAL: TRIAL_PERIOD_DAYS,
   PRO: 30,
   EMPRESARIAL: null, // billed per period, never auto-expires
 }
