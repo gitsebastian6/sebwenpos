@@ -21,11 +21,23 @@ import {
   Wallet, CheckCircle2, XCircle, Download, Clock, Filter,
   Eye as EyeIcon, FileCheck2, CircleDollarSign,
   BadgeCheck, CalendarDays, Hash, FileText, AlertTriangle,
-  Building2, Search,
+  Building2, Search, Phone, ArrowRight, User,
 } from 'lucide-react'
 import { queryFetch } from '@/hooks/api/query-helpers'
 import { formatCOP, formatDateTime } from './helpers'
 import type { PaymentReceiptData } from '@/hooks/api/use-super-admin'
+
+// ── Parse plan change request from notes JSON ──
+function parsePlanChangeNotes(notes: string | null) {
+  if (!notes) return null
+  try {
+    const parsed = JSON.parse(notes)
+    if (parsed.planChangeRequest && parsed.requestedPlanName) {
+      return parsed as { planChangeRequest: boolean; requestedPlanId: number; requestedPlanName: string; requestedBillingPeriod: string; userNotes: string | null }
+    }
+  } catch { /* not JSON */ }
+  return null
+}
 import {
   useSuperAdminPaymentReceipts,
   useSuperAdminReceiptDetail,
@@ -233,11 +245,25 @@ export function PendingPaymentsView() {
                         {/* Store name + Amount row */}
                         <div className="flex items-center gap-2 flex-wrap">
                           {r.store && (
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <Building2 className="h-3 w-3" />
-                              <span className="font-medium">{r.store.name}</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <Building2 className="h-3 w-3" />
+                                <span className="font-medium">{r.store.name}</span>
+                              </div>
                               {r.store.user?.fullName && (
-                                <span className="text-muted-foreground/60">({r.store.user.fullName})</span>
+                                <span className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                                  <User className="h-2.5 w-2.5" />{r.store.user.fullName}
+                                </span>
+                              )}
+                              {r.store.user?.phone && (
+                                <a
+                                  href={`https://wa.me/57${r.store.user.phone.replace(/^0/, '')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline"
+                                >
+                                  <Phone className="h-2.5 w-2.5" />{r.store.user.phone}
+                                </a>
                               )}
                             </div>
                           )}
@@ -272,17 +298,33 @@ export function PendingPaymentsView() {
                               <Hash className="h-3 w-3" />Ref: {r.reference}
                             </span>
                           )}
-                          <span className="flex items-center gap-1">
-                            <FileText className="h-3 w-3" />{r.fileName}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            {(r.fileSize / 1024).toFixed(0)} KB
-                          </span>
+                          {r.fileName ? (
+                            <span className="flex items-center gap-1">
+                              <FileText className="h-3 w-3" />{r.fileName}
+                            </span>
+                          ) : r.status === 'PENDING' ? (
+                            <span className="flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">
+                              <AlertTriangle className="h-3 w-3" />Sin comprobante
+                            </span>
+                          ) : null}
+                          {r.fileSize > 0 && (
+                            <span className="flex items-center gap-1">
+                              {(r.fileSize / 1024).toFixed(0)} KB
+                            </span>
+                          )}
                           {r.subscription?.plan && (
                             <span className="flex items-center gap-1">
                               Plan: <span className="font-semibold">{r.subscription.plan.name}</span>
                             </span>
                           )}
+                          {(() => {
+                            const planChange = parsePlanChangeNotes(r.notes)
+                            return planChange ? (
+                              <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400">
+                                <ArrowRight className="h-3 w-3" />Cambio a {planChange.requestedPlanName}
+                              </span>
+                            ) : null
+                          })()}
                         </div>
                         {r.reviewNotes && (
                           <p className="text-xs text-muted-foreground">
@@ -352,7 +394,19 @@ export function PendingPaymentsView() {
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Tienda</p>
                     <p className="font-semibold text-sm">{previewReceipt.store?.name || '—'}</p>
                     {previewReceipt.store?.user?.fullName && (
-                      <p className="text-xs text-muted-foreground">{previewReceipt.store.user.fullName}</p>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                        <User className="h-3 w-3" />{previewReceipt.store.user.fullName}
+                      </div>
+                    )}
+                    {previewReceipt.store?.user?.phone && (
+                      <a
+                        href={`https://wa.me/57${previewReceipt.store.user.phone.replace(/^0/, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:underline mt-0.5"
+                      >
+                        <Phone className="h-3 w-3" />{previewReceipt.store.user.phone} (WhatsApp)
+                      </a>
                     )}
                   </div>
                   <div>
@@ -381,8 +435,41 @@ export function PendingPaymentsView() {
                   )}
                   {previewReceipt.notes && (
                     <div className="col-span-2">
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Notas del cliente</p>
-                      <p className="text-sm bg-muted/50 rounded px-2 py-1">{previewReceipt.notes}</p>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
+                        {parsePlanChangeNotes(previewReceipt.notes) ? 'Solicitud de cambio de plan' : 'Notas del cliente'}
+                      </p>
+                      {(() => {
+                        const planChange = parsePlanChangeNotes(previewReceipt.notes)
+                        if (planChange) {
+                          return (
+                            <div className="rounded-lg bg-violet-50 dark:bg-violet-500/5 border border-violet-200/60 dark:border-violet-800/30 p-2.5 mt-1">
+                              <div className="flex items-center gap-1.5">
+                                <ArrowRight className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                                <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">
+                                  Cambio a {planChange.requestedPlanName}
+                                </p>
+                              </div>
+                              {planChange.userNotes && (
+                                <p className="text-[11px] text-muted-foreground mt-1 italic">"{planChange.userNotes}"</p>
+                              )}
+                            </div>
+                          )
+                        }
+                        return <p className="text-sm bg-muted/50 rounded px-2 py-1">{previewReceipt.notes}</p>
+                      })()}
+                    </div>
+                  )}
+                  {!previewReceipt.fileName && previewReceipt.status === 'PENDING' && (
+                    <div className="col-span-2">
+                      <div className="rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200/60 dark:border-red-800/30 p-2.5 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                        <div>
+                          <p className="text-xs font-semibold text-red-700 dark:text-red-400">Sin comprobante de pago</p>
+                          <p className="text-[11px] text-red-600/70 dark:text-red-400/60 mt-0.5">
+                            El cliente envió la solicitud sin comprobante. Puedes contactarlo por WhatsApp para validar.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

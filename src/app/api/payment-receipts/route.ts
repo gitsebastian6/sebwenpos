@@ -146,10 +146,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No hay suscripción activa para esta tienda' }, { status: 404 })
     }
 
-    // ── Block: Trial subscriptions should NOT accept manual payments ──
-    // Trial is free. Owners should use "Cambiar Plan" to upgrade to a paid plan,
-    // which handles the payment flow correctly through the PlanChangeDialog.
-    if (subscription.status === 'TRIAL') {
+    // ── Block: Trial subscriptions should NOT accept plain receipt uploads ──
+    // However, plan change requests (requestedPlanId present) ARE allowed from Trial.
+    // The owner is requesting to upgrade to a paid plan — with or without receipt.
+    const isPlanChangeRequest = !!data.requestedPlanId
+    if (subscription.status === 'TRIAL' && !isPlanChangeRequest) {
       return NextResponse.json({
         error: 'No se puede subir un comprobante durante el periodo Trial (gratis). Para activar un plan de pago, usa la opción "Cambiar Plan".',
       }, { status: 400 })
