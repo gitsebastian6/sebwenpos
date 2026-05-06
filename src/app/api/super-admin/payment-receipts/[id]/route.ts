@@ -76,14 +76,6 @@ export async function PUT(
       const sub = receipt.subscription
       const now = new Date()
 
-      // ── Block: Trial subscriptions should NOT accept payments unless it's a plan change ──
-      // Trial is free. Payments only make sense when upgrading to a paid plan.
-      if (sub.plan?.price === 0 && !planChangeReq) {
-        return NextResponse.json({
-          error: 'No se puede aprobar un pago para un plan Trial (gratis). El usuario debe cambiar a un plan de pago.',
-        }, { status: 400 })
-      }
-
       // ── Detect plan change request from notes metadata ──
       let planChangeReq: {
         planChangeRequest: boolean
@@ -98,6 +90,14 @@ export async function PUT(
           planChangeReq = parsed
         }
       } catch { /* notes is not JSON or doesn't have plan change info */ }
+
+      // ── Block: Trial subscriptions should NOT accept payments unless it's a plan change ──
+      // Trial is free. Payments only make sense when upgrading to a paid plan.
+      if (sub.plan?.price === 0 && !planChangeReq) {
+        return NextResponse.json({
+          error: 'No se puede aprobar un pago para un plan Trial (gratis). El usuario debe cambiar a un plan de pago.',
+        }, { status: 400 })
+      }
 
       // ── Determine billing period and plan ──
       let effectivePlanId = sub.planId
