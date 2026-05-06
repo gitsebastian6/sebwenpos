@@ -136,6 +136,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No hay suscripción activa para esta tienda' }, { status: 404 })
     }
 
+    // ── Block: Trial subscriptions should NOT accept manual payments ──
+    // Trial is free. Owners should use "Cambiar Plan" to upgrade to a paid plan,
+    // which handles the payment flow correctly through the PlanChangeDialog.
+    if (subscription.status === 'TRIAL') {
+      return NextResponse.json({
+        error: 'No se puede subir un comprobante durante el periodo Trial (gratis). Para activar un plan de pago, usa la opción "Cambiar Plan".',
+      }, { status: 400 })
+    }
+
     // Check if there's already a PENDING receipt (prevent spam)
     const pendingReceipt = await db.paymentReceipt.findFirst({
       where: {

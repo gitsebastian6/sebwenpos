@@ -17,6 +17,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Loader2,
   FileText,
   Crown,
@@ -618,18 +625,19 @@ function PlanChangeInner({
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs font-medium">Método de pago</Label>
-                      <select
-                        value={uploadMethod}
-                        onChange={(e) => setUploadMethod(e.target.value)}
-                        className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        <option value="NEQUI">Nequi</option>
-                        <option value="DAVIPLATA">Daviplata</option>
-                        <option value="BANCOLOMBIA">Bancolombia</option>
-                        <option value="BANCARY">Bancario</option>
-                        <option value="EFFECTIVE">Efectivo</option>
-                        <option value="OTHER">Otro</option>
-                      </select>
+                      <Select value={uploadMethod} onValueChange={setUploadMethod}>
+                        <SelectTrigger className="h-9 w-full rounded-lg">
+                          <SelectValue placeholder="Seleccionar método" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="NEQUI">Nequi</SelectItem>
+                          <SelectItem value="DAVIPLATA">Daviplata</SelectItem>
+                          <SelectItem value="BANCOLOMBIA">Bancolombia</SelectItem>
+                          <SelectItem value="BANCARY">Bancario</SelectItem>
+                          <SelectItem value="EFFECTIVE">Efectivo</SelectItem>
+                          <SelectItem value="OTHER">Otro</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 

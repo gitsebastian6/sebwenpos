@@ -244,7 +244,10 @@ export function BillingPayCard({
   ])
 
   return (
-    <Card className="border-2 border-dashed border-amber-300 dark:border-amber-700 bg-gradient-to-br from-amber-50/50 to-orange-50/30 dark:from-amber-950/20 dark:to-orange-950/10 rounded-2xl overflow-hidden">
+    <Card className={billingPeriod === 'TRIAL'
+        ? 'border-2 border-amber-300 dark:border-amber-700 bg-gradient-to-br from-amber-50/50 to-orange-50/30 dark:from-amber-950/20 dark:to-orange-950/10 rounded-2xl overflow-hidden'
+        : 'border-2 border-dashed border-amber-300 dark:border-amber-700 bg-gradient-to-br from-amber-50/50 to-orange-50/30 dark:from-amber-950/20 dark:to-orange-950/10 rounded-2xl overflow-hidden'
+    }>
       {/* ── Pending receipt banner ── */}
       {hasPendingReceipt && (
         <div className="bg-amber-100 dark:bg-amber-900/40 border-b border-amber-200 dark:border-amber-800/60 px-6 py-3">
@@ -265,7 +268,9 @@ export function BillingPayCard({
               <Receipt className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <CardTitle className="text-lg">Factura Pendiente</CardTitle>
+              <CardTitle className="text-lg">
+                {billingPeriod === 'TRIAL' ? 'Período de Prueba' : 'Factura Pendiente'}
+              </CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {planName} &middot; {periodLabel}
                 {daysRemaining !== null && daysRemaining !== undefined && (
@@ -301,10 +306,15 @@ export function BillingPayCard({
             <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
               {status === 'TRIAL' ? (
-                <p className="text-sm font-medium text-foreground leading-relaxed">
-                  Paga hoy <span className="font-bold font-mono">{formatCOP(billingPrice)}</span> para activar tu plan{' '}
-                  <span className="font-semibold">{planName}</span> por <span className="font-semibold">{periodLabel}</span>
-                </p>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium text-foreground leading-relaxed">
+                    Estás en el plan <span className="font-semibold">{planName}</span> —{' '}
+                    <span className="text-amber-600 dark:text-amber-400">{daysRemaining ?? 0} día{daysRemaining !== 1 ? 's' : ''} restante{daysRemaining !== 1 ? 's' : ''}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Para continuar usando Ventify POS después del Trial, cambia a un plan de pago.
+                  </p>
+                </div>
               ) : status === 'CANCELLED' ? (
                 <p className="text-sm font-medium text-foreground leading-relaxed">
                   Reactiva tu plan <span className="font-semibold">{planName}</span> — paga{' '}
@@ -337,7 +347,8 @@ export function BillingPayCard({
           </div>
         </div>
 
-        {/* ── Summary table ── */}
+        {/* ── Summary table (hidden for Trial — no payment needed) ── */}
+        {billingPeriod !== 'TRIAL' && (
         <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
           <table className="w-full text-sm">
             <tbody>
@@ -392,9 +403,10 @@ export function BillingPayCard({
             </tbody>
           </table>
         </div>
+        )}
 
-        {/* ── Payment section ── */}
-        {!hasPendingReceipt && (
+        {/* ── Payment section (hidden for Trial — use Plan Change instead) ── */}
+        {!hasPendingReceipt && billingPeriod !== 'TRIAL' && (
           <div className="space-y-4">
             {/* Wompi button or "Próximamente" */}
             {showWompiPayment ? (

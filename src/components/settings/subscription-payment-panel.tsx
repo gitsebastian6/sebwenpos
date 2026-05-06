@@ -10,6 +10,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -492,18 +499,19 @@ export function SubscriptionPaymentPanel() {
               {/* Payment Method */}
               <div className="space-y-2">
                 <Label className="text-sm">Método de pago</Label>
-                <select
-                  value={uploadMethod}
-                  onChange={(e) => setUploadMethod(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <option value="NEQUI">Nequi</option>
-                  <option value="DAVIPLATA">Davivienda (Daviplata)</option>
-                  <option value="BANCOLOMBIA">Bancolombia</option>
-                  <option value="BANCARY">Bancario</option>
-                  <option value="EFFECTIVE">Efectivo</option>
-                  <option value="OTHER">Otro</option>
-                </select>
+                <Select value={uploadMethod} onValueChange={setUploadMethod}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Seleccionar método" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NEQUI">Nequi</SelectItem>
+                    <SelectItem value="DAVIPLATA">Davivienda (Daviplata)</SelectItem>
+                    <SelectItem value="BANCOLOMBIA">Bancolombia</SelectItem>
+                    <SelectItem value="BANCARY">Bancario</SelectItem>
+                    <SelectItem value="EFFECTIVE">Efectivo</SelectItem>
+                    <SelectItem value="OTHER">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Reference */}
