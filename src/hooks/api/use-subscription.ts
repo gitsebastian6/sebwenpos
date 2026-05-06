@@ -56,10 +56,14 @@ export interface SubscriptionHistoryItem {
 
 export interface BillingRecord {
   id: number
+  invoiceNumber: string
   planName: string
   billingPeriod: string
+  amount: number
   amountFormatted: string
+  prorationCredit: number
   prorationCreditFormatted: string | null
+  netAmount: number
   netAmountFormatted: string
   status: string
   statusLabel: string
@@ -73,8 +77,11 @@ export interface BillingRecord {
 export interface BillingHistory {
   items: BillingRecord[]
   summary: {
+    totalBilled: number
     totalBilledFormatted: string
+    totalPaid: number
     totalPaidFormatted: string
+    totalCredits: number
     totalCreditsFormatted: string
     recordCount: number
   }

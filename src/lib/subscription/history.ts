@@ -43,6 +43,7 @@ export async function logSubscriptionHistory(params: {
 
 /**
  * Create a billing record for a subscription payment/extension.
+ * Generates an auto-incremental invoice number (VF-0001, VF-0002, ...).
  */
 export async function createBillingRecord(params: {
   storeId: number
@@ -59,8 +60,17 @@ export async function createBillingRecord(params: {
   periodEnd: Date
   notes?: string | null
 }) {
+  // Generate invoice number: VF-XXXX (4-digit padded sequential)
+  const lastRecord = await db.billingRecord.findFirst({
+    orderBy: { id: 'desc' },
+    select: { id: true },
+  })
+  const nextNum = (lastRecord?.id ?? 0) + 1
+  const invoiceNumber = `VF-${String(nextNum).padStart(4, '0')}`
+
   return db.billingRecord.create({
     data: {
+      invoiceNumber,
       storeId: params.storeId,
       subscriptionId: params.subscriptionId,
       receiptId: params.receiptId ?? null,

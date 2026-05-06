@@ -23,12 +23,9 @@ import {
   FileText,
   Plus,
   Crown,
-  ArrowRight,
   CheckCircle2,
   Send,
   AlertTriangle,
-  BadgeCheck,
-  Clock,
   CreditCard,
   Beaker,
 } from 'lucide-react'
@@ -37,7 +34,6 @@ import {
   useSubscriptionCurrent,
   usePaymentReceipts,
   useSubscriptionPlans,
-  useSubscriptionHistory,
   useBillingHistory,
   useUploadPaymentReceipt,
 } from '@/hooks/api/use-settings'
@@ -45,6 +41,7 @@ import { SubscriptionInfoCard } from '@/components/settings/subscription-info-ca
 import type { SubInfo } from '@/components/settings/subscription-info-card'
 import { ReceiptsHistoryCard } from '@/components/settings/receipts-history-card'
 import { BillingPayCard } from '@/components/settings/billing-pay-card'
+import { InvoiceHistoryCard } from '@/components/settings/invoice-history-card'
 import { PlanChangeDialog } from '@/components/settings/plan-change-dialog'
 import { WompiCheckoutDialog } from '@/components/settings/wompi-checkout'
 import { WompiTransactionsCard } from '@/components/settings/wompi-transactions-card'
@@ -330,8 +327,10 @@ export function SubscriptionPaymentPanel() {
         </Card>
       )}
 
-      {/* Subscription History + Billing History */}
-      <SubscriptionHistoryPanel />
+      {/* Invoice History (Facturas) */}
+      {store?.id && (
+        <InvoiceHistoryCardWrapper storeId={store.id} />
+      )}
 
       {/* Cancel Subscription Dialog */}
       {store?.id && subInfo?.planName && (
@@ -586,172 +585,14 @@ function needsPaymentCard(status: string, daysRemaining: number | null): boolean
   return false
 }
 
-// ── Subscription History & Billing History Panel ──
-function SubscriptionHistoryPanel() {
-  const { store } = useAuthStore()
-  const [activeTab, setActiveTab] = useState<'history' | 'billing'>('history')
-
-  const { data: historyData, isLoading: historyLoading } = useSubscriptionHistory(store?.id)
-  const { data: billingData } = useBillingHistory(store?.id)
-
-  const history = Array.isArray(historyData) ? historyData : []
-  const billing = billingData ?? null
-
-  if (historyLoading) {
-    return (
-      <Card className="border-border/50 rounded-xl">
-        <CardContent className="py-8 text-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mx-auto" />
-        </CardContent>
-      </Card>
-    )
-  }
-
-  const hasHistory = history.length > 0
-  const hasBilling = billing && billing.items.length > 0
-
-  if (!hasHistory && !hasBilling) {
-    return (
-      <Card className="border-border/50 rounded-xl">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileText className="h-4 w-4 text-primary" />
-            Historial de Suscripción
-          </CardTitle>
-          <CardDescription>No hay registros de actividad aún</CardDescription>
-        </CardHeader>
-      </Card>
-    )
-  }
-
+// ── Invoice History Wrapper ──
+function InvoiceHistoryCardWrapper({ storeId }: { storeId: number }) {
+  const { data: billingData, isLoading } = useBillingHistory(storeId)
   return (
-    <Card className="border-border/50 hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" />
-              Historial de Suscripción
-            </CardTitle>
-            <CardDescription className="mt-1">Cambios de plan, renovaciones y facturación</CardDescription>
-          </div>
-          <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                activeTab === 'history' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Actividad ({history.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('billing')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                activeTab === 'billing' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Facturación {billing ? `(${billing.items.length})` : '(0)'}
-            </button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {activeTab === 'history' && (
-          history.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-6">No hay registros de actividad</p>
-          ) : (
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {history.map(item => {
-                const isPlanChange = item.eventType === 'PLAN_CHANGED' || item.eventType === 'REACTIVATED'
-                const isNegative = item.eventType === 'CANCELLED' || item.eventType === 'EXPIRED'
-                return (
-                  <div key={item.id} className={`flex items-start gap-3 p-3 rounded-lg border ${
-                    isNegative ? 'border-red-200 dark:border-red-800/40 bg-red-50/30 dark:bg-red-950/10'
-                    : isPlanChange ? 'border-violet-200 dark:border-violet-800/40 bg-violet-50/30 dark:bg-violet-950/10'
-                    : 'border-border/50 bg-muted/10'
-                  }`}>
-                    <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                      isNegative ? 'bg-red-100 dark:bg-red-500/15'
-                      : isPlanChange ? 'bg-violet-100 dark:bg-violet-500/15'
-                      : 'bg-emerald-100 dark:bg-emerald-500/15'
-                    }`}>
-                      {isNegative ? <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-                       : isPlanChange ? <ArrowRight className="h-3.5 w-3.5 text-violet-500" />
-                       : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold">{item.eventLabel}</p>
-                        <p className="text-[10px] text-muted-foreground shrink-0">
-                          {new Date(item.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                      {item.description && (
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{item.description}</p>
-                      )}
-                      {item.previousPlanName && item.newPlanName && item.previousPlanName !== item.newPlanName && (
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{item.previousPlanName}</Badge>
-                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{item.newPlanName}</Badge>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )
-        )}
-
-        {activeTab === 'billing' && (
-          !billing || billing.items.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-6">No hay registros de facturación</p>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-                  <div className="text-[10px] text-muted-foreground mb-1">Total Facturado</div>
-                  <p className="text-sm font-bold font-mono">{billing.summary.totalBilledFormatted}</p>
-                </div>
-                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-                  <div className="text-[10px] text-muted-foreground mb-1">Total Pagado</div>
-                  <p className="text-sm font-bold font-mono text-emerald-600 dark:text-emerald-400">{billing.summary.totalPaidFormatted}</p>
-                </div>
-                <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
-                  <div className="text-[10px] text-muted-foreground mb-1">Créditos Aplicados</div>
-                  <p className="text-sm font-bold font-mono">{billing.summary.totalCreditsFormatted}</p>
-                </div>
-              </div>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {billing.items.map(item => (
-                  <div key={item.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${
-                        item.status === 'PAID' ? 'bg-emerald-100 dark:bg-emerald-500/15' : 'bg-amber-100 dark:bg-amber-500/15'
-                      }`}>
-                        {item.status === 'PAID' ? <BadgeCheck className="h-3.5 w-3.5 text-emerald-500" /> : <Clock className="h-3.5 w-3.5 text-amber-500" />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold">{item.planName} — {item.billingPeriod}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {new Date(item.periodStart).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })} → {new Date(item.periodEnd).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xs font-bold font-mono">{item.netAmountFormatted}</p>
-                      {item.prorationCreditFormatted && (
-                        <p className="text-[10px] text-emerald-600 dark:text-emerald-400">{item.prorationCreditFormatted}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )
-        )}
-      </CardContent>
-    </Card>
+    <InvoiceHistoryCard
+      items={billingData?.items ?? []}
+      summary={billingData?.summary ?? null}
+      isLoading={isLoading}
+    />
   )
 }
