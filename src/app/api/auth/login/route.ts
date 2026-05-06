@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
         path: '/',
-        maxAge: 24 * 60 * 60, // 24 hours — matches token expiry
+        maxAge: 8 * 60 * 60, // 8 hours — matches token expiry
       })
       return response
     }
@@ -248,7 +248,7 @@ export async function POST(req: NextRequest) {
               secure: process.env.NODE_ENV === 'production',
               sameSite: 'strict',
               path: '/',
-              maxAge: 24 * 60 * 60,
+              maxAge: 8 * 60 * 60,
             })
             return trialResponse
           }
@@ -317,7 +317,7 @@ export async function POST(req: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       path: '/',
-      maxAge: 24 * 60 * 60,
+      maxAge: 8 * 60 * 60,
     })
     return response
   } catch (error: unknown) {

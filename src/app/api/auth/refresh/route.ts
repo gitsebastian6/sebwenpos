@@ -6,8 +6,8 @@ import { setSubscriptionStatus } from '@/lib/subscription-cache'
 
 export const dynamic = 'force-dynamic'
 
-// Grace period: accept tokens expired up to 1 hour ago for refresh
-const REFRESH_GRACE_MS = 1 * 60 * 60 * 1000
+// Grace period: accept tokens expired up to 30 minutes ago for refresh
+const REFRESH_GRACE_MS = 30 * 60 * 1000
 
 interface RefreshResponse {
   token: string
@@ -17,7 +17,7 @@ interface RefreshResponse {
   forceLogout?: boolean
 }
 
-// Refresh endpoint — extends token expiry by 24h
+// Refresh endpoint — extends token expiry by 8h
 // Also checks subscription status to catch mid-session expirations
 export async function POST(request: NextRequest): Promise<NextResponse<RefreshResponse>> {
   try {
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<RefreshRe
       return NextResponse.json({ error: 'Token requerido', token: '', expiresIn: 0 }, { status: 401 })
     }
 
-    // Verify token with grace period (will fail if expired beyond 1 hour)
+    // Verify token with grace period (will fail if expired beyond 30 min)
     const payload = await verifyToken(token, REFRESH_GRACE_MS)
     if (!payload) {
       return NextResponse.json({ error: 'Token inválido o expirado', token: '', expiresIn: 0 }, { status: 401 })

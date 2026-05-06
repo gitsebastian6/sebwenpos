@@ -300,6 +300,7 @@ export function CreateStoreDialog({ open, onOpenChange, plans, onSuccess }: Crea
       setSelectedBillingPeriod('MONTHLY')
       setCreateReceiptFile(null)
       setCreateReceiptForm({ amount: '', paymentMethod: 'NEQUI', reference: '', notes: '' })
+      onOpenChange(false)
       onSuccess()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error de conexión')

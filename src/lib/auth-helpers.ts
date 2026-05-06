@@ -13,7 +13,7 @@ import { requireEnv } from '@/lib/env'
 // ---------------------------------------------------------------------------
 
 const TOKEN_VERSION = 'v1'
-const DEFAULT_EXPIRY_MS = 24 * 60 * 60 * 1000 // 24 hours
+const DEFAULT_EXPIRY_MS = 8 * 60 * 60 * 1000 // 8 hours (POS sessions should not persist for days)
 
 // Derive a deterministic HMAC key from the AUTH_SECRET env var
 let _hmacKeyPromise: Promise<CryptoKey> | null = null

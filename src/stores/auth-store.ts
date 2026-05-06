@@ -70,6 +70,7 @@ interface AuthState {
   user: AuthUser | null
   store: StoreInfo | null
   token: string | null
+  tokenIssuedAt: number | null
   csrfToken: string | null
   permissions: Record<string, boolean>
   isSuperAdmin: boolean
@@ -145,6 +146,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       store: null,
       token: null,
+      tokenIssuedAt: null,
       csrfToken: null,
       permissions: {},
       isSuperAdmin: false,
@@ -155,7 +157,7 @@ export const useAuthStore = create<AuthState>()(
 
       login: (user, store, token, permissions, isSuperAdmin = false, subscription = null, availableStores = null, csrfToken = null) =>
         set({
-          user, store, token, csrfToken,
+          user, store, token, tokenIssuedAt: Date.now(), csrfToken,
           permissions: permissions || DEFAULT_PERMISSIONS,
           isSuperAdmin,
           isAuthenticated: true, isLoading: false,
@@ -177,7 +179,7 @@ export const useAuthStore = create<AuthState>()(
         }
 
         set({
-          user: null, store: null, token: null, csrfToken: null,
+          user: null, store: null, token: null, tokenIssuedAt: null, csrfToken: null,
           permissions: {}, isSuperAdmin: false,
           isAuthenticated: false, isLoading: false,
           subscription: null,
@@ -216,6 +218,7 @@ export const useAuthStore = create<AuthState>()(
             set({
               store: data.store,
               token: data.token,
+              tokenIssuedAt: Date.now(),
               permissions: data.permissions || DEFAULT_PERMISSIONS,
               subscription: data.subscription || null,
               availableStores: data.availableStores || get().availableStores,
@@ -272,6 +275,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         store: state.store,
         token: state.token,
+        tokenIssuedAt: state.tokenIssuedAt,
         csrfToken: state.csrfToken,
         permissions: state.permissions,
         isSuperAdmin: state.isSuperAdmin,

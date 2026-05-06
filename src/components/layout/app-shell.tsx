@@ -127,6 +127,7 @@ export function AppShell() {
   // ── Periodically sync subscription data from API to auth store ──
   // This keeps the sidebar badge, top banner, and SubscriptionGate up to date
   // even when the user is NOT on the settings page.
+  // Syncs every 5 minutes — subscription status rarely changes more frequently.
   useEffect(() => {
     if (!store?.id) return
 
@@ -160,9 +161,9 @@ export function AppShell() {
       }
     }
 
-    // Sync immediately on mount, then every 60s
+    // Sync immediately on mount, then every 5 minutes
     syncSubscription()
-    intervalId = setInterval(syncSubscription, 60_000)
+    intervalId = setInterval(syncSubscription, 5 * 60_000)
 
     return () => {
       if (intervalId) clearInterval(intervalId)
