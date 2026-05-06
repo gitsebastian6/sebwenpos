@@ -31,12 +31,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
 
+# Copy migration script
+COPY scripts/docker-migrate.sh /app/docker-migrate.sh
+RUN sed -i 's/\r$//' /app/docker-migrate.sh && chmod +x /app/docker-migrate.sh
+
 # ── Switch Prisma provider from SQLite to PostgreSQL ──
 # Local dev uses SQLite, Docker/production uses PostgreSQL
 RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
 
 # Install ALL dependencies (needed for build step)
 RUN npm ci
+
+# Ensure Prisma engine binaries have execute permissions
+RUN chmod +x /app/node_modules/@prisma/engines/schema-engine-* 2>/dev/null || true
 
 # Generate Prisma client with PostgreSQL provider
 RUN npx prisma generate
