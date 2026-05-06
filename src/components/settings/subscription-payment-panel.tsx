@@ -308,6 +308,11 @@ export function SubscriptionPaymentPanel() {
         onUpload={() => { resetUploadForm(); setShowUploadDialog(true) }}
         canUpload={!!subInfo && isOwner}
         hasPendingReceipt={hasPendingReceipt}
+        storeId={store?.id}
+        onReceiptUpdated={() => {
+          qc.invalidateQueries({ queryKey: ['payment-receipts', store?.id] })
+          qc.invalidateQueries({ queryKey: ['subscription-current', store?.id] })
+        }}
       />
 
       {/* Wompi Transaction History */}
@@ -586,8 +591,10 @@ function calculatePeriodPrice(monthlyPrice: number, billingPeriod: string): numb
 }
 
 // ── Helper: determine if billing pay card should show ──
+// Trial is FREE — never show the billing/pay card for Trial.
+// Only show for paid plans that need renewal (past_due, expired, cancelled, or active with ≤5 days).
 function needsPaymentCard(status: string, daysRemaining: number | null): boolean {
-  if (status === 'TRIAL') return true
+  if (status === 'TRIAL') return false
   if (status === 'PAST_DUE' || status === 'EXPIRED' || status === 'CANCELLED') return true
   if (status === 'ACTIVE' && daysRemaining !== null && daysRemaining <= 5) return true
   return false

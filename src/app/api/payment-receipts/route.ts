@@ -21,10 +21,11 @@ const ALLOWED_TYPES = [
 const paymentMethods = ['NEQUI', 'DAVIPLATA', 'BANCOLOMBIA', 'BANCARY', 'EFFECTIVE', 'OTHER'] as const
 
 const uploadSchema = z.object({
-  fileData: z.string().min(1, 'El archivo es obligatorio'),
-  fileName: z.string().min(1, 'El nombre del archivo es obligatorio').max(255),
-  fileSize: z.number().int().positive('El tamaño del archivo debe ser positivo'),
-  fileType: z.string().min(1),
+  // File fields are optional when it's a plan change request (receipt can be added later)
+  fileData: z.string().min(1).optional(),
+  fileName: z.string().min(1).max(255).optional(),
+  fileSize: z.number().int().positive().optional(),
+  fileType: z.string().min(1).optional(),
   amount: z.number().int().positive('El monto debe ser mayor a 0'),
   reference: z.string().max(100).optional().or(z.literal('')),
   paymentMethod: z.enum(paymentMethods),
@@ -95,36 +96,45 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = uploadSchema.parse(body)
 
-    // Validate file type
-    if (!ALLOWED_TYPES.includes(data.fileType)) {
-      return NextResponse.json({
-        error: `Tipo de archivo no permitido. Formatos aceptados: PNG, JPG, WebP, HEIC, PDF`,
-      }, { status: 400 })
+    // ── Validate file (required unless it's a plan change request without receipt) ──
+    const isPlanChangeWithoutFile = !!data.requestedPlanId && !data.fileData
+    if (!isPlanChangeWithoutFile) {
+      if (!data.fileData || !data.fileName || !data.fileType || !data.fileSize) {
+        return NextResponse.json({
+          error: 'El archivo de comprobante es obligatorio. Sube un comprobante de pago.',
+        }, { status: 400 })
+      }
+
+      if (!ALLOWED_TYPES.includes(data.fileType)) {
+        return NextResponse.json({
+          error: `Tipo de archivo no permitido. Formatos aceptados: PNG, JPG, WebP, HEIC, PDF`,
+        }, { status: 400 })
+      }
+
+      if (data.fileSize > MAX_FILE_SIZE) {
+        return NextResponse.json({
+          error: `El archivo excede el tamaño máximo de 5MB`,
+        }, { status: 400 })
+      }
     }
 
-    // Validate file size
-    if (data.fileSize > MAX_FILE_SIZE) {
-      return NextResponse.json({
-        error: `El archivo excede el tamaño máximo de 5MB`,
-      }, { status: 400 })
-    }
+    // Validate base64 data (only if file was provided)
+    let rawBase64: string | null = null
+    if (data.fileData) {
+      const base64Match = data.fileData.match(/^data:[^;]+;base64,(.+)$/)
+      rawBase64 = base64Match ? base64Match[1] : data.fileData
 
-    // Validate base64 data
-    const base64Match = data.fileData.match(/^data:[^;]+;base64,(.+)$/)
-    const rawBase64 = base64Match ? base64Match[1] : data.fileData
-
-    // Verify base64 is valid by checking length
-    try {
-      const decodedLength = Buffer.byteLength(rawBase64, 'base64')
-      if (decodedLength === 0) {
-        return NextResponse.json({ error: 'Archivo vacío o inválido' }, { status: 400 })
+      try {
+        const decodedLength = Buffer.byteLength(rawBase64, 'base64')
+        if (decodedLength === 0) {
+          return NextResponse.json({ error: 'Archivo vacío o inválido' }, { status: 400 })
+        }
+        if (data.fileSize && data.fileSize > 0 && decodedLength > data.fileSize * 3) {
+          return NextResponse.json({ error: 'El tamaño del archivo no coincide' }, { status: 400 })
+        }
+      } catch {
+        return NextResponse.json({ error: 'Archivo inválido' }, { status: 400 })
       }
-      // Check if decoded size roughly matches reported size (allow 20% margin for base64 encoding differences)
-      if (data.fileSize > 0 && decodedLength > data.fileSize * 3) {
-        return NextResponse.json({ error: 'El tamaño del archivo no coincide' }, { status: 400 })
-      }
-    } catch {
-      return NextResponse.json({ error: 'Archivo inválido' }, { status: 400 })
     }
 
     // Find the subscription for this store
@@ -159,17 +169,19 @@ export async function POST(req: NextRequest) {
       }, { status: 409 })
     }
 
-    // Save file to disk instead of DB
+    // Save file to disk (only if file was provided)
     let filePath: string | null = null
-    try {
-      filePath = await saveReceiptFile({
-        base64Data: rawBase64,
-        fileName: data.fileName,
-        fileType: data.fileType,
-      })
-    } catch (fsError) {
-      logger.error('[payment-receipts] Failed to save file to disk, storing in DB as fallback:', fsError)
-      // Fallback: store base64 in DB if disk save fails
+    if (rawBase64 && data.fileName && data.fileType) {
+      try {
+        filePath = await saveReceiptFile({
+          base64Data: rawBase64,
+          fileName: data.fileName,
+          fileType: data.fileType,
+        })
+      } catch (fsError) {
+        logger.error('[payment-receipts] Failed to save file to disk, storing in DB as fallback:', fsError)
+        // Fallback: store base64 in DB if disk save fails
+      }
     }
 
     // Build notes with plan change metadata if provided
@@ -190,9 +202,9 @@ export async function POST(req: NextRequest) {
       data: {
         subscriptionId: subscription.id,
         storeId: parseInt(storeId, 10),
-        fileName: data.fileName,
-        fileSize: data.fileSize,
-        fileType: data.fileType,
+        fileName: data.fileName || null,
+        fileSize: data.fileSize || null,
+        fileType: data.fileType || null,
         filePath: filePath,
         fileData: filePath ? null : rawBase64, // Only store base64 if disk save failed
         amount: data.amount,
