@@ -19,10 +19,8 @@ import {
 import {
   Loader2,
   FileText,
-  Percent,
   Crown,
   CheckCircle2,
-
   AlertTriangle,
   Send,
   CreditCard,
@@ -31,13 +29,12 @@ import {
   Sparkles,
   Check,
   Upload,
-  ArrowRight,
   X,
   MessageCircle,
   Beaker,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/format'
-import { useSubscriptionProration, useUploadPaymentReceipt } from '@/hooks/api/use-settings'
+import { useUploadPaymentReceipt } from '@/hooks/api/use-settings'
 import type { PlanOption } from '@/components/settings/subscription-payment-panel'
 import { BILLING_PERIODS } from '@/components/settings/subscription-payment-panel'
 import { WompiCheckoutDialog } from '@/components/settings/wompi-checkout'
@@ -53,10 +50,8 @@ interface PlanChangeDialogProps {
 }
 
 // Determine step based on user progress (2 steps: plan+period, then payment+proof)
-function getActiveStep(selectedPlanId: number | null, uploadFile: File | null) {
-  if (!selectedPlanId) return 1
-  if (!uploadFile) return 2
-  return 2
+function getActiveStep(selectedPlanId: number | null) {
+  return selectedPlanId ? 2 : 1
 }
 
 // Plan icon mapping based on plan index
@@ -137,34 +132,27 @@ function PlanChangeInner({
   const [amountManuallyEdited, setAmountManuallyEdited] = useState(false)
 
   // ── TanStack Query hooks ──
-  const { data: prorationInfo, isLoading: loadingProration } = useSubscriptionProration(storeId, selectedPlanId)
   const uploadMutation = useUploadPaymentReceipt()
   const uploading = uploadMutation.isPending
 
-  // ── Plan price with proration adjustment ──
-  function getPlanPriceWithProration(plan: PlanOption) {
-    const period = BILLING_PERIODS.find(p => p.value === selectedBillingPeriod)
+  // ── Plan price calculation (no credit/proration) ──
+  function getPlanPrice(plan: PlanOption, periodValue?: string) {
+    const pv = periodValue || selectedBillingPeriod
+    const period = BILLING_PERIODS.find(p => p.value === pv)
     const discount = period?.discount || 0
-    const months = selectedBillingPeriod === 'MONTHLY' ? 1 : selectedBillingPeriod === 'QUARTERLY' ? 3 : selectedBillingPeriod === 'SEMI_ANNUAL' ? 6 : 12
+    const months = pv === 'MONTHLY' ? 1 : pv === 'QUARTERLY' ? 3 : pv === 'SEMI_ANNUAL' ? 6 : 12
     const fullPrice = plan.price * months
-    const discountedPrice = Math.round(fullPrice * (1 - discount / 100)) // Match calculateBillingPrice exactly
-    const credit = prorationInfo?.proration?.creditAmount || 0
-    return {
-      fullPrice,
-      discountedPrice,
-      adjustedPrice: Math.max(0, discountedPrice - credit),
-      credit,
-      discount,
-    }
+    const discountedPrice = Math.round(fullPrice * (1 - discount / 100))
+    return { fullPrice, discountedPrice, discount }
   }
 
-  // Compute auto-filled amount from plan + period (React Compiler auto-memoizes)
+  // Compute auto-filled amount from plan + period
   const autoFilledAmount = (() => {
     if (!selectedPlanId || !selectedBillingPeriod) return ''
     const plan = plans.find(p => p.id === selectedPlanId)
     if (!plan) return ''
-    const { adjustedPrice } = getPlanPriceWithProration(plan)
-    return String(adjustedPrice)
+    const { discountedPrice } = getPlanPrice(plan)
+    return String(discountedPrice)
   })()
 
   // The displayed amount: auto-filled unless user manually edited
@@ -172,8 +160,8 @@ function PlanChangeInner({
 
   async function handlePlanChange(e: React.FormEvent) {
     e.preventDefault()
-    if (!storeId || !uploadFile || !selectedPlanId) {
-      toast.error('Selecciona un plan y un comprobante')
+    if (!storeId || !selectedPlanId) {
+      toast.error('Selecciona un plan')
       return
     }
     const amount = parseInt(displayAmount)
@@ -182,35 +170,41 @@ function PlanChangeInner({
       return
     }
     try {
-      const reader = new FileReader()
-      const base64Promise = new Promise<string>((resolve) => {
-        reader.onload = () => {
-          const result = reader.result as string
-          const base64 = result.split(',')[1]
-          resolve(base64)
-        }
-        reader.readAsDataURL(uploadFile)
-      })
-      const fileData = await base64Promise
       const plan = plans.find(p => p.id === selectedPlanId)
-      await uploadMutation.mutateAsync({
-        storeId,
-        body: {
-          fileData: `data:${uploadFile.type};base64,${fileData}`,
-          fileName: uploadFile.name,
-          fileSize: uploadFile.size,
-          fileType: uploadFile.type,
-          amount,
-          reference: uploadReference || undefined,
-          paymentMethod: uploadMethod,
-          notes: uploadNotes || undefined,
-          // Plan change metadata
-          requestedPlanId: selectedPlanId,
-          requestedPlanName: plan?.name,
-          requestedBillingPeriod: selectedBillingPeriod,
-        },
-      })
-      toast.success(`Solicitud de cambio a ${plan?.name} enviada. El administrador revisará tu comprobante.`)
+      const body: Record<string, unknown> = {
+        amount,
+        reference: uploadReference || undefined,
+        paymentMethod: uploadMethod,
+        notes: uploadNotes || undefined,
+        // Plan change metadata
+        requestedPlanId: selectedPlanId,
+        requestedPlanName: plan?.name,
+        requestedBillingPeriod: selectedBillingPeriod,
+      }
+
+      // File is optional — only attach if user uploaded one
+      if (uploadFile) {
+        const reader = new FileReader()
+        const base64Promise = new Promise<string>((resolve) => {
+          reader.onload = () => {
+            const result = reader.result as string
+            const base64 = result.split(',')[1]
+            resolve(base64)
+          }
+          reader.readAsDataURL(uploadFile)
+        })
+        const fileData = await base64Promise
+        body.fileData = `data:${uploadFile.type};base64,${fileData}`
+        body.fileName = uploadFile.name
+        body.fileSize = uploadFile.size
+        body.fileType = uploadFile.type
+      }
+
+      await uploadMutation.mutateAsync({ storeId, body })
+      toast.success(uploadFile
+        ? `Solicitud de cambio a ${plan?.name} enviada con comprobante. El administrador revisará tu pago.`
+        : `Solicitud de cambio a ${plan?.name} enviada. Puedes subir el comprobante después.`
+      )
       onClose()
       onPlanChanged()
     } catch (err) {
@@ -218,7 +212,7 @@ function PlanChangeInner({
     }
   }
 
-  const activeStep = getActiveStep(selectedPlanId, uploadFile)
+  const activeStep = getActiveStep(selectedPlanId)
 
   // Filter active paid plans
   const activePlans = plans.filter(p => p.isActive && p.price > 0)
@@ -275,7 +269,7 @@ function PlanChangeInner({
                 <div className="grid gap-3">
                   {activePlans.map((plan, planIndex) => {
                     const isSelected = selectedPlanId === plan.id
-                    const { fullPrice, discountedPrice, discount, credit, adjustedPrice } = selectedPlanId === plan.id ? getPlanPriceWithProration(plan) : { fullPrice: 0, discountedPrice: 0, discount: 0, credit: 0, adjustedPrice: 0 }
+                    const { fullPrice, discountedPrice, discount } = selectedPlanId === plan.id ? getPlanPrice(plan) : { fullPrice: 0, discountedPrice: 0, discount: 0 }
                     const isCurrentPlan = currentPlanName === plan.name
                     const { icon: PlanIcon, color: iconColor, bg: iconBg } = getPlanIcon(planIndex)
                     // Mark the middle plan as "popular" if there are 3+
@@ -353,28 +347,18 @@ function PlanChangeInner({
                                 </div>
                               )}
 
-                              {/* Proration & discount info inside card when selected */}
+                              {/* Discount info inside card when selected */}
                               {isSelected && (
                                 <div className="mt-3 pt-3 border-t border-border/50 space-y-1.5">
                                   {discount > 0 && (
                                     <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400">
                                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                                       <span>
-                                        <span className="font-semibold">-{discount}%</span> por pago anticipado — {formatCOP(discountedPrice)}
+                                        <span className="font-semibold">-{discount}%</span> por pago anticipado — Total: <span className="font-bold text-foreground">{formatCOP(discountedPrice)}</span>
                                       </span>
                                     </div>
                                   )}
-                                  {credit > 0 && (
-                                    <div className="flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
-                                      <Percent className="h-3.5 w-3.5 shrink-0" />
-                                      <span>
-                                        Crédito por {prorationInfo?.proration?.unusedDays || 0} días no usados: <span className="font-semibold">-{formatCOP(credit)}</span>
-                                        <ArrowRight className="h-2.5 w-2.5 inline mx-0.5" />
-                                        <span className="font-bold text-foreground">{formatCOP(adjustedPrice)}</span>
-                                      </span>
-                                    </div>
-                                  )}
-                                  {discount === 0 && credit === 0 && (
+                                  {discount === 0 && (
                                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                       <span className="font-medium">Selecciona un período de facturación ↓</span>
                                     </div>
@@ -399,47 +383,6 @@ function PlanChangeInner({
                 </div>
               </section>
 
-              {/* ─── Proration Credit Banner ─── */}
-              {selectedPlanId && prorationInfo?.hasCredit && prorationInfo.proration && !loadingProration && (
-                <div className="rounded-xl border border-sky-200/60 dark:border-sky-800/40 bg-gradient-to-br from-sky-50 to-sky-50/50 dark:from-sky-950/30 dark:to-sky-950/10 p-4 space-y-3 shadow-sm">
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-9 w-9 rounded-lg bg-sky-100 dark:bg-sky-500/15 flex items-center justify-center">
-                      <Percent className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs font-bold text-sky-700 dark:text-sky-300">Prorrateo por cambio de plan</p>
-                      <p className="text-[11px] text-sky-600/80 dark:text-sky-400/80">
-                        Tienes {prorationInfo.proration.unusedDays} días restantes de tu plan <strong>{prorationInfo.currentPlan.name}</strong>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 pt-1">
-                    <div className="text-center p-2.5 rounded-lg bg-white/60 dark:bg-white/5 border border-sky-100/50 dark:border-sky-800/30">
-                      <p className="text-[10px] text-muted-foreground mb-0.5">Días restantes</p>
-                      <p className="text-sm font-bold font-mono text-sky-700 dark:text-sky-300">{prorationInfo.proration.unusedDays}</p>
-                    </div>
-                    <div className="text-center p-2.5 rounded-lg bg-white/60 dark:bg-white/5 border border-sky-100/50 dark:border-sky-800/30">
-                      <p className="text-[10px] text-muted-foreground mb-0.5">Crédito diario</p>
-                      <p className="text-sm font-bold font-mono text-sky-700 dark:text-sky-300">{formatCOP(prorationInfo.proration.dailyRate)}</p>
-                    </div>
-                    <div className="text-center p-2.5 rounded-lg bg-emerald-50/80 dark:bg-emerald-500/10 border border-emerald-200/60 dark:border-emerald-800/30">
-                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mb-0.5">Total crédito</p>
-                      <p className="text-sm font-bold font-mono text-emerald-600 dark:text-emerald-400">-{formatCOP(prorationInfo.proration.creditAmount)}</p>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-sky-600/70 dark:text-sky-400/60 text-center">
-                    El crédito se aplicará automáticamente sobre el precio del nuevo plan al ser aprobado.
-                  </p>
-                </div>
-              )}
-
-              {loadingProration && selectedPlanId && (
-                <div className="flex items-center gap-2 justify-center py-3 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Calculando prorrateo...
-                </div>
-              )}
-
               {/* ═══ 2. BILLING PERIOD ═══ */}
               {selectedPlanId && (
                 <section className="space-y-3">
@@ -452,11 +395,7 @@ function PlanChangeInner({
                     {BILLING_PERIODS.map(period => {
                       const plan = plans.find(p => p.id === selectedPlanId)
                       if (!plan) return null
-                      const { discountedPrice, adjustedPrice } = getPlanPriceWithProration(plan)
-                      const periodPrice = selectedBillingPeriod === period.value
-                        ? discountedPrice
-                        : Math.round(plan.price * (period.value === 'MONTHLY' ? 1 : period.value === 'QUARTERLY' ? 3 : period.value === 'SEMI_ANNUAL' ? 6 : 12) * (1 - period.discount / 100))
-                      const showCredit = selectedBillingPeriod === period.value && prorationInfo?.hasCredit
+                      const periodPrice = getPlanPrice(plan, period.value).discountedPrice
                       const isSelected = selectedBillingPeriod === period.value
 
                       return (
@@ -488,12 +427,6 @@ function PlanChangeInner({
                               -{period.discount}%
                             </Badge>
                           )}
-
-                          {showCredit && (
-                            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1.5">
-                              Con crédito: {formatCOP(adjustedPrice)}
-                            </p>
-                          )}
                         </button>
                       )
                     })}
@@ -520,11 +453,11 @@ function PlanChangeInner({
                           onClick={() => {
                             const plan = plans.find(p => p.id === selectedPlanId)
                             if (!plan) return
-                            const { adjustedPrice } = getPlanPriceWithProration(plan)
+                            const { discountedPrice } = getPlanPrice(plan)
                             setWompiCheckoutParams({
                               planId: plan.id,
                               planName: plan.name,
-                              amount: adjustedPrice,
+                              amount: discountedPrice,
                               billingPeriod: selectedBillingPeriod,
                             })
                             setShowWompiCheckout(true)
@@ -590,7 +523,7 @@ function PlanChangeInner({
                           <ol className="text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
                             <li>Solicita datos de pago por <strong>WhatsApp</strong> si no los tienes</li>
                             <li>Realiza el pago por <strong>Nequi, Daviplata, Bancolombia</strong> o el método indicado</li>
-                            <li>Sube el <strong>comprobante</strong> y envía la solicitud — el administrador activará tu plan</li>
+                            <li>Envía la solicitud y sube el <strong>comprobante</strong> cuando lo tengas — el administrador activará tu plan</li>
                           </ol>
                         </div>
                         <div className="rounded-lg border border-emerald-200/60 dark:border-emerald-800/40 bg-emerald-50/50 dark:bg-emerald-950/10 p-3">
@@ -607,9 +540,9 @@ function PlanChangeInner({
                     </>
                   )}
 
-                  {/* ── Upload receipt (always shown) ── */}
+                  {/* ── Upload receipt (optional) ── */}
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Sube el comprobante de tu pago. El monto total se llenó automáticamente según el plan y período elegido, pero puedes editarlo si es necesario.
+                    Sube el comprobante de tu pago <span className="font-medium text-foreground">(opcional — puedes enviar la solicitud ahora y subir el comprobante después)</span>. El monto total se llenó automáticamente según el plan y período elegido, pero puedes editarlo si es necesario.
                   </p>
 
                   {/* Upload zone */}
@@ -748,7 +681,7 @@ function PlanChangeInner({
             </Button>
             <Button
               type="submit"
-              disabled={uploading || !selectedPlanId || !uploadFile || !displayAmount}
+              disabled={uploading || !selectedPlanId || !displayAmount}
               className="flex-1 h-10 rounded-xl font-semibold"
             >
               {uploading ? (
