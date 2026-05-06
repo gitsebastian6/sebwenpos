@@ -580,7 +580,7 @@ function calculatePeriodPrice(monthlyPrice: number, billingPeriod: string): numb
 // ── Helper: determine if billing pay card should show ──
 function needsPaymentCard(status: string, daysRemaining: number | null): boolean {
   if (status === 'TRIAL') return true
-  if (status === 'PAST_DUE' || status === 'EXPIRED') return true
+  if (status === 'PAST_DUE' || status === 'EXPIRED' || status === 'CANCELLED') return true
   if (status === 'ACTIVE' && daysRemaining !== null && daysRemaining <= 5) return true
   return false
 }

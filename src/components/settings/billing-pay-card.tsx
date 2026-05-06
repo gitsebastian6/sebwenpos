@@ -9,11 +9,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -27,7 +22,6 @@ import {
   Copy,
   Check,
   CreditCard,
-  ChevronDown,
   Upload,
   Loader2,
   Clock,
@@ -38,6 +32,9 @@ import {
   Send,
   FileText,
   ShieldCheck,
+  CalendarDays,
+  ArrowRight,
+  Info,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -126,9 +123,6 @@ export function BillingPayCard({
 }: BillingPayCardProps) {
   const uploadReceiptMutation = useUploadPaymentReceipt()
   const uploading = uploadReceiptMutation.isPending
-
-  // ── Bank details collapsible state ──
-  const [bankOpen, setBankOpen] = useState(true)
 
   // ── Receipt upload form state ──
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
@@ -301,6 +295,48 @@ export function BillingPayCard({
       </CardHeader>
 
       <CardContent className="space-y-6">
+        {/* ── Stripe-style price preview ── */}
+        <div className="rounded-xl bg-gradient-to-br from-primary/5 to-primary/[0.02] border border-primary/15 p-4 space-y-2.5">
+          <div className="flex items-start gap-2.5">
+            <Info className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              {status === 'TRIAL' ? (
+                <p className="text-sm font-medium text-foreground leading-relaxed">
+                  Paga hoy <span className="font-bold font-mono">{formatCOP(billingPrice)}</span> para activar tu plan{' '}
+                  <span className="font-semibold">{planName}</span> por <span className="font-semibold">{periodLabel}</span>
+                </p>
+              ) : status === 'CANCELLED' ? (
+                <p className="text-sm font-medium text-foreground leading-relaxed">
+                  Reactiva tu plan <span className="font-semibold">{planName}</span> — paga{' '}
+                  <span className="font-bold font-mono">{formatCOP(billingPrice)}</span> por <span className="font-semibold">{periodLabel}</span>
+                </p>
+              ) : status === 'EXPIRED' || status === 'PAST_DUE' ? (
+                <p className="text-sm font-medium text-foreground leading-relaxed">
+                  Renueva tu plan <span className="font-semibold">{planName}</span> — paga{' '}
+                  <span className="font-bold font-mono">{formatCOP(billingPrice)}</span> por <span className="font-semibold">{periodLabel}</span>
+                </p>
+              ) : (
+                <p className="text-sm font-medium text-foreground leading-relaxed">
+                  Próxima renovación: <span className="font-bold font-mono">{formatCOP(billingPrice)}</span> por{' '}
+                  <span className="font-semibold">{periodLabel}</span> del plan <span className="font-semibold">{planName}</span>
+                </p>
+              )}
+              {billingPeriod !== 'TRIAL' && planPrice > 0 && (
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                  <CalendarDays className="h-3 w-3 shrink-0" />
+                  Equivalente a <span className="font-semibold font-mono">{formatCOP(planPrice)}/mes</span>
+                  {hasDiscount && (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                      <ArrowRight className="h-3 w-3 inline" />
+                      -{discountPercent}% por pago anticipado
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* ── Summary table ── */}
         <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
           <table className="w-full text-sm">
@@ -402,60 +438,46 @@ export function BillingPayCard({
               </span>
             </div>
 
-            {/* ── Bank payment details (collapsible) ── */}
-            <Collapsible open={bankOpen} onOpenChange={setBankOpen}>
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className="flex items-center justify-between w-full p-3 rounded-xl border border-border/60 hover:bg-muted/30 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <Banknote className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Transferencia bancaria o Nequi</span>
-                  </div>
-                  <ChevronDown
-                    className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${
-                      bankOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-              </CollapsibleTrigger>
+            {/* ── Bank payment details (always visible) ── */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 p-2">
+                <Banknote className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">Datos para transferencia o Nequi</span>
+              </div>
 
-              <CollapsibleContent className="mt-2 space-y-2">
-                <div className="rounded-xl border border-border/60 bg-muted/20 p-4 space-y-3">
-                  {/* Titular */}
-                  <div className="flex items-center justify-between gap-3 pb-2 border-b border-border/40">
-                    <div className="min-w-0">
-                      <p className="text-[11px] text-muted-foreground uppercase tracking-wide font-medium">
-                        Titular
-                      </p>
-                      <p className="text-sm font-semibold mt-0.5">SEBASTIAN RAMIREZ</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard('SEBASTIAN RAMIREZ', 'Nombre')}
-                      className="shrink-0 h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center transition-colors"
-                      aria-label="Copiar nombre del titular"
-                    >
-                      <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-4 space-y-3">
+                {/* Titular */}
+                <div className="flex items-center justify-between gap-3 pb-2 border-b border-border/40">
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wide font-medium">
+                      Titular
+                    </p>
+                    <p className="text-sm font-semibold mt-0.5">SEBASTIAN RAMIREZ</p>
                   </div>
-
-                  {/* Bank accounts */}
-                  {BANK_DETAILS.map((detail) => (
-                    <BankDetailRow
-                      key={detail.method}
-                      method={detail.method}
-                      number={detail.number}
-                      Icon={detail.icon}
-                      color={detail.color}
-                      bgColor={detail.bgColor}
-                      onCopy={copyToClipboard}
-                    />
-                  ))}
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard('SEBASTIAN RAMIREZ', 'Nombre')}
+                    className="shrink-0 h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center transition-colors"
+                    aria-label="Copiar nombre del titular"
+                  >
+                    <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
                 </div>
-              </CollapsibleContent>
-            </Collapsible>
+
+                {/* Bank accounts */}
+                {BANK_DETAILS.map((detail) => (
+                  <BankDetailRow
+                    key={detail.method}
+                    method={detail.method}
+                    number={detail.number}
+                    Icon={detail.icon}
+                    color={detail.color}
+                    bgColor={detail.bgColor}
+                    onCopy={copyToClipboard}
+                  />
+                ))}
+              </div>
+            </div>
 
             {/* ── Inline receipt upload ── */}
             <form onSubmit={handleSubmitReceipt} className="space-y-4">
