@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,7 @@ import {
   Percent,
   Crown,
   CheckCircle2,
-  Plus,
+
   AlertTriangle,
   Send,
   CreditCard,
@@ -52,12 +52,11 @@ interface PlanChangeDialogProps {
   onPlanChanged: () => void
 }
 
-// Determine step based on user progress
-function getActiveStep(selectedPlanId: number | null, selectedBillingPeriod: string, uploadFile: File | null) {
+// Determine step based on user progress (2 steps: plan+period, then payment+proof)
+function getActiveStep(selectedPlanId: number | null, uploadFile: File | null) {
   if (!selectedPlanId) return 1
-  if (!selectedBillingPeriod) return 2
-  if (!uploadFile) return 3
-  return 3
+  if (!uploadFile) return 2
+  return 2
 }
 
 // Plan icon mapping based on plan index
@@ -71,6 +70,55 @@ function getPlanIcon(index: number) {
 }
 
 export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPlanName, onPlanChanged }: PlanChangeDialogProps) {
+  // ── Key to force remount (reset) when dialog opens ──
+  const [dialogKey, setDialogKey] = useState(0)
+  const handleOpenChange = useCallback((value: boolean) => {
+    if (value) setDialogKey(k => k + 1)
+    onOpenChange(value)
+  }, [onOpenChange])
+
+  // ── Wompi health check ──
+  const { data: wompiHealth } = useQuery({
+    queryKey: ['wompi-health'],
+    queryFn: () => fetch('/api/payments/wompi/health').then(r => r.json()),
+    staleTime: 60_000,
+  })
+  const isWompiDemo = wompiHealth?.demoMode === true
+  const demoVisible = wompiHealth?.demoVisible === true
+  const wompiEnabled = wompiHealth?.wompiEnabled === true
+  const showWompiPayment = isWompiDemo ? demoVisible : wompiEnabled
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-hidden p-0 gap-0 [&>button]:hidden flex flex-col">
+        <PlanChangeInner
+          key={dialogKey}
+          storeId={storeId}
+          plans={plans}
+          currentPlanName={currentPlanName}
+          onPlanChanged={() => { onPlanChanged(); handleOpenChange(false) }}
+          onClose={() => handleOpenChange(false)}
+          showWompiPayment={showWompiPayment}
+          isWompiDemo={isWompiDemo}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Inner form component (remounts on each dialog open via key) ──
+function PlanChangeInner({
+  storeId, plans, currentPlanName, onPlanChanged, onClose,
+  showWompiPayment, isWompiDemo,
+}: {
+  storeId: number
+  plans: PlanOption[]
+  currentPlanName: string | undefined
+  onPlanChanged: () => void
+  onClose: () => void
+  showWompiPayment: boolean
+  isWompiDemo: boolean
+}) {
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null)
   const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<string>('MONTHLY')
   const [uploadAmount, setUploadAmount] = useState('')
@@ -85,55 +133,13 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
     planId: number; planName: string; amount: number; billingPeriod: string
   } | null>(null)
 
-  // ── Wompi health check ──
-  const { data: wompiHealth } = useQuery({
-    queryKey: ['wompi-health'],
-    queryFn: () => fetch('/api/payments/wompi/health').then(r => r.json()),
-    staleTime: 60_000,
-  })
-  const isWompiConfigured = wompiHealth?.configured === true
-  const isWompiDemo = wompiHealth?.demoMode === true
-  // Super admin controls: demoVisible hides demo from customers, wompiEnabled enables real Wompi
-  const demoVisible = wompiHealth?.demoVisible === true
-  const wompiEnabled = wompiHealth?.wompiEnabled === true
-  // Show Wompi payment section only if demo is visible OR real Wompi is enabled
-  const showWompiPayment = isWompiDemo ? demoVisible : wompiEnabled
-
   // Track whether user manually edited the amount (to avoid overwriting)
-  const amountManuallyEditedRef = useRef(false)
-
-  // Track previous open state to reset on open
-  const prevOpenRef = useRef(false)
-  useEffect(() => {
-    if (open && !prevOpenRef.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset form when controlled dialog opens
-      setSelectedPlanId(null)
-      setSelectedBillingPeriod('MONTHLY')
-      setUploadAmount('')
-      amountManuallyEditedRef.current = false
-      setUploadReference('')
-      setUploadMethod('NEQUI')
-      setUploadNotes('')
-      setUploadFile(null)
-    }
-    prevOpenRef.current = open
-  }, [open])
+  const [amountManuallyEdited, setAmountManuallyEdited] = useState(false)
 
   // ── TanStack Query hooks ──
   const { data: prorationInfo, isLoading: loadingProration } = useSubscriptionProration(storeId, selectedPlanId)
   const uploadMutation = useUploadPaymentReceipt()
   const uploading = uploadMutation.isPending
-
-  // Auto-fill amount when plan/billing period changes (unless user manually edited it)
-  useEffect(() => {
-    if (!selectedPlanId || !selectedBillingPeriod) return
-    if (amountManuallyEditedRef.current) return
-    const plan = plans.find(p => p.id === selectedPlanId)
-    if (!plan) return
-    const { adjustedPrice } = getPlanPriceWithProration(plan)
-    setUploadAmount(String(adjustedPrice))
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only react to plan/period/proration changes
-  }, [selectedPlanId, selectedBillingPeriod, prorationInfo])
 
   // ── Plan price with proration adjustment ──
   function getPlanPriceWithProration(plan: PlanOption) {
@@ -152,13 +158,25 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
     }
   }
 
+  // Compute auto-filled amount from plan + period (React Compiler auto-memoizes)
+  const autoFilledAmount = (() => {
+    if (!selectedPlanId || !selectedBillingPeriod) return ''
+    const plan = plans.find(p => p.id === selectedPlanId)
+    if (!plan) return ''
+    const { adjustedPrice } = getPlanPriceWithProration(plan)
+    return String(adjustedPrice)
+  })()
+
+  // The displayed amount: auto-filled unless user manually edited
+  const displayAmount = amountManuallyEdited ? uploadAmount : autoFilledAmount
+
   async function handlePlanChange(e: React.FormEvent) {
     e.preventDefault()
     if (!storeId || !uploadFile || !selectedPlanId) {
       toast.error('Selecciona un plan y un comprobante')
       return
     }
-    const amount = parseInt(uploadAmount)
+    const amount = parseInt(displayAmount)
     if (!amount || amount <= 0) {
       toast.error('Ingresa el monto pagado')
       return
@@ -193,21 +211,20 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
         },
       })
       toast.success(`Solicitud de cambio a ${plan?.name} enviada. El administrador revisará tu comprobante.`)
-      onOpenChange(false)
+      onClose()
       onPlanChanged()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error de conexión al enviar solicitud')
     }
   }
 
-  const activeStep = getActiveStep(selectedPlanId, selectedBillingPeriod, uploadFile)
+  const activeStep = getActiveStep(selectedPlanId, uploadFile)
 
   // Filter active paid plans
   const activePlans = plans.filter(p => p.isActive && p.price > 0)
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-hidden p-0 gap-0 [&>button]:hidden flex flex-col">
+    <>
         {/* ─── Dialog Header (fixed top) ─── */}
         <div className="px-6 pt-6 pb-4 border-b border-border/50 bg-gradient-to-b from-muted/30 to-background shrink-0">
           <DialogHeader className="space-y-3">
@@ -227,11 +244,11 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-[11px] font-medium tabular-nums bg-muted/80 backdrop-blur-sm border-border/50">
-                  Paso {activeStep} de 3
+                  Paso {activeStep} de 2
                 </Badge>
                 <button
                   type="button"
-                  onClick={() => onOpenChange(false)}
+                  onClick={onClose}
                   className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors"
                   aria-label="Cerrar"
                 >
@@ -290,7 +307,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                           type="button"
                           onClick={() => {
                             setSelectedPlanId(plan.id)
-                            amountManuallyEditedRef.current = false
+                            setAmountManuallyEdited(false)
                             if (plan.price === 0) setSelectedBillingPeriod('TRIAL')
                           }}
                           className={`w-full text-left rounded-xl border-2 p-4 transition-all duration-200 group ${
@@ -427,7 +444,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
               {selectedPlanId && (
                 <section className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-[11px] font-bold">2</span>
+                    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-[11px] font-bold">1</span>
                     <Label className="text-sm font-bold">Período de facturación</Label>
                   </div>
 
@@ -448,7 +465,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                           type="button"
                           onClick={() => {
                             setSelectedBillingPeriod(period.value)
-                            amountManuallyEditedRef.current = false
+                            setAmountManuallyEdited(false)
                           }}
                           className={`relative rounded-xl border-2 p-3.5 text-left transition-all duration-200 group ${
                             isSelected
@@ -484,12 +501,12 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                 </section>
               )}
 
-              {/* ═══ 3. PAYMENT METHOD ═══ */}
+              {/* ═══ 2. PAYMENT & PROOF ═══ */}
               {selectedPlanId && (
                 <section className="space-y-4">
                   <div className="flex items-center gap-2">
-                    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-[11px] font-bold">3</span>
-                    <Label className="text-sm font-bold">Método de pago</Label>
+                    <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-[11px] font-bold">2</span>
+                    <Label className="text-sm font-bold">Pago y comprobante</Label>
                   </div>
 
                   {showWompiPayment ? (
@@ -569,12 +586,11 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                       {/* Manual payment info */}
                       <div className="space-y-3">
                         <div className="rounded-lg border border-border/50 p-3 space-y-2">
-                          <p className="text-xs font-semibold">Pasos para pagar manualmente:</p>
+                          <p className="text-xs font-semibold">¿Cómo pagar?</p>
                           <ol className="text-[11px] text-muted-foreground space-y-1.5 list-decimal list-inside">
-                            <li>Contacta a soporte por <strong>WhatsApp</strong> para recibir tu link de pago o datos bancarios (BREP)</li>
-                            <li>Realiza el pago por <strong>Nequi, Daviplata, transferencia bancaria</strong> o el método indicado</li>
-                            <li>Sube el <strong>comprobante de pago</strong> aquí mismo</li>
-                            <li>Espera la <strong>aprobación del administrador</strong> para activar tu plan</li>
+                            <li>Solicita datos de pago por <strong>WhatsApp</strong> si no los tienes</li>
+                            <li>Realiza el pago por <strong>Nequi, Daviplata, Bancolombia</strong> o el método indicado</li>
+                            <li>Sube el <strong>comprobante</strong> y envía la solicitud — el administrador activará tu plan</li>
                           </ol>
                         </div>
                         <div className="rounded-lg border border-emerald-200/60 dark:border-emerald-800/40 bg-emerald-50/50 dark:bg-emerald-950/10 p-3">
@@ -591,9 +607,9 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                     </>
                   )}
 
-                  {/* ── Manual Upload (always shown) ── */}
+                  {/* ── Upload receipt (always shown) ── */}
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Sube la captura o foto de tu pago manualmente. El administrador lo verificará para activar tu nuevo plan.
+                    Sube el comprobante de tu pago. El monto total se llenó automáticamente según el plan y período elegido, pero puedes editarlo si es necesario.
                   </p>
 
                   {/* Upload zone */}
@@ -637,6 +653,16 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                     </label>
                   </div>
 
+                  {/* Calculated total banner */}
+                  {selectedPlanId && autoFilledAmount && !amountManuallyEdited && (
+                    <div className="rounded-lg bg-primary/5 border border-primary/15 p-3 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
+                      <p className="text-xs text-muted-foreground">
+                        Total calculado: <span className="font-bold text-foreground">{formatCOP(parseInt(autoFilledAmount) || 0)}</span> — modifícalo si pagaste un monto diferente
+                      </p>
+                    </div>
+                  )}
+
                   {/* Form fields */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
@@ -646,10 +672,10 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
                       <Input
                         id="plan-amount"
                         type="number"
-                        placeholder={selectedPlanId ? '0' : '69900'}
-                        value={uploadAmount}
+                        placeholder="0"
+                        value={displayAmount}
                         onChange={(e) => {
-                          amountManuallyEditedRef.current = true
+                          setAmountManuallyEdited(true)
                           setUploadAmount(e.target.value)
                         }}
                         min={1}
@@ -714,7 +740,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={onClose}
               disabled={uploading}
               className="flex-1 h-10 rounded-xl font-medium"
             >
@@ -722,7 +748,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
             </Button>
             <Button
               type="submit"
-              disabled={uploading || !selectedPlanId || !uploadFile || !uploadAmount}
+              disabled={uploading || !selectedPlanId || !uploadFile || !displayAmount}
               className="flex-1 h-10 rounded-xl font-semibold"
             >
               {uploading ? (
@@ -733,7 +759,6 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
 
       {/* Wompi Checkout Dialog */}
       {wompiCheckoutParams && (
@@ -747,7 +772,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
           billingPeriod={wompiCheckoutParams.billingPeriod}
           demoMode={isWompiDemo}
           onPaymentComplete={() => {
-            onOpenChange(false)
+            onClose()
             onPlanChanged()
           }}
           onManualUpload={() => {
@@ -755,6 +780,6 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
           }}
         />
       )}
-    </Dialog>
+    </>
   )
 }
