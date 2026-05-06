@@ -12,24 +12,14 @@ export const dynamic = 'force-dynamic'
 // auto-approval of demo transactions.
 // ---------------------------------------------------------------------------
 
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  const encoder = new TextEncoder()
-  const aBuf = encoder.encode(a)
-  const bBuf = encoder.encode(b)
-  const result = new Uint8Array(aBuf.length)
-  for (let i = 0; i < aBuf.length; i++) {
-    result[i] = aBuf[i] ^ bBuf[i]
-  }
-  return result.every(byte => byte === 0)
-}
+import { safeStringEqual } from '@/lib/crypto-utils'
 
 export async function POST(req: NextRequest) {
   try {
     // CRITICAL FIX: Require internal secret
     const internalSecret = req.headers.get('x-internal-secret')
     const expectedSecret = process.env.INTERNAL_SECRET
-    if (!expectedSecret || !internalSecret || !safeEqual(internalSecret, expectedSecret)) {
+    if (!expectedSecret || !internalSecret || !safeStringEqual(internalSecret, expectedSecret)) {
       logger.warn('[Wompi Demo] demo-process called without valid internal secret')
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }

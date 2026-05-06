@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
           ? subscription.trialEndDate
           : subscription.endDate
         if (!referenceDate) return null
-        const remaining = Math.ceil(
+        const remaining = Math.floor(
           (new Date(referenceDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
         )
         return remaining

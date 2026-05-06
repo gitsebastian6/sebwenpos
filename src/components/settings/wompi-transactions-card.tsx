@@ -112,10 +112,6 @@ export function WompiTransactionsCard({ storeId }: WompiTransactionsCardProps) {
   const transactions = data?.transactions ?? []
   const pagination = data?.pagination
 
-  const pendingCount = pagination?.total && statusFilter === ''
-    ? undefined
-    : undefined
-
   return (
     <Card className="border-border/50 hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl overflow-hidden">
       {/* Gradient accent bar */}
@@ -151,7 +147,6 @@ export function WompiTransactionsCard({ storeId }: WompiTransactionsCardProps) {
         <div className="flex flex-wrap gap-1.5">
           {STATUS_FILTERS.map((filter) => {
             const isActive = statusFilter === filter.value
-            const showBadge = filter.value === 'PENDING' && !isActive && pendingCount
             return (
               <Button
                 key={filter.value}
@@ -168,11 +163,6 @@ export function WompiTransactionsCard({ storeId }: WompiTransactionsCardProps) {
                 }}
               >
                 {filter.label}
-                {showBadge && (
-                  <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold leading-none">
-                    {pendingCount}
-                  </span>
-                )}
               </Button>
             )
           })}

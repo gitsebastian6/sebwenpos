@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
         storeName: store.name,
         planName,
         ownerEmail: owner.email,
-        ownerPhone: owner.phone || owner.phone,
+        ownerPhone: store.phone || owner.phone,
         emailSent: emailResult?.success ?? false,
         whatsappLink,
         daysRemaining: daysBefore,

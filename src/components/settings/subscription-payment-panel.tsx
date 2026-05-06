@@ -83,8 +83,6 @@ export function SubscriptionPaymentPanel() {
     trialEndDate: subData.trialEndDate,
   } : null
 
-  const loading = false // queries handle their own loading
-
   // ── Sync fresh subscription data back to auth store ──
   // This ensures the SubscriptionGate, sidebar badge, and top banner
   // all reflect the latest subscription state from the database.
@@ -201,7 +199,7 @@ export function SubscriptionPaymentPanel() {
     qc.invalidateQueries({ queryKey: ['payment-receipts', store?.id] })
   }
 
-  if (loading) {
+  if (isFetchingSub) {
     return (
       <div className="flex justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
