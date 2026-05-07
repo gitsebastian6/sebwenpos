@@ -21,7 +21,7 @@ import {
   Wallet, CheckCircle2, XCircle, Download, Clock, Filter,
   Eye as EyeIcon, FileCheck2, CircleDollarSign,
   BadgeCheck, CalendarDays, Hash, FileText, AlertTriangle,
-  Building2, Search, Phone, ArrowRight, User,
+  Building2, Search, Phone, ArrowRight, User, Sparkles, Users,
 } from 'lucide-react'
 import { queryFetch } from '@/hooks/api/query-helpers'
 import { formatCOP, formatDateTime } from './helpers'
@@ -38,6 +38,32 @@ function parsePlanChangeNotes(notes: string | null) {
   } catch { /* not JSON */ }
   return null
 }
+
+// ── Parse self-service trial signup lead data from notes JSON ──
+interface TrialLeadData {
+  source: string
+  ownerCedula: string
+  ownerFullName: string
+  ownerPhone: string
+  ownerEmail: string
+  businessType: string
+  hasCamaraComercio: boolean
+  registrationNumber: string
+  department: string
+  cityName: string
+  signedUpAt: string
+}
+
+function parseLeadNotes(notes: string | null): TrialLeadData | null {
+  if (!notes) return null
+  try {
+    const parsed = JSON.parse(notes)
+    if (parsed.source === 'SELF_SERVICE_TRIAL') {
+      return parsed as TrialLeadData
+    }
+  } catch { /* not JSON */ }
+  return null
+}
 import {
   useSuperAdminPaymentReceipts,
   useSuperAdminReceiptDetail,
@@ -45,7 +71,7 @@ import {
   useDeleteReceipt,
 } from '@/hooks/api/use-super-admin'
 
-type FilterStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'
+type FilterStatus = 'ALL' | 'LEAD' | 'PENDING' | 'APPROVED' | 'REJECTED'
 
 export function PendingPaymentsView() {
   // Queries
@@ -76,6 +102,7 @@ export function PendingPaymentsView() {
   const [receiptPreviewData, setReceiptPreviewData] = useState<PaymentReceiptData | null>(null)
 
   // Computed
+  const leadCount = receipts.filter(r => r.status === 'LEAD').length
   const pendingCount = receipts.filter(r => r.status === 'PENDING').length
   const approvedCount = receipts.filter(r => r.status === 'APPROVED').length
   const rejectedCount = receipts.filter(r => r.status === 'REJECTED').length
@@ -159,9 +186,13 @@ export function PendingPaymentsView() {
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <Card className="rounded-xl border-sky-500/20 bg-sky-500/5 p-4">
+          <div className="flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400 mb-1"><Sparkles className="h-3 w-3" />Leads Trial</div>
+          <p className="text-2xl font-bold text-sky-600 dark:text-sky-400">{leadCount}</p>
+        </Card>
         <Card className="rounded-xl border-border/50 bg-muted/20 p-4">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><Wallet className="h-3 w-3" />Total Comprobantes</div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><Wallet className="h-3 w-3" />Total</div>
           <p className="text-2xl font-bold">{receipts.length}</p>
         </Card>
         <Card className="rounded-xl border-amber-500/20 bg-amber-500/5 p-4">
@@ -182,9 +213,9 @@ export function PendingPaymentsView() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-          {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map((f) => (
+          {(['ALL', 'LEAD', 'PENDING', 'APPROVED', 'REJECTED'] as const).map((f) => (
             <Button key={f} variant={receiptFilter === f ? 'default' : 'outline'} size="sm" className="h-7 text-xs gap-1" onClick={() => setReceiptFilter(f)}>
-              {f === 'ALL' ? `Todos (${receipts.length})` : f === 'PENDING' ? `Pendientes (${pendingCount})` : f === 'APPROVED' ? `Aprobados (${approvedCount})` : `Rechazados (${rejectedCount})`}
+              {f === 'ALL' ? `Todos (${receipts.length})` : f === 'LEAD' ? `Leads (${leadCount})` : f === 'PENDING' ? `Pendientes (${pendingCount})` : f === 'APPROVED' ? `Aprobados (${approvedCount})` : `Rechazados (${rejectedCount})`}
             </Button>
           ))}
         </div>
@@ -227,17 +258,19 @@ export function PendingPaymentsView() {
             <Card
               key={r.id}
               className={`rounded-xl border overflow-hidden transition-all duration-200 hover:shadow-md ${
-                r.status === 'PENDING'
-                  ? 'border-amber-500/30 bg-amber-500/[0.02]'
-                  : r.status === 'APPROVED'
-                    ? 'border-emerald-500/20'
-                    : 'border-red-500/20'
+                r.status === 'LEAD'
+                  ? 'border-sky-500/30 bg-sky-500/[0.02]'
+                  : r.status === 'PENDING'
+                    ? 'border-amber-500/30 bg-amber-500/[0.02]'
+                    : r.status === 'APPROVED'
+                      ? 'border-emerald-500/20'
+                      : 'border-red-500/20'
               }`}
             >
               <CardContent className="p-0">
                 <div className="flex flex-col sm:flex-row">
                   <div className={`w-1.5 shrink-0 ${
-                    r.status === 'PENDING' ? 'bg-amber-500' : r.status === 'APPROVED' ? 'bg-emerald-500' : 'bg-red-500'
+                    r.status === 'LEAD' ? 'bg-sky-500' : r.status === 'PENDING' ? 'bg-amber-500' : r.status === 'APPROVED' ? 'bg-emerald-500' : 'bg-red-500'
                   }`} />
                   <div className="flex-1 p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -273,6 +306,11 @@ export function PendingPaymentsView() {
                           <Badge variant="outline" className="text-[10px] gap-1">
                             <Wallet className="h-2.5 w-2.5" />{r.paymentMethod}
                           </Badge>
+                          {r.status === 'LEAD' && (
+                            <Badge className="bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400 dark:border-sky-500/20 text-[10px] gap-1">
+                              <Sparkles className="h-2.5 w-2.5" />Lead Trial
+                            </Badge>
+                          )}
                           {r.status === 'PENDING' && (
                             <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/20 text-[10px] gap-1">
                               <Clock className="h-2.5 w-2.5" />Pendiente
@@ -322,6 +360,16 @@ export function PendingPaymentsView() {
                             return planChange ? (
                               <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400">
                                 <ArrowRight className="h-3 w-3" />Cambio a {planChange.requestedPlanName}
+                              </span>
+                            ) : null
+                          })()}
+                          {(() => {
+                            const lead = parseLeadNotes(r.notes)
+                            return lead ? (
+                              <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400">
+                                <Users className="h-3 w-3" />
+                                {lead.cityName && lead.department ? `${lead.cityName}, ${lead.department}` : lead.cityName || lead.department || 'Auto-registro'}
+                                {!lead.hasCamaraComercio && <span className="text-amber-500 ml-1">· Sin cámara</span>}
                               </span>
                             ) : null
                           })()}
