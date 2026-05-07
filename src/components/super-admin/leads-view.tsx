@@ -763,7 +763,7 @@ export function LeadsView() {
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-0.5">
                           <DocIndicator label="RUT" hasFile={!!lead.rutFilePath} />
-                          <DocIndicator label="Cámara" hasFile={lead.camaraFilePath} />
+                          <DocIndicator label="Cámara" hasFile={!!lead.camaraFilePath} />
                         </div>
                       </td>
                       <td className="px-4 py-3">
@@ -827,7 +827,7 @@ export function LeadsView() {
                   </div>
                   <div className="flex items-center gap-3">
                     <DocIndicator label="RUT" hasFile={!!lead.rutFilePath} />
-                    <DocIndicator label="Cámara" hasFile={lead.camaraFilePath} />
+                    <DocIndicator label="Cámara" hasFile={!!lead.camaraFilePath} />
                   </div>
                 </div>
               ))}
@@ -933,7 +933,7 @@ export function LeadsView() {
                   </Badge>
                   {/* Doc indicators in header */}
                   <DocIndicator label="RUT" hasFile={!!selectedLead.rutFilePath} />
-                  <DocIndicator label="Cámara" hasFile={selectedLead.camaraFilePath} />
+                  <DocIndicator label="Cámara" hasFile={!!selectedLead.camaraFilePath} />
                 </div>
 
                 {/* WhatsApp contact button */}
