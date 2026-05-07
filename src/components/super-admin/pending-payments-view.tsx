@@ -21,7 +21,7 @@ import {
   Wallet, CheckCircle2, XCircle, Download, Clock, Filter,
   Eye as EyeIcon, FileCheck2, CircleDollarSign,
   BadgeCheck, CalendarDays, Hash, FileText, AlertTriangle,
-  Building2, Search,
+  Building2, Search, Sparkles, Users,
 } from 'lucide-react'
 import { queryFetch } from '@/hooks/api/query-helpers'
 import { formatCOP, formatDateTime } from './helpers'
@@ -33,7 +33,37 @@ import {
   useDeleteReceipt,
 } from '@/hooks/api/use-super-admin'
 
-type FilterStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'
+// ── Trial Lead data (parsed from LEAD notes) ────────────────────
+interface TrialLeadData {
+  source: string
+  ownerFullName: string
+  ownerCedula: string
+  ownerPhone: string | null
+  ownerEmail: string | null
+  storeName: string
+  nit: string
+  legalName: string
+  businessType: string
+  hasCamaraComercio: boolean
+  registrationNumber: string | null
+  department: string | null
+  cityName: string | null
+  address: string | null
+  storePhone: string | null
+}
+
+function parseLeadNotes(notes: string | null): TrialLeadData | null {
+  if (!notes) return null
+  try {
+    const parsed = JSON.parse(notes)
+    if (parsed && parsed.source === 'SELF_SERVICE_TRIAL') return parsed as TrialLeadData
+    return null
+  } catch {
+    return null
+  }
+}
+
+type FilterStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'LEAD'
 
 export function PendingPaymentsView() {
   // Queries
@@ -67,6 +97,7 @@ export function PendingPaymentsView() {
   const pendingCount = receipts.filter(r => r.status === 'PENDING').length
   const approvedCount = receipts.filter(r => r.status === 'APPROVED').length
   const rejectedCount = receipts.filter(r => r.status === 'REJECTED').length
+  const leadCount = receipts.filter(r => r.status === 'LEAD').length
   const totalApproved = receipts.filter(r => r.status === 'APPROVED').reduce((s, r) => s + r.amount, 0)
 
   // Filtered receipts (computed inline for React Compiler compatibility)
@@ -147,7 +178,11 @@ export function PendingPaymentsView() {
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <Card className="rounded-xl border-sky-500/20 bg-sky-500/5 p-4">
+          <div className="flex items-center gap-1.5 text-xs text-sky-600 dark:text-sky-400 mb-1"><Sparkles className="h-3 w-3" />Leads Trial</div>
+          <p className="text-2xl font-bold text-sky-600 dark:text-sky-400">{leadCount}</p>
+        </Card>
         <Card className="rounded-xl border-border/50 bg-muted/20 p-4">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1"><Wallet className="h-3 w-3" />Total Comprobantes</div>
           <p className="text-2xl font-bold">{receipts.length}</p>
@@ -170,9 +205,9 @@ export function PendingPaymentsView() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-          {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map((f) => (
+          {(['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'LEAD'] as const).map((f) => (
             <Button key={f} variant={receiptFilter === f ? 'default' : 'outline'} size="sm" className="h-7 text-xs gap-1" onClick={() => setReceiptFilter(f)}>
-              {f === 'ALL' ? `Todos (${receipts.length})` : f === 'PENDING' ? `Pendientes (${pendingCount})` : f === 'APPROVED' ? `Aprobados (${approvedCount})` : `Rechazados (${rejectedCount})`}
+              {f === 'ALL' ? `Todos (${receipts.length})` : f === 'PENDING' ? `Pendientes (${pendingCount})` : f === 'APPROVED' ? `Aprobados (${approvedCount})` : f === 'REJECTED' ? `Rechazados (${rejectedCount})` : `Leads (${leadCount})`}
             </Button>
           ))}
         </div>
@@ -215,17 +250,19 @@ export function PendingPaymentsView() {
             <Card
               key={r.id}
               className={`rounded-xl border overflow-hidden transition-all duration-200 hover:shadow-md ${
-                r.status === 'PENDING'
-                  ? 'border-amber-500/30 bg-amber-500/[0.02]'
-                  : r.status === 'APPROVED'
-                    ? 'border-emerald-500/20'
-                    : 'border-red-500/20'
+                r.status === 'LEAD'
+                  ? 'border-sky-500/30 bg-sky-500/[0.02]'
+                  : r.status === 'PENDING'
+                    ? 'border-amber-500/30 bg-amber-500/[0.02]'
+                    : r.status === 'APPROVED'
+                      ? 'border-emerald-500/20'
+                      : 'border-red-500/20'
               }`}
             >
               <CardContent className="p-0">
                 <div className="flex flex-col sm:flex-row">
                   <div className={`w-1.5 shrink-0 ${
-                    r.status === 'PENDING' ? 'bg-amber-500' : r.status === 'APPROVED' ? 'bg-emerald-500' : 'bg-red-500'
+                    r.status === 'LEAD' ? 'bg-sky-500' : r.status === 'PENDING' ? 'bg-amber-500' : r.status === 'APPROVED' ? 'bg-emerald-500' : 'bg-red-500'
                   }`} />
                   <div className="flex-1 p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -262,6 +299,11 @@ export function PendingPaymentsView() {
                               <XCircle className="h-2.5 w-2.5" />Rechazado
                             </Badge>
                           )}
+                          {r.status === 'LEAD' && (
+                            <Badge className="bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400 dark:border-sky-500/20 text-[10px] gap-1">
+                              <Sparkles className="h-2.5 w-2.5" />Lead Trial
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                           <span className="flex items-center gap-1">
@@ -290,6 +332,37 @@ export function PendingPaymentsView() {
                             {r.reviewedAt && <span className="ml-1">· {formatDateTime(r.reviewedAt)}</span>}
                           </p>
                         )}
+                        {r.status === 'LEAD' && (() => {
+                          const lead = parseLeadNotes(r.notes)
+                          if (!lead) return null
+                          return (
+                            <div className="flex items-center gap-3 text-xs text-sky-600 dark:text-sky-400 flex-wrap mt-1">
+                              {(lead.cityName || lead.department) && (
+                                <span className="flex items-center gap-1">
+                                  <Building2 className="h-3 w-3" />
+                                  {[lead.cityName, lead.department].filter(Boolean).join(', ')}
+                                </span>
+                              )}
+                              <span className="flex items-center gap-1">
+                                <FileCheck2 className="h-3 w-3" />
+                                Cámara: {lead.hasCamaraComercio ? (
+                                  <span className="text-emerald-500 font-medium">Sí</span>
+                                ) : (
+                                  <span className="text-zinc-500">No</span>
+                                )}
+                                {lead.registrationNumber && (
+                                  <span className="text-muted-foreground ml-0.5">({lead.registrationNumber})</span>
+                                )}
+                              </span>
+                              {lead.businessType && (
+                                <span className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {lead.businessType === 'NATURAL' ? 'Persona Natural' : 'Persona Jurídica'}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => handleViewReceipt(r)}>

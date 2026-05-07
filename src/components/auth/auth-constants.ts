@@ -70,3 +70,39 @@ export interface BlockedInfo {
   planName?: string
   endDate?: string
 }
+
+export function getLicenseRequestWhatsAppUrl(plan?: string): string {
+  const lines = [
+    '🎉 *Solicitud de Licencia Ventify POS*',
+    '',
+    'Por favor completa los siguientes datos para activar tu cuenta:',
+    '',
+    '📋 *Datos del Propietario:*',
+    '• Nombre completo:',
+    '• Cédula / NIT personal:',
+    '• Teléfono:',
+    '• Email:',
+    '',
+    '🏢 *Datos de la Empresa:*',
+    '• Nombre del negocio:',
+    '• NIT / RUT de la empresa:',
+    '• Razón social:',
+    '• Ciudad / Departamento:',
+    '• Dirección:',
+    '',
+    '📄 *Documentos:*',
+    '• Cámara de comercio (adjuntar imagen/PDF):',
+    '• RUT (adjuntar imagen/PDF):',
+    '',
+    `💳 *Plan deseado:*${plan ? ` ${plan}` : ''}`,
+    '',
+    '⏳ Te responderemos en máximo 30 minutos durante horario laboral.',
+  ]
+  const msg = lines.join('\n')
+  return `https://wa.me/57${SUPPORT_PHONE}?text=${encodeURIComponent(msg)}`
+}
+
+export function getPlanInquiryWhatsAppUrl(planName: string, planPrice: string, planPeriod: string): string {
+  const msg = `Hola, estoy interesado en el plan *${planName}* (${planPrice}${planPeriod}). Por favor active mi suscripción.\n\nPara agilizar el proceso, aqui están mis datos:\n• Nombre completo:\n• Cédula / NIT:\n• Teléfono:\n• Email:\n• Nombre del negocio:\n• NIT de la empresa:\n• Ciudad:\n\nAdjunto comprobante de pago.`
+  return `https://wa.me/57${SUPPORT_PHONE}?text=${encodeURIComponent(msg)}`
+}

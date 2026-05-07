@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Check, Shield, Headphones, Star, Phone, MessageCircle, ArrowRight,
 } from 'lucide-react'
-import { PLANS, SUPPORT_PHONE, SUPPORT_WHATSAPP, type PlanInfo } from './auth-constants'
+import { PLANS, SUPPORT_PHONE, SUPPORT_WHATSAPP, getLicenseRequestWhatsAppUrl, getPlanInquiryWhatsAppUrl, type PlanInfo } from './auth-constants'
 import { formatCOP } from '@/lib/format'
 
 // ── API response shape ──────────────────────────────────────────────
@@ -83,8 +83,7 @@ function mapApiPlan(apiPlan: ApiPlan): PlanInfo | null {
 
 /** Generate WhatsApp URL with plan details pre-filled */
 function getPlanWhatsAppUrl(plan: PlanInfo): string {
-  const msg = `Hola, estoy interesado en el plan *${plan.name}* (${plan.price}${plan.period}). Por favor active mi suscripción.`
-  return `https://wa.me/57${SUPPORT_PHONE}?text=${encodeURIComponent(msg)}`
+  return getPlanInquiryWhatsAppUrl(plan.name, plan.price, plan.period)
 }
 
 // ── Component ───────────────────────────────────────────────────────
@@ -216,7 +215,7 @@ export function PlansSection() {
         {/* CTA Button */}
         <div className="text-center pt-1">
           <a
-            href={SUPPORT_WHATSAPP}
+            href={getLicenseRequestWhatsAppUrl()}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl px-8 py-3.5 transition-all shadow-lg shadow-emerald-600/20 hover:shadow-xl hover:shadow-emerald-600/30 active:scale-[0.98] text-sm"
@@ -312,13 +311,13 @@ export function PlansSection() {
           {/* Mobile CTA */}
           <div className="text-center mt-6">
             <a
-              href={SUPPORT_WHATSAPP}
+              href={getLicenseRequestWhatsAppUrl()}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg px-6 py-3 transition-all shadow-md shadow-emerald-600/20 text-sm"
             >
               <MessageCircle className="h-4 w-4" />
-              Contratar por WhatsApp
+              Solicitar por WhatsApp
             </a>
           </div>
 

@@ -8,9 +8,12 @@ import { Separator } from '@/components/ui/separator'
 import {
   CreditCard, Lock, Eye, EyeOff, Phone, MessageCircle,
   AlertTriangle, ArrowRight, LogIn, Zap, KeyRound, ChevronRight, Headphones,
+  Sparkles,
 } from 'lucide-react'
 import { SUPPORT_PHONE, SUPPORT_WHATSAPP } from './auth-constants'
 import type { BlockedInfo } from './auth-constants'
+import { Separator } from '@/components/ui/separator'
+import { TrialSignupDialog } from './trial-signup-dialog'
 
 interface LoginFormProps {
   loading: boolean
@@ -28,6 +31,7 @@ export function LoginForm({
   onLoginCedulaChange, onLoginPasswordChange, onLogin, onForgotPassword,
 }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false)
+  const [showTrialDialog, setShowTrialDialog] = useState(false)
 
   return (
     <div className="w-full max-w-[440px] mx-auto lg:mx-0">
@@ -203,6 +207,28 @@ export function LoginForm({
               </button>
             </div>
 
+            {/* Trial signup CTA */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Separator className="flex-1 bg-zinc-800/60" />
+                <span className="text-xs text-zinc-600 font-medium">o</span>
+                <Separator className="flex-1 bg-zinc-800/60" />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowTrialDialog(true)}
+                className="w-full h-12 rounded-lg gap-2.5 border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/40 hover:text-emerald-300 transition-all"
+              >
+                <Sparkles className="h-4.5 w-4.5" />
+                <span className="font-semibold">Comenzar Prueba Gratuita</span>
+                <span className="ml-auto text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full px-2 py-0.5">7 días</span>
+              </Button>
+              <p className="text-[11px] text-zinc-600 text-center">
+                Sin tarjeta de crédito. Crea tu cuenta en 2 minutos.
+              </p>
+            </div>
+
             {/* Support link */}
             <div className="text-center">
               <a
@@ -219,6 +245,8 @@ export function LoginForm({
           </div>
         </form>
       </div>
+
+      <TrialSignupDialog open={showTrialDialog} onOpenChange={setShowTrialDialog} />
     </div>
   )
 }

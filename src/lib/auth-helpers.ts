@@ -246,6 +246,7 @@ export const PUBLIC_PATHS = [
   '/api/auth/send-otp',
   '/api/auth/verify-otp',
   '/api/auth/otp-status',
+  '/api/auth/trial-signup',
   '/api/auth/logout',  // Logout is public — it only needs the token itself
   '/api/health',
   '/api/subscription/plans',
