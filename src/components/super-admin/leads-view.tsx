@@ -167,8 +167,7 @@ function FileUploadArea({
   fileName,
   onFileSelect,
   onRemoveFile,
-  leadId,
-  fileType,
+  onViewFile,
 }: {
   label: string
   currentFileName?: string | null
@@ -178,8 +177,7 @@ function FileUploadArea({
   fileName: string
   onFileSelect: (base64: string, name: string, type: string) => void
   onRemoveFile: () => void
-  leadId: number
-  fileType: 'rut' | 'camara'
+  onViewFile: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -229,15 +227,9 @@ function FileUploadArea({
             </div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-            <a
-              href={`/api/super-admin/leads/${leadId}/files?type=${fileType}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1 border-zinc-700">
-                <ExternalLink className="h-2.5 w-2.5" />Ver
-              </Button>
-            </a>
+            <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1 border-zinc-700" onClick={onViewFile}>
+              <ExternalLink className="h-2.5 w-2.5" />Ver
+            </Button>
           </div>
         </div>
       )}
@@ -1112,8 +1104,7 @@ export function LeadsView() {
                             onRemoveFile={() => {
                               setEditForm(prev => ({ ...prev, rutFileBase64: '', rutFileName: '', rutFileType: '' }))
                             }}
-                            leadId={selectedLead.id}
-                            fileType="rut"
+                            onViewFile={() => viewDocument(selectedLead.id, 'rut', selectedLead.rutFileName)}
                           />
                         </div>
 
@@ -1158,8 +1149,7 @@ export function LeadsView() {
                                 onRemoveFile={() => {
                                   setEditForm(prev => ({ ...prev, camaraFileBase64: '', camaraFileName: '', camaraFileType: '' }))
                                 }}
-                                leadId={selectedLead.id}
-                                fileType="camara"
+                                onViewFile={() => viewDocument(selectedLead.id, 'camara', selectedLead.camaraFileName)}
                               />
                             </>
                           )}
