@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
 import { withRateLimit, attachRateLimitHeaders } from '@/lib/rate-limiter'
 import { logger } from '@/lib/logger'
+import { saveReceiptFile } from '@/lib/file-storage'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -30,6 +31,13 @@ const trialSignupSchema = z.object({
   businessType: z.enum(['NATURAL', 'JURIDICA']).default('NATURAL'),
   hasCamaraComercio: z.boolean().optional(),
   registrationNumber: z.string().optional().or(z.literal('')),
+  // ── Optional file uploads ──
+  rutFileBase64: z.string().optional().or(z.literal('')),
+  rutFileName: z.string().optional().or(z.literal('')),
+  rutFileType: z.string().optional().or(z.literal('')),
+  camaraFileBase64: z.string().optional().or(z.literal('')),
+  camaraFileName: z.string().optional().or(z.literal('')),
+  camaraFileType: z.string().optional().or(z.literal('')),
 })
 
 /**
@@ -89,6 +97,55 @@ export async function POST(req: NextRequest) {
     // ─── Hash password (stored securely, only used when admin creates the account) ───
     const passwordHash = await hashPassword(data.ownerPassword)
 
+    // ─── Save uploaded files to disk (if provided) ───
+    let rutFilePath: string | null = null
+    let rutFileSize: number | null = null
+    let camaraFilePath: string | null = null
+    let camaraFileSize: number | null = null
+
+    if (data.rutFileBase64 && data.rutFileName && data.rutFileType) {
+      try {
+        rutFilePath = await saveReceiptFile({
+          base64Data: data.rutFileBase64,
+          fileName: data.rutFileName,
+          fileType: data.rutFileType,
+        })
+        // Calculate approximate file size from base64
+        rutFileSize = Math.floor((data.rutFileBase64.length * 3) / 4)
+        logger.info(`[TrialSignup] RUT file saved: ${rutFilePath} (${rutFileSize} bytes)`)
+      } catch (fileError) {
+        logger.error('[TrialSignup] Error saving RUT file:', fileError)
+        return NextResponse.json(
+          { error: 'Error al guardar el archivo RUT. Por favor intenta de nuevo.' },
+          { status: 500 },
+        )
+      }
+    }
+
+    if (data.camaraFileBase64 && data.camaraFileName && data.camaraFileType) {
+      try {
+        camaraFilePath = await saveReceiptFile({
+          base64Data: data.camaraFileBase64,
+          fileName: data.camaraFileName,
+          fileType: data.camaraFileType,
+        })
+        // Calculate approximate file size from base64
+        camaraFileSize = Math.floor((data.camaraFileBase64.length * 3) / 4)
+        logger.info(`[TrialSignup] Cámara file saved: ${camaraFilePath} (${camaraFileSize} bytes)`)
+      } catch (fileError) {
+        logger.error('[TrialSignup] Error saving Cámara file:', fileError)
+        // Clean up RUT file if it was already saved
+        if (rutFilePath) {
+          const { deleteReceiptFile } = await import('@/lib/file-storage')
+          deleteReceiptFile(rutFilePath).catch(() => {})
+        }
+        return NextResponse.json(
+          { error: 'Error al guardar el archivo de Cámara de Comercio. Por favor intenta de nuevo.' },
+          { status: 500 },
+        )
+      }
+    }
+
     // ─── Create Lead record only (no User, no Store, no Subscription) ───
     await db.lead.create({
       data: {
@@ -107,6 +164,15 @@ export async function POST(req: NextRequest) {
         address: data.address?.trim() || null,
         hasCamaraComercio: data.hasCamaraComercio ?? false,
         registrationNumber: data.registrationNumber?.trim() || null,
+        // ── File paths ──
+        rutFilePath,
+        rutFileName: data.rutFileName?.trim() || null,
+        rutFileSize,
+        rutFileType: data.rutFileType?.trim() || null,
+        camaraFilePath,
+        camaraFileName: data.camaraFileName?.trim() || null,
+        camaraFileSize,
+        camaraFileType: data.camaraFileType?.trim() || null,
         status: 'NEW',
         source: 'WEB',
       },

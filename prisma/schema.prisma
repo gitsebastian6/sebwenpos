@@ -371,6 +371,15 @@ model Lead {
   address           String?   @map("address")
   hasCamaraComercio Boolean   @default(false) @map("has_camara_comercio")
   registrationNumber String? @map("registration_number")
+  // ── Documentos adjuntos ──
+  rutFilePath       String?   @map("rut_file_path")      // RUT/Documento tributario
+  rutFileName       String?   @map("rut_file_name")
+  rutFileSize       Int?      @map("rut_file_size")
+  rutFileType       String?   @map("rut_file_type")
+  camaraFilePath    String?   @map("camara_file_path")   // Cámara de comercio
+  camaraFileName    String?   @map("camara_file_name")
+  camaraFileSize    Int?      @map("camara_file_size")
+  camaraFileType    String?   @map("camara_file_type")
   // ── Estado ──
   status            String    @default("NEW") // NEW, CONTACTED, APPROVED, REJECTED, CONVERTED
   source            String    @default("WEB") // WEB, WHATSAPP, REFERRAL

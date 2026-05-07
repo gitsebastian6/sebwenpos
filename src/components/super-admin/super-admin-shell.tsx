@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import {
   Store, Plus, Crown, Settings, TrendingUp, Shield,
-  LogOut, Moon, Sun, Wallet,
+  LogOut, Moon, Sun, Wallet, Users,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import dynamic from 'next/dynamic'
@@ -20,6 +20,7 @@ import { PlansView } from './plans-view'
 import { StoresKPICards, StoresTable, CreateStoreDialog, ResetPasswordDialog } from './stores-view'
 import { StoreDetailView } from './store-detail-view'
 import { PendingPaymentsView } from './pending-payments-view'
+import { LeadsView } from './leads-view'
 import {
   useSuperAdminStores,
   useSuperAdminStatistics,
@@ -39,7 +40,7 @@ export function SuperAdminShell() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [selectedUser, setSelectedUser] = useState<StoreOwner | null>(null)
-  const [currentView, setCurrentView] = useState<'stores' | 'plans' | 'payments' | 'config' | 'stats'>('stores')
+  const [currentView, setCurrentView] = useState<'stores' | 'leads' | 'plans' | 'payments' | 'config' | 'stats'>('stores')
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null)
 
   // ── Query hooks ──
@@ -141,12 +142,14 @@ export function SuperAdminShell() {
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-                  {currentView === 'stores' ? 'Panel de Tiendas' : currentView === 'config' ? 'Configuración del Sistema' : currentView === 'stats' ? 'Estadísticas del SaaS' : currentView === 'payments' ? 'Pagos y Comprobantes' : 'Planes de Suscripción'}
+                  {currentView === 'stores' ? 'Panel de Tiendas' : currentView === 'leads' ? 'CRM de Leads' : currentView === 'config' ? 'Configuración del Sistema' : currentView === 'stats' ? 'Estadísticas del SaaS' : currentView === 'payments' ? 'Pagos y Comprobantes' : 'Planes de Suscripción'}
                 </h1>
               </div>
               <p className="text-muted-foreground">
                 {currentView === 'stores'
                   ? 'Administración centralizada de todos los establecimientos'
+                  : currentView === 'leads'
+                  ? 'Gestión de leads y prospectos — seguimiento, aprobación y conversión a cuentas'
                   : currentView === 'config'
                   ? 'Integraciones y configuración global del sistema'
                   : currentView === 'stats'
@@ -165,6 +168,14 @@ export function SuperAdminShell() {
                   onClick={() => setCurrentView('stores')}
                 >
                   <Store className="h-3.5 w-3.5" />Tiendas
+                </Button>
+                <Button
+                  variant={currentView === 'leads' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="gap-1.5 h-8 transition-all duration-200"
+                  onClick={() => setCurrentView('leads')}
+                >
+                  <Users className="h-3.5 w-3.5" />Leads
                 </Button>
                 <Button
                   variant={currentView === 'plans' ? 'default' : 'ghost'}
@@ -227,6 +238,11 @@ export function SuperAdminShell() {
                   onDeleteStore={handleDeleteStore}
                 />
               </>
+            )}
+
+            {/* LEADS VIEW */}
+            {currentView === 'leads' && (
+              <LeadsView />
             )}
 
             {/* PLANS VIEW */}

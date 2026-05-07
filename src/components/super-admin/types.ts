@@ -99,3 +99,46 @@ export interface PaymentReceiptData {
   store?: { id: number; name: string; nit: string | null; phone: string | null; user: { fullName: string | null; phone: string | null } }
   subscription?: { id: number; status: string; plan: { name: string; price: number }; endDate: string | null }
 }
+
+export interface LeadData {
+  id: number
+  ownerFullName: string
+  ownerCedula: string
+  ownerEmail: string | null
+  ownerPhone: string | null
+  storeName: string
+  nit: string
+  legalName: string
+  businessType: string
+  storePhone: string | null
+  department: string | null
+  cityName: string | null
+  address: string | null
+  hasCamaraComercio: boolean
+  registrationNumber: string | null
+  rutFilePath: string | null
+  rutFileName: string | null
+  rutFileSize: number | null
+  rutFileType: string | null
+  camaraFilePath: string | null
+  camaraFileName: string | null
+  camaraFileSize: number | null
+  camaraFileType: string | null
+  status: string
+  source: string
+  notes: string | null
+  reviewedBy: string | null
+  reviewedAt: string | null
+  convertedStoreId: number | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LeadsStats {
+  new: number
+  contacted: number
+  approved: number
+  rejected: number
+  converted: number
+  total: number
+}
