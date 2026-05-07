@@ -306,8 +306,8 @@ function DepartmentCombobox({
   )
 }
 
-// ─── City Autocomplete Input ──────────────────────────────────────
-function CityAutocomplete({
+// ─── City Combobox (same UX as Department) ────────────────────────
+function CityCombobox({
   department,
   value,
   onChange,
@@ -317,74 +317,57 @@ function CityAutocomplete({
   onChange: (value: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState(value)
 
   const cities = useMemo(() => {
     if (!department) return []
     return COLOMBIAN_CITIES[department] || []
   }, [department])
 
-  const filtered = useMemo(() => {
-    if (!query.trim()) return cities
-    return cities.filter((c) =>
-      c.toLowerCase().includes(query.toLowerCase())
-    )
-  }, [cities, query])
-
-  function handleSelect(city: string) {
-    onChange(city)
-    setQuery(city)
-    setOpen(false)
-  }
-
-  function handleChange(val: string) {
-    setQuery(val)
-    onChange(val)
-    setOpen(true)
-  }
-
   if (!department) {
     return (
-      <Input
-        placeholder="Primero selecciona un departamento"
-        disabled
-        className="h-11 rounded-lg border-zinc-800 bg-zinc-900/50 text-zinc-600 placeholder:text-zinc-700 cursor-not-allowed"
-      />
+      <div
+        className="flex h-11 w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-600 cursor-not-allowed"
+      >
+        <span className="flex items-center gap-2">
+          <MapPin className="h-4 w-4 shrink-0" />
+          Primero selecciona un departamento
+        </span>
+      </div>
     )
   }
 
   return (
-    <Popover open={open && filtered.length > 0} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <div className="relative">
-          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-600" />
-          <Input
-            placeholder="Buscar ciudad..."
-            value={query}
-            onChange={(e) => handleChange(e.target.value)}
-            onFocus={() => {
-              setQuery(value)
-              setOpen(true)
-            }}
-            onBlur={() => {
-              setTimeout(() => setOpen(false), 200)
-            }}
-            className="pl-10 h-11 rounded-lg border-zinc-800 bg-zinc-900 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/20 focus-visible:border-emerald-500/40"
-          />
-        </div>
+        <button
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          className="flex h-11 w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/20 focus-visible:border-emerald-500/40 focus-visible:outline-none transition-colors"
+        >
+          <span className="flex items-center gap-2 truncate">
+            <MapPin className="h-4 w-4 text-zinc-600 shrink-0" />
+            {value ? value : <span className="text-zinc-600">Busca tu ciudad...</span>}
+          </span>
+          <ChevronDown className="h-4 w-4 text-zinc-500 shrink-0 ml-2" />
+        </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-1 bg-zinc-900 border-zinc-800" align="start">
-        <Command className="bg-transparent">
-          <CommandList className="max-h-48">
-            <CommandEmpty className="text-zinc-500 py-2 text-center text-sm">
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0 bg-zinc-900 border-zinc-800" align="start">
+        <Command className="bg-zinc-900 text-zinc-100">
+          <CommandInput placeholder="Buscar ciudad..." className="h-9 border-zinc-800 text-zinc-100 placeholder:text-zinc-600" />
+          <CommandList className="max-h-60">
+            <CommandEmpty className="text-zinc-500 py-3 text-center text-sm">
               No se encontró la ciudad
             </CommandEmpty>
             <CommandGroup className="p-1">
-              {filtered.map((city) => (
+              {cities.map((city) => (
                 <CommandItem
                   key={city}
                   value={city}
-                  onSelect={() => handleSelect(city)}
+                  onSelect={() => {
+                    onChange(city)
+                    setOpen(false)
+                  }}
                   className="cursor-pointer rounded-md px-3 py-2 text-sm text-zinc-300 data-[selected=true]:bg-emerald-500/10 data-[selected=true]:text-emerald-400 data-[selected=true]:bg-zinc-800"
                 >
                   <Check
@@ -786,7 +769,7 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
                   {/* City — Autocomplete based on department */}
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium text-zinc-400">Ciudad</Label>
-                    <CityAutocomplete
+                    <CityCombobox
                       department={formData.department}
                       value={formData.cityName}
                       onChange={(v) => updateField('cityName', v)}
