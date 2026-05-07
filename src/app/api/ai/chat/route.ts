@@ -360,7 +360,7 @@ function getFallbackResponse(userMessage: string): string {
   }
 
   if (lowerMsg.includes('suscripción') || lowerMsg.includes('plan') || lowerMsg.includes('pago') || lowerMsg.includes('precio')) {
-    return '**Planes de VentifyPOS:**\n\n- **Básico**: 1 tienda, 5 empleados, 100 productos\n- **Profesional**: 3 tiendas, 15 empleados, 500 productos\n- **Enterprise**: Todo ilimitado\n\n📋 Para ver tu plan actual ve a **Suscripción** en el menú lateral.\n\n💳 Puedes pagar con tarjeta, Nequi o Daviplata desde ahí. También puedes subir un comprobante de pago manual.\n⏱️ El trial dura 14 días gratis.'
+    return '**Planes de VentifyPOS:**\n\n- **Básico** ($49.900/mes): 1 tienda, 3 empleados, 100 productos\n- **Pro** ($89.900/mes): 5 sucursales, 15 empleados, 500 productos, Facturación DIAN\n- **Empresarial** ($249.000/mes): 25 sucursales, empleados y productos ilimitados\n\n📋 Para ver tu plan actual ve a **Suscripción** en el menú lateral.\n\n💳 Puedes pagar con tarjeta, Nequi o Daviplata desde ahí. También puedes subir un comprobante de pago manual.\n⏱️ El trial dura 7 días gratis.'
   }
 
   if (lowerMsg.includes('empleado') || lowerMsg.includes('personal') || lowerMsg.includes('contratar')) {

@@ -6,14 +6,16 @@ import { TRIAL_PERIOD_DAYS } from '@/lib/subscription/constants'
 //
 // VENTIFY POS Plans (canonical source: /api/super-admin/plans/seed):
 //   Trial         → 7 days, $0, limited products/employees
-//   Pro           → $89,900/mes, electronic invoicing + reports + advanced inventory
-//   Empresarial   → $249,000/mes, multi-store + API + everything
+//   Básico        → $49,900/mes, POS + basic inventory + manual billing
+//   Pro           → $89,900/mes, electronic invoicing + reports + 5 branches
+//   Empresarial   → $249,000/mes, multi-store (25) + API + everything
 
-export type PlanType = 'TRIAL' | 'PRO' | 'EMPRESARIAL'
+export type PlanType = 'TRIAL' | 'BASICO' | 'PRO' | 'EMPRESARIAL'
 
 /** Duration in days for each plan type (null = never expires) */
 export const PLAN_DURATIONS: Record<PlanType, number | null> = {
   TRIAL: TRIAL_PERIOD_DAYS,
+  BASICO: 30,
   PRO: 30,
   EMPRESARIAL: null, // billed per period, never auto-expires
 }
@@ -21,6 +23,7 @@ export const PLAN_DURATIONS: Record<PlanType, number | null> = {
 /** Human-readable plan labels (Spanish) */
 export const PLAN_LABELS: Record<PlanType, string> = {
   TRIAL: 'Prueba',
+  BASICO: 'Básico',
   PRO: 'Pro',
   EMPRESARIAL: 'Empresarial',
 }

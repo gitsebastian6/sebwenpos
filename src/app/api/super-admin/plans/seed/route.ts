@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 /**
  * VENTIFY POS — Plan Marketing Configuration
  *
- * Plan hierarchy: Trial → Pro → Empresarial
+ * Plan hierarchy: Trial → Básico → Pro → Empresarial
  * Each higher tier includes ALL features from lower tiers plus extras.
  *
  * Feature keys (must match PLAN_FEATURES in subscription-helpers.ts):
@@ -44,17 +44,17 @@ const DEFAULT_PLANS = [
     isActive: true,
   },
   {
-    name: 'Pro',
-    description: 'Para negocios en crecimiento. Facturación electrónica DIAN, inventario avanzado y reportes detallados. Ideal para tiendas, restaurantes y servicios.',
-    price: 89900,
+    name: 'Básico',
+    description: 'Ideal para negocios que inician. Punto de venta, inventario básico y facturación manual. Todo lo esencial para comenzar.',
+    price: 49900,
     maxStores: 1,
-    maxEmployees: 15,
-    maxProducts: 500,
+    maxEmployees: 3,
+    maxProducts: 100,
     features: {
-      electronicInvoicing: true,
+      electronicInvoicing: false,
       multiStore: false,
-      reports: true,
-      advancedInventory: true,
+      reports: false,
+      advancedInventory: false,
       api: false,
       customBranding: false,
       multiCurrency: false,
@@ -65,10 +65,31 @@ const DEFAULT_PLANS = [
     isActive: true,
   },
   {
+    name: 'Pro',
+    description: 'Para negocios en crecimiento. Facturación electrónica DIAN, inventario avanzado, reportes detallados y hasta 5 sucursales.',
+    price: 89900,
+    maxStores: 5,
+    maxEmployees: 15,
+    maxProducts: 500,
+    features: {
+      electronicInvoicing: true,
+      multiStore: true,
+      reports: true,
+      advancedInventory: true,
+      api: false,
+      customBranding: false,
+      multiCurrency: false,
+      support: 'email',
+      priority: false,
+    },
+    sortOrder: 3,
+    isActive: true,
+  },
+  {
     name: 'Empresarial',
-    description: 'Multi-tienda, productos ilimitados, API personalizada, branding propio y soporte prioritario dedicado. Para empresas que necesitan escalar.',
+    description: 'Solución completa para empresas que escalan. Hasta 25 sucursales, productos ilimitados, API, branding propio y soporte dedicado.',
     price: 249000,
-    maxStores: 10,
+    maxStores: 25,
     maxEmployees: -1,
     maxProducts: -1,
     features: {
@@ -82,7 +103,7 @@ const DEFAULT_PLANS = [
       support: 'dedicated',
       priority: true,
     },
-    sortOrder: 3,
+    sortOrder: 4,
     isActive: true,
   },
 ]

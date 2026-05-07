@@ -58,7 +58,7 @@ export function BranchesSection({ storeId, storeName, storeLegalName, storeNit, 
                 <CardDescription>
                   {parentSubInfo?.multiStoreEnabled
                     ? <>Suscripción centralizada · Plan {parentSubInfo.planName} · Máx. {parentSubInfo.maxStores} sucursales</>
-                    : 'Disponible únicamente con el plan Empresarial'
+                    : 'Disponible únicamente con los planes Pro y Empresarial'
                   }
                 </CardDescription>
               </div>

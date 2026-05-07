@@ -79,7 +79,7 @@ export async function GET(
  * Crea una nueva sucursal para la tienda indicada.
  *
  * REGLAS DE NEGOCIO:
- * 1. Solo planes con multiStore=true pueden crear sucursales (Empresarial).
+ * 1. Solo planes con multiStore=true pueden crear sucursales (Pro, Empresarial).
  * 2. No se puede exceder maxStores del plan.
  * 3. Las sucursales NO crean suscripción independiente — heredan la del padre.
  * 4. El OWNER del padre puede acceder a todas las sucursales con las mismas credenciales.
@@ -119,9 +119,9 @@ export async function POST(
 
     if (planFeatures.multiStore !== true) {
       return NextResponse.json({
-        error: 'La funcionalidad Multi-Tienda requiere el plan Empresarial. El plan actual no permite crear sucursales.',
+        error: 'La funcionalidad Multi-Tienda requiere un plan Pro o Empresarial. El plan actual no permite crear sucursales.',
         currentPlan: parentStore.subscription?.plan?.name || 'Sin plan',
-        requiredPlan: 'Empresarial',
+        requiredPlan: 'Pro o Empresarial',
         code: 'MULTI_STORE_REQUIRED',
       }, { status: 403 })
     }

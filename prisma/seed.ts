@@ -98,17 +98,40 @@ async function main() {
   })
   await prisma.plan.create({
     data: {
-      name: 'Pro',
-      description: 'Para negocios en crecimiento. Facturación electrónica DIAN, inventario avanzado y reportes detallados. Ideal para tiendas, restaurantes y servicios.',
-      price: 89900,
+      name: 'Básico',
+      description: 'Ideal para negocios que inician. Punto de venta, inventario básico y facturación manual. Todo lo esencial para comenzar.',
+      price: 49900,
       maxStores: 1,
-      maxEmployees: 15,
-      maxProducts: 500,
+      maxEmployees: 3,
+      maxProducts: 100,
       sortOrder: 2,
       isActive: true,
       features: JSON.stringify({
-        electronicInvoicing: true,
+        electronicInvoicing: false,
         multiStore: false,
+        reports: false,
+        advancedInventory: false,
+        api: false,
+        customBranding: false,
+        multiCurrency: false,
+        support: 'email',
+        priority: false,
+      }),
+    },
+  })
+  await prisma.plan.create({
+    data: {
+      name: 'Pro',
+      description: 'Para negocios en crecimiento. Facturación electrónica DIAN, inventario avanzado, reportes detallados y hasta 5 sucursales.',
+      price: 89900,
+      maxStores: 5,
+      maxEmployees: 15,
+      maxProducts: 500,
+      sortOrder: 3,
+      isActive: true,
+      features: JSON.stringify({
+        electronicInvoicing: true,
+        multiStore: true,
         reports: true,
         advancedInventory: true,
         api: false,
@@ -122,12 +145,12 @@ async function main() {
   await prisma.plan.create({
     data: {
       name: 'Empresarial',
-      description: 'Multi-tienda, productos ilimitados, API personalizada, branding propio y soporte prioritario dedicado. Para empresas que necesitan escalar.',
+      description: 'Solución completa para empresas que escalan. Hasta 25 sucursales, productos ilimitados, API, branding propio y soporte dedicado.',
       price: 249000,
-      maxStores: 10,
+      maxStores: 25,
       maxEmployees: -1,
       maxProducts: -1,
-      sortOrder: 3,
+      sortOrder: 4,
       isActive: true,
       features: JSON.stringify({
         electronicInvoicing: true,
@@ -142,7 +165,7 @@ async function main() {
       }),
     },
   })
-  console.log(`✅ 3 planes de suscripción creados (Trial id=${trialPlan.id})`)
+  console.log(`✅ 4 planes de suscripción creados (Trial id=${trialPlan.id})`)
 
   // Asignar Trial al store recién creado
   const trialEnd = new Date()
