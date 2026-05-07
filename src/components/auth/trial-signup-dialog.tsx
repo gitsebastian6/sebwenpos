@@ -21,9 +21,8 @@ import {
 import { toast } from 'sonner'
 import {
   User, Building2, Mail, Phone, Lock, ArrowRight,
-  ArrowLeft, Sparkles, Info, ChevronRight,
+  ArrowLeft, Sparkles, Info, ChevronRight, CheckCircle2,
 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 
 // ─── Colombian Departments ────────────────────────────────────────
 const COLOMBIAN_DEPARTMENTS = [
@@ -80,10 +79,10 @@ const initialFormData: FormData = {
 }
 
 export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps) {
-  const router = useRouter()
   const [step, setStep] = useState<1 | 2>(1)
   const [formData, setFormData] = useState<FormData>(initialFormData)
   const [loading, setLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
 
   function updateField(field: keyof FormData, value: string | boolean) {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -165,30 +164,13 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
       const data = await res.json()
 
       if (!res.ok) {
-        toast.error(data.error || 'Error al crear la cuenta')
+        toast.error(data.error || 'Error al enviar la solicitud')
         return
       }
 
-      // Store auth data in localStorage (matching existing auth store pattern)
-      localStorage.setItem('pos-auth', JSON.stringify({
-        token: data.token,
-        csrfToken: data.csrfToken,
-        user: data.user,
-        store: data.store,
-        permissions: data.permissions,
-        subscription: data.subscription,
-        availableStores: data.availableStores,
-      }))
-
-      toast.success(data.message || 'Cuenta creada exitosamente')
-      onOpenChange(false)
-
-      // Reset form
-      setFormData(initialFormData)
-      setStep(1)
-
-      // Redirect to app
-      router.push('/')
+      // Success — show confirmation, DO NOT login
+      setSubmitted(true)
+      toast.success(data.message || 'Solicitud enviada exitosamente')
     } catch {
       toast.error('Error de conexión. Intenta de nuevo.')
     } finally {
@@ -197,36 +179,62 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setStep(1); setFormData(initialFormData) } }}>
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setStep(1); setFormData(initialFormData); setSubmitted(false) } }}>
       <DialogContent className="max-w-lg rounded-xl bg-zinc-950 border-zinc-800 text-zinc-100 p-0 overflow-hidden">
-        {/* Progress indicator */}
-        <div className="flex items-center gap-2 px-6 pt-6 pb-2">
-          <div className={`flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold transition-colors ${
-            step >= 1 ? 'bg-emerald-500 text-white' : 'bg-zinc-800 text-zinc-500'
-          }`}>1</div>
-          <div className={`h-0.5 flex-1 rounded-full transition-colors ${
-            step >= 2 ? 'bg-emerald-500' : 'bg-zinc-800'
-          }`} />
-          <div className={`flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold transition-colors ${
-            step >= 2 ? 'bg-emerald-500 text-white' : 'bg-zinc-800 text-zinc-500'
-          }`}>2</div>
-        </div>
-
-        <DialogHeader className="px-6 pb-2">
-          <DialogTitle className="flex items-center gap-2 text-lg font-bold text-zinc-100">
-            <div className="h-8 w-8 bg-emerald-500/10 rounded-lg flex items-center justify-center border border-emerald-500/20">
-              <Sparkles className="h-4 w-4 text-emerald-400" />
+        {/* ── Success Screen ── */}
+        {submitted ? (
+          <div className="px-6 py-10 text-center space-y-5">
+            <div className="mx-auto h-16 w-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center border border-emerald-500/20">
+              <CheckCircle2 className="h-8 w-8 text-emerald-400" />
             </div>
-            {step === 1 ? 'Datos Personales' : 'Datos de la Empresa'}
-          </DialogTitle>
-          <DialogDescription className="text-zinc-500 text-sm">
-            {step === 1
-              ? 'Paso 1 de 2 — Ingresa tus datos personales'
-              : 'Paso 2 de 2 — Datos de facturación para tu negocio'}
-          </DialogDescription>
-        </DialogHeader>
+            <div>
+              <h3 className="text-xl font-bold text-zinc-100">¡Solicitud Enviada!</h3>
+              <p className="text-sm text-zinc-400 mt-2 max-w-xs mx-auto leading-relaxed">
+                Tu solicitud de prueba gratuita ha sido registrada. Nuestro equipo la revisará y se pondrá en contacto contigo para activar tu cuenta.
+              </p>
+            </div>
+            <div className="rounded-lg border border-emerald-500/15 bg-emerald-500/[0.06] p-4 max-w-xs mx-auto">
+              <p className="text-xs text-emerald-300/80 leading-relaxed">
+                Recibirás la activación de tu cuenta por <span className="font-semibold text-emerald-300">WhatsApp</span> o al <span className="font-semibold text-emerald-300">correo electrónico</span> que proporcionaste.
+              </p>
+            </div>
+            <Button
+              onClick={() => onOpenChange(false)}
+              className="h-11 px-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-2 transition-all"
+            >
+              Entendido
+            </Button>
+          </div>
+        ) : (
+          <>
+            {/* Progress indicator */}
+            <div className="flex items-center gap-2 px-6 pt-6 pb-2">
+              <div className={`flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold transition-colors ${
+                step >= 1 ? 'bg-emerald-500 text-white' : 'bg-zinc-800 text-zinc-500'
+              }`}>1</div>
+              <div className={`h-0.5 flex-1 rounded-full transition-colors ${
+                step >= 2 ? 'bg-emerald-500' : 'bg-zinc-800'
+              }`} />
+              <div className={`flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold transition-colors ${
+                step >= 2 ? 'bg-emerald-500 text-white' : 'bg-zinc-800 text-zinc-500'
+              }`}>2</div>
+            </div>
 
-        <div className="px-6 pb-6 max-h-[60vh] overflow-y-auto">
+            <DialogHeader className="px-6 pb-2">
+              <DialogTitle className="flex items-center gap-2 text-lg font-bold text-zinc-100">
+                <div className="h-8 w-8 bg-emerald-500/10 rounded-lg flex items-center justify-center border border-emerald-500/20">
+                  <Sparkles className="h-4 w-4 text-emerald-400" />
+                </div>
+                {step === 1 ? 'Datos Personales' : 'Datos de la Empresa'}
+              </DialogTitle>
+              <DialogDescription className="text-zinc-500 text-sm">
+                {step === 1
+                  ? 'Paso 1 de 2 — Ingresa tus datos personales'
+                  : 'Paso 2 de 2 — Datos de facturación para tu negocio'}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="px-6 pb-6 max-h-[60vh] overflow-y-auto">
           {step === 1 && (
             <div className="space-y-4">
               {/* Owner Full Name */}
@@ -487,7 +495,9 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
               </div>
             </div>
           )}
-        </div>
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )

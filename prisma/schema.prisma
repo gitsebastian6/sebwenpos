@@ -348,6 +348,45 @@ model BillingRecord {
   @@map("billing_records")
 }
 
+// ----------------------------------------------
+// CONTEXTO: CRM LEADS (solicitudes de prueba/cuenta)
+// ----------------------------------------------
+
+model Lead {
+  id                Int       @id @default(autoincrement())
+  // ── Contacto ──
+  ownerFullName     String    @map("owner_full_name")
+  ownerCedula       String    @map("owner_cedula")
+  ownerEmail        String?   @map("owner_email")
+  ownerPhone        String?   @map("owner_phone")
+  ownerPassword     String?   @map("owner_password")  // Hashed, solo se usa al crear la cuenta
+  // ── Empresa ──
+  storeName         String    @map("store_name")
+  nit               String
+  legalName         String    @map("legal_name")
+  businessType      String    @default("NATURAL") @map("business_type")
+  storePhone        String?   @map("store_phone")
+  department        String?   @map("department")
+  cityName          String?   @map("city_name")
+  address           String?   @map("address")
+  hasCamaraComercio Boolean   @default(false) @map("has_camara_comercio")
+  registrationNumber String? @map("registration_number")
+  // ── Estado ──
+  status            String    @default("NEW") // NEW, CONTACTED, APPROVED, REJECTED, CONVERTED
+  source            String    @default("WEB") // WEB, WHATSAPP, REFERRAL
+  notes             String?   // Notas del super admin
+  reviewedBy        String?   @map("reviewed_by")
+  reviewedAt        DateTime? @map("reviewed_at")
+  convertedStoreId  Int?      @map("converted_store_id") // Store ID cuando se convierte en cuenta
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status])
+  @@index([ownerCedula])
+  @@index([nit])
+  @@map("leads")
+}
+
 model PaymentReceipt {
   id             Int       @id @default(autoincrement())
   subscriptionId Int       @map("subscription_id")
