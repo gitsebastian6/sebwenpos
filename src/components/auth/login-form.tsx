@@ -12,7 +12,6 @@ import {
 } from 'lucide-react'
 import { SUPPORT_PHONE, SUPPORT_WHATSAPP } from './auth-constants'
 import type { BlockedInfo } from './auth-constants'
-import { Separator } from '@/components/ui/separator'
 import { TrialSignupDialog } from './trial-signup-dialog'
 
 interface LoginFormProps {
