@@ -17,6 +17,7 @@ import {
   Wallet, Upload, CheckCircle2, XCircle, Download, Clock, Filter,
   Eye as EyeIcon, FileCheck2, Banknote, CircleDollarSign,
   BadgeCheck, CalendarDays, Hash, FileText, Plus, AlertTriangle, ArrowRight,
+  User, Phone, MessageCircle,
 } from 'lucide-react'
 import { queryFetch } from '@/hooks/api/query-helpers'
 import { formatCOP, formatDateTime } from './helpers'
@@ -277,10 +278,36 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
                               <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                                 <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{formatDateTime(r.createdAt)}</span>
                                 {r.reference && <span className="font-mono flex items-center gap-1"><Hash className="h-3 w-3" />Ref: {r.reference}</span>}
-                                <span className="flex items-center gap-1"><FileText className="h-3 w-3" />{r.fileName}</span>
-                                <span className="flex items-center gap-1">{(r.fileSize / 1024).toFixed(0)} KB</span>
+                                {r.fileName ? (
+                                  <span className="flex items-center gap-1"><FileText className="h-3 w-3" />{r.fileName}</span>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-red-500 dark:text-red-400 font-medium"><AlertTriangle className="h-3 w-3" />Sin comprobante</span>
+                                )}
+                                {r.fileSize > 0 && <span className="flex items-center gap-1">{(r.fileSize / 1024).toFixed(0)} KB</span>}
                               </div>
                               <div className="flex flex-col gap-0.5">
+                                {/* Owner contact info for SA validation */}
+                                {r.store?.user && (r.store.user.fullName || r.store.user.phone) && (
+                                  <div className="flex items-center gap-2 flex-wrap mt-1">
+                                    {r.store.user.fullName && (
+                                      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground bg-muted/40 px-1.5 py-0.5 rounded">
+                                        <User className="h-3 w-3" />
+                                        {r.store.user.fullName}
+                                      </span>
+                                    )}
+                                    {r.store.user.phone && (
+                                      <a
+                                        href={`https://wa.me/57${r.store.user.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola, le escribo sobre el comprobante de pago de ${storeName}`)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded"
+                                      >
+                                        <Phone className="h-3 w-3" />
+                                        {r.store.user.phone}
+                                      </a>
+                                    )}
+                                  </div>
+                                )}
                                 {(() => {
                                   let planChange: { planChangeRequest: boolean; requestedPlanId: number; requestedPlanName: string; requestedBillingPeriod: string; userNotes: string | null } | null = null
                                   if (r.notes) {
@@ -385,6 +412,32 @@ export function PaymentReceiptsSection({ storeId, storeName, onRefresh, onCountC
                   )}
                 </div>
               </div>
+              {/* Owner contact info for validation */}
+              {previewReceipt.store?.user && (previewReceipt.store.user.fullName || previewReceipt.store.user.phone) && (
+                <div className="rounded-lg border border-emerald-200/60 dark:border-emerald-800/40 bg-emerald-50/50 dark:bg-emerald-950/10 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Datos del cliente</p>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    {previewReceipt.store.user.fullName && (
+                      <div className="flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-sm font-medium">{previewReceipt.store.user.fullName}</span>
+                      </div>
+                    )}
+                    {previewReceipt.store.user.phone && (
+                      <a
+                        href={`https://wa.me/57${previewReceipt.store.user.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola, le escribo sobre el comprobante de pago de ${storeName}`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:underline"
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                        {previewReceipt.store.user.phone}
+                      </a>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1.5">Contacta al cliente para validar el pago si es necesario.</p>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { handleViewReceipt(previewReceipt) }}>
                   <EyeIcon className="h-3.5 w-3.5" />Ver imagen del comprobante

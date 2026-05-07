@@ -58,7 +58,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://ventifypos:${POSTGRES_PASSWORD:-ventifypos_secret_2025}@postgres:5432/ventifypos?schema=public
-    command: ["node", "./node_modules/prisma/build/index.js", "db", "push", "--accept-data-loss"]
+    command: ["/bin/bash", "/app/docker-migrate.sh"]
 
   # ── Tables Real-Time Sync (Socket.IO) ───────────────────────────────────
   # WebSocket server that syncs table/session/comanda changes across all

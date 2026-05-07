@@ -35,7 +35,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 })
     }
 
-    const { planStartDate, planExpiresAt } = calculatePlanDates(data.plan, data.days)
+    // CRITICAL: For TRIAL plan, always use exactly 7 days — ignore custom days parameter
+    const effectiveDays = data.plan === 'TRIAL' ? 7 : data.days
+    const { planStartDate, planExpiresAt } = calculatePlanDates(data.plan, effectiveDays)
 
     const updated = await db.store.update({
       where: { id: parseInt(id) },

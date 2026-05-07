@@ -9,6 +9,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Loader2, Save, Store, MapPin, Phone, CreditCard } from 'lucide-react'
 
 export function BusinessSettingsTab() {
@@ -117,22 +124,22 @@ export function BusinessSettingsTab() {
               Moneda
             </span>
           </Label>
-          <select
-            id="store-currency"
-            value={storeCurrency}
-            onChange={(e) => setStoreCurrency(e.target.value)}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <option value="COP">COP - Peso Colombiano</option>
-            <option value="MXN">MXN - Peso Mexicano</option>
-            <option value="USD">USD - Dólar Americano</option>
-            <option value="EUR">EUR - Euro</option>
-            <option value="ARS">ARS - Peso Argentino</option>
-            <option value="PEN">PEN - Sol Peruano</option>
-            <option value="CLP">CLP - Peso Chileno</option>
-            <option value="VEB">VEB - Bolívar</option>
-            <option value="BRL">BRL - Real Brasileño</option>
-          </select>
+          <Select value={storeCurrency} onValueChange={setStoreCurrency}>
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccionar moneda" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="COP">COP - Peso Colombiano</SelectItem>
+              <SelectItem value="MXN">MXN - Peso Mexicano</SelectItem>
+              <SelectItem value="USD">USD - Dólar Americano</SelectItem>
+              <SelectItem value="EUR">EUR - Euro</SelectItem>
+              <SelectItem value="ARS">ARS - Peso Argentino</SelectItem>
+              <SelectItem value="PEN">PEN - Sol Peruano</SelectItem>
+              <SelectItem value="CLP">CLP - Peso Chileno</SelectItem>
+              <SelectItem value="VEB">VEB - Bolívar</SelectItem>
+              <SelectItem value="BRL">BRL - Real Brasileño</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <Button

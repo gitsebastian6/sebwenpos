@@ -39,13 +39,17 @@ export async function GET(req: NextRequest) {
 
       return {
         id: r.id,
+        invoiceNumber: r.invoiceNumber,
         planName: r.planName,
         billingPeriod: BILLING_PERIODS[r.billingPeriod]?.label || r.billingPeriod,
+        amount: r.amount,
         amountFormatted: formatCOP(r.amount),
+        prorationCredit: r.prorationCredit,
         prorationCreditFormatted: r.prorationCredit > 0 ? `-${formatCOP(r.prorationCredit)}` : null,
+        netAmount: r.netAmount,
         netAmountFormatted: formatCOP(r.netAmount),
         status: r.status,
-        statusLabel: r.status === 'PAID' ? 'Pagado' : r.status === 'PENDING' ? 'Pendiente' : 'Fallido',
+        statusLabel: r.status === 'PAID' ? 'Pagada' : r.status === 'PENDING' ? 'Pendiente' : r.status === 'VOIDED' ? 'Anulada' : 'Fallida',
         paymentMethod: r.paymentMethod,
         periodStart: r.periodStart,
         periodEnd: r.periodEnd,

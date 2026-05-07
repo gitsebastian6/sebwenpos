@@ -166,6 +166,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'La tienda no tiene suscripción asociada' }, { status: 400 })
     }
 
+    // ── Block: Trial subscriptions should NOT accept payments ──
+    if (storeData.subscription.status === 'TRIAL' && storeData.subscription.plan?.price === 0) {
+      return NextResponse.json({
+        error: 'No se puede registrar un pago para un plan Trial (gratis). El usuario debe cambiar a un plan de pago.',
+      }, { status: 400 })
+    }
+
     const subscriptionId = storeData.subscription.id
 
     // Check if there's already a PENDING receipt for this store's subscription

@@ -79,6 +79,9 @@ export const BILLING_PERIODS: Record<string, { label: string; days: number; mont
   ANNUAL: { label: 'Anual', days: 365, months: 12, discount: 15 },
 }
 
+// ── Trial Period (canonical — always 7 days, never override) ──
+export const TRIAL_PERIOD_DAYS = 7
+
 // ── Grace Period ──
 /** Grace period: 3 calendar days after endDate before fully expiring. */
 export const GRACE_PERIOD_DAYS = 3

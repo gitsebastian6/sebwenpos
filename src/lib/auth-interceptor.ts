@@ -3,10 +3,14 @@
 // ---------------------------------------------------------------------------
 // Patches window.fetch to automatically inject Authorization: Bearer header
 // on every /api/ request. Must be imported early in the app.
-// Includes silent token refresh on 401 responses.
+// Includes silent token refresh on 401 responses + proactive refresh before expiry.
 // ---------------------------------------------------------------------------
 
 const STORAGE_KEY = 'pos-auth'
+
+// Token is 8h, refresh proactively at 80% (6.4h = ~6h24min)
+const PROACTIVE_REFRESH_RATIO = 0.8
+const PROACTIVE_REFRESH_INTERVAL_MS = 5 * 60 * 1000 // Check every 5 minutes
 
 function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null
@@ -50,6 +54,7 @@ async function attemptTokenRefresh(): Promise<boolean> {
       if (data.token) {
         // Update the stored token in localStorage
         parsed.state.token = data.token
+        parsed.state.tokenIssuedAt = Date.now()
         // Update subscription status from refresh response
         if (data.subscriptionStatus) {
           parsed.state.subscription = {
@@ -156,6 +161,44 @@ function initInterceptor() {
   if (process.env.NODE_ENV === 'development') {
     console.log('[Auth] Global fetch interceptor active — Bearer token injected on /api/ requests (with silent refresh)')
   }
+
+  // ── Proactive token refresh ──
+  // Instead of waiting for a 401, refresh the token at 80% of its lifetime.
+  // This prevents any request failures due to expired tokens.
+  function parseTokenExpiry(token: string): number | null {
+    try {
+      const parts = token.split('.')
+      if (parts.length !== 3) return null
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+      return payload.exp || null
+    } catch {
+      return null
+    }
+  }
+
+  setInterval(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      const state = parsed?.state
+      if (!state?.isAuthenticated || !state.token) return
+
+      const exp = parseTokenExpiry(state.token)
+      if (!exp) return
+
+      const now = Date.now()
+      const totalLifetime = exp - (state.tokenIssuedAt || now)
+      // Refresh when we've used 80% of the token's lifetime
+      const refreshAt = (state.tokenIssuedAt || now) + totalLifetime * PROACTIVE_REFRESH_RATIO
+
+      if (now >= refreshAt) {
+        getOrStartRefresh()
+      }
+    } catch {
+      // silent
+    }
+  }, PROACTIVE_REFRESH_INTERVAL_MS)
 }
 
 // Auto-initialize on import (safe for SSR — only patches in browser)

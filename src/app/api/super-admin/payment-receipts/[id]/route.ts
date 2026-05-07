@@ -91,6 +91,14 @@ export async function PUT(
         }
       } catch { /* notes is not JSON or doesn't have plan change info */ }
 
+      // ── Block: Trial subscriptions should NOT accept payments unless it's a plan change ──
+      // Trial is free. Payments only make sense when upgrading to a paid plan.
+      if (sub.plan?.price === 0 && !planChangeReq) {
+        return NextResponse.json({
+          error: 'No se puede aprobar un pago para un plan Trial (gratis). El usuario debe cambiar a un plan de pago.',
+        }, { status: 400 })
+      }
+
       // ── Determine billing period and plan ──
       let effectivePlanId = sub.planId
       let effectiveBillingPeriod = sub.billingPeriod
@@ -109,7 +117,11 @@ export async function PUT(
       }
 
       if (!effectiveBillingPeriod || effectiveBillingPeriod === 'TRIAL') {
-        effectiveBillingPeriod = 'MONTHLY'
+        // If still TRIAL after plan change resolution, it means the target plan is also free.
+        // This should not happen in practice, but handle gracefully.
+        return NextResponse.json({
+          error: 'No se puede procesar un pago para un plan gratuito. Seleccione un plan de pago.',
+        }, { status: 400 })
       }
 
       let newEndDate: Date

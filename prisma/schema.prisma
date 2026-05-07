@@ -319,16 +319,17 @@ model SubscriptionHistory {
 
 model BillingRecord {
   id              Int      @id @default(autoincrement())
+  invoiceNumber   String   @unique @map("invoice_number") // e.g. "VF-0001"
   storeId         Int      @map("store_id")
   subscriptionId  Int      @map("subscription_id")
   receiptId       Int?     @map("receipt_id") // FK to PaymentReceipt if paid via receipt
   planId          Int      @map("plan_id")
   planName        String   @map("plan_name")
   billingPeriod   String   @map("billing_period") // MONTHLY, QUARTERLY, SEMI_ANNUAL, ANNUAL
-  amount          Int      // COP charged
+  amount          Int      // COP charged (subtotal)
   prorationCredit Int      @default(0) @map("proration_credit")
   netAmount       Int      @map("net_amount") // amount - prorationCredit
-  status          String   @default("PAID") // PAID, PENDING, FAILED
+  status          String   @default("PAID") // PAID, PENDING, FAILED, VOIDED
   paymentMethod   String?  @map("payment_method")
   periodStart     DateTime @map("period_start")
   periodEnd       DateTime @map("period_end")

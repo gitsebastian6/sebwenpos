@@ -20,8 +20,8 @@ export interface PaymentReceiptData {
   reviewNotes: string | null
   reviewedBy: string | null
   reviewedAt: string | null
-  fileName: string
-  fileSize: number
+  fileName: string | null
+  fileSize: number | null
   fileType: string | null
   fileData?: string
   createdAt: string

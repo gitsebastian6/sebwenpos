@@ -56,10 +56,14 @@ export interface SubscriptionHistoryItem {
 
 export interface BillingRecord {
   id: number
+  invoiceNumber: string
   planName: string
   billingPeriod: string
+  amount: number
   amountFormatted: string
+  prorationCredit: number
   prorationCreditFormatted: string | null
+  netAmount: number
   netAmountFormatted: string
   status: string
   statusLabel: string
@@ -73,8 +77,11 @@ export interface BillingRecord {
 export interface BillingHistory {
   items: BillingRecord[]
   summary: {
+    totalBilled: number
     totalBilledFormatted: string
+    totalPaid: number
     totalPaidFormatted: string
+    totalCredits: number
     totalCreditsFormatted: string
     recordCount: number
   }
@@ -140,8 +147,9 @@ export function useCurrentSubscription(storeId: number | undefined | null) {
     queryKey: ['subscription-current', storeId],
     queryFn: () => queryFetch<SubscriptionCurrent>(`/api/subscription/current?storeId=${storeId}`),
     enabled: !!storeId,
-    staleTime: 30_000,
-    refetchInterval: 30_000,
+    staleTime: 60_000,
+    // No refetchInterval — AppShell already syncs subscription data every 60s globally.
+    // Adding refetchInterval here would cause duplicate polling when settings page is open.
   })
 }
 
@@ -200,7 +208,7 @@ export function usePaymentReceipts(storeId: number | undefined | null) {
     queryKey: ['payment-receipts', storeId],
     queryFn: async () => unwrapArray<ReceiptItem>(await fetch(`/api/payment-receipts?storeId=${storeId}`)),
     enabled: !!storeId,
-    staleTime: 30_000,
+    staleTime: 60_000,
   })
 }
 

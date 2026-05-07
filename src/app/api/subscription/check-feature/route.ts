@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/api-auth'
-import { storeHasFeature, PLAN_FEATURES, featureGatedResponse } from '@/lib/subscription-helpers'
+import { storeHasFeature, PLAN_FEATURES, featureGatedResponse, checkFeatureAccess } from '@/lib/subscription-helpers'
 import type { PlanFeatureKey } from '@/lib/subscription-helpers'
 
 export const dynamic = 'force-dynamic'
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const hasFeature = await storeHasFeature(storeId, feature)
 
     if (!hasFeature) {
-      const check = await (await import('@/lib/subscription-helpers')).checkFeatureAccess(storeId, feature)
+      const check = await checkFeatureAccess(storeId, feature)
       const gated = check.allowed ? null : check as { allowed: false; feature: string; planName: string }
       return NextResponse.json({
         enabled: false,
