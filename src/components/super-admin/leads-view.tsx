@@ -304,29 +304,10 @@ export function LeadsView() {
   const [isEditing, setIsEditing] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
 
-  // ── View document (fetches with auth, opens as blob) ──
+  // ── View document (fetches file, opens as blob) ──
   async function viewDocument(leadId: number, type: 'rut' | 'camara', fileName?: string | null) {
     try {
-      // Get token from localStorage
-      let token: string | null = null
-      if (typeof window !== 'undefined') {
-        try {
-          const raw = localStorage.getItem('pos-auth')
-          if (raw) {
-            const parsed = JSON.parse(raw)
-            token = parsed?.state?.token || parsed?.token || null
-          }
-        } catch { /* ignore */ }
-      }
-
-      if (!token) {
-        toast.error('Sesión expirada. Inicia sesión de nuevo.')
-        return
-      }
-
-      const fileRes = await fetch(`/api/super-admin/leads/${leadId}/files?type=${type}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
+      const fileRes = await fetch(`/api/super-admin/leads/${leadId}/files?type=${type}`)
 
       if (!fileRes.ok) {
         toast.error('Error al cargar el documento')
@@ -555,7 +536,7 @@ export function LeadsView() {
   const approveLead = async (leadId: number) => {
     setActionLoading(true)
     try {
-      const res = await fetch(`/api/super-admin/leads/${leadId}`, {
+      const res = await fetch(`/api/super-admin/leads/${leadId}/approve`, {
         method: 'POST',
       })
       if (!res.ok) {
