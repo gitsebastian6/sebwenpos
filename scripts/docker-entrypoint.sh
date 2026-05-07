@@ -61,10 +61,9 @@ if [ "$PLAN_COUNT" = "0" ]; then
 
     async function seed() {
       const plans = [
-        { name: 'Trial', description: 'Prueba gratuita de 7 días para conocer el sistema', price: 0, maxStores: 1, maxEmployees: 3, maxProducts: 100, features: JSON.stringify({ pos: true, invoices: true, electronicInvoicing: false, tables: true, dashboard: true }), isActive: true, sortOrder: 0 },
-        { name: 'Básico', description: 'Plan básico para negocios pequeños', price: 49000, maxStores: 1, maxEmployees: 3, maxProducts: 100, features: JSON.stringify({ pos: true, invoices: false, electronicInvoicing: false }), isActive: true, sortOrder: 1 },
-        { name: 'Profesional', description: 'Plan profesional para negocios en crecimiento', price: 99000, maxStores: 2, maxEmployees: 10, maxProducts: 500, features: JSON.stringify({ pos: true, invoices: true, electronicInvoicing: false }), isActive: true, sortOrder: 2 },
-        { name: 'Empresarial', description: 'Plan empresarial con facturación electrónica DIAN', price: 199000, maxStores: 5, maxEmployees: 25, maxProducts: 2000, features: JSON.stringify({ pos: true, invoices: true, electronicInvoicing: true, multiStore: true }), isActive: true, sortOrder: 3 },
+        { name: 'Trial', description: 'Plan de prueba gratuito por 7 días. Evalúa el sistema completo sin compromiso. Incluye punto de venta, productos, clientes y ventas básicas.', price: 0, maxStores: 1, maxEmployees: 3, maxProducts: 50, features: JSON.stringify({ electronicInvoicing: false, multiStore: false, reports: false, advancedInventory: false, api: false, customBranding: false, multiCurrency: false, support: 'none', priority: false }), isActive: true, sortOrder: 1 },
+        { name: 'Pro', description: 'Para negocios en crecimiento. Facturación electrónica DIAN, inventario avanzado y reportes detallados. Ideal para tiendas, restaurantes y servicios.', price: 89900, maxStores: 1, maxEmployees: 15, maxProducts: 500, features: JSON.stringify({ electronicInvoicing: true, multiStore: false, reports: true, advancedInventory: true, api: false, customBranding: false, multiCurrency: false, support: 'email', priority: false }), isActive: true, sortOrder: 2 },
+        { name: 'Empresarial', description: 'Multi-tienda, productos ilimitados, API personalizada, branding propio y soporte prioritario dedicado. Para empresas que necesitan escalar.', price: 249000, maxStores: 10, maxEmployees: -1, maxProducts: -1, features: JSON.stringify({ electronicInvoicing: true, multiStore: true, reports: true, advancedInventory: true, api: true, customBranding: true, multiCurrency: true, support: 'dedicated', priority: true }), isActive: true, sortOrder: 3 },
       ];
 
       for (const plan of plans) {

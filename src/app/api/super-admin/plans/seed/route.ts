@@ -143,12 +143,32 @@ export async function POST() {
       }
     }
 
+    // Deactivate orphan plans (not in DEFAULT_PLANS and no active subscriptions)
+    const canonicalNames = new Set(DEFAULT_PLANS.map(p => p.name))
+    const orphanPlans = existingPlans.filter(p => !canonicalNames.has(p.name))
+    let deactivated = 0
+    for (const orphan of orphanPlans) {
+      // Check if any active subscriptions use this plan
+      const activeSubs = await db.subscription.count({
+        where: { planId: orphan.id, status: { in: ['ACTIVE', 'TRIAL', 'PAST_DUE'] } },
+      })
+      if (activeSubs === 0) {
+        await db.plan.delete({ where: { id: orphan.id } })
+        deactivated++
+      } else {
+        // Deactivate but don't delete (has active subscriptions)
+        await db.plan.update({ where: { id: orphan.id }, data: { isActive: false } })
+        deactivated++
+      }
+    }
+
     return NextResponse.json({
-      message: `Planes sincronizados: ${created} creado(s), ${updated} actualizado(s)`,
+      message: `Planes sincronizados: ${created} creado(s), ${updated} actualizado(s), ${deactivated} eliminado(s)/desactivado(s)`,
       created,
       updated,
+      deactivated,
       plans: DEFAULT_PLANS.map(p => p.name),
-      total: existingPlans.length + created,
+      total: (existingPlans.length + created - deactivated),
     })
   } catch (error) {
     logger.error('Seed plans error:', error)

@@ -4,10 +4,10 @@ import { TRIAL_PERIOD_DAYS } from '@/lib/subscription/constants'
 // Helper functions for plan management: durations, expiration checks, and
 // automatic date calculations when a store's plan changes.
 //
-// VENTIFY POS Plans:
+// VENTIFY POS Plans (canonical source: /api/super-admin/plans/seed):
 //   Trial         → 7 days, $0, limited products/employees
-//   Pro           → 30 days/mes, $89,900, electronic invoicing + reports
-//   Empresarial   → 30 days/mes, $249,000, multi-store + API + everything
+//   Pro           → $89,900/mes, electronic invoicing + reports + advanced inventory
+//   Empresarial   → $249,000/mes, multi-store + API + everything
 
 export type PlanType = 'TRIAL' | 'PRO' | 'EMPRESARIAL'
 
