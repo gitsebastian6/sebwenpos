@@ -303,6 +303,51 @@ export function LeadsView() {
   // ── Edit mode state ──
   const [isEditing, setIsEditing] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
+
+  // ── View document (fetches with auth, opens as blob) ──
+  async function viewDocument(leadId: number, type: 'rut' | 'camara', fileName?: string | null) {
+    try {
+      // Get token from localStorage
+      let token: string | null = null
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('pos-auth')
+          if (raw) {
+            const parsed = JSON.parse(raw)
+            token = parsed?.state?.token || parsed?.token || null
+          }
+        } catch { /* ignore */ }
+      }
+
+      if (!token) {
+        toast.error('Sesión expirada. Inicia sesión de nuevo.')
+        return
+      }
+
+      const fileRes = await fetch(`/api/super-admin/leads/${leadId}/files?type=${type}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+
+      if (!fileRes.ok) {
+        toast.error('Error al cargar el documento')
+        return
+      }
+
+      const blob = await fileRes.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName || `documento_${type}`
+      a.target = '_blank'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch {
+      toast.error('Error de conexión al cargar el documento')
+    }
+  }
+
   const [editForm, setEditForm] = useState<EditFormData>({
     ownerFullName: '',
     ownerEmail: '',
@@ -737,7 +782,7 @@ export function LeadsView() {
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-0.5">
                           <DocIndicator label="RUT" hasFile={!!lead.rutFilePath} />
-                          <DocIndicator label="Cámara" hasFile={lead.hasCamaraComercio} />
+                          <DocIndicator label="Cámara" hasFile={lead.camaraFilePath} />
                         </div>
                       </td>
                       <td className="px-4 py-3">
@@ -801,7 +846,7 @@ export function LeadsView() {
                   </div>
                   <div className="flex items-center gap-3">
                     <DocIndicator label="RUT" hasFile={!!lead.rutFilePath} />
-                    <DocIndicator label="Cámara" hasFile={lead.hasCamaraComercio} />
+                    <DocIndicator label="Cámara" hasFile={lead.camaraFilePath} />
                   </div>
                 </div>
               ))}
@@ -907,7 +952,7 @@ export function LeadsView() {
                   </Badge>
                   {/* Doc indicators in header */}
                   <DocIndicator label="RUT" hasFile={!!selectedLead.rutFilePath} />
-                  <DocIndicator label="Cámara" hasFile={selectedLead.hasCamaraComercio} />
+                  <DocIndicator label="Cámara" hasFile={selectedLead.camaraFilePath} />
                 </div>
 
                 {/* WhatsApp contact button */}
@@ -1301,15 +1346,14 @@ export function LeadsView() {
                             </div>
                           </div>
                           {selectedLead.rutFilePath ? (
-                            <a
-                              href={`/api/super-admin/leads/${selectedLead.id}/files?type=rut`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs gap-1 border-zinc-700"
+                              onClick={() => viewDocument(selectedLead.id, 'rut', selectedLead.rutFileName)}
                             >
-                              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 border-zinc-700">
-                                <ExternalLink className="h-3 w-3" />Ver documento
-                              </Button>
-                            </a>
+                              <ExternalLink className="h-3 w-3" />Ver documento
+                            </Button>
                           ) : (
                             <span className="text-[10px] text-amber-500/60 flex items-center gap-1">
                               <AlertTriangle className="h-3 w-3" />Pendiente
@@ -1339,16 +1383,15 @@ export function LeadsView() {
                               )}
                             </div>
                           </div>
-                          {selectedLead.hasCamaraComercio ? (
-                            <a
-                              href={`/api/super-admin/leads/${selectedLead.id}/files?type=camara`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                          {selectedLead.camaraFilePath ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs gap-1 border-zinc-700"
+                              onClick={() => viewDocument(selectedLead.id, 'camara', selectedLead.camaraFileName)}
                             >
-                              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 border-zinc-700">
-                                <ExternalLink className="h-3 w-3" />Ver documento
-                              </Button>
-                            </a>
+                              <ExternalLink className="h-3 w-3" />Ver documento
+                            </Button>
                           ) : (
                             <span className="text-[10px] text-amber-500/60 flex items-center gap-1">
                               <AlertTriangle className="h-3 w-3" />Pendiente
