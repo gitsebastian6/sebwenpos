@@ -63,6 +63,13 @@ export async function GET(
     // Read file from disk
     const buffer = await readReceiptFile(filePath)
 
+    if (!buffer) {
+      return NextResponse.json(
+        { error: `El archivo ${fileType === 'rut' ? 'RUT' : 'Cámara de Comercio'} no se encontró en el servidor.` },
+        { status: 404 },
+      )
+    }
+
     const headers = new Headers()
     headers.set('Content-Type', mimeType || 'application/octet-stream')
     headers.set('Content-Disposition', `inline; filename="${fileName || 'documento'}"`)

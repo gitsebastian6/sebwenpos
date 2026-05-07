@@ -54,14 +54,18 @@ export async function GET(
     if (receipt.filePath) {
       try {
         const buffer = await readReceiptFile(receipt.filePath)
-        const headers = new Headers()
-        headers.set('Content-Type', receipt.fileType || 'application/octet-stream')
-        headers.set('Content-Disposition', `inline; filename="${receipt.fileName}"`)
-        headers.set('Cache-Control', 'private, max-age=3600')
+        if (!buffer) {
+          logger.warn(`[files] File not found on disk: ${receipt.filePath}, falling back to DB data`)
+        } else {
+          const headers = new Headers()
+          headers.set('Content-Type', receipt.fileType || 'application/octet-stream')
+          headers.set('Content-Disposition', `inline; filename="${receipt.fileName}"`)
+          headers.set('Cache-Control', 'private, max-age=3600')
 
-        return new NextResponse(new Uint8Array(buffer), { headers })
+          return new NextResponse(new Uint8Array(buffer), { headers })
+        }
       } catch (error) {
-        logger.warn(`[files] File not found on disk: ${receipt.filePath}, falling back to DB data`)
+        logger.warn(`[files] Error reading file from disk: ${receipt.filePath}, falling back to DB data`)
         // Fall through to base64 fallback
       }
     }

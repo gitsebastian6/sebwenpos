@@ -1,4 +1,4 @@
-import { writeFile, mkdir, readFile, unlink } from 'fs/promises'
+import { writeFile, mkdir, readFile, unlink, access } from 'fs/promises'
 import { join, extname } from 'path'
 import { randomUUID } from 'crypto'
 import { logger } from './logger'
@@ -46,10 +46,22 @@ export async function saveReceiptFile(params: {
 
 /**
  * Read a file from disk by its relative path.
+ * Returns null if the file does not exist.
  */
-export async function readReceiptFile(relativePath: string): Promise<Buffer> {
+export async function readReceiptFile(relativePath: string): Promise<Buffer | null> {
   const absolutePath = join(UPLOADS_DIR, relativePath)
-  return readFile(absolutePath)
+  try {
+    // Check file exists before reading
+    await access(absolutePath)
+    return readFile(absolutePath)
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') {
+      logger.warn(`[file-storage] File not found: ${relativePath}`)
+      return null
+    }
+    throw error
+  }
 }
 
 /**

@@ -332,7 +332,9 @@ export async function GET(
     if (receipt.filePath && !receipt.fileData) {
       try {
         const buffer = await readReceiptFile(receipt.filePath)
-        receipt.fileData = buffer.toString('base64')
+        if (buffer) {
+          receipt.fileData = buffer.toString('base64')
+        }
       } catch {
         receipt.fileData = null
       }
