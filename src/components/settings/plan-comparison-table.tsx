@@ -29,7 +29,7 @@ export function PlanComparisonTable({
   plans,
   currentPlanName,
 }: PlanComparisonTableProps) {
-  const activePlans = plans.filter(p => p.isActive)
+  const activePlans = plans.filter(p => p.isActive && p.price > 0)
 
   return (
     <div className="overflow-x-auto">
@@ -72,6 +72,15 @@ export function PlanComparisonTable({
             {activePlans.map(plan => (
               <td key={plan.id} className="text-center py-2.5 px-3 font-semibold">
                 {plan.maxProducts === -1 ? '∞' : plan.maxProducts}
+              </td>
+            ))}
+          </tr>
+          {/* Stores/Sucursales row */}
+          <tr className="border-b border-border/50">
+            <td className="py-2.5 pr-4 text-muted-foreground">Sucursales</td>
+            {activePlans.map(plan => (
+              <td key={plan.id} className="text-center py-2.5 px-3 font-semibold">
+                {plan.maxStores === -1 ? '∞' : plan.maxStores}
               </td>
             ))}
           </tr>

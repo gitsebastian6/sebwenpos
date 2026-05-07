@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +22,9 @@ interface UpgradePromptProps {
 export function UpgradePrompt({ feature, planName, className, compact = false }: UpgradePromptProps) {
   const subscription = useAuthStore((s) => s.subscription)
   const currentPlan = planName || subscription?.planName || 'Tu plan'
+  const router = useRouter()
+
+  const goToSettings = () => router.push('/settings')
 
   if (compact) {
     return (
@@ -55,11 +59,11 @@ export function UpgradePrompt({ feature, planName, className, compact = false }:
               Actualiza tu plan para acceder a esta funcionalidad.
             </p>
             <div className="flex items-center gap-2 mt-3">
-              <Button size="sm" className="gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white">
+              <Button size="sm" className="gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white" onClick={goToSettings}>
                 <Crown className="h-3.5 w-3.5" />
                 Actualizar Plan
               </Button>
-              <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={goToSettings}>
                 Ver Planes
                 <ArrowRight className="h-3 w-3" />
               </Button>

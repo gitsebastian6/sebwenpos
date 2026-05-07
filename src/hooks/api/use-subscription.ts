@@ -8,6 +8,7 @@ import { queryFetch, mutationFetch, unwrapArray } from './query-helpers'
 // ---------------------------------------------------------------------------
 
 export interface PlanLimits {
+  maxStores: number
   maxEmployees: number
   maxProducts: number
   features: Record<string, boolean>
@@ -35,6 +36,7 @@ export interface PlanOption {
   name: string
   description: string | null
   price: number
+  maxStores: number
   maxEmployees: number
   maxProducts: number
   features: Record<string, boolean>

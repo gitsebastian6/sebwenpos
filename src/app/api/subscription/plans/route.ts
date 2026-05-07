@@ -18,6 +18,7 @@ export async function GET() {
         name: true,
         description: true,
         price: true,
+        maxStores: true,
         maxEmployees: true,
         maxProducts: true,
         features: true,

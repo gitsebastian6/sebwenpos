@@ -61,14 +61,13 @@ function getActiveStep(selectedPlanId: number | null) {
   return selectedPlanId ? 2 : 1
 }
 
-// Plan icon mapping based on plan index
-function getPlanIcon(index: number) {
-  switch (index) {
-    case 0: return { icon: Star, color: 'text-slate-600 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800' }
-    case 1: return { icon: Crown, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/40' }
-    case 2: return { icon: Sparkles, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/40' }
-    default: return { icon: Sparkles, color: 'text-primary', bg: 'bg-primary/10' }
-  }
+// Plan icon mapping based on plan name
+function getPlanIcon(planName: string) {
+  const name = planName.toLowerCase()
+  if (name === 'empresarial') return { icon: Crown, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/40' }
+  if (name === 'pro') return { icon: Star, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/40' }
+  // Default for Básico and any other
+  return { icon: Sparkles, color: 'text-slate-600 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800' }
 }
 
 export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPlanName, onPlanChanged }: PlanChangeDialogProps) {
@@ -278,7 +277,7 @@ function PlanChangeInner({
                     const isSelected = selectedPlanId === plan.id
                     const { fullPrice, discountedPrice, discount } = selectedPlanId === plan.id ? getPlanPrice(plan) : { fullPrice: 0, discountedPrice: 0, discount: 0 }
                     const isCurrentPlan = currentPlanName === plan.name
-                    const { icon: PlanIcon, color: iconColor, bg: iconBg } = getPlanIcon(planIndex)
+                    const { icon: PlanIcon, color: iconColor, bg: iconBg } = getPlanIcon(plan.name)
                     // Mark the middle plan as "popular" if there are 3+
                     const isPopular = activePlans.length >= 3 && planIndex === 1 && !isCurrentPlan
 
@@ -345,12 +344,15 @@ function PlanChangeInner({
                               {/* Features (compact) */}
                               {featureNames.length > 0 && (
                                 <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
-                                  {featureNames.slice(0, 5).map(feature => (
+                                  {featureNames.slice(0, 4).map(feature => (
                                     <span key={feature} className="flex items-center gap-1 text-[11px] text-muted-foreground">
                                       <Check className="h-3 w-3 text-emerald-500 shrink-0" />
                                       {feature}
                                     </span>
                                   ))}
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {plan.maxProducts === -1 ? '∞' : plan.maxProducts} prod · {plan.maxEmployees === -1 ? '∞' : plan.maxEmployees} emp · {plan.maxStores === -1 ? '∞' : plan.maxStores} suc
+                                  </span>
                                 </div>
                               )}
 

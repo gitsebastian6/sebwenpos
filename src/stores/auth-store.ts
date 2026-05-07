@@ -54,6 +54,7 @@ export interface SubscriptionInfo {
   billingPeriod: string | null
   daysRemaining: number | null
   planLimits: {
+    maxStores: number | null
     maxEmployees: number | null
     maxProducts: number | null
     features: Record<string, boolean>
