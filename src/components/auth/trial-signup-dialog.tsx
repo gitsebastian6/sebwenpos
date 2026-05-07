@@ -11,7 +11,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -122,9 +121,7 @@ interface FormData {
   cityName: string
   address: string
   // Step 3 - Documents
-  hasCamaraComercio: boolean
   registrationNumber: string
-  hasRut: boolean
 }
 
 const initialFormData: FormData = {
@@ -141,9 +138,7 @@ const initialFormData: FormData = {
   department: '',
   cityName: '',
   address: '',
-  hasCamaraComercio: false,
   registrationNumber: '',
-  hasRut: false,
 }
 
 function formatFileSize(bytes: number): string {
@@ -501,7 +496,6 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
           department: formData.department || undefined,
           cityName: formData.cityName.trim() || undefined,
           address: formData.address.trim() || undefined,
-          hasCamaraComercio: formData.hasCamaraComercio,
           registrationNumber: formData.registrationNumber.trim() || undefined,
           // RUT file
           rutFileBase64: rutFile?.base64 || undefined,
@@ -839,91 +833,60 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
                     <div className="flex items-start gap-2">
                       <Info className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
                       <p className="text-xs text-amber-300/80 leading-relaxed">
-                        Los documentos son <span className="font-semibold text-amber-300">opcionales</span> pero recomendados para acelerar la activación de facturación electrónica.
+                        Todos los documentos son opcionales. Puedes enviar tu solicitud ahora y el equipo de soporte te contactará para los documentos pendientes si son necesarios.
                       </p>
                     </div>
                   </div>
 
                   {/* RUT / Documento Tributario Section */}
                   <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-3">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        id="has-rut"
-                        checked={formData.hasRut}
-                        onCheckedChange={(checked) => {
-                          updateField('hasRut', !!checked)
-                          if (!checked) setRutFile(null)
-                        }}
-                        className="mt-0.5 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
-                      />
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="h-4 w-4 text-zinc-500" />
-                        <Label htmlFor="has-rut" className="text-sm font-medium text-zinc-300 cursor-pointer">
-                          Tengo mi RUT / Documento tributario
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-zinc-500" />
+                      <div>
+                        <Label className="text-sm font-medium text-zinc-300">
+                          RUT / Documento Tributario (opcional)
                         </Label>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          Sube tu RUT para agilizar la activación de facturación electrónica
+                        </p>
                       </div>
                     </div>
-
-                    {formData.hasRut && (
-                      <div className="pl-7 space-y-2">
-                        <p className="text-xs text-zinc-500">
-                          Sube el documento RUT emitido por la DIAN para tu negocio.
-                        </p>
-                        <FileUploadArea
-                          label="Subir RUT"
-                          file={rutFile}
-                          onFileSelect={setRutFile}
-                          onFileRemove={() => setRutFile(null)}
-                        />
-                      </div>
-                    )}
+                    <FileUploadArea
+                      label="Subir RUT"
+                      file={rutFile}
+                      onFileSelect={setRutFile}
+                      onFileRemove={() => setRutFile(null)}
+                    />
                   </div>
 
                   {/* Cámara de Comercio Section */}
                   <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 space-y-3">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        id="has-camara"
-                        checked={formData.hasCamaraComercio}
-                        onCheckedChange={(checked) => {
-                          updateField('hasCamaraComercio', !!checked)
-                          if (!checked) {
-                            updateField('registrationNumber', '')
-                            setCamaraFile(null)
-                          }
-                        }}
-                        className="mt-0.5 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
-                      />
-                      <div className="flex items-center gap-2">
-                        <FileUp className="h-4 w-4 text-zinc-500" />
-                        <Label htmlFor="has-camara" className="text-sm font-medium text-zinc-300 cursor-pointer">
-                          ¿Tiene Cámara de Comercio?
+                    <div className="flex items-center gap-2">
+                      <FileUp className="h-4 w-4 text-zinc-500" />
+                      <div>
+                        <Label className="text-sm font-medium text-zinc-300">
+                          Cámara de Comercio (opcional)
                         </Label>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          Si eres persona jurídica, sube tu certificado de cámara de comercio
+                        </p>
                       </div>
                     </div>
-
-                    {formData.hasCamaraComercio && (
-                      <div className="pl-7 space-y-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-sm font-medium text-zinc-400">Número de matrícula</Label>
-                          <Input
-                            placeholder="001-12345"
-                            value={formData.registrationNumber}
-                            onChange={(e) => updateField('registrationNumber', e.target.value)}
-                            className="h-10 rounded-lg border-zinc-800 bg-zinc-900/50 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/20 focus-visible:border-emerald-500/40"
-                          />
-                        </div>
-                        <p className="text-xs text-zinc-500">
-                          Sube el certificado de la Cámara de Comercio.
-                        </p>
-                        <FileUploadArea
-                          label="Subir Cámara de Comercio"
-                          file={camaraFile}
-                          onFileSelect={setCamaraFile}
-                          onFileRemove={() => setCamaraFile(null)}
-                        />
-                      </div>
-                    )}
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium text-zinc-400">Número de matrícula</Label>
+                      <Input
+                        placeholder="001-12345"
+                        value={formData.registrationNumber}
+                        onChange={(e) => updateField('registrationNumber', e.target.value)}
+                        className="h-10 rounded-lg border-zinc-800 bg-zinc-900/50 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/20 focus-visible:border-emerald-500/40"
+                      />
+                    </div>
+                    <FileUploadArea
+                      label="Subir Cámara de Comercio"
+                      file={camaraFile}
+                      onFileSelect={setCamaraFile}
+                      onFileRemove={() => setCamaraFile(null)}
+                    />
                   </div>
 
                   {/* Navigation buttons */}
@@ -944,11 +907,11 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
                       {loading ? (
                         <>
                           <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Creando...
+                          Enviando...
                         </>
                       ) : (
                         <>
-                          Crear Cuenta
+                          Enviar Solicitud
                           <Sparkles className="h-4 w-4" />
                         </>
                       )}

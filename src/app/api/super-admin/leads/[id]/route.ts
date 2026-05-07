@@ -2,15 +2,41 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
+import { saveReceiptFile, deleteReceiptFile } from '@/lib/file-storage'
 
 export const dynamic = 'force-dynamic'
 
 const validStatuses = ['NEW', 'CONTACTED', 'APPROVED', 'REJECTED', 'CONVERTED'] as const
 
 const updateLeadSchema = z.object({
+  // Original fields
   status: z.enum(validStatuses).optional(),
   notes: z.string().max(2000).optional(),
   reviewedBy: z.string().max(100).optional(),
+  // Contact fields
+  ownerFullName: z.string().max(200).optional(),
+  ownerEmail: z.string().email().max(200).nullable().optional(),
+  ownerPhone: z.string().max(30).nullable().optional(),
+  // Company fields
+  storeName: z.string().max(200).optional(),
+  nit: z.string().max(30).optional(),
+  legalName: z.string().max(200).optional(),
+  businessType: z.enum(['NATURAL', 'JURIDICA']).optional(),
+  storePhone: z.string().max(30).nullable().optional(),
+  department: z.string().max(100).nullable().optional(),
+  cityName: z.string().max(100).nullable().optional(),
+  address: z.string().max(300).nullable().optional(),
+  // Document metadata
+  hasCamaraComercio: z.boolean().optional(),
+  registrationNumber: z.string().max(100).nullable().optional(),
+  // File uploads - RUT
+  rutFileBase64: z.string().optional(),
+  rutFileName: z.string().max(300).optional(),
+  rutFileType: z.string().max(50).optional(),
+  // File uploads - Cámara de Comercio
+  camaraFileBase64: z.string().optional(),
+  camaraFileName: z.string().max(300).optional(),
+  camaraFileType: z.string().max(50).optional(),
 })
 
 /**
@@ -43,7 +69,7 @@ export async function GET(
 
 /**
  * PATCH /api/super-admin/leads/[id]
- * Updates lead status, notes, and reviewer info
+ * Updates lead fields, status, notes, and file uploads
  */
 export async function PATCH(
   req: NextRequest,
@@ -72,9 +98,83 @@ export async function PATCH(
       )
     }
 
+    // ── Handle file uploads ──
+    let rutFilePath = lead.rutFilePath
+    let rutFileSize: number | null | undefined = lead.rutFileSize
+    let rutFileName: string | null | undefined = lead.rutFileName
+    let rutFileType: string | null | undefined = lead.rutFileType
+
+    let camaraFilePath = lead.camaraFilePath
+    let camaraFileSize: number | null | undefined = lead.camaraFileSize
+    let camaraFileName: string | null | undefined = lead.camaraFileName
+    let camaraFileType: string | null | undefined = lead.camaraFileType
+
+    // RUT file upload
+    if (data.rutFileBase64 && data.rutFileName && data.rutFileType) {
+      // Delete old file if exists
+      if (lead.rutFilePath) {
+        deleteReceiptFile(lead.rutFilePath).catch(() => {})
+      }
+      const savedPath = await saveReceiptFile({
+        base64Data: data.rutFileBase64,
+        fileName: data.rutFileName,
+        fileType: data.rutFileType,
+      })
+      rutFilePath = savedPath
+      // Estimate size from base64 (base64 is ~4/3 of raw size)
+      const rawBase64 = data.rutFileBase64.replace(/^data:[^;]+;base64,/, '')
+      rutFileSize = Math.floor(Buffer.byteLength(rawBase64, 'base64'))
+      rutFileName = data.rutFileName
+      rutFileType = data.rutFileType
+    }
+
+    // Cámara de Comercio file upload
+    if (data.camaraFileBase64 && data.camaraFileName && data.camaraFileType) {
+      // Delete old file if exists
+      if (lead.camaraFilePath) {
+        deleteReceiptFile(lead.camaraFilePath).catch(() => {})
+      }
+      const savedPath = await saveReceiptFile({
+        base64Data: data.camaraFileBase64,
+        fileName: data.camaraFileName,
+        fileType: data.camaraFileType,
+      })
+      camaraFilePath = savedPath
+      const rawBase64 = data.camaraFileBase64.replace(/^data:[^;]+;base64,/, '')
+      camaraFileSize = Math.floor(Buffer.byteLength(rawBase64, 'base64'))
+      camaraFileName = data.camaraFileName
+      camaraFileType = data.camaraFileType
+    }
+
     const updated = await db.lead.update({
       where: { id: leadId },
       data: {
+        // Contact fields
+        ...(data.ownerFullName !== undefined ? { ownerFullName: data.ownerFullName } : {}),
+        ...(data.ownerEmail !== undefined ? { ownerEmail: data.ownerEmail } : {}),
+        ...(data.ownerPhone !== undefined ? { ownerPhone: data.ownerPhone } : {}),
+        // Company fields
+        ...(data.storeName !== undefined ? { storeName: data.storeName } : {}),
+        ...(data.nit !== undefined ? { nit: data.nit } : {}),
+        ...(data.legalName !== undefined ? { legalName: data.legalName } : {}),
+        ...(data.businessType !== undefined ? { businessType: data.businessType } : {}),
+        ...(data.storePhone !== undefined ? { storePhone: data.storePhone } : {}),
+        ...(data.department !== undefined ? { department: data.department } : {}),
+        ...(data.cityName !== undefined ? { cityName: data.cityName } : {}),
+        ...(data.address !== undefined ? { address: data.address } : {}),
+        // Document metadata
+        ...(data.hasCamaraComercio !== undefined ? { hasCamaraComercio: data.hasCamaraComercio } : {}),
+        ...(data.registrationNumber !== undefined ? { registrationNumber: data.registrationNumber } : {}),
+        // File paths/sizes
+        rutFilePath,
+        rutFileSize,
+        rutFileName,
+        rutFileType,
+        camaraFilePath,
+        camaraFileSize,
+        camaraFileName,
+        camaraFileType,
+        // Status/notes/reviewer
         ...(data.status ? { status: data.status } : {}),
         ...(data.notes !== undefined ? { notes: data.notes || null } : {}),
         ...(data.reviewedBy ? { reviewedBy: data.reviewedBy } : {}),
@@ -83,7 +183,7 @@ export async function PATCH(
       },
     })
 
-    logger.info(`[SuperAdmin] Lead #${leadId} updated: status=${data.status || 'unchanged'}`)
+    logger.info(`[SuperAdmin] Lead #${leadId} updated: status=${data.status || 'unchanged'}, fields=${JSON.stringify(Object.keys(body))}`)
 
     return NextResponse.json(updated)
   } catch (error: unknown) {
@@ -124,7 +224,6 @@ export async function DELETE(
 
     // Delete associated files from disk
     if (lead.rutFilePath || lead.camaraFilePath) {
-      const { deleteReceiptFile } = await import('@/lib/file-storage')
       if (lead.rutFilePath) {
         deleteReceiptFile(lead.rutFilePath).catch(() => {})
       }
