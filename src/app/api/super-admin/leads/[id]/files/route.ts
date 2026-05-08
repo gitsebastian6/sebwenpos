@@ -6,6 +6,18 @@ import { logger } from '@/lib/logger'
 export const dynamic = 'force-dynamic'
 
 /**
+ * Encode a filename for Content-Disposition header per RFC 5987.
+ * Handles non-ASCII characters (e.g. accented letters) and special chars.
+ */
+function encodeContentDisposition(filename: string): string {
+  // Replace quotes to avoid header injection
+  const safeName = filename.replace(/"/g, "'")
+  // RFC 5987: filename*=UTF-8''encodedFilename
+  const encoded = encodeURIComponent(safeName)
+  return `inline; filename="${safeName}"; filename*=UTF-8''${encoded}`
+}
+
+/**
  * GET /api/super-admin/leads/[id]/files?type=rut|camara
  * Serves a lead's uploaded file (RUT or Cámara de Comercio) from disk
  */
@@ -64,6 +76,7 @@ export async function GET(
     const buffer = await readReceiptFile(filePath)
 
     if (!buffer) {
+      logger.warn(`[SuperAdmin] File not found on disk for lead #${leadId}, type=${fileType}, path=${filePath}`)
       return NextResponse.json(
         { error: `El archivo ${fileType === 'rut' ? 'RUT' : 'Cámara de Comercio'} no se encontró en el servidor.` },
         { status: 404 },
@@ -72,7 +85,7 @@ export async function GET(
 
     const headers = new Headers()
     headers.set('Content-Type', mimeType || 'application/octet-stream')
-    headers.set('Content-Disposition', `inline; filename="${fileName || 'documento'}"`)
+    headers.set('Content-Disposition', encodeContentDisposition(fileName || 'documento'))
     headers.set('Content-Length', buffer.length.toString())
     headers.set('Cache-Control', 'private, max-age=3600')
 

@@ -2,11 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { readReceiptFile, getUploadsDir } from '@/lib/file-storage'
 import { logger } from '@/lib/logger'
-import { readFile } from 'fs/promises'
-import { join } from 'path'
 import { getAuthUser } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * Encode a filename for Content-Disposition header per RFC 5987.
+ * Handles non-ASCII characters (e.g. accented letters) and special chars.
+ */
+function encodeContentDisposition(filename: string): string {
+  const safeName = filename.replace(/"/g, "'")
+  const encoded = encodeURIComponent(safeName)
+  return `inline; filename="${safeName}"; filename*=UTF-8''${encoded}`
+}
 
 /**
  * GET /api/files/[id]
@@ -59,7 +67,7 @@ export async function GET(
         } else {
           const headers = new Headers()
           headers.set('Content-Type', receipt.fileType || 'application/octet-stream')
-          headers.set('Content-Disposition', `inline; filename="${receipt.fileName}"`)
+          headers.set('Content-Disposition', encodeContentDisposition(receipt.fileName))
           headers.set('Cache-Control', 'private, max-age=3600')
 
           return new NextResponse(new Uint8Array(buffer), { headers })
@@ -75,7 +83,7 @@ export async function GET(
       const buffer = Buffer.from(receipt.fileData, 'base64')
       const headers = new Headers()
       headers.set('Content-Type', receipt.fileType || 'application/octet-stream')
-      headers.set('Content-Disposition', `inline; filename="${receipt.fileName}"`)
+      headers.set('Content-Disposition', encodeContentDisposition(receipt.fileName))
       headers.set('Cache-Control', 'private, max-age=3600')
 
       return new NextResponse(new Uint8Array(buffer), { headers })

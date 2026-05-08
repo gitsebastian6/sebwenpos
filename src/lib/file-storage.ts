@@ -46,7 +46,7 @@ export async function saveReceiptFile(params: {
 
 /**
  * Read a file from disk by its relative path.
- * Returns null if the file does not exist.
+ * Returns null if the file does not exist or cannot be read.
  */
 export async function readReceiptFile(relativePath: string): Promise<Buffer | null> {
   const absolutePath = join(UPLOADS_DIR, relativePath)
@@ -56,11 +56,13 @@ export async function readReceiptFile(relativePath: string): Promise<Buffer | nu
     return readFile(absolutePath)
   } catch (error: unknown) {
     const code = (error as NodeJS.ErrnoException).code
-    if (code === 'ENOENT' || code === 'ENOTDIR') {
-      logger.warn(`[file-storage] File not found: ${relativePath}`)
+    if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES') {
+      logger.warn(`[file-storage] File not found or inaccessible: ${relativePath} (code=${code})`)
       return null
     }
-    throw error
+    // Unexpected errors — log but don't throw, return null so callers get 404 instead of 500
+    logger.error(`[file-storage] Unexpected error reading file ${relativePath}:`, error)
+    return null
   }
 }
 
