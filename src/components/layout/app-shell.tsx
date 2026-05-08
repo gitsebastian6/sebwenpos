@@ -44,6 +44,7 @@ import { toast } from 'sonner'
 import dynamic from 'next/dynamic'
 import { ViewErrorBoundary } from '@/components/shared/error-boundary'
 import { SubscriptionGate } from '@/components/subscription/subscription-gate'
+import { useCurrentSubscription } from '@/hooks/api/use-subscription'
 
 const AiAssistant = dynamic(() => import('@/components/ai-assistant/ai-assistant').then(m => ({ default: m.AiAssistant })), { ssr: false })
 const DashboardView = dynamic(() => import('@/components/dashboard/dashboard-view').then(m => ({ default: m.DashboardView })), { ssr: false })
@@ -124,51 +125,34 @@ export function AppShell() {
   const { theme, setTheme } = useTheme()
   const qc = useQueryClient()
 
-  // ── Periodically sync subscription data from API to auth store ──
+  // ── Sync subscription data from API to auth store via TanStack Query ──
   // This keeps the sidebar badge, top banner, and SubscriptionGate up to date
   // even when the user is NOT on the settings page.
-  // Syncs every 5 minutes — subscription status rarely changes more frequently.
+  // Refetches every 5 minutes — subscription status rarely changes more frequently.
+  const subscriptionQuery = useCurrentSubscription(store?.id, { refetchInterval: 5 * 60_000 })
+
+  // Sync fetched subscription data into the auth store whenever it changes
   useEffect(() => {
-    if (!store?.id) return
-
-    let intervalId: ReturnType<typeof setInterval> | null = null
-
-    async function syncSubscription() {
-      try {
-        const res = await fetch(`/api/subscription/current?storeId=${store.id}`)
-        if (!res.ok) return
-        const data = await res.json()
-        if (data.hasSubscription) {
-          useAuthStore.getState().updateSubscription({
-            hasSubscription: true,
-            subscriptionStatus: data.subscriptionStatus,
-            subscriptionId: data.subscriptionId,
-            planId: data.planId,
-            planName: data.planName,
-            planPrice: data.planPrice,
-            startDate: data.startDate,
-            endDate: data.endDate,
-            trialEndDate: data.trialEndDate,
-            graceEndDate: data.graceEndDate,
-            graceDaysRemaining: data.graceDaysRemaining,
-            billingPeriod: data.billingPeriod,
-            daysRemaining: data.daysRemaining,
-            planLimits: data.planLimits,
-          })
-        }
-      } catch {
-        // silent — don't disrupt the UI
-      }
+    const data = subscriptionQuery.data
+    if (data?.hasSubscription) {
+      useAuthStore.getState().updateSubscription({
+        hasSubscription: true,
+        subscriptionStatus: data.subscriptionStatus,
+        subscriptionId: data.subscriptionId,
+        planId: data.planId,
+        planName: data.planName,
+        planPrice: data.planPrice,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        trialEndDate: data.trialEndDate,
+        graceEndDate: data.graceEndDate,
+        graceDaysRemaining: data.graceDaysRemaining,
+        billingPeriod: data.billingPeriod,
+        daysRemaining: data.daysRemaining,
+        planLimits: data.planLimits,
+      })
     }
-
-    // Sync immediately on mount, then every 5 minutes
-    syncSubscription()
-    intervalId = setInterval(syncSubscription, 5 * 60_000)
-
-    return () => {
-      if (intervalId) clearInterval(intervalId)
-    }
-  }, [store?.id]) // only re-run when store changes
+  }, [subscriptionQuery.data])
 
   // ── Listen for query invalidation events (from store switch, etc.) ──
   useEffect(() => {

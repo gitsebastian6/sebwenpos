@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -45,6 +45,7 @@ import {
   RefreshCw, Loader2, Pencil, Save, Upload,
 } from 'lucide-react'
 import type { LeadData, LeadsStats } from './types'
+import { useLeads, useLeadDetail, useUpdateLead, useApproveLead, useDeleteLead, downloadLeadFile } from '@/hooks/api/use-leads'
 
 // ─── Status Configuration ───
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgClass: string; icon: typeof Clock }> = {
@@ -280,33 +281,49 @@ function FileUploadArea({
 // ─── MAIN COMPONENT ───
 export function LeadsView() {
   // ── State ──
-  const [leads, setLeads] = useState<LeadData[]>([])
-  const [stats, setStats] = useState<LeadsStats>({ new: 0, contacted: 0, approved: 0, rejected: 0, converted: 0, total: 0 })
-  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<FilterTab>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedLead, setSelectedLead] = useState<LeadData | null>(null)
+  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [notesText, setNotesText] = useState('')
-  const [notesSaving, setNotesSaving] = useState(false)
-  const [actionLoading, setActionLoading] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   // ── Edit mode state ──
   const [isEditing, setIsEditing] = useState(false)
-  const [editSaving, setEditSaving] = useState(false)
 
-  // ── View document (fetches file, opens as blob) ──
+  // ── TanStack Query hooks ──
+  const leadsQuery = useLeads({
+    status: activeTab !== 'ALL' ? activeTab : undefined,
+    search: searchQuery.trim() || undefined,
+  })
+  const detailQuery = useLeadDetail(detailOpen ? selectedLeadId : null)
+  const updateLeadMutation = useUpdateLead()
+  const approveLeadMutation = useApproveLead()
+  const deleteLeadMutation = useDeleteLead()
+
+  // ── Derived state ──
+  const leads = leadsQuery.data?.leads ?? []
+  const stats = leadsQuery.data?.stats ?? { new: 0, contacted: 0, approved: 0, rejected: 0, converted: 0, total: 0 }
+  const loading = leadsQuery.isLoading
+  const selectedLead = detailQuery.data ?? null
+  const actionLoading = updateLeadMutation.isPending || approveLeadMutation.isPending || deleteLeadMutation.isPending
+  const editSaving = updateLeadMutation.isPending
+  const notesSaving = updateLeadMutation.isPending
+
+  // Sync notesText when fresh detail data arrives
+  const freshNotes = detailQuery.data?.notes
+  if (detailOpen && freshNotes !== undefined && !isEditing && !updateLeadMutation.isPending) {
+    // Only update if notes differ and we're not actively editing/saving
+    if (notesText !== freshNotes && freshNotes !== null ? freshNotes : '') {
+      // schedule a micro-task to avoid setState during render
+      queueMicrotask(() => setNotesText(freshNotes || ''))
+    }
+  }
+
+  // ── View document (downloads file as blob) ──
   async function viewDocument(leadId: number, type: 'rut' | 'camara', fileName?: string | null) {
     try {
-      const fileRes = await fetch(`/api/super-admin/leads/${leadId}/files?type=${type}`)
-
-      if (!fileRes.ok) {
-        toast.error('Error al cargar el documento')
-        return
-      }
-
-      const blob = await fileRes.blob()
+      const blob = await downloadLeadFile(leadId, type)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -317,7 +334,7 @@ export function LeadsView() {
       document.body.removeChild(a)
       setTimeout(() => URL.revokeObjectURL(url), 5000)
     } catch {
-      toast.error('Error de conexión al cargar el documento')
+      toast.error('Error al cargar el documento')
     }
   }
 
@@ -344,53 +361,17 @@ export function LeadsView() {
     camaraFileType: '',
   })
 
-  // ── Fetch leads ──
-  const fetchLeads = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (activeTab !== 'ALL') params.set('status', activeTab)
-      if (searchQuery.trim()) params.set('search', searchQuery.trim())
-
-      const res = await fetch(`/api/super-admin/leads?${params.toString()}`)
-      if (!res.ok) throw new Error('Error al cargar leads')
-      const data = await res.json()
-      setLeads(data.leads || [])
-      setStats(data.stats || { new: 0, contacted: 0, approved: 0, rejected: 0, converted: 0, total: 0 })
-    } catch {
-      toast.error('Error al cargar leads')
-    } finally {
-      setLoading(false)
-    }
-  }, [activeTab, searchQuery])
-
-  useEffect(() => {
-    fetchLeads()
-  }, [fetchLeads])
-
-  // ── Fetch single lead for detail ──
-  const openDetail = async (lead: LeadData) => {
-    setSelectedLead(lead)
+  // ── Open detail panel ──
+  const openDetail = (lead: LeadData) => {
+    setSelectedLeadId(lead.id)
     setNotesText(lead.notes || '')
     setIsEditing(false)
     setDetailOpen(true)
-
-    // Fetch fresh data for the detail
-    try {
-      const res = await fetch(`/api/super-admin/leads/${lead.id}`)
-      if (res.ok) {
-        const fresh = await res.json()
-        setSelectedLead(fresh)
-        setNotesText(fresh.notes || '')
-      }
-    } catch {
-      // Use the data we already have
-    }
   }
 
   const closeDetail = () => {
     setDetailOpen(false)
-    setSelectedLead(null)
+    setSelectedLeadId(null)
     setIsEditing(false)
   }
 
@@ -431,168 +412,100 @@ export function LeadsView() {
   }
 
   // ── Save edit form ──
-  const saveEdit = async () => {
+  const saveEdit = () => {
     if (!selectedLead) return
-    setEditSaving(true)
-    try {
-      const payload: Record<string, unknown> = {
-        ownerFullName: editForm.ownerFullName,
-        ownerEmail: editForm.ownerEmail || null,
-        ownerPhone: editForm.ownerPhone || null,
-        storeName: editForm.storeName,
-        nit: editForm.nit,
-        legalName: editForm.legalName,
-        businessType: editForm.businessType,
-        storePhone: editForm.storePhone || null,
-        department: editForm.department || null,
-        cityName: editForm.cityName || null,
-        address: editForm.address || null,
-        hasCamaraComercio: editForm.hasCamaraComercio,
-        registrationNumber: editForm.registrationNumber || null,
-        notes: editForm.notes,
-      }
-
-      // Add file uploads if present
-      if (editForm.rutFileBase64 && editForm.rutFileName) {
-        payload.rutFileBase64 = editForm.rutFileBase64
-        payload.rutFileName = editForm.rutFileName
-        payload.rutFileType = editForm.rutFileType
-      }
-      if (editForm.camaraFileBase64 && editForm.camaraFileName) {
-        payload.camaraFileBase64 = editForm.camaraFileBase64
-        payload.camaraFileName = editForm.camaraFileName
-        payload.camaraFileType = editForm.camaraFileType
-      }
-
-      const res = await fetch(`/api/super-admin/leads/${selectedLead.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al guardar')
-      }
-
-      toast.success('Lead actualizado correctamente')
-      setIsEditing(false)
-
-      // Refresh detail
-      const freshRes = await fetch(`/api/super-admin/leads/${selectedLead.id}`)
-      if (freshRes.ok) {
-        const fresh = await freshRes.json()
-        setSelectedLead(fresh)
-        setNotesText(fresh.notes || '')
-      }
-      fetchLeads()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al guardar cambios')
-    } finally {
-      setEditSaving(false)
+    const payload: Record<string, unknown> = {
+      ownerFullName: editForm.ownerFullName,
+      ownerEmail: editForm.ownerEmail || null,
+      ownerPhone: editForm.ownerPhone || null,
+      storeName: editForm.storeName,
+      nit: editForm.nit,
+      legalName: editForm.legalName,
+      businessType: editForm.businessType,
+      storePhone: editForm.storePhone || null,
+      department: editForm.department || null,
+      cityName: editForm.cityName || null,
+      address: editForm.address || null,
+      hasCamaraComercio: editForm.hasCamaraComercio,
+      registrationNumber: editForm.registrationNumber || null,
+      notes: editForm.notes,
     }
+
+    // Add file uploads if present
+    if (editForm.rutFileBase64 && editForm.rutFileName) {
+      payload.rutFileBase64 = editForm.rutFileBase64
+      payload.rutFileName = editForm.rutFileName
+      payload.rutFileType = editForm.rutFileType
+    }
+    if (editForm.camaraFileBase64 && editForm.camaraFileName) {
+      payload.camaraFileBase64 = editForm.camaraFileBase64
+      payload.camaraFileName = editForm.camaraFileName
+      payload.camaraFileType = editForm.camaraFileType
+    }
+
+    updateLeadMutation.mutate(
+      { id: selectedLead.id, body: payload },
+      {
+        onSuccess: () => {
+          toast.success('Lead actualizado correctamente')
+          setIsEditing(false)
+        },
+        onError: (err) => toast.error(err.message || 'Error al guardar cambios'),
+      },
+    )
   }
 
   // ── Status change ──
-  const changeStatus = async (leadId: number, newStatus: string) => {
-    setActionLoading(true)
-    try {
-      const res = await fetch(`/api/super-admin/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al cambiar estado')
-      }
-      const config = STATUS_CONFIG[newStatus]
-      toast.success(`Estado cambiado a "${config?.label || newStatus}"`)
-      fetchLeads()
-      // Refresh detail
-      if (selectedLead?.id === leadId) {
-        const freshRes = await fetch(`/api/super-admin/leads/${leadId}`)
-        if (freshRes.ok) {
-          const fresh = await freshRes.json()
-          setSelectedLead(fresh)
-          setNotesText(fresh.notes || '')
-        }
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al cambiar estado')
-    } finally {
-      setActionLoading(false)
-    }
+  const changeStatus = (leadId: number, newStatus: string) => {
+    const config = STATUS_CONFIG[newStatus]
+    updateLeadMutation.mutate(
+      { id: leadId, body: { status: newStatus } },
+      {
+        onSuccess: () => toast.success(`Estado cambiado a "${config?.label || newStatus}"`),
+        onError: (err) => toast.error(err.message || 'Error al cambiar estado'),
+      },
+    )
   }
 
   // ── Approve / Convert ──
-  const approveLead = async (leadId: number) => {
-    setActionLoading(true)
-    try {
-      const res = await fetch(`/api/super-admin/leads/${leadId}/approve`, {
-        method: 'POST',
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al convertir lead')
-      }
-      const data = await res.json()
-      toast.success(data.message || 'Lead convertido exitosamente')
-      fetchLeads()
-      // Refresh detail
-      if (selectedLead?.id === leadId) {
-        const freshRes = await fetch(`/api/super-admin/leads/${leadId}`)
-        if (freshRes.ok) {
-          const fresh = await freshRes.json()
-          setSelectedLead(fresh)
-          setNotesText(fresh.notes || '')
-        }
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al convertir lead')
-    } finally {
-      setActionLoading(false)
-    }
+  const approveLead = (leadId: number) => {
+    approveLeadMutation.mutate(
+      { id: leadId },
+      {
+        onSuccess: (data) => toast.success(data.message || 'Lead convertido exitosamente'),
+        onError: (err) => toast.error(err.message || 'Error al convertir lead'),
+      },
+    )
   }
 
   // ── Delete ──
-  const deleteLead = async (leadId: number) => {
-    setActionLoading(true)
-    try {
-      const res = await fetch(`/api/super-admin/leads/${leadId}`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al eliminar lead')
-      }
-      toast.success('Lead eliminado exitosamente')
-      closeDetail()
-      fetchLeads()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al eliminar lead')
-    } finally {
-      setActionLoading(false)
-      setDeleteDialogOpen(false)
-    }
+  const deleteLead = (leadId: number) => {
+    deleteLeadMutation.mutate(
+      { id: leadId },
+      {
+        onSuccess: () => {
+          toast.success('Lead eliminado exitosamente')
+          closeDetail()
+          setDeleteDialogOpen(false)
+        },
+        onError: (err) => {
+          toast.error(err.message || 'Error al eliminar lead')
+          setDeleteDialogOpen(false)
+        },
+      },
+    )
   }
 
   // ── Save notes (view mode only) ──
-  const saveNotes = async () => {
-    if (!selectedLead || isEditing) return
-    setNotesSaving(true)
-    try {
-      const res = await fetch(`/api/super-admin/leads/${selectedLead.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: notesText }),
-      })
-      if (!res.ok) throw new Error()
-      toast.success('Notas guardadas')
-    } catch {
-      toast.error('Error al guardar notas')
-    } finally {
-      setNotesSaving(false)
-    }
+  const saveNotes = () => {
+    if (!selectedLeadId || isEditing) return
+    updateLeadMutation.mutate(
+      { id: selectedLeadId, body: { notes: notesText } },
+      {
+        onSuccess: () => toast.success('Notas guardadas'),
+        onError: () => toast.error('Error al guardar notas'),
+      },
+    )
   }
 
   // ── WhatsApp link ───

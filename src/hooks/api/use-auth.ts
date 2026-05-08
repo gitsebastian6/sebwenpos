@@ -177,6 +177,59 @@ export function useVerifyOtp() {
 }
 
 // ---------------------------------------------------------------------------
+// Trial signup mutation
+// ---------------------------------------------------------------------------
+
+export interface TrialSignupPayload {
+  ownerFullName: string
+  ownerCedula: string
+  ownerPhone: string
+  ownerEmail?: string
+  ownerPassword: string
+  storeName: string
+  nit: string
+  legalName: string
+  businessType: string
+  storePhone?: string
+  department?: string
+  cityName?: string
+  address?: string
+  registrationNumber?: string
+  rutFileBase64?: string
+  rutFileName?: string
+  rutFileType?: string
+  camaraFileBase64?: string
+  camaraFileName?: string
+  camaraFileType?: string
+}
+
+interface TrialSignupResponse {
+  message?: string
+  error?: string
+}
+
+/**
+ * Trial signup mutation — registers a new lead/business trial request.
+ * Does NOT auto-login; shows a confirmation screen on success.
+ */
+export function useTrialSignup() {
+  return useMutation<TrialSignupResponse, Error, TrialSignupPayload>({
+    mutationFn: async (body) => {
+      const res = await fetch('/api/auth/trial-signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al enviar la solicitud')
+      }
+      return data as TrialSignupResponse
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Query helpers (not hooks — used imperatively)
 // ---------------------------------------------------------------------------
 

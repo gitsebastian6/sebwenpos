@@ -144,14 +144,13 @@ export interface SubscriptionAlert {
 // ---------------------------------------------------------------------------
 
 /** Current subscription info for a store */
-export function useCurrentSubscription(storeId: number | undefined | null) {
+export function useCurrentSubscription(storeId: number | undefined | null, options?: { refetchInterval?: number }) {
   return useQuery<SubscriptionCurrent>({
     queryKey: ['subscription-current', storeId],
     queryFn: () => queryFetch<SubscriptionCurrent>(`/api/subscription/current?storeId=${storeId}`),
     enabled: !!storeId,
     staleTime: 60_000,
-    // No refetchInterval — AppShell already syncs subscription data every 60s globally.
-    // Adding refetchInterval here would cause duplicate polling when settings page is open.
+    refetchInterval: options?.refetchInterval,
   })
 }
 
@@ -259,6 +258,19 @@ export function useCreatePaymentReceipt() {
   return useMutation<unknown, Error, { storeId: number; body: Record<string, unknown> }>({
     mutationFn: ({ storeId, body }) =>
       mutationFetch('/api/payment-receipts', 'POST', body, storeId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payment-receipts'] })
+      qc.invalidateQueries({ queryKey: ['subscription-current'] })
+    },
+  })
+}
+
+/** Attach a file to an existing pending receipt */
+export function useAttachReceiptFile() {
+  const qc = useQueryClient()
+  return useMutation<unknown, Error, { receiptId: number; body: Record<string, unknown> }>({
+    mutationFn: ({ receiptId, body }) =>
+      mutationFetch(`/api/payment-receipts/${receiptId}`, 'PATCH', body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payment-receipts'] })
       qc.invalidateQueries({ queryKey: ['subscription-current'] })

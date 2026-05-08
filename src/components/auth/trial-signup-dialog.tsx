@@ -39,6 +39,7 @@ import {
   FileUp, ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTrialSignup } from '@/hooks/api/use-auth'
 
 // ─── Colombian Departments ────────────────────────────────────────
 const COLOMBIAN_DEPARTMENTS = [
@@ -391,10 +392,10 @@ function CityCombobox({
 export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [formData, setFormData] = useState<FormData>(initialFormData)
-  const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [rutFile, setRutFile] = useState<UploadedFile | null>(null)
   const [camaraFile, setCamaraFile] = useState<UploadedFile | null>(null)
+  const trialSignupMutation = useTrialSignup()
 
   function updateField(field: keyof FormData, value: string | boolean) {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -457,55 +458,44 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
     else if (step === 3) setStep(2)
   }
 
-  async function handleSubmit() {
+  function handleSubmit() {
     if (!validateStep2()) return
 
-    setLoading(true)
-    try {
-      const res = await fetch('/api/auth/trial-signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ownerFullName: formData.ownerFullName.trim(),
-          ownerCedula: formData.ownerCedula.trim(),
-          ownerPhone: formData.ownerPhone.trim(),
-          ownerEmail: formData.ownerEmail.trim() || undefined,
-          ownerPassword: formData.ownerPassword,
-          storeName: formData.storeName.trim(),
-          nit: formData.nit.trim(),
-          legalName: formData.legalName.trim(),
-          businessType: formData.businessType,
-          storePhone: formData.storePhone.trim() || undefined,
-          department: formData.department || undefined,
-          cityName: formData.cityName.trim() || undefined,
-          address: formData.address.trim() || undefined,
-          registrationNumber: formData.registrationNumber.trim() || undefined,
-          // RUT file
-          rutFileBase64: rutFile?.base64 || undefined,
-          rutFileName: rutFile?.name || undefined,
-          rutFileType: rutFile?.type || undefined,
-          // Camara file
-          camaraFileBase64: camaraFile?.base64 || undefined,
-          camaraFileName: camaraFile?.name || undefined,
-          camaraFileType: camaraFile?.type || undefined,
-        }),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        toast.error(data.error || 'Error al enviar la solicitud')
-        return
-      }
-
-      // Success — show confirmation, DO NOT login
-      setSubmitted(true)
-      toast.success(data.message || 'Solicitud enviada exitosamente')
-    } catch {
-      toast.error('Error de conexión. Intenta de nuevo.')
-    } finally {
-      setLoading(false)
-    }
+    trialSignupMutation.mutate(
+      {
+        ownerFullName: formData.ownerFullName.trim(),
+        ownerCedula: formData.ownerCedula.trim(),
+        ownerPhone: formData.ownerPhone.trim(),
+        ownerEmail: formData.ownerEmail.trim() || undefined,
+        ownerPassword: formData.ownerPassword,
+        storeName: formData.storeName.trim(),
+        nit: formData.nit.trim(),
+        legalName: formData.legalName.trim(),
+        businessType: formData.businessType,
+        storePhone: formData.storePhone.trim() || undefined,
+        department: formData.department || undefined,
+        cityName: formData.cityName.trim() || undefined,
+        address: formData.address.trim() || undefined,
+        registrationNumber: formData.registrationNumber.trim() || undefined,
+        // RUT file
+        rutFileBase64: rutFile?.base64 || undefined,
+        rutFileName: rutFile?.name || undefined,
+        rutFileType: rutFile?.type || undefined,
+        // Camara file
+        camaraFileBase64: camaraFile?.base64 || undefined,
+        camaraFileName: camaraFile?.name || undefined,
+        camaraFileType: camaraFile?.type || undefined,
+      },
+      {
+        onSuccess: (data) => {
+          setSubmitted(true)
+          toast.success(data.message || 'Solicitud enviada exitosamente')
+        },
+        onError: (err) => {
+          toast.error(err.message || 'Error de conexión. Intenta de nuevo.')
+        },
+      },
+    )
   }
 
   function handleDialogClose(v: boolean) {
@@ -884,10 +874,10 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
                     </Button>
                     <Button
                       onClick={handleSubmit}
-                      disabled={loading}
+                      disabled={trialSignupMutation.isPending}
                       className="flex-1 h-11 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-2 transition-all"
                     >
-                      {loading ? (
+                      {trialSignupMutation.isPending ? (
                         <>
                           <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                           Enviando...

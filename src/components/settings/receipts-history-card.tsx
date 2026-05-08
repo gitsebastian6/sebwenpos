@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCOP } from '@/lib/format'
+import { useAttachReceiptFile } from '@/hooks/api/use-subscription'
 
 export interface ReceiptItem {
   id: number
@@ -70,49 +71,46 @@ function parsePlanChangeNotes(notes: string | null) {
 export function ReceiptsHistoryCard({ receipts, onUpload, canUpload, hasPendingReceipt, storeId, onReceiptUpdated }: ReceiptsHistoryCardProps) {
   const [attachDialogOpen, setAttachDialogOpen] = useState(false)
   const [attachFile, setAttachFile] = useState<File | null>(null)
-  const [attaching, setAttaching] = useState(false)
   const [attachingToId, setAttachingToId] = useState<number | null>(null)
+  const attachReceiptMutation = useAttachReceiptFile()
 
   async function handleAttachFile(e: React.FormEvent) {
     e.preventDefault()
     if (!attachFile || !attachingToId || !storeId) return
-    setAttaching(true)
-    try {
-      const reader = new FileReader()
-      const base64Promise = new Promise<string>((resolve) => {
-        reader.onload = () => {
-          const result = reader.result as string
-          const base64 = result.split(',')[1]
-          resolve(base64)
-        }
-        reader.readAsDataURL(attachFile)
-      })
-      const fileData = await base64Promise
 
-      const res = await fetch(`/api/payment-receipts/${attachingToId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    // Read file as base64
+    const reader = new FileReader()
+    const fileData = await new Promise<string>((resolve) => {
+      reader.onload = () => {
+        const result = reader.result as string
+        resolve(result.split(',')[1])
+      }
+      reader.readAsDataURL(attachFile)
+    })
+
+    attachReceiptMutation.mutate(
+      {
+        receiptId: attachingToId,
+        body: {
           fileData: `data:${attachFile.type};base64,${fileData}`,
           fileName: attachFile.name,
           fileSize: attachFile.size,
           fileType: attachFile.type,
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al adjuntar comprobante')
-      }
-      toast.success('Comprobante adjuntado correctamente. El administrador lo revisará.')
-      setAttachDialogOpen(false)
-      setAttachFile(null)
-      setAttachingToId(null)
-      onReceiptUpdated?.()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al adjuntar comprobante')
-    } finally {
-      setAttaching(false)
-    }
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success('Comprobante adjuntado correctamente. El administrador lo revisará.')
+          setAttachDialogOpen(false)
+          setAttachFile(null)
+          setAttachingToId(null)
+          onReceiptUpdated?.()
+        },
+        onError: (err) => {
+          toast.error(err.message || 'Error al adjuntar comprobante')
+        },
+      },
+    )
   }
 
   function openAttachDialog(receiptId: number) {
@@ -231,11 +229,11 @@ export function ReceiptsHistoryCard({ receipts, onUpload, canUpload, hasPendingR
               </div>
             </div>
             <DialogFooter className="gap-2">
-              <Button type="button" variant="outline" onClick={() => setAttachDialogOpen(false)} disabled={attaching}>
+              <Button type="button" variant="outline" onClick={() => setAttachDialogOpen(false)} disabled={attachReceiptMutation.isPending}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={attaching || !attachFile}>
-                {attaching ? (
+              <Button type="submit" disabled={attachReceiptMutation.isPending || !attachFile}>
+                {attachReceiptMutation.isPending ? (
                   <><Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Adjuntando...</>
                 ) : (
                   <><Send className="h-4 w-4 mr-1.5" /> Adjuntar Comprobante</>
