@@ -25,23 +25,24 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Parse params outside try/catch so they're available for error logging
+  const { id: idStr } = await params
+  const leadId = parseInt(idStr, 10)
+  if (isNaN(leadId)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const fileType = searchParams.get('type') // 'rut' or 'camara'
+
+  if (fileType !== 'rut' && fileType !== 'camara') {
+    return NextResponse.json(
+      { error: 'Parámetro "type" requerido: debe ser "rut" o "camara"' },
+      { status: 400 },
+    )
+  }
+
   try {
-    const { id: idStr } = await params
-    const leadId = parseInt(idStr, 10)
-    if (isNaN(leadId)) {
-      return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
-    }
-
-    const { searchParams } = new URL(req.url)
-    const fileType = searchParams.get('type') // 'rut' or 'camara'
-
-    if (fileType !== 'rut' && fileType !== 'camara') {
-      return NextResponse.json(
-        { error: 'Parámetro "type" requerido: debe ser "rut" o "camara"' },
-        { status: 400 },
-      )
-    }
-
     // Fetch lead with only the file fields we need
     const lead = await db.lead.findUnique({
       where: { id: leadId },
@@ -91,7 +92,7 @@ export async function GET(
 
     return new NextResponse(new Uint8Array(buffer), { headers })
   } catch (error) {
-    logger.error('[SuperAdmin] Error serving lead file:', error)
+    logger.error(`[SuperAdmin] Error serving lead file (leadId=${leadId}, type=${fileType}):`, error)
     return NextResponse.json({ error: 'Error al servir archivo' }, { status: 500 })
   }
 }

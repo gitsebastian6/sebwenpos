@@ -1,4 +1,4 @@
-import { writeFile, mkdir, readFile, unlink, access } from 'fs/promises'
+import { writeFile, mkdir, readFile, unlink } from 'fs/promises'
 import { join, extname } from 'path'
 import { randomUUID } from 'crypto'
 import { logger } from './logger'
@@ -51,9 +51,8 @@ export async function saveReceiptFile(params: {
 export async function readReceiptFile(relativePath: string): Promise<Buffer | null> {
   const absolutePath = join(UPLOADS_DIR, relativePath)
   try {
-    // Check file exists before reading
-    await access(absolutePath)
-    return readFile(absolutePath)
+    // Read directly — no TOCTOU race condition with access() + readFile()
+    return await readFile(absolutePath)
   } catch (error: unknown) {
     const code = (error as NodeJS.ErrnoException).code
     if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES') {
