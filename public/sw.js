@@ -188,3 +188,64 @@ self.addEventListener('message', (event) => {
     // Just log — the actual IndexedDB sync is handled by the client-side OfflineProvider
   }
 });
+
+// ─── Push notification handler ────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  if (!event.data) {
+    console.log('[SW] Push event with no data');
+    return;
+  }
+
+  let data;
+  try {
+    data = event.data.json();
+  } catch {
+    data = { title: 'Ventify POS', body: event.data.text() };
+  }
+
+  const title = data.title || 'Ventify POS';
+  const options = {
+    body: data.body || '',
+    icon: data.icon || '/icon-192x192.png',
+    badge: data.badge || '/icon-120x120.png',
+    image: data.image || undefined,
+    vibrate: data.vibrate || [100, 50, 100],
+    data: {
+      url: data.url || '/',
+      type: data.type || 'general',
+      ...data.data,
+    },
+    actions: data.actions || [],
+    tag: data.tag || `ventify-${Date.now()}`,
+    requireInteraction: data.requireInteraction || false,
+    renotify: data.renotify || true,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// ─── Notification click handler ───────────────────────────────────────
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const urlToOpen = event.notification.data?.url || '/';
+
+  // If an action was clicked, handle it
+  if (event.action) {
+    console.log('[SW] Notification action clicked:', event.action);
+  }
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // If there's already a window open, focus it and navigate
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(urlToOpen);
+          return client.focus();
+        }
+      }
+      // Otherwise open a new window
+      return self.clients.openWindow(urlToOpen);
+    })
+  );
+});

@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Loader2, Save, User, Phone, BadgeCheck, Shield } from 'lucide-react'
 import { SecurityQuestionCard } from '@/components/settings/security-question-card'
+import { PushNotificationsSettings } from '@/components/pwa/push-notifications-settings'
 
 export function PersonalSettingsTab() {
   const { user, updateUser } = useAuthStore()
@@ -132,6 +133,9 @@ export function PersonalSettingsTab() {
 
       {/* ═══ Security Question Card ═══ */}
       <SecurityQuestionCard />
+
+      {/* ═══ Push Notifications Card ═══ */}
+      <PushNotificationsSettings />
     </div>
   )
 }

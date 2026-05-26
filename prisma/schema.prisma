@@ -219,6 +219,7 @@ model Store {
   costHistories       CostHistory[]
   storeEventLogs     StoreEventLog[]
   wompiTransactions  WompiTransaction[]
+  pushSubscriptions  PushSubscription[]
 
   @@map("stores")
 }
@@ -1398,4 +1399,27 @@ model ChatMessage {
   @@index([sessionId])
   @@index([createdAt])
   @@map("chat_messages")
+}
+
+// ----------------------------------------------
+// CONTEXTO: PWA PUSH NOTIFICATIONS
+// ----------------------------------------------
+
+model PushSubscription {
+  id          Int      @id @default(autoincrement())
+  storeId     Int      @map("store_id")
+  userId      Int      @map("user_id")
+  endpoint    String   @unique
+  p256dh      String   // Public key for encryption
+  auth        String   // Auth secret
+  userAgent   String?  @map("user_agent")  // Browser/device info
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([userId])
+  @@index([endpoint])
+  @@map("push_subscriptions")
 }

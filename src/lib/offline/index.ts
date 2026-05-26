@@ -36,3 +36,7 @@ export {
 
 // Order hook
 export { useOfflineOrder } from './use-offline-order';
+
+// Push notifications hook
+export { usePushNotifications } from './use-push-notifications';
+export type { NotificationPermission } from './use-push-notifications';
