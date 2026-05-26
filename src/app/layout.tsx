@@ -24,18 +24,42 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Ventify POS - Sistema de Punto de Venta Colombiano",
   description: "Sistema de punto de venta e inventario multi-tienda para Colombia. Facturación electrónica DIAN, gestión de inventario, reportes en tiempo real.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "Ventify POS",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Ventify POS",
+  },
+  formatDetection: {
+    telephone: false,
+  },
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
       { url: "/favicon.ico", sizes: "48x48" },
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512x512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [
       { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
     ],
-    other: [
-      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
-    ],
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "msapplication-TileColor": "#09090b",
+    "msapplication-tap-highlight": "no",
   },
 }
 
