@@ -233,6 +233,12 @@
   100% { transform: translateY(100%); }
 }
 
+@keyframes splash-load {
+  0% { transform: scaleX(0); }
+  60% { transform: scaleX(0.7); }
+  100% { transform: scaleX(1); }
+}
+
 .glitch-logo-wrapper {
   position: relative;
 }

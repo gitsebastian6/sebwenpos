@@ -127,6 +127,21 @@ export function AppShell() {
   const { theme, setTheme } = useTheme()
   const qc = useQueryClient()
 
+  // ── Handle PWA shortcut ?view= parameter ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const view = params.get('view')
+    if (view) {
+      const validViews = ['dashboard', 'pos', 'tables', 'products', 'customers', 'providers', 'purchases', 'services', 'orders', 'invoices', 'quotations', 'inventory', 'accounting', 'reports', 'employees', 'roles', 'settings']
+      if (validViews.includes(view)) {
+        setView(view as AppView)
+        // Clean URL
+        window.history.replaceState({}, '', '/')
+      }
+    }
+  }, [setView])
+
   // ── Sync subscription data from API to auth store via TanStack Query ──
   // This keeps the sidebar badge, top banner, and SubscriptionGate up to date
   // even when the user is NOT on the settings page.
