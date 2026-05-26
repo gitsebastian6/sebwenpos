@@ -177,9 +177,14 @@ function isStaticAsset(pathname) {
   );
 }
 
-// ─── Message handler: skip waiting from UI ────────────────────────────
+// ─── Message handler: skip waiting + sync triggers ────────────────────
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  // Trigger immediate cache update from client
+  if (event.data && event.data.type === 'SYNC_NOW') {
+    console.log('[SW] Manual sync requested');
+    // Just log — the actual IndexedDB sync is handled by the client-side OfflineProvider
   }
 });

@@ -44,6 +44,8 @@ import { toast } from 'sonner'
 import dynamic from 'next/dynamic'
 import { ViewErrorBoundary } from '@/components/shared/error-boundary'
 import { SubscriptionGate } from '@/components/subscription/subscription-gate'
+import { OfflineProvider, useOffline } from '@/lib/offline/offline-provider'
+import { OfflineIndicator } from '@/components/pwa/offline-indicator'
 import { useCurrentSubscription } from '@/hooks/api/use-subscription'
 
 const AiAssistant = dynamic(() => import('@/components/ai-assistant/ai-assistant').then(m => ({ default: m.AiAssistant })), { ssr: false })
@@ -304,6 +306,7 @@ export function AppShell() {
   const showBanner = banner && !bannerDismissed
 
   return (
+    <OfflineProvider storeId={store?.id ?? null}>
     <SidebarProvider>
       <Sidebar>
         {/* ── Sidebar Header ── */}
@@ -543,6 +546,9 @@ export function AppShell() {
           <h1 className="text-sm sm:text-base font-semibold tracking-tight">
             {headerTitle}
           </h1>
+          <div className="ml-auto">
+            <OfflineIndicator />
+          </div>
         </header>
 
         {/* ── Main Content ── */}
@@ -553,6 +559,7 @@ export function AppShell() {
       {/* ── AI Assistant (floating chat) ── */}
       <AiAssistant />
     </SidebarProvider>
+    </OfflineProvider>
   )
 }
 

@@ -8,6 +8,8 @@ import { playCartAdd, playSaleSuccess, playError } from '@/lib/pos-sounds'
 import type { CartItem, PaymentMethod, InvoiceMode, LastOrderData, LastInvoiceData, CustomerSummary, Service } from '@/types'
 import type { Product, OpenCashRegister } from './use-pos-data'
 import { useCreateOrder, useCreateInvoice } from '@/hooks/api/use-pos'
+import { useOffline } from '@/lib/offline/offline-provider'
+import { enqueuePendingOrder, processPendingOrders } from '@/lib/offline/sync'
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -67,6 +69,7 @@ export function usePosCart(deps: UsePosCartDeps) {
 
   const createOrderMutation = useCreateOrder()
   const createInvoiceMutation = useCreateInvoice()
+  const { isOnline } = useOffline()
 
   // ─── Cart operations ─────────────────────────────────
   const addToCart = useCallback(
@@ -311,11 +314,36 @@ export function usePosCart(deps: UsePosCartDeps) {
         })),
       }
 
-      const order = await createOrderMutation.mutateAsync(payload)
+      let order: any
+      let wasOffline = false
+
+      if (isOnline) {
+        // ── Online: submit directly to server ──
+        order = await createOrderMutation.mutateAsync(payload)
+      } else {
+        // ── Offline: enqueue in IndexedDB for later sync ──
+        const tempNumber = await enqueuePendingOrder(storeId, payload)
+        wasOffline = true
+        order = {
+          orderNumber: tempNumber,
+          id: null,
+          status: 'PENDING_SYNC',
+          offline: true,
+        }
+      }
+
       playSaleSuccess()
-      toast.success('¡Venta registrada!', {
-        description: `Orden ${order.orderNumber}`,
-      })
+
+      if (wasOffline) {
+        toast.success('¡Venta registrada offline!', {
+          description: `Se sincronizará cuando vuelva la conexión`,
+          duration: 5000,
+        })
+      } else {
+        toast.success('¡Venta registrada!', {
+          description: `Orden ${order.orderNumber}`,
+        })
+      }
 
       // Refresh open cash registers after sale
       deps.fetchOpenCashRegisters()
@@ -334,8 +362,8 @@ export function usePosCart(deps: UsePosCartDeps) {
       setShowDiscountInput(false)
       setCartSheetOpen(false)
 
-      // ── Auto-create electronic invoice if selected ──
-      if (posInvoiceMode === 'ELECTRONICA' && isEInvEnabled && order.id) {
+      // ── Auto-create electronic invoice if selected (only when online) ──
+      if (!wasOffline && posInvoiceMode === 'ELECTRONICA' && isEInvEnabled && order.id) {
         try {
           setCreatingInvoice(true)
           // Determine NIT: manual input > selected customer > consumidor final
