@@ -16,7 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Save, Store, MapPin, Phone, CreditCard } from 'lucide-react'
+import { Loader2, Save, Store, MapPin, Phone, CreditCard, Globe, MessageCircle, ExternalLink } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
 
 export function BusinessSettingsTab() {
   const { store, updateStore } = useAuthStore()
@@ -25,11 +26,22 @@ export function BusinessSettingsTab() {
   const [storeAddress, setStoreAddress] = useState(store?.address || '')
   const [storePhone, setStorePhone] = useState(store?.phone || '')
   const [storeCurrency, setStoreCurrency] = useState(store?.currencyCode || 'COP')
+
+  // Tienda Virtual
+  const [storeSlug, setStoreSlug] = useState((store as any)?.storeSlug || '')
+  const [storeDescription, setStoreDescription] = useState((store as any)?.storeDescription || '')
+  const [storeWhatsapp, setStoreWhatsapp] = useState((store as any)?.storeWhatsapp || '')
+  const [storeActive, setStoreActive] = useState((store as any)?.storeActive || false)
+
   const hasChanges =
     storeName !== (store?.name || '') ||
     storeAddress !== (store?.address || '') ||
     storePhone !== (store?.phone || '') ||
-    storeCurrency !== (store?.currencyCode || 'COP')
+    storeCurrency !== (store?.currencyCode || 'COP') ||
+    storeSlug !== ((store as any)?.storeSlug || '') ||
+    storeDescription !== ((store as any)?.storeDescription || '') ||
+    storeWhatsapp !== ((store as any)?.storeWhatsapp || '') ||
+    storeActive !== ((store as any)?.storeActive || false)
 
   const updateStoreMutation = useUpdateStore()
   const saving = updateStoreMutation.isPending
@@ -46,6 +58,10 @@ export function BusinessSettingsTab() {
           address: storeAddress || null,
           phone: storePhone || null,
           currencyCode: storeCurrency,
+          storeSlug: storeSlug || null,
+          storeDescription: storeDescription || null,
+          storeWhatsapp: storeWhatsapp || null,
+          storeActive,
         },
       })
       updateStore(data)
@@ -150,6 +166,97 @@ export function BusinessSettingsTab() {
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Guardar Cambios
         </Button>
+      </CardContent>
+    </Card>
+
+    {/* ─── Tienda Virtual ─── */}
+    <Card className="border-border/50 hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Globe className="h-4 w-4" />
+          Tienda Virtual
+        </CardTitle>
+        <CardDescription>
+          Activa tu tienda en línea para que tus clientes hagan pedidos por WhatsApp
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between rounded-lg border border-border/50 p-4">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-medium">Tienda Virtual Activa</Label>
+            <p className="text-xs text-muted-foreground">
+              Tus clientes pueden ver tus productos y pedir por WhatsApp
+            </p>
+          </div>
+          <Switch
+            checked={storeActive}
+            onCheckedChange={setStoreActive}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="store-slug">
+            <span className="flex items-center gap-1.5">
+              <Globe className="h-3.5 w-3.5" />
+              URL de tu tienda
+            </span>
+          </Label>
+          <div className="flex items-center gap-1">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">/tienda/</span>
+            <Input
+              id="store-slug"
+              value={storeSlug}
+              onChange={(e) => setStoreSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+              placeholder="mi-tienda"
+              className="focus-visible:ring-primary/20 focus-visible:border-primary/40"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Solo letras minúsculas, números y guiones. Ej: mi-negocio
+          </p>
+          {storeSlug && (
+            <a
+              href={`/tienda/${storeSlug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Ver tienda virtual
+            </a>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="store-whatsapp-virtual">
+            <span className="flex items-center gap-1.5">
+              <MessageCircle className="h-3.5 w-3.5" />
+              WhatsApp para pedidos
+            </span>
+          </Label>
+          <Input
+            id="store-whatsapp-virtual"
+            value={storeWhatsapp}
+            onChange={(e) => setStoreWhatsapp(e.target.value)}
+            placeholder="3001234567"
+            className="focus-visible:ring-primary/20 focus-visible:border-primary/40"
+          />
+          <p className="text-xs text-muted-foreground">
+            Número de WhatsApp donde llegan los pedidos de la tienda virtual
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="store-description-virtual">Descripción de la tienda</Label>
+          <Input
+            id="store-description-virtual"
+            value={storeDescription}
+            onChange={(e) => setStoreDescription(e.target.value)}
+            placeholder="Ej: Los mejores productos de la zona, entrega a domicilio"
+            className="focus-visible:ring-primary/20 focus-visible:border-primary/40"
+            maxLength={500}
+          />
+        </div>
       </CardContent>
     </Card>
   )

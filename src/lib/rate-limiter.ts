@@ -160,6 +160,12 @@ export const REGISTER_RATE_LIMIT: RateLimitConfig = {
   windowSeconds: 300,
 }
 
+/** Signup / QuickStart: 3 per 5 minutes per IP (same as register) */
+export const SIGNUP_RATE_LIMIT: RateLimitConfig = {
+  maxRequests: 3,
+  windowSeconds: 300,
+}
+
 /** Setup: 3 per 5 minutes per IP (prevent abuse of first-time setup) */
 export const SETUP_RATE_LIMIT: RateLimitConfig = {
   maxRequests: 3,

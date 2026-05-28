@@ -181,6 +181,11 @@ model Store {
   electronicInvoicingEnabled Boolean @default(false) @map("electronic_invoicing_enabled")
   // Sucursal / Branch support
   parentStoreId          Int?     @map("parent_store_id")
+  // Tienda Virtual (public storefront)
+  storeSlug       String?  @unique @map("store_slug")
+  storeDescription String? @map("store_description")
+  storeWhatsapp   String?  @map("store_whatsapp")
+  storeActive     Boolean  @default(false) @map("store_active")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt
 

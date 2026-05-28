@@ -252,11 +252,12 @@ export const PUBLIC_PATHS = [
   '/api/subscription/plans',
   '/api/webhooks/wompi',
   '/api/payments/wompi/health',
+  // Quick Start: self-service account creation (creates User+Store+Trial)
+  '/api/auth/quickstart',
+  // Public store: virtual storefront data (no auth needed)
+  '/api/public/',
   // DEV-ONLY: Test endpoints (only accessible in development mode)
   ...(process.env.NODE_ENV === 'development' ? ['/api/test'] : []),
-  // NOTE: /api/auth/register is NOT public — user creation is ONLY
-  // allowed through the Super Admin panel (/api/super-admin/stores).
-  // This prevents self-service account creation with store access.
 ]
 
 export function isPublicPath(pathname: string): boolean {

@@ -25,6 +25,11 @@ const storeUpdateSchema = z.object({
   // DIVIPOLA location fields
   divipolaCode: z.string().max(10).optional().nullable(),
   cityName: z.string().max(200).optional().nullable(),
+  // Tienda Virtual fields
+  storeSlug: z.string().max(100).optional().nullable(),
+  storeDescription: z.string().max(500).optional().nullable(),
+  storeWhatsapp: z.string().max(30).optional().nullable(),
+  storeActive: z.boolean().optional(),
 })
 
 // GET /api/stores?storeId=1  OR  GET /api/stores?userId=1

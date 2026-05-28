@@ -8,11 +8,12 @@ import { Separator } from '@/components/ui/separator'
 import {
   CreditCard, Lock, Eye, EyeOff, Phone, MessageCircle,
   AlertTriangle, ArrowRight, LogIn, Zap, KeyRound, ChevronRight, Headphones,
-  Sparkles,
+  Sparkles, Rocket,
 } from 'lucide-react'
 import { SUPPORT_PHONE, SUPPORT_WHATSAPP } from './auth-constants'
 import type { BlockedInfo } from './auth-constants'
 import { TrialSignupDialog } from './trial-signup-dialog'
+import { QuickStartDialog } from './quick-start-dialog'
 
 interface LoginFormProps {
   loading: boolean
@@ -31,6 +32,7 @@ export function LoginForm({
 }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [showTrialDialog, setShowTrialDialog] = useState(false)
+  const [showQuickStartDialog, setShowQuickStartDialog] = useState(false)
 
   return (
     <div className="w-full max-w-[440px] mx-auto lg:mx-0">
@@ -206,25 +208,36 @@ export function LoginForm({
               </button>
             </div>
 
-            {/* Trial signup CTA */}
+            {/* Quick Start + Trial signup CTAs */}
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <Separator className="flex-1 bg-zinc-800/60" />
                 <span className="text-xs text-zinc-600 font-medium">o</span>
                 <Separator className="flex-1 bg-zinc-800/60" />
               </div>
+              {/* Quick Start: CTA principal — crear cuenta y vender ya */}
+              <Button
+                type="button"
+                onClick={() => setShowQuickStartDialog(true)}
+                className="w-full h-12 rounded-lg gap-2.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20 hover:shadow-xl hover:shadow-emerald-600/30 transition-all active:scale-[0.98] border-0 font-semibold"
+              >
+                <Rocket className="h-4.5 w-4.5" />
+                <span>Empezar a Vender Ahora</span>
+                <span className="ml-auto text-[10px] font-bold bg-white/15 rounded-full px-2 py-0.5">30 seg</span>
+              </Button>
+              {/* Trial tradicional: flujo completo con documentos */}
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setShowTrialDialog(true)}
-                className="w-full h-12 rounded-lg gap-2.5 border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/40 hover:text-emerald-300 transition-all"
+                className="w-full h-11 rounded-lg gap-2.5 border-zinc-700 text-zinc-400 hover:bg-zinc-800/50 hover:border-zinc-600 hover:text-zinc-300 transition-all"
               >
-                <Sparkles className="h-4.5 w-4.5" />
-                <span className="font-semibold">Comenzar Prueba Gratuita</span>
-                <span className="ml-auto text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full px-2 py-0.5">7 días</span>
+                <Sparkles className="h-4 w-4" />
+                <span className="font-medium">Registro Completo</span>
+                <span className="text-[10px] font-bold bg-zinc-800 text-zinc-500 border border-zinc-700 rounded-full px-2 py-0.5">7 días</span>
               </Button>
               <p className="text-[11px] text-zinc-600 text-center">
-                Sin tarjeta de crédito. Crea tu cuenta en 2 minutos.
+                Inicio rápido: solo nombre y clave. Configura NIT y facturación después.
               </p>
             </div>
 
@@ -246,6 +259,7 @@ export function LoginForm({
       </div>
 
       <TrialSignupDialog open={showTrialDialog} onOpenChange={setShowTrialDialog} />
+      <QuickStartDialog open={showQuickStartDialog} onOpenChange={setShowQuickStartDialog} />
     </div>
   )
 }
