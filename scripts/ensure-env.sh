@@ -8,7 +8,9 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-ENV_FILE="/home/z/my-project/.env"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_FILE="$PROJECT_ROOT/.env"
 NEEDS_WRITE=false
 
 # Create .env if it doesn't exist
@@ -17,9 +19,10 @@ if [ ! -f "$ENV_FILE" ]; then
   echo "[ensure-env] Created .env file"
 fi
 
-# Ensure DATABASE_URL
-if ! grep -q '^DATABASE_URL=' "$ENV_FILE" && ! grep -q '^DATABASE_URL=' "$ENV_FILE"; then
-  echo "DATABASE_URL=file:/home/z/my-project/db/custom.db" >> "$ENV_FILE"
+# Ensure DATABASE_URL — relative path (resolved by Prisma relative to
+# prisma/schema.prisma), so it works regardless of where the repo is checked out.
+if ! grep -q '^DATABASE_URL=' "$ENV_FILE"; then
+  echo 'DATABASE_URL="file:../db/custom.db"' >> "$ENV_FILE"
   echo "[ensure-env] Added DATABASE_URL"
   NEEDS_WRITE=true
 fi
@@ -46,7 +49,7 @@ if ! grep -q '^AI_CHAT_MODEL=' "$ENV_FILE"; then
 fi
 
 # Ensure db directory exists
-mkdir -p /home/z/my-project/db
+mkdir -p "$PROJECT_ROOT/db"
 
 if [ "$NEEDS_WRITE" = false ]; then
   echo "[ensure-env] All secrets present — ready to start"

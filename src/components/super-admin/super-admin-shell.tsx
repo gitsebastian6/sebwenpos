@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import {
   Store, Plus, Crown, Settings, TrendingUp, Shield,
-  LogOut, Moon, Sun, Wallet, Users,
+  LogOut, Moon, Sun, Wallet, Users, CircleDollarSign,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import dynamic from 'next/dynamic'
@@ -21,6 +21,7 @@ import { StoresKPICards, StoresTable, CreateStoreDialog, ResetPasswordDialog } f
 import { StoreDetailView } from './store-detail-view'
 import { PendingPaymentsView } from './pending-payments-view'
 import { LeadsView } from './leads-view'
+import { CustomersDebtView } from './customers-debt-view'
 import {
   useSuperAdminStores,
   useSuperAdminStatistics,
@@ -40,7 +41,7 @@ export function SuperAdminShell() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [selectedUser, setSelectedUser] = useState<StoreOwner | null>(null)
-  const [currentView, setCurrentView] = useState<'stores' | 'leads' | 'plans' | 'payments' | 'config' | 'stats'>('stores')
+  const [currentView, setCurrentView] = useState<'stores' | 'leads' | 'plans' | 'payments' | 'customers' | 'config' | 'stats'>('stores')
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null)
 
   // ── Query hooks ──
@@ -142,7 +143,7 @@ export function SuperAdminShell() {
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-                  {currentView === 'stores' ? 'Panel de Tiendas' : currentView === 'leads' ? 'CRM de Leads' : currentView === 'config' ? 'Configuración del Sistema' : currentView === 'stats' ? 'Estadísticas del SaaS' : currentView === 'payments' ? 'Pagos y Comprobantes' : 'Planes de Suscripción'}
+                  {currentView === 'stores' ? 'Panel de Tiendas' : currentView === 'leads' ? 'CRM de Leads' : currentView === 'config' ? 'Configuración del Sistema' : currentView === 'stats' ? 'Estadísticas del SaaS' : currentView === 'payments' ? 'Pagos y Comprobantes' : currentView === 'customers' ? 'Clientes y Cartera' : 'Planes de Suscripción'}
                 </h1>
               </div>
               <p className="text-muted-foreground">
@@ -156,6 +157,8 @@ export function SuperAdminShell() {
                   ? 'Métricas globales de la plataforma y rendimiento del negocio'
                   : currentView === 'payments'
                   ? 'Revisa, aprueba o rechaza comprobantes de pago de todos los clientes'
+                  : currentView === 'customers'
+                  ? 'Clientes y cartera (deuda) de todas las tiendas'
                   : 'Gestión de planes y precios de suscripción'}
               </p>
             </div>
@@ -192,6 +195,14 @@ export function SuperAdminShell() {
                   onClick={() => setCurrentView('payments')}
                 >
                   <Wallet className="h-3.5 w-3.5" />Pagos
+                </Button>
+                <Button
+                  variant={currentView === 'customers' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="gap-1.5 h-8 transition-all duration-200"
+                  onClick={() => setCurrentView('customers')}
+                >
+                  <CircleDollarSign className="h-3.5 w-3.5" />Clientes
                 </Button>
                 <Button
                   variant={currentView === 'config' ? 'default' : 'ghost'}
@@ -253,6 +264,11 @@ export function SuperAdminShell() {
             {/* PAYMENTS VIEW */}
             {currentView === 'payments' && (
               <PendingPaymentsView />
+            )}
+
+            {/* CUSTOMERS/DEBT VIEW */}
+            {currentView === 'customers' && (
+              <CustomersDebtView />
             )}
 
             {/* CONFIG VIEW */}

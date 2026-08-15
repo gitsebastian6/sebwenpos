@@ -90,6 +90,19 @@ export const sql = {
     if (dialect === 'postgresql') return 'NOW()'
     return "(strftime('%s', 'now') * 1000)"
   },
+
+  /**
+   * SQL expression to bucket a timestamp column into a "YYYY-MM" month string,
+   * for GROUP BY month reporting queries.
+   * - PostgreSQL: TO_CHAR(column, 'YYYY-MM')
+   * - SQLite: strftime('%Y-%m', column / 1000, 'unixepoch')
+   */
+  monthCol(column: string): string {
+    if (dialect === 'postgresql') {
+      return `TO_CHAR(${column}, 'YYYY-MM')`
+    }
+    return `strftime('%Y-%m', ${column} / 1000, 'unixepoch')`
+  },
 }
 
 /**

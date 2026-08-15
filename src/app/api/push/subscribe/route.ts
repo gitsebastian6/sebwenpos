@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { verifyAuth } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { requireAuth } from '@/lib/api-auth';
 
 // ─── POST /api/push/subscribe — Register a push subscription ──────────
 export async function POST(req: NextRequest) {
   try {
-    const auth = await verifyAuth(req);
-    if (!auth.authorized) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
+    const auth = requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
 
     const body = await req.json();
     const { storeId, endpoint, keys } = body;
@@ -21,7 +19,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate store belongs to user
-    const store = await prisma.store.findFirst({
+    const store = await db.store.findFirst({
       where: { id: storeId, userId: auth.userId },
     });
     if (!store) {
@@ -29,7 +27,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Upsert subscription (update if endpoint already exists)
-    const subscription = await prisma.pushSubscription.upsert({
+    const subscription = await db.pushSubscription.upsert({
       where: { endpoint },
       update: {
         p256dh: keys.p256dh,
@@ -59,17 +57,15 @@ export async function POST(req: NextRequest) {
 // ─── DELETE /api/push/subscribe — Remove a push subscription ──────────
 export async function DELETE(req: NextRequest) {
   try {
-    const auth = await verifyAuth(req);
-    if (!auth.authorized) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
+    const auth = requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
 
     const { endpoint } = await req.json();
     if (!endpoint) {
       return NextResponse.json({ error: 'Endpoint requerido' }, { status: 400 });
     }
 
-    await prisma.pushSubscription.deleteMany({
+    await db.pushSubscription.deleteMany({
       where: { endpoint, userId: auth.userId },
     });
 
@@ -83,17 +79,15 @@ export async function DELETE(req: NextRequest) {
 // ─── GET /api/push/subscribe — Check subscription status ──────────────
 export async function GET(req: NextRequest) {
   try {
-    const auth = await verifyAuth(req);
-    if (!auth.authorized) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
+    const auth = requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
 
     const storeId = req.nextUrl.searchParams.get('storeId');
     if (!storeId) {
       return NextResponse.json({ error: 'storeId requerido' }, { status: 400 });
     }
 
-    const count = await prisma.pushSubscription.count({
+    const count = await db.pushSubscription.count({
       where: { storeId: parseInt(storeId), userId: auth.userId },
     });
 

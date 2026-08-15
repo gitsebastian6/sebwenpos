@@ -93,6 +93,7 @@ export function PendingPaymentsView() {
 
   // UI state
   const [previewReceipt, setPreviewReceipt] = useState<PaymentReceiptData | null>(null)
+  const [reviewAction, setReviewAction] = useState<'APPROVE' | 'REJECT'>('APPROVE')
   const [reviewNotes, setReviewNotes] = useState('')
   const [receiptFilter, setReceiptFilter] = useState<FilterStatus>('PENDING')
   const [searchQuery, setSearchQuery] = useState('')
@@ -125,8 +126,9 @@ export function PendingPaymentsView() {
   }
   const filtered = getFilteredReceipts()
 
-  function openReviewDialog(receipt: PaymentReceiptData) {
+  function openReviewDialog(receipt: PaymentReceiptData, action: 'APPROVE' | 'REJECT' = 'APPROVE') {
     setPreviewReceipt(receipt)
+    setReviewAction(action)
     setReviewNotes('')
   }
 
@@ -396,7 +398,7 @@ export function PendingPaymentsView() {
                               className="h-8 w-8"
                               title="Aprobar"
                               aria-label="Aprobar comprobante"
-                              onClick={() => openReviewDialog(r)}
+                              onClick={() => openReviewDialog(r, 'APPROVE')}
                             >
                               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                             </Button>
@@ -406,7 +408,7 @@ export function PendingPaymentsView() {
                               className="h-8 w-8"
                               title="Rechazar"
                               aria-label="Rechazar comprobante"
-                              onClick={() => openReviewDialog(r)}
+                              onClick={() => openReviewDialog(r, 'REJECT')}
                             >
                               <XCircle className="h-4 w-4 text-red-500" />
                             </Button>
@@ -436,6 +438,14 @@ export function PendingPaymentsView() {
           </DialogHeader>
           {previewReceipt && (
             <div className="space-y-4 py-2">
+              <div className={`rounded-lg border p-2.5 flex items-center gap-2 text-xs font-medium ${
+                reviewAction === 'APPROVE'
+                  ? 'bg-emerald-50 dark:bg-emerald-500/5 border-emerald-200/60 dark:border-emerald-800/30 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-red-50 dark:bg-red-950/20 border-red-200/60 dark:border-red-800/30 text-red-700 dark:text-red-400'
+              }`}>
+                {reviewAction === 'APPROVE' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <XCircle className="h-3.5 w-3.5 shrink-0" />}
+                Vas a {reviewAction === 'APPROVE' ? 'aprobar' : 'rechazar'} este comprobante — podés cambiar la acción con los botones de abajo.
+              </div>
               <div className="rounded-lg border bg-muted/20 p-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -545,11 +555,22 @@ export function PendingPaymentsView() {
           )}
           <DialogFooter className="gap-2 sm:gap-0">
             <div className="flex-1" />
-            <Button variant="destructive" onClick={() => previewReceipt && handleReviewReceipt(previewReceipt.id, 'REJECT')} disabled={updateReceipt.isPending} className="gap-2 active:scale-[0.98] transition-all">
+            <Button
+              variant="destructive"
+              autoFocus={reviewAction === 'REJECT'}
+              onClick={() => previewReceipt && handleReviewReceipt(previewReceipt.id, 'REJECT')}
+              disabled={updateReceipt.isPending}
+              className={`gap-2 active:scale-[0.98] transition-all ${reviewAction === 'REJECT' ? 'ring-2 ring-red-500/40 ring-offset-2 ring-offset-background' : ''}`}
+            >
               {updateReceipt.isPending ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <XCircle className="h-4 w-4" />}
               Rechazar
             </Button>
-            <Button onClick={() => previewReceipt && handleReviewReceipt(previewReceipt.id, 'APPROVE')} disabled={updateReceipt.isPending} className="gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all">
+            <Button
+              autoFocus={reviewAction === 'APPROVE'}
+              onClick={() => previewReceipt && handleReviewReceipt(previewReceipt.id, 'APPROVE')}
+              disabled={updateReceipt.isPending}
+              className={`gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-all ${reviewAction === 'APPROVE' ? 'ring-2 ring-emerald-500/40 ring-offset-2 ring-offset-background' : ''}`}
+            >
               {updateReceipt.isPending ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               Aprobar
             </Button>

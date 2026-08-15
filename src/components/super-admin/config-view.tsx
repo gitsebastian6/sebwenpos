@@ -9,8 +9,8 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { MessageCircle, Zap, KeyRound, Phone, Eye, EyeOff, CheckCircle2, Info, CreditCard, Shield, Globe, TriangleAlert } from 'lucide-react'
-import { useSystemConfig, useUpdateSystemConfig } from '@/hooks/api/use-super-admin'
+import { MessageCircle, Zap, KeyRound, Phone, Eye, EyeOff, CheckCircle2, Info, CreditCard, Shield, Globe, TriangleAlert, RefreshCw, Wrench } from 'lucide-react'
+import { useSystemConfig, useUpdateSystemConfig, useCheckExpired, useSeedMissingSubscriptions } from '@/hooks/api/use-super-admin'
 
 export function ConfigView() {
   const { data: configData, isLoading: configLoading } = useSystemConfig()
@@ -18,6 +18,22 @@ export function ConfigView() {
   const [showApiKey, setShowApiKey] = useState(false)
   const [mbConfig, setMbConfig] = useState({ apiKey: '', phoneNumber: '', enabled: false, testMode: false, template: 'Tu código de verificación para Ventify POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.' })
   const [wpConfig, setWpConfig] = useState({ demoVisible: false, enabled: false })
+  const checkExpired = useCheckExpired()
+  const seedMissing = useSeedMissingSubscriptions()
+
+  function handleCheckExpired() {
+    checkExpired.mutate(undefined, {
+      onSuccess: (data: any) => toast.success(data?.message || `Verificación completada — ${data?.transitions?.length ?? 0} suscripción(es) actualizada(s)`),
+      onError: (err) => toast.error(err.message || 'Error al verificar suscripciones'),
+    })
+  }
+
+  function handleSeedMissing() {
+    seedMissing.mutate(undefined, {
+      onSuccess: (data: any) => toast.success(data?.message || `${data?.assigned ?? 0} suscripción(es) asignada(s)`),
+      onError: (err) => toast.error(err.message || 'Error al reparar suscripciones'),
+    })
+  }
 
   // Initialize form from query data
   useEffect(() => {
@@ -303,6 +319,45 @@ export function ConfigView() {
               </Button>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* ── Mantenimiento de Suscripciones ── */}
+      <Card className="rounded-xl border-border/50">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 bg-sky-100 dark:bg-sky-500/15 rounded-lg flex items-center justify-center">
+              <Wrench className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+            </div>
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                Mantenimiento de Suscripciones
+              </CardTitle>
+              <CardDescription>Estas tareas corren automáticamente por cron — usa estos botones solo para forzar una verificación manual</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
+            <div>
+              <p className="text-sm font-medium">Revisar suscripciones vencidas</p>
+              <p className="text-xs text-muted-foreground">Transiciona TRIAL/ACTIVE → PAST_DUE → EXPIRED según fecha de vencimiento y período de gracia</p>
+            </div>
+            <Button variant="outline" size="sm" className="gap-2 shrink-0" onClick={handleCheckExpired} disabled={checkExpired.isPending}>
+              {checkExpired.isPending ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Verificar Ahora
+            </Button>
+          </div>
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
+            <div>
+              <p className="text-sm font-medium">Reparar suscripciones faltantes</p>
+              <p className="text-xs text-muted-foreground">Asigna un plan Trial a cualquier tienda que no tenga suscripción (por ejemplo, tras una migración)</p>
+            </div>
+            <Button variant="outline" size="sm" className="gap-2 shrink-0" onClick={handleSeedMissing} disabled={seedMissing.isPending}>
+              {seedMissing.isPending ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Reparar Ahora
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

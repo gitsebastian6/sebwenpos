@@ -46,62 +46,67 @@ else
   echo "⚠️  No PostgreSQL URL detected — skipping DB check"
 fi
 
-# ── 2. Seed if empty ──
-PLAN_COUNT=$(node -e "
+# ── 2. Sync plans (create missing, update existing) + seed super admin ──
+# Plan data comes from prisma/default-plans.json — the single source of
+# truth shared with prisma/seed.ts and /api/super-admin/plans/seed.
+# This runs on every boot (idempotent) so plan definitions never drift
+# from what's committed in the repo, even on an already-seeded database.
+echo "🌱 Syncing plans..."
+node -e "
   const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
-  prisma.plan.count().then(c => { console.log(c); prisma.\$disconnect(); }).catch(() => { console.log(0); prisma.\$disconnect(); });
-" 2>/dev/null || echo "0")
+  const DEFAULT_PLANS = require('/app/prisma/default-plans.json');
 
-if [ "$PLAN_COUNT" = "0" ]; then
-  echo "🌱 Seeding database..."
-  node -e "
-    const { PrismaClient } = require('@prisma/client');
-    const prisma = new PrismaClient();
+  async function syncPlans() {
+    const existing = await prisma.plan.findMany({ select: { id: true, name: true } });
+    const existingNames = new Set(existing.map(p => p.name));
+    let created = 0;
+    let updated = 0;
 
-    async function seed() {
-      const plans = [
-        { name: 'Trial', description: 'Plan de prueba gratuito por 7 días. Evalúa el sistema completo sin compromiso. Incluye punto de venta, productos, clientes y ventas básicas.', price: 0, maxStores: 1, maxEmployees: 3, maxProducts: 50, features: JSON.stringify({ electronicInvoicing: false, multiStore: false, reports: false, advancedInventory: false, api: false, customBranding: false, multiCurrency: false, support: 'none', priority: false }), isActive: true, sortOrder: 1 },
-        { name: 'Pro', description: 'Para negocios en crecimiento. Facturación electrónica DIAN, inventario avanzado y reportes detallados. Ideal para tiendas, restaurantes y servicios.', price: 89900, maxStores: 1, maxEmployees: 15, maxProducts: 500, features: JSON.stringify({ electronicInvoicing: true, multiStore: false, reports: true, advancedInventory: true, api: false, customBranding: false, multiCurrency: false, support: 'email', priority: false }), isActive: true, sortOrder: 2 },
-        { name: 'Empresarial', description: 'Multi-tienda, productos ilimitados, API personalizada, branding propio y soporte prioritario dedicado. Para empresas que necesitan escalar.', price: 249000, maxStores: 10, maxEmployees: -1, maxProducts: -1, features: JSON.stringify({ electronicInvoicing: true, multiStore: true, reports: true, advancedInventory: true, api: true, customBranding: true, multiCurrency: true, support: 'dedicated', priority: true }), isActive: true, sortOrder: 3 },
-      ];
+    for (const plan of DEFAULT_PLANS) {
+      const data = {
+        description: plan.description,
+        price: plan.price,
+        maxStores: plan.maxStores,
+        maxEmployees: plan.maxEmployees,
+        maxProducts: plan.maxProducts,
+        features: JSON.stringify(plan.features),
+        sortOrder: plan.sortOrder,
+        isActive: plan.isActive,
+      };
+      if (existingNames.has(plan.name)) {
+        await prisma.plan.update({ where: { name: plan.name }, data });
+        updated++;
+      } else {
+        await prisma.plan.create({ data: { name: plan.name, ...data } });
+        created++;
+      }
+    }
+    console.log(\`✅ Planes sincronizados: \${created} creado(s), \${updated} actualizado(s)\`);
 
-      for (const plan of plans) {
-        await prisma.plan.upsert({
-          where: { name: plan.name },
-          update: {},
-          create: plan,
+    if (process.env.SUPERADMIN_CEDULA) {
+      const bcrypt = require('bcryptjs');
+      const existingAdmin = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
+      if (!existingAdmin) {
+        const hash = await bcrypt.hash(process.env.SUPERADMIN_PASSWORD || 'Admin123!', 10);
+        await prisma.user.create({
+          data: {
+            cedula: process.env.SUPERADMIN_CEDULA,
+            fullName: process.env.SUPERADMIN_NAME || 'Super Administrador',
+            phone: process.env.SUPERADMIN_PHONE || null,
+            passwordHash: hash,
+            role: 'SUPER_ADMIN',
+          },
         });
+        console.log('✅ Super admin created');
       }
-
-      console.log('✅ Plans seeded');
-
-      if (process.env.SUPERADMIN_CEDULA) {
-        const bcrypt = require('bcryptjs');
-        const existingAdmin = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
-        if (!existingAdmin) {
-          const hash = await bcrypt.hash(process.env.SUPERADMIN_PASSWORD || 'Admin123!', 10);
-          await prisma.user.create({
-            data: {
-              cedula: process.env.SUPERADMIN_CEDULA,
-              fullName: process.env.SUPERADMIN_NAME || 'Super Administrador',
-              phone: process.env.SUPERADMIN_PHONE || null,
-              passwordHash: hash,
-              role: 'SUPER_ADMIN',
-            },
-          });
-          console.log('✅ Super admin created');
-        }
-      }
-
-      await prisma.\$disconnect();
     }
 
-    seed().catch(e => { console.error('Seed error:', e); process.exit(1); });
-  " || echo "⚠️  Seed skipped (may need manual setup)"
-else
-  echo "✅ Database already has $PLAN_COUNT plans — skipping seed"
-fi
+    await prisma.\$disconnect();
+  }
+
+  syncPlans().catch(e => { console.error('Plan sync error:', e); process.exit(1); });
+" || echo "⚠️  Plan sync skipped (may need manual setup)"
 
 # ── 3. Ensure uploads directory exists ──
 mkdir -p /app/uploads/receipts 2>/dev/null || true

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import DEFAULT_PLANS from './default-plans.json'
 
 const prisma = new PrismaClient()
 
@@ -73,99 +74,27 @@ async function main() {
   // =============================================
   // 1.5 PLANES DE SUSCRIPCIÓN
   // =============================================
-  const trialPlan = await prisma.plan.create({
-    data: {
-      name: 'Trial',
-      description: 'Plan de prueba gratuito por 7 días. Evalúa el sistema completo sin compromiso. Incluye punto de venta, productos, clientes y ventas básicas.',
-      price: 0,
-      maxStores: 1,
-      maxEmployees: 3,
-      maxProducts: 50,
-      sortOrder: 1,
-      isActive: true,
-      features: JSON.stringify({
-        electronicInvoicing: false,
-        multiStore: false,
-        reports: false,
-        advancedInventory: false,
-        api: false,
-        customBranding: false,
-        multiCurrency: false,
-        support: 'none',
-        priority: false,
-      }),
-    },
-  })
-  await prisma.plan.create({
-    data: {
-      name: 'Básico',
-      description: 'Ideal para negocios que inician. Punto de venta, inventario básico y facturación manual. Todo lo esencial para comenzar.',
-      price: 49900,
-      maxStores: 1,
-      maxEmployees: 3,
-      maxProducts: 100,
-      sortOrder: 2,
-      isActive: true,
-      features: JSON.stringify({
-        electronicInvoicing: false,
-        multiStore: false,
-        reports: false,
-        advancedInventory: false,
-        api: false,
-        customBranding: false,
-        multiCurrency: false,
-        support: 'email',
-        priority: false,
-      }),
-    },
-  })
-  await prisma.plan.create({
-    data: {
-      name: 'Pro',
-      description: 'Para negocios en crecimiento. Facturación electrónica DIAN, inventario avanzado, reportes detallados y hasta 5 sucursales.',
-      price: 89900,
-      maxStores: 5,
-      maxEmployees: 15,
-      maxProducts: 500,
-      sortOrder: 3,
-      isActive: true,
-      features: JSON.stringify({
-        electronicInvoicing: true,
-        multiStore: true,
-        reports: true,
-        advancedInventory: true,
-        api: false,
-        customBranding: false,
-        multiCurrency: false,
-        support: 'email',
-        priority: false,
-      }),
-    },
-  })
-  await prisma.plan.create({
-    data: {
-      name: 'Empresarial',
-      description: 'Solución completa para empresas que escalan. Hasta 25 sucursales, productos ilimitados, API, branding propio y soporte dedicado.',
-      price: 249000,
-      maxStores: 25,
-      maxEmployees: -1,
-      maxProducts: -1,
-      sortOrder: 4,
-      isActive: true,
-      features: JSON.stringify({
-        electronicInvoicing: true,
-        multiStore: true,
-        reports: true,
-        advancedInventory: true,
-        api: true,
-        customBranding: true,
-        multiCurrency: true,
-        support: 'dedicated',
-        priority: true,
-      }),
-    },
-  })
-  console.log(`✅ 4 planes de suscripción creados (Trial id=${trialPlan.id})`)
+  // Fuente única: prisma/default-plans.json (también usado por el endpoint
+  // de super-admin y por scripts/docker-entrypoint.sh).
+  const createdPlans = new Map<string, { id: number }>()
+  for (const plan of DEFAULT_PLANS) {
+    const created = await prisma.plan.create({
+      data: {
+        name: plan.name,
+        description: plan.description,
+        price: plan.price,
+        maxStores: plan.maxStores,
+        maxEmployees: plan.maxEmployees,
+        maxProducts: plan.maxProducts,
+        sortOrder: plan.sortOrder,
+        isActive: plan.isActive,
+        features: JSON.stringify(plan.features),
+      },
+    })
+    createdPlans.set(plan.name, created)
+  }
+  const trialPlan = createdPlans.get('Trial')!
+  console.log(`✅ ${DEFAULT_PLANS.length} planes de suscripción creados (Trial id=${trialPlan.id})`)
 
   // Asignar Trial al store recién creado
   const trialEnd = new Date()

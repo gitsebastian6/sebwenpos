@@ -234,10 +234,10 @@ export function LoginForm({
               >
                 <Sparkles className="h-4 w-4" />
                 <span className="font-medium">Registro Completo</span>
-                <span className="text-[10px] font-bold bg-zinc-800 text-zinc-500 border border-zinc-700 rounded-full px-2 py-0.5">7 días</span>
+                <span className="text-[10px] font-bold bg-zinc-800 text-zinc-500 border border-zinc-700 rounded-full px-2 py-0.5">7 días trial</span>
               </Button>
               <p className="text-[11px] text-zinc-600 text-center">
-                Inicio rápido: solo nombre y clave. Configura NIT y facturación después.
+                Ambas opciones incluyen 7 días de prueba gratis. El registro rápido solo pide nombre y clave; configurás NIT y facturación después.
               </p>
             </div>
 

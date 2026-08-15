@@ -72,6 +72,7 @@ export function BusinessSettingsTab() {
   }
 
   return (
+    <>
     <Card className="border-border/50 hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl">
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
@@ -259,5 +260,6 @@ export function BusinessSettingsTab() {
         </div>
       </CardContent>
     </Card>
+    </>
   )
 }

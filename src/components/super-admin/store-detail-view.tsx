@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useResetStoreProducts, useUpdateStoreSubscription } from '@/hooks/api/use-super-admin'
+import { useResetStoreProducts, useUpdateStoreSubscription, useCancelStoreSubscriptionAdmin } from '@/hooks/api/use-super-admin'
+import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,7 +22,7 @@ import {
   Building2, Users, Package, ShoppingCart, ClipboardList, CreditCard,
   Crown, FileText, Receipt, Zap, Truck, AlertCircle, Shield, KeyRound,
   Trash2, ArrowRight, Upload, TrendingUp, TrendingDown, DollarSign,
-  AlertTriangle, Pencil, Link2,
+  AlertTriangle, Pencil, Link2, XCircle,
 } from 'lucide-react'
 import { formatCOP, formatDateTime, formatDate, getSubscriptionStatusBadge, UsageBar, BILLING_PERIODS } from './helpers'
 import type { StoreDetail, PlanData, StoreOwner } from './types'
@@ -51,6 +52,10 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
   const [selectedPlanId, setSelectedPlanId] = useState<string>(subscription?.planId?.toString() || '')
   const [selectedPeriod, setSelectedPeriod] = useState<string>('MONTHLY')
   const [receiptCount, setReceiptCount] = useState(0)
+  const [showCancelSubDialog, setShowCancelSubDialog] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
+  const cancelSubMutation = useCancelStoreSubscriptionAdmin()
+  const canCancelSubscription = !isBranch && subscription && (subscription.status === 'ACTIVE' || subscription.status === 'PAST_DUE')
 
   // Subscription helpers
   const selectedPlan = plans.find(p => p.id.toString() === selectedPlanId)
@@ -79,6 +84,17 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
       setSelectedPeriod(subscription?.billingPeriod || 'MONTHLY')
     }
     setShowChangePlanDialog(true)
+  }
+
+  async function handleCancelSubscription() {
+    if (cancelReason.trim().length < 5) { toast.error('La razón debe tener al menos 5 caracteres'); return }
+    try {
+      await cancelSubMutation.mutateAsync({ id: store.id, cancelReason: cancelReason.trim() })
+      toast.success('Suscripción cancelada')
+      setShowCancelSubDialog(false)
+      setCancelReason('')
+      onRefresh(store.id)
+    } catch (err: any) { toast.error(err?.message || 'Error al cancelar la suscripción') }
   }
 
   async function handleResetProducts() {
@@ -238,9 +254,21 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
                   </div>
                 </div>
                 {!isBranch && (
-                  <Button variant="outline" size="sm" className="gap-1.5 active:scale-[0.98] transition-all" onClick={openChangePlan}>
-                    <CreditCard className="h-3.5 w-3.5" />Cambiar Plan
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" className="gap-1.5 active:scale-[0.98] transition-all" onClick={openChangePlan}>
+                      <CreditCard className="h-3.5 w-3.5" />Cambiar Plan
+                    </Button>
+                    {canCancelSubscription && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 active:scale-[0.98] transition-all text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50 dark:border-red-900/40 dark:hover:bg-red-950/20"
+                        onClick={() => setShowCancelSubDialog(true)}
+                      >
+                        <XCircle className="h-3.5 w-3.5" />Cancelar Suscripción
+                      </Button>
+                    )}
+                  </div>
                 )}
                 {isBranch && inheritedFrom && (
                   <Button variant="outline" size="sm" className="gap-1.5 active:scale-[0.98] transition-all" onClick={() => onRefresh(inheritedFrom.id)}>
@@ -896,6 +924,42 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
               ) : (
                 <><Crown className="h-4 w-4" />Cambiar Plan</>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Subscription Dialog */}
+      <Dialog open={showCancelSubDialog} onOpenChange={(open) => { setShowCancelSubDialog(open); if (!open) setCancelReason('') }}>
+        <DialogContent className="max-w-md rounded-xl backdrop-blur-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="h-7 w-7 bg-red-100 dark:bg-red-500/15 rounded-lg flex items-center justify-center">
+                <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+              </div>
+              Cancelar Suscripción
+            </DialogTitle>
+            <DialogDescription>
+              La tienda <strong>{store.name}</strong> perderá acceso al POS de inmediato. Esta acción no borra la tienda ni sus datos — solo cancela el plan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="cancel-reason">Razón de la cancelación *</Label>
+            <Textarea
+              id="cancel-reason"
+              placeholder="Ej: Cliente solicitó cancelación por WhatsApp..."
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              rows={3}
+              className="text-sm"
+            />
+            <p className="text-xs text-muted-foreground">Mínimo 5 caracteres — queda registrado en el historial de la suscripción.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCancelSubDialog(false)}>Volver</Button>
+            <Button variant="destructive" onClick={handleCancelSubscription} disabled={cancelSubMutation.isPending} className="gap-2 active:scale-[0.98] transition-all">
+              {cancelSubMutation.isPending ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <XCircle className="h-4 w-4" />}
+              Cancelar Suscripción
             </Button>
           </DialogFooter>
         </DialogContent>

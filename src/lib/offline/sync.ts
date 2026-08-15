@@ -1,6 +1,6 @@
 'use client';
 
-import { db, setLastSync, type OfflineProduct, type OfflineCategory, type OfflineCustomer, type OfflineService, type OfflineCashRegister } from './db';
+import { db, setLastSync, type OfflineProduct, type OfflineCategory, type OfflineCustomer, type OfflineService, type OfflineCashRegister, type PendingOrder } from './db';
 
 // ─── Sync Functions ────────────────────────────────────────────────────
 // These pull fresh data from the server API and upsert into IndexedDB.

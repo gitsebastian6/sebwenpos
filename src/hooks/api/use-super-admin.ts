@@ -73,6 +73,34 @@ export interface SuperAdminReceiptParams {
   status?: string
 }
 
+export interface CustomerAdminData {
+  id: number
+  name: string
+  phone: string | null
+  email: string | null
+  nit: string | null
+  documentType: string | null
+  address: string | null
+  regime: string | null
+  totalDebt: number
+  createdAt: string
+  updatedAt: string
+  store: { id: number; name: string }
+}
+
+export interface CustomersAdminResponse {
+  customers: CustomerAdminData[]
+  total: number
+  stores: Array<{ id: number; name: string }>
+  stats: {
+    totalCustomers: number
+    totalDebt: number
+    customersWithDebt: number
+    avgDebt: number
+    storesCount: number
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Query hooks
 // ---------------------------------------------------------------------------
@@ -83,6 +111,20 @@ export function useSuperAdminStores() {
     queryKey: ['super-admin-stores'],
     queryFn: () => queryFetch<StoreListItem[]>('/api/super-admin/stores'),
     staleTime: 30_000,
+  })
+}
+
+/** Cross-tenant customer/debt list for super admin */
+export function useSuperAdminCustomers(params: { search?: string; storeId?: number } = {}, enabled: boolean = true) {
+  const qs = new URLSearchParams()
+  if (params.search) qs.set('search', params.search)
+  if (params.storeId) qs.set('storeId', String(params.storeId))
+  const query = qs.toString()
+  return useQuery<CustomersAdminResponse>({
+    queryKey: ['super-admin-customers', params.search || '', params.storeId || null],
+    queryFn: () => queryFetch<CustomersAdminResponse>(`/api/super-admin/customers${query ? `?${query}` : ''}`),
+    enabled,
+    staleTime: 15_000,
   })
 }
 
@@ -181,6 +223,24 @@ export function useUpdatePlan() {
   })
 }
 
+/** Create a new plan */
+export function useCreatePlan() {
+  const qc = useQueryClient()
+  return useMutation<unknown, Error, Record<string, unknown>>({
+    mutationFn: (body) => mutationFetch('/api/super-admin/plans', 'POST', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['super-admin-plans'] }),
+  })
+}
+
+/** Delete a plan (fails if it has active subscriptions) */
+export function useDeletePlan() {
+  const qc = useQueryClient()
+  return useMutation<unknown, Error, { id: number }>({
+    mutationFn: ({ id }) => mutationFetch(`/api/super-admin/plans/${id}`, 'DELETE'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['super-admin-plans'] }),
+  })
+}
+
 /** Update store info (super admin) */
 export function useUpdateStoreAdmin() {
   const qc = useQueryClient()
@@ -239,6 +299,19 @@ export function useUpdateStoreSubscription() {
   return useMutation<unknown, Error, { id: number; body: Record<string, unknown> }>({
     mutationFn: ({ id, body }) =>
       mutationFetch(`/api/super-admin/stores/${id}/subscription`, 'PUT', body),
+    onSuccess: (_d, { id }) => {
+      qc.invalidateQueries({ queryKey: ['super-admin-store-detail', id] })
+      qc.invalidateQueries({ queryKey: ['super-admin-stores'] })
+    },
+  })
+}
+
+/** Cancel a store's subscription (super admin) */
+export function useCancelStoreSubscriptionAdmin() {
+  const qc = useQueryClient()
+  return useMutation<unknown, Error, { id: number; cancelReason: string }>({
+    mutationFn: ({ id, cancelReason }) =>
+      mutationFetch(`/api/super-admin/stores/${id}/cancel-subscription`, 'POST', { cancelReason }),
     onSuccess: (_d, { id }) => {
       qc.invalidateQueries({ queryKey: ['super-admin-store-detail', id] })
       qc.invalidateQueries({ queryKey: ['super-admin-stores'] })

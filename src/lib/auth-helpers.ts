@@ -282,6 +282,7 @@ export function isSuperAdminPath(pathname: string): boolean {
 export const INTERNAL_PATHS = [
   '/api/cron',
   '/api/subscription/alerts',
+  '/api/subscription/billing-check',
   '/api/payments/wompi/demo-process',
 ]
 

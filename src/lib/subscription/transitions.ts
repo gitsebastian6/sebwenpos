@@ -11,7 +11,10 @@ import { GRACE_PERIOD_DAYS } from './constants'
 /**
  * Transition overdue subscriptions to PAST_DUE or EXPIRED.
  * - Auto-heal EXPIRED/PAST_DUE → TRIAL/ACTIVE when endDate is still in the future
- * - ACTIVE/TRIAL → PAST_DUE when endDate has passed (sets graceEndDate)
+ * - TRIAL → EXPIRED directly when endDate has passed (no grace period — a trial
+ *   never had a payment to be "late" on, so there's nothing to give grace for)
+ * - ACTIVE → PAST_DUE when endDate has passed (sets graceEndDate; this is the
+ *   grace period for paying customers who haven't renewed yet)
  * - PAST_DUE → EXPIRED when grace period ended AND endDate is still past
  *
  * This is the single source of truth for subscription status transitions.
@@ -36,11 +39,20 @@ export async function transitionOverdueSubscriptions() {
     })
   }
 
-  // ── Step 2: ACTIVE/TRIAL → PAST_DUE when endDate has passed ──
+  // ── Step 2a: TRIAL → EXPIRED directly (no grace period) ──
   await db.subscription.updateMany({
     where: {
       endDate: { lt: now },
-      status: { in: ['TRIAL', 'ACTIVE'] },
+      status: 'TRIAL',
+    },
+    data: { status: 'EXPIRED' },
+  })
+
+  // ── Step 2b: ACTIVE → PAST_DUE when endDate has passed (grace period) ──
+  await db.subscription.updateMany({
+    where: {
+      endDate: { lt: now },
+      status: 'ACTIVE',
     },
     data: {
       status: 'PAST_DUE',
@@ -90,11 +102,17 @@ export async function transitionSingleSubscription(subscription: {
     })
   }
 
-  // ACTIVE/TRIAL → PAST_DUE
-  if (
-    endDateInPast &&
-    (subscription.status === 'TRIAL' || subscription.status === 'ACTIVE')
-  ) {
+  // TRIAL → EXPIRED directly (no grace period)
+  if (endDateInPast && subscription.status === 'TRIAL') {
+    return db.subscription.update({
+      where: { id: subscription.id },
+      data: { status: 'EXPIRED' },
+      include: { plan: true },
+    })
+  }
+
+  // ACTIVE → PAST_DUE (grace period)
+  if (endDateInPast && subscription.status === 'ACTIVE') {
     const graceEnd = new Date(Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000)
     return db.subscription.update({
       where: { id: subscription.id },

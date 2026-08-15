@@ -116,14 +116,18 @@ services:
       SUPERADMIN_CEDULA: ${SUPERADMIN_CEDULA:-}
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
       SUPERADMIN_NAME: ${SUPERADMIN_NAME:-}
-      # ── AI Chat Provider (dual: Z.ai gateway + ZhipuAI direct) ──
-      # Provider 1: Z.ai Gateway (sandbox/dev only — unreachable from Docker)
+      # ── AI Chat Provider (priority: Gemini → Z.ai gateway → ZhipuAI direct) ──
+      # Provider 1 (primary): Google AI Studio / Gemini
+      # Get your key at https://aistudio.google.com/apikey
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      # Provider 2: Z.ai Gateway (sandbox/dev only — unreachable from Docker)
       ZAI_BASE_URL: ${ZAI_BASE_URL:-}
       ZAI_API_KEY: ${ZAI_API_KEY:-Z.ai}
       ZAI_CHAT_ID: ${ZAI_CHAT_ID:-}
       ZAI_USER_ID: ${ZAI_USER_ID:-}
       ZAI_TOKEN: ${ZAI_TOKEN:-}
-      # Provider 2: ZhipuAI Direct API (works in Docker — needs credits)
+      # Provider 3: ZhipuAI Direct API (works in Docker — needs credits)
       # Get your key at https://open.bigmodel.cn/ → add credits
       GLM_API_KEY: ${GLM_API_KEY:-}
       AI_MAX_CONTEXT_MESSAGES: ${AI_MAX_CONTEXT_MESSAGES:-20}
@@ -143,6 +147,34 @@ services:
       timeout: 10s
       start_period: 40s
       retries: 3
+
+  # ── Subscription Cron (expiry transitions + reminder emails) ───────────
+  # Daily: transitions TRIAL/ACTIVE subscriptions to PAST_DUE/EXPIRED and
+  # sends 3-day/1-day expiry reminders. Every 30s: auto-approves pending
+  # Wompi demo transactions. Delegates all DB writes to the app's own
+  # Prisma-based endpoints (dialect-agnostic — works with this Postgres setup).
+  subscription-cron:
+    build:
+      context: .
+      dockerfile: mini-services/subscription-cron/Dockerfile
+    container_name: ventifypos-subscription-cron
+    restart: unless-stopped
+    environment:
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-ventify-internal-secret-2025}
+      APP_BASE_URL: http://app:3000
+      ALERT_API_BASE: http://app:3000/api/subscription/alerts
+      CRON_PORT: 3010
+    ports:
+      - "3010:3010"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3010/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # ── pgAdmin (Database GUI) ─────────────────────────────────────────────
   pgadmin:

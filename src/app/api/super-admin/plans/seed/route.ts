@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import DEFAULT_PLANS from '@data/default-plans.json'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +10,8 @@ export const dynamic = 'force-dynamic'
  *
  * Plan hierarchy: Trial → Básico → Pro → Empresarial
  * Each higher tier includes ALL features from lower tiers plus extras.
+ * Canonical plan data lives in prisma/default-plans.json — the single
+ * source of truth also used by prisma/seed.ts and scripts/docker-entrypoint.sh.
  *
  * Feature keys (must match PLAN_FEATURES in subscription-helpers.ts):
  *   electronicInvoicing  — DIAN Facturación Electrónica
@@ -21,92 +24,6 @@ export const dynamic = 'force-dynamic'
  *   support              — Soporte: 'none' | 'email' | 'dedicated'
  *   priority             — Soporte Prioritario
  */
-const DEFAULT_PLANS = [
-  {
-    name: 'Trial',
-    description: 'Plan de prueba gratuito por 7 días. Evalúa el sistema completo sin compromiso. Incluye punto de venta, productos, clientes y ventas básicas.',
-    price: 0,
-    maxStores: 1,
-    maxEmployees: 3,
-    maxProducts: 50,
-    features: {
-      electronicInvoicing: false,
-      multiStore: false,
-      reports: false,
-      advancedInventory: false,
-      api: false,
-      customBranding: false,
-      multiCurrency: false,
-      support: 'none',
-      priority: false,
-    },
-    sortOrder: 1,
-    isActive: true,
-  },
-  {
-    name: 'Básico',
-    description: 'Ideal para negocios que inician. Punto de venta, inventario básico y facturación manual. Todo lo esencial para comenzar.',
-    price: 49900,
-    maxStores: 1,
-    maxEmployees: 3,
-    maxProducts: 100,
-    features: {
-      electronicInvoicing: false,
-      multiStore: false,
-      reports: false,
-      advancedInventory: false,
-      api: false,
-      customBranding: false,
-      multiCurrency: false,
-      support: 'email',
-      priority: false,
-    },
-    sortOrder: 2,
-    isActive: true,
-  },
-  {
-    name: 'Pro',
-    description: 'Para negocios en crecimiento. Facturación electrónica DIAN, inventario avanzado, reportes detallados y hasta 5 sucursales.',
-    price: 89900,
-    maxStores: 5,
-    maxEmployees: 15,
-    maxProducts: 500,
-    features: {
-      electronicInvoicing: true,
-      multiStore: true,
-      reports: true,
-      advancedInventory: true,
-      api: false,
-      customBranding: false,
-      multiCurrency: false,
-      support: 'email',
-      priority: false,
-    },
-    sortOrder: 3,
-    isActive: true,
-  },
-  {
-    name: 'Empresarial',
-    description: 'Solución completa para empresas que escalan. Hasta 25 sucursales, productos ilimitados, API, branding propio y soporte dedicado.',
-    price: 249000,
-    maxStores: 25,
-    maxEmployees: -1,
-    maxProducts: -1,
-    features: {
-      electronicInvoicing: true,
-      multiStore: true,
-      reports: true,
-      advancedInventory: true,
-      api: true,
-      customBranding: true,
-      multiCurrency: true,
-      support: 'dedicated',
-      priority: true,
-    },
-    sortOrder: 4,
-    isActive: true,
-  },
-]
 
 /**
  * POST /api/super-admin/plans/seed

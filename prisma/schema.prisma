@@ -278,6 +278,8 @@ model Subscription {
   // ── Expiry alert tracking ──
   alertSentAt3d  DateTime? @map("alert_sent_at_3d")
   alertSentAt1d  DateTime? @map("alert_sent_at_1d")
+  // Dunning: last-chance email sent the day before graceEndDate (PAST_DUE only)
+  graceAlertSentAt DateTime? @map("grace_alert_sent_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt
 

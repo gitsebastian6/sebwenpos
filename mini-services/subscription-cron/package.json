@@ -3,8 +3,5 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "bun --hot index.ts"
-  },
-  "dependencies": {
-    "better-sqlite3": "^11.7.0"
   }
 }

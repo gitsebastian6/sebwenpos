@@ -12,29 +12,43 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Crown, Users, Package, Pencil } from 'lucide-react'
+import { Crown, Users, Package, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCOP } from './helpers'
 import { formatLimit } from './helpers'
 import type { PlanData } from './types'
-import { useUpdatePlan } from '@/hooks/api/use-super-admin'
+import { useUpdatePlan, useCreatePlan, useDeletePlan } from '@/hooks/api/use-super-admin'
 
 interface PlansViewProps {
   plans: PlanData[]
   onPlansChange: () => void
 }
 
+const EMPTY_PLAN_FORM = {
+  name: '', description: '', price: 0,
+  maxEmployees: 5, maxProducts: 100, maxStores: 1,
+  sortOrder: 0, isActive: true,
+}
+
 export function PlansView({ plans, onPlansChange }: PlansViewProps) {
   const updatePlan = useUpdatePlan()
-  const [showEditPlanDialog, setShowEditPlanDialog] = useState(false)
+  const createPlan = useCreatePlan()
+  const deletePlan = useDeletePlan()
+  const [showPlanDialog, setShowPlanDialog] = useState(false)
+  const [planDialogMode, setPlanDialogMode] = useState<'create' | 'edit'>('create')
   const [editingPlan, setEditingPlan] = useState<PlanData | null>(null)
-  const [planForm, setPlanForm] = useState({
-    name: '', description: '', price: 0,
-    maxEmployees: 5, maxProducts: 100, maxStores: 1,
-    sortOrder: 0, isActive: true,
-  })
+  const [planForm, setPlanForm] = useState(EMPTY_PLAN_FORM)
+  const [deletingPlan, setDeletingPlan] = useState<PlanData | null>(null)
+
+  function openCreatePlan() {
+    setPlanDialogMode('create')
+    setEditingPlan(null)
+    setPlanForm({ ...EMPTY_PLAN_FORM, sortOrder: plans.length })
+    setShowPlanDialog(true)
+  }
 
   function openEditPlan(plan: PlanData) {
+    setPlanDialogMode('edit')
     setEditingPlan(plan)
     setPlanForm({
       name: plan.name,
@@ -46,24 +60,54 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
       sortOrder: plan.sortOrder,
       isActive: plan.isActive,
     })
-    setShowEditPlanDialog(true)
+    setShowPlanDialog(true)
   }
 
   function handleSavePlan() {
-    if (!editingPlan) return
     if (!planForm.name || planForm.name.length < 2) { toast.error('Nombre del plan es obligatorio (mín. 2 caracteres)'); return }
+
+    if (planDialogMode === 'create') {
+      createPlan.mutate(planForm, {
+        onSuccess: (data: any) => {
+          toast.success(data?.message || 'Plan creado exitosamente')
+          setShowPlanDialog(false)
+          onPlansChange()
+        },
+        onError: (err) => toast.error(err.message || 'Error de conexión'),
+      })
+      return
+    }
+
+    if (!editingPlan) return
     updatePlan.mutate(
       { id: editingPlan.id, body: planForm },
       {
         onSuccess: (data: any) => {
           toast.success(data?.message || 'Plan actualizado exitosamente')
-          setShowEditPlanDialog(false)
+          setShowPlanDialog(false)
           onPlansChange()
         },
         onError: (err) => toast.error(err.message || 'Error de conexión'),
       },
     )
   }
+
+  function handleDeletePlan() {
+    if (!deletingPlan) return
+    deletePlan.mutate(
+      { id: deletingPlan.id },
+      {
+        onSuccess: (data: any) => {
+          toast.success(data?.message || 'Plan eliminado exitosamente')
+          setDeletingPlan(null)
+          onPlansChange()
+        },
+        onError: (err) => toast.error(err.message || 'Error al eliminar el plan'),
+      },
+    )
+  }
+
+  const isSaving = createPlan.isPending || updatePlan.isPending
 
   return (
     <>
@@ -77,6 +121,9 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
               </CardTitle>
               <CardDescription>Administre los planes disponibles para las tiendas</CardDescription>
             </div>
+            <Button size="sm" className="gap-1.5" onClick={openCreatePlan}>
+              <Plus className="h-3.5 w-3.5" />Nuevo Plan
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -150,16 +197,28 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Editar plan"
-                          aria-label="Editar plan"
-                          onClick={() => openEditPlan(plan)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Editar plan"
+                            aria-label="Editar plan"
+                            onClick={() => openEditPlan(plan)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                            title="Eliminar plan"
+                            aria-label="Eliminar plan"
+                            onClick={() => setDeletingPlan(plan)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -170,15 +229,16 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
         </CardContent>
       </Card>
 
-      {/* Edit Plan Dialog */}
-      <Dialog open={showEditPlanDialog} onOpenChange={setShowEditPlanDialog}>
+      {/* Create/Edit Plan Dialog */}
+      <Dialog open={showPlanDialog} onOpenChange={setShowPlanDialog}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
           <DialogHeader>
-            <DialogTitle>Editar Plan: {editingPlan?.name}</DialogTitle>
-            <DialogDescription>Modifique los campos deseados y guarde los cambios</DialogDescription>
+            <DialogTitle>{planDialogMode === 'create' ? 'Nuevo Plan' : `Editar Plan: ${editingPlan?.name}`}</DialogTitle>
+            <DialogDescription>
+              {planDialogMode === 'create' ? 'Complete los datos del nuevo plan de suscripción' : 'Modifique los campos deseados y guarde los cambios'}
+            </DialogDescription>
           </DialogHeader>
-          {editingPlan && (
-            <div className="space-y-5 py-4">
+          <div className="space-y-5 py-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="pf-name">Nombre *</Label>
@@ -223,16 +283,50 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
                 </div>
                 <Switch checked={planForm.isActive} onCheckedChange={(checked) => setPlanForm(p => ({ ...p, isActive: checked }))} />
               </div>
-              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-                <span className="text-muted-foreground">Suscriptores actuales: </span>
-                <Badge variant="secondary" className="ml-1">{editingPlan.subscriptionCount}</Badge>
-              </div>
-            </div>
-          )}
+              {planDialogMode === 'edit' && editingPlan && (
+                <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                  <span className="text-muted-foreground">Suscriptores actuales: </span>
+                  <Badge variant="secondary" className="ml-1">{editingPlan.subscriptionCount}</Badge>
+                </div>
+              )}
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditPlanDialog(false)}>Cancelar</Button>
-            <Button onClick={handleSavePlan} disabled={updatePlan.isPending} className="gap-2 active:scale-[0.98] transition-all">
-              {updatePlan.isPending ? (<><div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />Guardando...</>) : (<><Pencil className="h-4 w-4" />Guardar</>)}
+            <Button variant="outline" onClick={() => setShowPlanDialog(false)}>Cancelar</Button>
+            <Button onClick={handleSavePlan} disabled={isSaving} className="gap-2 active:scale-[0.98] transition-all">
+              {isSaving
+                ? (<><div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />Guardando...</>)
+                : planDialogMode === 'create'
+                  ? (<><Plus className="h-4 w-4" />Crear Plan</>)
+                  : (<><Pencil className="h-4 w-4" />Guardar</>)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Plan Confirmation */}
+      <Dialog open={!!deletingPlan} onOpenChange={(open) => { if (!open) setDeletingPlan(null) }}>
+        <DialogContent className="max-w-sm rounded-xl backdrop-blur-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="h-7 w-7 bg-red-100 dark:bg-red-500/15 rounded-lg flex items-center justify-center">
+                <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
+              </div>
+              Eliminar Plan
+            </DialogTitle>
+            <DialogDescription>
+              ¿Seguro que querés eliminar el plan <strong>{deletingPlan?.name}</strong>? Esta acción no se puede deshacer.
+              {deletingPlan && deletingPlan.subscriptionCount > 0 && (
+                <span className="block mt-2 text-amber-600 dark:text-amber-400">
+                  Tiene {deletingPlan.subscriptionCount} suscripción(es) activa(s) — no se podrá eliminar hasta que no tenga ninguna.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingPlan(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleDeletePlan} disabled={deletePlan.isPending} className="gap-2 active:scale-[0.98] transition-all">
+              {deletePlan.isPending ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Eliminar
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { sql } from '@/lib/db-dialect'
 
 export const dynamic = 'force-dynamic'
 
@@ -165,42 +166,42 @@ export async function GET() {
     twelveMonthsAgo.setHours(0, 0, 0, 0)
 
     const monthlyStores = await db.$queryRawUnsafe(`
-      SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
+      SELECT ${sql.monthCol('created_at')} as month, COUNT(*) as count
       FROM stores
       WHERE parent_store_id IS NULL AND created_at >= '${twelveMonthsAgo.toISOString()}'
-      GROUP BY strftime('%Y-%m', created_at)
+      GROUP BY ${sql.monthCol('created_at')}
       ORDER BY month ASC
     `)
 
     // ─── 9. Historical: Revenue by month (from billing records) ───
     const monthlyRevenueHistory = await db.$queryRawUnsafe(`
-      SELECT strftime('%Y-%m', period_start) as month,
+      SELECT ${sql.monthCol('period_start')} as month,
              SUM(CASE WHEN status = 'PAID' THEN net_amount ELSE 0 END) as revenue,
              COUNT(*) as billing_count,
              SUM(CASE WHEN status = 'PENDING' THEN net_amount ELSE 0 END) as pending_amount
       FROM billing_records
       WHERE period_start >= '${twelveMonthsAgo.toISOString()}'
-      GROUP BY strftime('%Y-%m', period_start)
+      GROUP BY ${sql.monthCol('period_start')}
       ORDER BY month ASC
     `)
 
     // ─── 10. Historical: Orders by month (12 months) ───
     const monthlyOrders = await db.$queryRawUnsafe(`
-      SELECT strftime('%Y-%m', created_at) as month,
+      SELECT ${sql.monthCol('created_at')} as month,
              COUNT(*) as count,
              SUM(CASE WHEN status != 'CANCELLED' THEN total ELSE 0 END) as total_sales
       FROM orders
       WHERE created_at >= '${twelveMonthsAgo.toISOString()}'
-      GROUP BY strftime('%Y-%m', created_at)
+      GROUP BY ${sql.monthCol('created_at')}
       ORDER BY month ASC
     `)
 
     // ─── 11. Historical: Customer growth by month ───
     const monthlyCustomers = await db.$queryRawUnsafe(`
-      SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
+      SELECT ${sql.monthCol('created_at')} as month, COUNT(*) as count
       FROM customers
       WHERE created_at >= '${twelveMonthsAgo.toISOString()}'
-      GROUP BY strftime('%Y-%m', created_at)
+      GROUP BY ${sql.monthCol('created_at')}
       ORDER BY month ASC
     `)
 
@@ -233,14 +234,14 @@ export async function GET() {
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
 
     const churnByMonth = await db.$queryRawUnsafe(`
-      SELECT strftime('%Y-%m', created_at) as month,
+      SELECT ${sql.monthCol('created_at')} as month,
              SUM(CASE WHEN event_type = 'SUBSCRIPTION_CANCELLED' THEN 1 ELSE 0 END) as cancelled,
              SUM(CASE WHEN event_type = 'SUBSCRIPTION_REACTIVATED' THEN 1 ELSE 0 END) as reactivated,
              SUM(CASE WHEN event_type = 'SUBSCRIPTION_PAST_DUE' THEN 1 ELSE 0 END) as past_due
       FROM store_event_logs
       WHERE created_at >= '${sixMonthsAgo.toISOString()}'
         AND event_type IN ('SUBSCRIPTION_CANCELLED', 'SUBSCRIPTION_REACTIVATED', 'SUBSCRIPTION_PAST_DUE')
-      GROUP BY strftime('%Y-%m', created_at)
+      GROUP BY ${sql.monthCol('created_at')}
       ORDER BY month ASC
     `)
 
