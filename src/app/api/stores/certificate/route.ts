@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { randomBytes, X509Certificate } from 'node:crypto'
-import crypto from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { encryptField, decryptField } from '@/lib/field-encryption'
 import { requireAuthStoreId } from '@/lib/api-auth'
+import { loadFromP12 } from '@/lib/invoicing/certificate'
 
 // Extract certificate info from .p12
 function extractCertInfo(p12Path: string, password: string): {
@@ -14,27 +14,13 @@ function extractCertInfo(p12Path: string, password: string): {
   expiresAt: Date
   serial: string
 } | null {
-  try {
-    const p12Data = readFileSync(p12Path)
-    const parsed = (crypto as any).pkcs12.parse(p12Data, password)
+  const { cert } = loadFromP12(p12Path, password)
 
-    if (!parsed || !parsed.cert) {
-      throw new Error('No se pudo leer el certificado. Verifica la contraseña.')
-    }
-
-    const cert = new X509Certificate(parsed.cert.toString('binary'))
-
-    return {
-      subject: cert.subject,
-      issuer: cert.issuer,
-      expiresAt: cert.validTo ? new Date(cert.validTo) : new Date(),
-      serial: cert.serialNumber || '',
-    }
-  } catch (error: unknown) {
-    if (error instanceof Error && (error.message?.includes('password') || error.message?.includes('decrypt') || (error as NodeJS.ErrnoException).code === 'ERR_OSSL_')) {
-      throw new Error('Contraseña del certificado incorrecta. Verifica e intenta de nuevo.')
-    }
-    throw new Error('Error al leer el certificado: ' + (error instanceof Error ? error.message : 'Formato inválido'))
+  return {
+    subject: cert.subject,
+    issuer: cert.issuer,
+    expiresAt: cert.validTo ? new Date(cert.validTo) : new Date(),
+    serial: cert.serialNumber || '',
   }
 }
 
