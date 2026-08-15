@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Ventify POS — Subscription Info Building
+// Viva POS — Subscription Info Building
 // ---------------------------------------------------------------------------
 // Functions to fetch, transition, and build subscription info objects
 // for API responses. Centralized so login, switch-store, and subscription

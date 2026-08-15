@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// VentifyPOS — AI Chat Mini-Service (GLM via z-ai-web-dev-sdk)
+// VivaPOS — AI Chat Mini-Service (GLM via z-ai-web-dev-sdk)
 // ---------------------------------------------------------------------------
 // Standalone Bun service on port 3004 that calls GLM API via the SDK.
 // Runs outside Next.js so the SDK works without crashes.

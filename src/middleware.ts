@@ -6,7 +6,7 @@ import { isSubscriptionBlocked } from '@/lib/subscription-cache'
 import { safeStringEqual } from '@/lib/crypto-utils'
 
 // ---------------------------------------------------------------------------
-// Ventify POS — Auth + CORS + CSRF + Rate Limit + Subscription Middleware
+// Viva POS — Auth + CORS + CSRF + Rate Limit + Subscription Middleware
 // ---------------------------------------------------------------------------
 // Validates HMAC-SHA256 tokens on every API request.
 // Checks token revocation blacklist (in-memory cache synced from DB).

@@ -2,7 +2,7 @@ import { Metadata } from 'next'
 import StorefrontPage from './storefront-page'
 
 export const metadata: Metadata = {
-  title: 'Tienda Virtual — Ventify POS',
+  title: 'Tienda Virtual — Viva POS',
   description: 'Explora nuestros productos y haz tu pedido por WhatsApp',
 }
 

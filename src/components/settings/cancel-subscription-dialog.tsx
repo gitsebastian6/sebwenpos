@@ -92,7 +92,7 @@ export function CancelSubscriptionDialog({
               className="text-sm"
             />
             <p className="text-[11px] text-muted-foreground">
-              Tu motivo nos ayuda a mejorar Ventify POS.
+              Tu motivo nos ayuda a mejorar Viva POS.
             </p>
           </div>
         </div>

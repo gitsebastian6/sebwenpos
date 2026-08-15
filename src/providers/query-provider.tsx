@@ -22,8 +22,8 @@ export function QueryProvider({ children }: { children: ReactNode }) {
     function handleInvalidate() {
       queryClient.invalidateQueries()
     }
-    window.addEventListener('ventify:invalidate-queries', handleInvalidate)
-    return () => window.removeEventListener('ventify:invalidate-queries', handleInvalidate)
+    window.addEventListener('viva:invalidate-queries', handleInvalidate)
+    return () => window.removeEventListener('viva:invalidate-queries', handleInvalidate)
   }, [queryClient])
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

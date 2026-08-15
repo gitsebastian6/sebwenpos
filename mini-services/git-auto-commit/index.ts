@@ -1,5 +1,5 @@
 // =============================================================================
-// Ventify POS — Git Auto-Commit Cron Service
+// Viva POS — Git Auto-Commit Cron Service
 // =============================================================================
 // Runs every hour. Executes bash script for git auto-commit with validation.
 // Port 3011 — health check only (commit logic in bash for reliability).

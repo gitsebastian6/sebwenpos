@@ -1,5 +1,5 @@
 /**
- * Ventify POS — Database Dialect Helper
+ * Viva POS — Database Dialect Helper
  * ─────────────────────────────────────────────────────────
  * Provides SQL dialect functions for both SQLite and PostgreSQL.
  * The active dialect is determined by DATABASE_URL at startup.

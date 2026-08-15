@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# VentifyPOS — CD Pipeline (Phase 4B — Continuous Deployment)
+# VivaPOS — CD Pipeline (Phase 4B — Continuous Deployment)
 # ---------------------------------------------------------------------------
 # Se activa automáticamente cuando el workflow de CI termina con éxito.
 # También se puede ejecutar manualmente desde GitHub Actions.
@@ -166,7 +166,7 @@ jobs:
 
     environment:
       name: production
-      url: ${{ vars.APP_URL || 'https://ventifypos.com' }}
+      url: ${{ vars.APP_URL || 'https://vivapos.com' }}
 
     steps:
       - name: Setup SSH key
@@ -187,23 +187,23 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_HOST << DEPLOY_SCRIPT
           set -e
-          echo "🚀 Deploying VentifyPOS..."
+          echo "🚀 Deploying VivaPOS..."
           docker pull ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
           docker tag ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:latest
-          docker stop ventifypos 2>/dev/null || true
-          docker rm ventifypos 2>/dev/null || true
+          docker stop vivapos 2>/dev/null || true
+          docker rm vivapos 2>/dev/null || true
           docker run -d \
-            --name ventifypos \
+            --name vivapos \
             --restart unless-stopped \
             -p 3000:3000 \
-            -v ventifypos-data:/app/db \
-            --env-file /opt/ventifypos/.env \
+            -v vivapos-data:/app/db \
+            --env-file /opt/vivapos/.env \
             ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
           sleep 10
           if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
             echo "✅ Deployment successful!"
           else
-            docker logs ventifypos --tail 50
+            docker logs vivapos --tail 50
             exit 1
           fi
           docker image prune -f --filter "until=72h"

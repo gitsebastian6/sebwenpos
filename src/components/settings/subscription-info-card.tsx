@@ -31,9 +31,9 @@ interface SubscriptionInfoCardProps {
   onRefresh?: () => void
 }
 
-const VENTIFY_SUPPORT_PHONE = '573012695457'
-const SUPPORT_WHATSAPP = `https://wa.me/${VENTIFY_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, quiero actualizar mi plan de suscripción en Ventify POS')}`
-const SUPPORT_PHONE = VENTIFY_SUPPORT_PHONE.slice(2) // local 10-digit format
+const VIVA_SUPPORT_PHONE = '573012695457'
+const SUPPORT_WHATSAPP = `https://wa.me/${VIVA_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, quiero actualizar mi plan de suscripción en Viva POS')}`
+const SUPPORT_PHONE = VIVA_SUPPORT_PHONE.slice(2) // local 10-digit format
 
 export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, onCancel, isOwner = true, isFetching = false, onRefresh }: SubscriptionInfoCardProps) {
   if (!subInfo) {
@@ -163,7 +163,7 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
                 <p className="text-xs mt-1.5 text-muted-foreground leading-relaxed">
                   {daysRem <= 3
                     ? 'Actualiza tu plan antes de que expire para no perder acceso al sistema.'
-                    : 'Estás evaluando Ventify POS. Puedes actualizar tu plan en cualquier momento.'}
+                    : 'Estás evaluando Viva POS. Puedes actualizar tu plan en cualquier momento.'}
                 </p>
 
                 {/* Progress bar */}

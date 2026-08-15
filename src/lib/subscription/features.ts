@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Ventify POS — Subscription Feature Checking
+// Viva POS — Subscription Feature Checking
 // ---------------------------------------------------------------------------
 // Feature parsing, plan/store feature checks, subscription status helpers,
 // and feature-gating utilities for API middleware.

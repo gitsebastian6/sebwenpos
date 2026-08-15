@@ -1,6 +1,6 @@
 {
-  "name": "Ventify POS - Sistema de Punto de Venta",
-  "short_name": "Ventify",
+  "name": "Viva POS - Sistema de Punto de Venta",
+  "short_name": "Viva",
   "description": "Sistema de punto de venta e inventario para Colombia. Facturación electrónica DIAN, gestión de inventario, reportes en tiempo real.",
   "start_url": "/",
   "display": "standalone",

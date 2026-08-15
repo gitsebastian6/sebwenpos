@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Ventify POS — Subscription History & Billing Records
+// Viva POS — Subscription History & Billing Records
 // ---------------------------------------------------------------------------
 // Functions for logging subscription history events and creating billing
 // records for subscription payments/extensions.

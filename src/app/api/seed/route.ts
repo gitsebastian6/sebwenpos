@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger'
 export const dynamic = 'force-dynamic'
 
 // ---------------------------------------------------------------------------
-// Ventify POS — Seed Route (DEVELOPMENT ONLY)
+// Viva POS — Seed Route (DEVELOPMENT ONLY)
 // ---------------------------------------------------------------------------
 // This route creates demo data for development/testing purposes.
 //
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
       data: {
         cedula: '1098765432',
         phone: '3001234567',
-        email: 'admin@ventify.com',
+        email: 'admin@viva.com',
         passwordHash,
         fullName: 'Carlos Bar Manager',
         role: 'OWNER',

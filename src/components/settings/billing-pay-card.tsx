@@ -312,7 +312,7 @@ export function BillingPayCard({
                     <span className="text-amber-600 dark:text-amber-400">{daysRemaining ?? 0} día{daysRemaining !== 1 ? 's' : ''} restante{daysRemaining !== 1 ? 's' : ''}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Para continuar usando Ventify POS después del Trial, cambia a un plan de pago.
+                    Para continuar usando Viva POS después del Trial, cambia a un plan de pago.
                   </p>
                 </div>
               ) : status === 'CANCELLED' ? (

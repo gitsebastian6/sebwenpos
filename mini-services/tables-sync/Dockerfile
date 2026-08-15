@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# VentifyPOS — Tables Real-Time Sync Service (Socket.IO)
+# VivaPOS — Tables Real-Time Sync Service (Socket.IO)
 # ---------------------------------------------------------------------------
 FROM node:20-bookworm-slim
 

@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
       // ── Build WhatsApp Link ──
       const supportPhone = getSupportPhone()
       const whatsappMessage = encodeURIComponent(
-        `Hola, soy ${ownerName} de "${store.name}". Mi suscripción ${planName} en Ventify POS vence ${isUrgent ? 'mañana' : `en ${daysBefore} días`}. Quisiera renovar/actualizar mi plan.`
+        `Hola, soy ${ownerName} de "${store.name}". Mi suscripción ${planName} en Viva POS vence ${isUrgent ? 'mañana' : `en ${daysBefore} días`}. Quisiera renovar/actualizar mi plan.`
       )
       const whatsappLink = `https://wa.me/${supportPhone}?text=${whatsappMessage}`
 
@@ -231,7 +231,7 @@ async function handleGraceEndingAlerts() {
 
     const supportPhone = getSupportPhone()
     const whatsappMessage = encodeURIComponent(
-      `Hola, soy ${ownerName} de "${store.name}". Mi período de gracia en Ventify POS termina mañana y quiero ponerme al día con el pago.`
+      `Hola, soy ${ownerName} de "${store.name}". Mi período de gracia en Viva POS termina mañana y quiero ponerme al día con el pago.`
     )
     const whatsappLink = `https://wa.me/${supportPhone}?text=${whatsappMessage}`
 
@@ -288,7 +288,7 @@ async function sendGraceEndingEmail(data: {
   }
 
   const transporter = createTransport(config)
-  const fromName = config.fromName ?? 'Ventify POS'
+  const fromName = config.fromName ?? 'Viva POS'
   const fromHeader = config.from.includes('<') && config.from.includes('>')
     ? `${fromName} ${config.from}`
     : `"${fromName}" <${config.from}>`
@@ -308,7 +308,7 @@ async function sendGraceEndingEmail(data: {
     const info = await transporter.sendMail({
       from: fromHeader,
       to: data.to,
-      subject: `⛔ Último aviso: tu período de gracia termina mañana — Ventify POS`,
+      subject: `⛔ Último aviso: tu período de gracia termina mañana — Viva POS`,
       html,
     })
 
@@ -345,7 +345,7 @@ async function sendExpiryAlertEmail(data: AlertEmailData): Promise<{ success: bo
   }
 
   const transporter = createTransport(config)
-  const fromName = config.fromName ?? 'Ventify POS'
+  const fromName = config.fromName ?? 'Viva POS'
   const fromHeader = config.from.includes('<') && config.from.includes('>')
     ? `${fromName} ${config.from}`
     : `"${fromName}" <${config.from}>`
@@ -367,8 +367,8 @@ async function sendExpiryAlertEmail(data: AlertEmailData): Promise<{ success: bo
       from: fromHeader,
       to: data.to,
       subject: data.isUrgent
-        ? `⚠️ Tu suscripción Ventify POS vence mañana`
-        : `Recordatorio: Tu suscripción Ventify POS vence en ${data.daysRemaining} días`,
+        ? `⚠️ Tu suscripción Viva POS vence mañana`
+        : `Recordatorio: Tu suscripción Viva POS vence en ${data.daysRemaining} días`,
       html,
     })
 

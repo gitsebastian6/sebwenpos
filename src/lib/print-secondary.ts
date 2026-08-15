@@ -85,7 +85,7 @@ export function printCashRegisterClose(data: CashRegisterCloseData) {
     <div class="footer">
       <div class="footer-msg">Este informe se generó automáticamente al cerrar la caja</div>
       <hr class="dashed">
-      <div class="footer-brand">VENTIFY POS</div>
+      <div class="footer-brand">VIVA POS</div>
     </div>
   `
 
@@ -145,7 +145,7 @@ export function printDailySummary(data: DailySummaryData) {
 
     <div class="footer">
       <hr class="dashed">
-      <div class="footer-brand">VENTIFY POS</div>
+      <div class="footer-brand">VIVA POS</div>
     </div>
   `
 
@@ -200,7 +200,7 @@ export function printProductCatalog(data: ProductCatalogData) {
     <hr class="solid">
     <div class="footer">
       <div class="footer-msg">${now}</div>
-      <div class="footer-brand">VENTIFY POS</div>
+      <div class="footer-brand">VIVA POS</div>
     </div>
   `
 
@@ -260,7 +260,7 @@ export function printKardex(data: KardexData) {
 
     <div class="footer">
       <hr class="dashed">
-      <div class="footer-brand">VENTIFY POS</div>
+      <div class="footer-brand">VIVA POS</div>
     </div>
   `
 

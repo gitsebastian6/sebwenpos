@@ -73,7 +73,7 @@ function DianRedirectContent() {
             </div>
           </div>
           <h1 className="text-xl font-bold text-gray-900 mb-2">
-            Refugio / VENTIFY
+            Refugio / VIVA
           </h1>
           <h2 className="text-lg font-semibold text-gray-700 mb-4">
             Validaci\u00f3n de Factura Electr\u00f3nica
@@ -99,7 +99,7 @@ function DianRedirectContent() {
           </div>
         </div>
         <h1 className="text-xl font-bold text-gray-900 mb-1">
-          Refugio / VENTIFY
+          Refugio / VIVA
         </h1>
         <p className="text-sm text-gray-500 mb-6">
           Validaci\u00f3n de Factura Electr\u00f3nica DIAN

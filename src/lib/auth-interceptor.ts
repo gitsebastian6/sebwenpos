@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Ventify POS — Global fetch interceptor
+// Viva POS — Global fetch interceptor
 // ---------------------------------------------------------------------------
 // Patches window.fetch to automatically inject Authorization: Bearer header
 // on every /api/ request. Must be imported early in the app.

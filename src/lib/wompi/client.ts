@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Ventify POS — Wompi Payment Gateway Client (Demo + Real)
+// Viva POS — Wompi Payment Gateway Client (Demo + Real)
 // ---------------------------------------------------------------------------
 // Supports three modes via WOMPI_ENV:
 //   - "demo"       → Simulates Wompi API (no keys needed, auto-approves)

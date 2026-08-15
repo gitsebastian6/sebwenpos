@@ -177,8 +177,8 @@ export function AppShell() {
       if (!store?.id) return
       qc.invalidateQueries({ queryKey: ['subscription-current', store.id] })
     }
-    window.addEventListener('ventify:invalidate-queries', handleInvalidate)
-    return () => window.removeEventListener('ventify:invalidate-queries', handleInvalidate)
+    window.addEventListener('viva:invalidate-queries', handleInvalidate)
+    return () => window.removeEventListener('viva:invalidate-queries', handleInvalidate)
   }, [store?.id, qc])
 
   // ── Listen for error boundary navigation events ──
@@ -189,8 +189,8 @@ export function AppShell() {
         setView(view as AppView)
       }
     }
-    window.addEventListener('ventify:navigate', handleNavigate)
-    return () => window.removeEventListener('ventify:navigate', handleNavigate)
+    window.addEventListener('viva:navigate', handleNavigate)
+    return () => window.removeEventListener('viva:navigate', handleNavigate)
   }, [currentView, setView])
 
   // ── Load available stores on mount (for multi-store/sucursal support) ──
@@ -285,7 +285,7 @@ export function AppShell() {
       title: 'Suscripción vencida',
       desc: graceDaysLeft != null
         ? `Tienes ${graceDaysLeft} día${graceDaysLeft !== 1 ? 's' : ''} de gracia. Renueva para evitar la pérdida de acceso.`
-        : 'Tu período de gracia está activo. Renueva tu plan para continuar usando Ventify.',
+        : 'Tu período de gracia está activo. Renueva tu plan para continuar usando Viva.',
       dismissible: false,
     }
     // Trial with few days: amber/red
@@ -328,7 +328,7 @@ export function AppShell() {
         <SidebarHeader className="p-4 pb-2">
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 rounded-lg flex items-center justify-center shrink-0 overflow-hidden bg-background animate-[logo-pulse_3s_ease-in-out_infinite]">
-              <Image src="/logo.png" alt="Ventify" width={44} height={44} className="object-contain animate-[logo-float_4s_ease-in-out_infinite,logo-glow_3s_ease-in-out_infinite]" />
+              <Image src="/logo.png" alt="Viva" width={44} height={44} className="object-contain animate-[logo-float_4s_ease-in-out_infinite,logo-glow_3s_ease-in-out_infinite]" />
             </div>
             <div className="min-w-0 flex-1">
               {isOwner ? (

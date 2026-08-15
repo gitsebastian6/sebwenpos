@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 
 // ---------------------------------------------------------------------------
-// Ventify POS — Audit Logger
+// Viva POS — Audit Logger
 // ---------------------------------------------------------------------------
 // Centralized audit trail for all business-critical operations.
 // Every write to Orders, Invoices, Products, Inventory, etc. should be logged.

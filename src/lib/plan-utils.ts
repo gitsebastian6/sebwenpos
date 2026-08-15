@@ -4,7 +4,7 @@ import { TRIAL_PERIOD_DAYS } from '@/lib/subscription/constants'
 // Helper functions for plan management: durations, expiration checks, and
 // automatic date calculations when a store's plan changes.
 //
-// VENTIFY POS Plans (canonical source: /api/super-admin/plans/seed):
+// VIVA POS Plans (canonical source: /api/super-admin/plans/seed):
 //   Trial         → 7 days, $0, limited products/employees
 //   Básico        → $49,900/mes, POS + basic inventory + manual billing
 //   Pro           → $89,900/mes, electronic invoicing + reports + 5 branches

@@ -336,7 +336,7 @@ export function EInvoicingConfig() {
                   de la DIAN. Requiere un certificado digital (.p12) o un proveedor autorizado como Simba.
                 </p>
                 <p>
-                  Ventify POS soporta <strong>dos modos híbridos</strong>: con certificado propio (DIAN Directo) o a
+                  Viva POS soporta <strong>dos modos híbridos</strong>: con certificado propio (DIAN Directo) o a
                   través de un proveedor de servicios (Simba, Alegra, Cubi, etc.).
                 </p>
               </div>

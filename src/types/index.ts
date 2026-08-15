@@ -1,5 +1,5 @@
 // ============================================================
-// Ventify POS — Shared TypeScript Types
+// Viva POS — Shared TypeScript Types
 // Centralized type definitions for all components and API routes
 // ============================================================
 

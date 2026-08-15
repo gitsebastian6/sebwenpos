@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * Ventify POS — Suite de Pruebas E2E: Suscripciones + Sucursales
+ * Viva POS — Suite de Pruebas E2E: Suscripciones + Sucursales
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Escenarios profesionales de testing para validar:
@@ -103,7 +103,7 @@ async function resetDatabase() {
 // MAIN TEST SUITE
 // ═══════════════════════════════════════════════════════════════
 async function main() {
-  console.log(`\n${C.bold}${C.bgGreen}  VENTIFY POS — TEST SUITE: SUSCRIPCIONES + SUCURSALES  ${C.reset}`);
+  console.log(`\n${C.bold}${C.bgGreen}  VIVA POS — TEST SUITE: SUSCRIPCIONES + SUCURSALES  ${C.reset}`);
   console.log(`${C.dim}  ${new Date().toISOString()}${C.reset}`);
   console.log(`${C.dim}  Rol: Experto QA SaaS POS Multi-Tenant${C.reset}`);
 

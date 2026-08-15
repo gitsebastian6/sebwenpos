@@ -16,7 +16,7 @@ export function ConfigView() {
   const { data: configData, isLoading: configLoading } = useSystemConfig()
   const updateConfig = useUpdateSystemConfig()
   const [showApiKey, setShowApiKey] = useState(false)
-  const [mbConfig, setMbConfig] = useState({ apiKey: '', phoneNumber: '', enabled: false, testMode: false, template: 'Tu código de verificación para Ventify POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.' })
+  const [mbConfig, setMbConfig] = useState({ apiKey: '', phoneNumber: '', enabled: false, testMode: false, template: 'Tu código de verificación para Viva POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.' })
   const [wpConfig, setWpConfig] = useState({ demoVisible: false, enabled: false })
   const checkExpired = useCheckExpired()
   const seedMissing = useSeedMissingSubscriptions()
@@ -44,7 +44,7 @@ export function ConfigView() {
         phoneNumber: configData.messagebird.phoneNumber || '',
         enabled: configData.messagebird.enabled || false,
         testMode: configData.messagebird.testMode || false,
-        template: configData.messagebird.template || 'Tu código de verificación para Ventify POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.',
+        template: configData.messagebird.template || 'Tu código de verificación para Viva POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.',
       })
     }
     if (configData?.wompi) {

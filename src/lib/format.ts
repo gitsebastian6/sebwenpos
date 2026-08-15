@@ -1,5 +1,5 @@
 // ============================================================
-// Ventify POS — Shared Formatters & Utilities
+// Viva POS — Shared Formatters & Utilities
 // Centralized formatting functions used across all components
 // ============================================================
 

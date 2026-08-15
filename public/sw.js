@@ -3,9 +3,9 @@
 const SW_VERSION = 'v1';
 
 // ─── Cache Names ──────────────────────────────────────────────────────
-const STATIC_CACHE = `ventify-static-${SW_VERSION}`;
-const RUNTIME_CACHE = `ventify-runtime-${SW_VERSION}`;
-const API_CACHE = `ventify-api-${SW_VERSION}`;
+const STATIC_CACHE = `viva-static-${SW_VERSION}`;
+const RUNTIME_CACHE = `viva-runtime-${SW_VERSION}`;
+const API_CACHE = `viva-api-${SW_VERSION}`;
 
 // ─── App Shell: static assets to pre-cache on install ─────────────────
 const APP_SHELL = [
@@ -25,8 +25,12 @@ self.addEventListener('install', (event) => {
       return cache.addAll(APP_SHELL);
     })
   );
-  // Activate immediately without waiting for existing clients to close
-  self.skipWaiting();
+  // Intentionally NOT calling self.skipWaiting() here — the new worker
+  // stays in the "waiting" state until the user confirms via the
+  // "Actualizar" banner (service-worker-registrar.tsx), which sends the
+  // SKIP_WAITING message handled below. Auto-skipping would activate the
+  // new SW before the user opts in, leaving registration.waiting empty
+  // and making that banner's update button silently do nothing.
 });
 
 // ─── Activate: clean old caches ───────────────────────────────────────
@@ -200,10 +204,10 @@ self.addEventListener('push', (event) => {
   try {
     data = event.data.json();
   } catch {
-    data = { title: 'Ventify POS', body: event.data.text() };
+    data = { title: 'Viva POS', body: event.data.text() };
   }
 
-  const title = data.title || 'Ventify POS';
+  const title = data.title || 'Viva POS';
   const options = {
     body: data.body || '',
     icon: data.icon || '/icon-192x192.png',
@@ -216,7 +220,7 @@ self.addEventListener('push', (event) => {
       ...data.data,
     },
     actions: data.actions || [],
-    tag: data.tag || `ventify-${Date.now()}`,
+    tag: data.tag || `viva-${Date.now()}`,
     requireInteraction: data.requireInteraction || false,
     renotify: data.renotify || true,
   };

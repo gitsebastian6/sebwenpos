@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     // ── Build payment link name/description ──
     const linkName = data.type === 'SUBSCRIPTION'
-      ? `Suscripción VentifyPOS — ${data.planName || 'Plan'}`
+      ? `Suscripción VivaPOS — ${data.planName || 'Plan'}`
       : `Pago POS — ${store.name}`
 
     const linkDescription = data.description || (data.type === 'SUBSCRIPTION'

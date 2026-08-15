@@ -1,6 +1,6 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# VentifyPOS — Docker Database Migration Script
+# VivaPOS — Docker Database Migration Script
 # ---------------------------------------------------------------------------
 # Runs prisma db push to create/update all tables in PostgreSQL.
 # Includes retry logic and proper error handling.
@@ -9,7 +9,7 @@
 set -e
 
 echo "╔══════════════════════════════════════════════════╗"
-echo "║       VentifyPOS — Database Migration            ║"
+echo "║       VivaPOS — Database Migration            ║"
 echo "╚══════════════════════════════════════════════════╝"
 
 # ── 1. Ensure Prisma engine binaries are executable ──

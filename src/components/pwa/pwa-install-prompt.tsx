@@ -17,7 +17,7 @@ declare global {
 
 /**
  * PWAInstallPrompt — captures the `beforeinstallprompt` event and shows
- * a custom "Install Ventify POS" banner. Works on Android/Chrome.
+ * a custom "Install Viva POS" banner. Works on Android/Chrome.
  * On iOS Safari, shows a manual instructions tooltip instead.
  */
 export function PWAInstallPrompt() {
@@ -37,7 +37,7 @@ export function PWAInstallPrompt() {
     if (isStandalone) return;
 
     // Check if previously dismissed
-    const dismissedAt = localStorage.getItem('ventify-install-dismissed');
+    const dismissedAt = localStorage.getItem('viva-install-dismissed');
     if (dismissedAt) {
       const daysSinceDismissed = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24);
       if (daysSinceDismissed < 7) return; // Don't show again for 7 days
@@ -97,7 +97,7 @@ export function PWAInstallPrompt() {
     setShowBanner(false);
     setShowIOSHint(false);
     setDismissed(true);
-    localStorage.setItem('ventify-install-dismissed', Date.now().toString());
+    localStorage.setItem('viva-install-dismissed', Date.now().toString());
   }, []);
 
   // Don't render if dismissed or not showing
@@ -112,7 +112,7 @@ export function PWAInstallPrompt() {
             <Smartphone className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">Instalar Ventify POS</p>
+            <p className="text-sm font-semibold">Instalar Viva POS</p>
             <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
               Toca el icono <span className="inline-flex items-center mx-0.5 font-medium text-primary">↗ Compartir</span> en Safari y selecciona{' '}
               <span className="font-medium text-primary">&quot;Agregar a pantalla de inicio&quot;</span>
@@ -140,7 +140,7 @@ export function PWAInstallPrompt() {
           <Download className="h-5 w-5 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold">Instalar Ventify POS</p>
+          <p className="text-sm font-semibold">Instalar Viva POS</p>
           <p className="text-xs text-muted-foreground">
             Acceso rápido desde tu pantalla de inicio, funciona sin conexión
           </p>

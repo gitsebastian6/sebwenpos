@@ -25,10 +25,10 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Ventify POS - Sistema de Punto de Venta Colombiano",
+  title: "Viva POS - Sistema de Punto de Venta Colombiano",
   description: "Sistema de punto de venta e inventario multi-tienda para Colombia. Facturación electrónica DIAN, gestión de inventario, reportes en tiempo real.",
   manifest: "/manifest.webmanifest",
-  applicationName: "Ventify POS",
+  applicationName: "Viva POS",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#09090b" },
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Ventify POS",
+    title: "Viva POS",
   },
   formatDetection: {
     telephone: false,

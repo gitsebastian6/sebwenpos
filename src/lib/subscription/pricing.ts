@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Ventify POS — Subscription Pricing
+// Viva POS — Subscription Pricing
 // ---------------------------------------------------------------------------
 // Pricing calculation and currency formatting utilities for subscriptions.
 // ---------------------------------------------------------------------------

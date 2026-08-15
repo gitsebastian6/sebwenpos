@@ -191,7 +191,7 @@ tr:nth-child(even) td{background:#fafbfc}
 
   <div class="footer-text">
     Representación gráfica de la nota crédito electrónica<br>
-    Generada por VENTIFY POS — ${new Date().toLocaleDateString('es-CO')}
+    Generada por VIVA POS — ${new Date().toLocaleDateString('es-CO')}
   </div>
 </div>
 <script>window.onload=function(){window.print()}</script>

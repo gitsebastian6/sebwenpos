@@ -115,8 +115,8 @@ export function AuthPage() {
       <div className="w-full border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="Ventify" width={32} height={32} className="object-contain" />
-            <span className="font-bold text-base tracking-tight text-zinc-100">Ventify POS</span>
+            <Image src="/logo.png" alt="Viva" width={32} height={32} className="object-contain" />
+            <span className="font-bold text-base tracking-tight text-zinc-100">Viva POS</span>
           </div>
           <a
             href={SUPPORT_WHATSAPP}
@@ -166,7 +166,7 @@ export function AuthPage() {
       {/* ─── Footer ─── */}
       <footer className="border-t border-zinc-800/60 bg-zinc-950/60 backdrop-blur-sm mt-auto">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-center gap-2 text-xs text-zinc-600">
-          <span className="font-medium text-zinc-500">Ventify POS</span>
+          <span className="font-medium text-zinc-500">Viva POS</span>
           <span className="hidden sm:inline text-zinc-800">·</span>
           <span>Sistema de gestión multi-tienda · Colombia</span>
           <span className="hidden sm:inline text-zinc-800">·</span>

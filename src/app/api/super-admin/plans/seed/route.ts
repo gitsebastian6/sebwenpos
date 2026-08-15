@@ -6,7 +6,7 @@ import DEFAULT_PLANS from '@data/default-plans.json'
 export const dynamic = 'force-dynamic'
 
 /**
- * VENTIFY POS — Plan Marketing Configuration
+ * VIVA POS — Plan Marketing Configuration
  *
  * Plan hierarchy: Trial → Básico → Pro → Empresarial
  * Each higher tier includes ALL features from lower tiers plus extras.

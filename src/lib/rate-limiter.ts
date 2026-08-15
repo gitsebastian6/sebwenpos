@@ -1,5 +1,5 @@
 /**
- * Ventify POS — In-Memory Rate Limiter
+ * Viva POS — In-Memory Rate Limiter
  * ─────────────────────────────────────────────────────────
  * Token bucket style rate limiter using a Map with TTL cleanup.
  * Suitable for single-instance deployments.

@@ -1,6 +1,6 @@
 'use client'
 // ---------------------------------------------------------------------------
-// VentifyPOS — Tables Real-Time Sync Hook (Frontend)
+// VivaPOS — Tables Real-Time Sync Hook (Frontend)
 // ---------------------------------------------------------------------------
 // Connects to the tables-sync Socket.IO server and listens for events.
 // When an event is received, it invalidates the relevant TanStack Query caches

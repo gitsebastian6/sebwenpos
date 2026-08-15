@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Ventify POS — Unified Setup Script
+# Viva POS — Unified Setup Script
 # =============================================================================
 # Replaces: switch-to-postgres.sh, switch-to-sqlite.sh, git-auto-commit.sh,
 #           git-watch-push.sh, auto-git-push.sh, prisma/migrate-to-pg.sh
@@ -216,7 +216,7 @@ cmd_git_commit() {
   # Commit
   local DATE_SHORT
   DATE_SHORT=$(date -u +"%Y%m%d-%H%M")
-  local COMMIT_MSG="[auto-commit] $DATE_SHORT — Ventify POS ($FILE_COUNT files) |${PARTS} | prev:$PREV_HASH"
+  local COMMIT_MSG="[auto-commit] $DATE_SHORT — Viva POS ($FILE_COUNT files) |${PARTS} | prev:$PREV_HASH"
 
   if git commit -m "$COMMIT_MSG" 2>&1; then
     local NEW_HASH
@@ -275,7 +275,7 @@ case "$COMMAND" in
   git-push|push)      cmd_git_push ;;
   git-watch|watch)    cmd_git_watch ;;
   help|--help|-h)
-    echo "Ventify POS — Unified Setup Script"
+    echo "Viva POS — Unified Setup Script"
     echo ""
     echo "Usage: bash scripts/setup.sh [COMMAND] [ARGS]"
     echo ""

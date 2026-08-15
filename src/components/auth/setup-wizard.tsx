@@ -56,9 +56,9 @@ export function SetupWizard({ onSetupComplete }: SetupWizardProps) {
       <div className="w-full border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-2.5">
           <div className="h-10 w-10 rounded-lg flex items-center justify-center overflow-hidden bg-zinc-950 animate-[logo-pulse_3s_ease-in-out_infinite]">
-            <Image src="/logo.png" alt="Ventify" width={40} height={40} className="object-contain animate-[logo-float_4s_ease-in-out_infinite,logo-glow_3s_ease-in-out_infinite]" />
+            <Image src="/logo.png" alt="Viva" width={40} height={40} className="object-contain animate-[logo-float_4s_ease-in-out_infinite,logo-glow_3s_ease-in-out_infinite]" />
           </div>
-          <span className="font-bold text-base tracking-tight text-zinc-100">Ventify POS</span>
+          <span className="font-bold text-base tracking-tight text-zinc-100">Viva POS</span>
           <Badge className="ml-2 bg-amber-500/15 text-amber-400 border-amber-500/30 text-[10px] font-bold">PRIMER ACCESO</Badge>
         </div>
       </div>
@@ -206,7 +206,7 @@ export function SetupWizard({ onSetupComplete }: SetupWizardProps) {
 
       <footer className="border-t border-zinc-800/60 bg-zinc-950/60 backdrop-blur-sm mt-auto">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-center gap-2 text-xs text-zinc-600">
-          <span className="font-medium text-zinc-500">Ventify POS</span>
+          <span className="font-medium text-zinc-500">Viva POS</span>
           <span className="text-zinc-800">·</span>
           <span>Sistema de gestión multi-tienda · Colombia</span>
         </div>

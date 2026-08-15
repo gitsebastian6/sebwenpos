@@ -123,7 +123,7 @@ export function SuperAdminShell() {
           </div>
           <div>
             <h2 className="font-semibold text-sm">Super Administrador</h2>
-            <p className="text-xs text-muted-foreground">Ventify POS · Panel Central</p>
+            <p className="text-xs text-muted-foreground">Viva POS · Panel Central</p>
           </div>
         </div>
         <div className="flex-1" />
@@ -301,7 +301,7 @@ export function SuperAdminShell() {
       />
 
       <footer className="border-t py-3 px-4 sm:px-6 text-center text-xs text-muted-foreground">
-        Ventify POS · Sistema Multi-Tienda · Super Administrador
+        Viva POS · Sistema Multi-Tienda · Super Administrador
       </footer>
 
       {/* AI Assistant */}

@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# VentifyPOS — Docker Compose (PostgreSQL + App)
+# VivaPOS — Docker Compose (PostgreSQL + App)
 # ---------------------------------------------------------------------------
 # Usage:
 #   docker compose up --build        → Build and start everything
@@ -15,7 +15,7 @@
 #
 # pgAdmin (database GUI):
 #   docker compose --profile tools up -d
-#   http://localhost:5050  →  admin@ventifypos.com / admin
+#   http://localhost:5050  →  admin@vivapos.com / admin
 #
 # To migrate existing SQLite data:
 #   1. Copy db/custom.db into the container
@@ -26,18 +26,18 @@ services:
   # ── PostgreSQL Database ─────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    container_name: ventifypos-db
+    container_name: vivapos-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ventifypos
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ventifypos_secret_2025}
-      POSTGRES_DB: ventifypos
+      POSTGRES_USER: vivapos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vivapos_secret_2025}
+      POSTGRES_DB: vivapos
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ventifypos"]
+      test: ["CMD-SHELL", "pg_isready -U vivapos"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -51,13 +51,13 @@ services:
       context: .
       dockerfile: Dockerfile
       target: deps
-    container_name: ventifypos-migrate
+    container_name: vivapos-migrate
     restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://ventifypos:${POSTGRES_PASSWORD:-ventifypos_secret_2025}@postgres:5432/ventifypos?schema=public
+      DATABASE_URL: postgresql://vivapos:${POSTGRES_PASSWORD:-vivapos_secret_2025}@postgres:5432/vivapos?schema=public
     command: ["/bin/bash", "/app/docker-migrate.sh"]
 
   # ── Tables Real-Time Sync (Socket.IO) ───────────────────────────────────
@@ -69,7 +69,7 @@ services:
     build:
       context: .
       dockerfile: mini-services/tables-sync/Dockerfile
-    container_name: ventifypos-tables-sync
+    container_name: vivapos-tables-sync
     restart: unless-stopped
     ports:
       - "3005:3005"
@@ -85,20 +85,20 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ventifypos-app
+    container_name: vivapos-app
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       # ── Database (PostgreSQL) ──
-      DATABASE_URL: postgresql://ventifypos:${POSTGRES_PASSWORD:-ventifypos_secret_2025}@postgres:5432/ventifypos?schema=public
+      DATABASE_URL: postgresql://vivapos:${POSTGRES_PASSWORD:-vivapos_secret_2025}@postgres:5432/vivapos?schema=public
       # ── Auth ──
-      AUTH_SECRET: ${AUTH_SECRET:-ventify-auth-secret-key-2025-secure}
-      INTERNAL_SECRET: ${INTERNAL_SECRET:-ventify-internal-secret-2025}
+      AUTH_SECRET: ${AUTH_SECRET:-viva-auth-secret-key-2025-secure}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-viva-internal-secret-2025}
       # ── App URL ──
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       # ── Email ──
-      SMTP_FROM: ${SMTP_FROM:-noreply@ventifypos.com}
+      SMTP_FROM: ${SMTP_FROM:-noreply@vivapos.com}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
@@ -120,7 +120,7 @@ services:
       # Provider 1 (primary): Google AI Studio / Gemini
       # Get your key at https://aistudio.google.com/apikey
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
       # Provider 2: Z.ai Gateway (sandbox/dev only — unreachable from Docker)
       ZAI_BASE_URL: ${ZAI_BASE_URL:-}
       ZAI_API_KEY: ${ZAI_API_KEY:-Z.ai}
@@ -157,10 +157,10 @@ services:
     build:
       context: .
       dockerfile: mini-services/subscription-cron/Dockerfile
-    container_name: ventifypos-subscription-cron
+    container_name: vivapos-subscription-cron
     restart: unless-stopped
     environment:
-      INTERNAL_SECRET: ${INTERNAL_SECRET:-ventify-internal-secret-2025}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-viva-internal-secret-2025}
       APP_BASE_URL: http://app:3000
       ALERT_API_BASE: http://app:3000/api/subscription/alerts
       CRON_PORT: 3010
@@ -179,10 +179,10 @@ services:
   # ── pgAdmin (Database GUI) ─────────────────────────────────────────────
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: ventifypos-pgadmin
+    container_name: vivapos-pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@ventifypos.com}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@vivapos.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
     ports:
       - "5050:80"

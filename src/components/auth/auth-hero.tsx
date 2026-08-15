@@ -37,7 +37,7 @@ export function AuthHero() {
             <div className="relative glitch-logo-img">
               <Image
                 src="/logo.png"
-                alt="Ventify POS"
+                alt="Viva POS"
                 width={120}
                 height={120}
                 className="object-contain drop-shadow-[0_0_30px_rgba(114,210,180,0.2)] sm:h-[140px] sm:w-auto lg:h-[160px] lg:w-auto"
@@ -48,7 +48,7 @@ export function AuthHero() {
             {/* Brand text */}
             <div className="relative">
               <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-tighter text-zinc-50 leading-none glitch-text">
-                Ventify
+                Viva
               </h1>
               <p className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight mt-0.5">
                 <span className="bg-gradient-to-r from-emerald-400 via-emerald-300 to-teal-400 bg-clip-text text-transparent">

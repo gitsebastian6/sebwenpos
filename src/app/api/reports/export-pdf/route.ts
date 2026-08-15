@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
     // ── Header ──
     doc.fontSize(16).font('Helvetica-Bold').fillColor('#111111')
-    doc.text(storeName || 'Ventify POS', MARGIN, MARGIN, { width: pageWidth, align: 'center' })
+    doc.text(storeName || 'Viva POS', MARGIN, MARGIN, { width: pageWidth, align: 'center' })
 
     doc.moveDown(0.3)
     doc.fontSize(12).font('Helvetica-Bold').fillColor('#333333')
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
     const footerY = Math.max(currentY + 20, doc.page.height - MARGIN - 30)
     doc.fontSize(8).font('Helvetica').fillColor('#999999')
     doc.text(
-      `Generado por Ventify POS · ${new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+      `Generado por Viva POS · ${new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
       MARGIN,
       footerY,
       { width: pageWidth, align: 'center' }

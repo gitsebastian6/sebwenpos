@@ -1,6 +1,6 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# VentifyPOS — Docker Entrypoint
+# VivaPOS — Docker Entrypoint
 # ---------------------------------------------------------------------------
 # Runs on container startup:
 #   1. Wait for PostgreSQL to be ready (TCP check)
@@ -13,7 +13,7 @@
 # ---------------------------------------------------------------------------
 
 echo "╔══════════════════════════════════════════════════╗"
-echo "║         VentifyPOS — Starting Container          ║"
+echo "║         VivaPOS — Starting Container          ║"
 echo "╚══════════════════════════════════════════════════╝"
 
 # ── 1. Wait for PostgreSQL (simple TCP check) ──
@@ -112,5 +112,5 @@ node -e "
 mkdir -p /app/uploads/receipts 2>/dev/null || true
 
 # ── 4. Start the server ──
-echo "🚀 Starting VentifyPOS server on port ${PORT:-3000}..."
+echo "🚀 Starting VivaPOS server on port ${PORT:-3000}..."
 exec node server.js

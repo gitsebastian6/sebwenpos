@@ -1,5 +1,5 @@
 /**
- * Ventify POS — SQLite → PostgreSQL Migration Script
+ * Viva POS — SQLite → PostgreSQL Migration Script
  * 
  * Reads ALL data from SQLite (bun:sqlite) and inserts into PostgreSQL (pg).
  * Handles boolean conversion (0/1 → true/false) and preserves ISO8601 date strings.
@@ -19,7 +19,7 @@ const PG_CONFIG = {
   host: "127.0.0.1",
   port: 5432,
   user: "z",
-  database: "ventify",
+  database: "viva",
 };
 
 // ─── Column metadata: which columns are BOOLEAN and DATETIME ─────────────────
@@ -194,7 +194,7 @@ function buildInsertQuery(
 
 async function migrate() {
   console.log("═══════════════════════════════════════════════════════");
-  console.log("  Ventify POS — SQLite → PostgreSQL Migration");
+  console.log("  Viva POS — SQLite → PostgreSQL Migration");
   console.log("═══════════════════════════════════════════════════════");
   console.log();
 
