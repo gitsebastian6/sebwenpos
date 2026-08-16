@@ -199,7 +199,24 @@ jobs:
       url: ${{ vars.APP_URL || 'https://sebwenpos.com' }}
 
     steps:
+      # job-level `if:` can't safely read `secrets` (GitHub Actions restriction),
+      # so the "is a VPS configured?" check lives in its own step instead —
+      # this lets the job end in success (steps skipped) rather than failure
+      # whenever DEPLOY_HOST hasn't been set yet.
+      - name: Check VPS deploy is configured
+        id: check
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ DEPLOY_HOST no está configurado — se omite el deploy al VPS (la imagen ya quedó publicada en ghcr.io)."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup SSH key
+        if: steps.check.outputs.configured == 'true'
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
@@ -207,6 +224,7 @@ jobs:
           ssh-keyscan -p ${{ secrets.DEPLOY_PORT || 22 }} -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Deploy to server
+        if: steps.check.outputs.configured == 'true'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
