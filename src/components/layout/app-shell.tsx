@@ -2,6 +2,7 @@
 
 import { useAuthStore } from '@/stores/auth-store'
 import { useAppStore, type AppView } from '@/stores/app-store'
+import { VIEW_LABELS } from '@/lib/view-labels'
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger, SidebarInset, SidebarSeparator } from '@/components/ui/sidebar'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -265,7 +266,7 @@ export function AppShell() {
     .slice(0, 2)
 
   const isOwner = user?.role === 'OWNER'
-  const headerTitle = viewLabels[currentView] || currentView.charAt(0).toUpperCase() + currentView.slice(1)
+  const headerTitle = VIEW_LABELS[currentView] || currentView.charAt(0).toUpperCase() + currentView.slice(1)
 
   // ── Subscription banner logic ──
   const [bannerDismissed, setBannerDismissed] = useState(false)
@@ -578,28 +579,8 @@ export function AppShell() {
   )
 }
 
-const viewLabels: Record<string, string> = {
-  pos: 'Punto de Venta',
-  tables: 'Mesas y Comandas',
-  services: 'Servicios',
-  providers: 'Proveedores',
-  purchases: 'Compras',
-  reports: 'Informes',
-  invoices: 'Facturación Electrónica',
-  settings: 'Configuración',
-  quotations: 'Cotizaciones',
-  employees: 'Empleados',
-  roles: 'Roles y Permisos',
-  dashboard: 'Dashboard',
-  products: 'Productos',
-  customers: 'Clientes',
-  orders: 'Órdenes',
-  inventory: 'Inventario',
-  accounting: 'Contabilidad',
-}
-
 function ViewRouter({ currentView }: { currentView: AppView }) {
-  const label = viewLabels[currentView] || currentView
+  const label = VIEW_LABELS[currentView] || currentView
   switch (currentView) {
     case 'dashboard': return <ViewErrorBoundary viewName={label}><DashboardView /></ViewErrorBoundary>
     case 'pos': return <ViewErrorBoundary viewName={label}><SubscriptionGate><POSView /></SubscriptionGate></ViewErrorBoundary>

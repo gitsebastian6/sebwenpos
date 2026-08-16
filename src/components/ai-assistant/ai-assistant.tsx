@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useAppStore } from '@/stores/app-store'
 import { useAiChat, useAiChatClear } from '@/hooks/api/use-ai-chat'
+import { VIEW_LABELS } from '@/lib/view-labels'
 import { Button } from '@/components/ui/button'
 import {
   MessageCircle,
@@ -452,7 +453,7 @@ export function AiAssistant() {
             {currentView && currentView !== 'dashboard' && (
               <div className="mb-2 flex items-center gap-1.5">
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  📍 {currentView.charAt(0).toUpperCase() + currentView.slice(1)}
+                  📍 {VIEW_LABELS[currentView] || (currentView.charAt(0).toUpperCase() + currentView.slice(1))}
                 </span>
                 <span className="text-[10px] text-muted-foreground">
                   — contexto activo
