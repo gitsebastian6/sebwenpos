@@ -146,6 +146,8 @@ export interface LeadData {
   resolutionEndDate: string | null
   resolutionStartNumber: number | null
   resolutionEndNumber: number | null
+  // ── Resumen de expediente legal (solo en el listado, ver /api/super-admin/leads) ──
+  docStats?: { uploaded: number; approved: number; total: number }
 }
 
 export interface LeadDocumentData {

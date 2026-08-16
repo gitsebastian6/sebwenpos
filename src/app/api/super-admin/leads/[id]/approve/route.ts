@@ -36,6 +36,13 @@ export async function POST(
       return NextResponse.json({ error: 'Lead no encontrado' }, { status: 404 })
     }
 
+    if (lead.convertedStoreId) {
+      return NextResponse.json(
+        { error: 'Este lead ya tiene una tienda vinculada (creada por Quick Start o conversión previa).' },
+        { status: 409 },
+      )
+    }
+
     if (lead.stage !== 'VALIDACION_LEGAL') {
       return NextResponse.json(
         { error: `Solo se pueden convertir leads en etapa Validación Legal. Etapa actual: ${lead.stage}` },

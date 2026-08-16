@@ -82,6 +82,7 @@ export function CrmClientDetailView({ leadId, onBack }: Props) {
   const allApproved = REQUIRED_DOCUMENT_TYPES.every((t) => latestByType(t)?.status === 'APPROVED')
   const resolutionEnd = lead.resolutionEndDate ? new Date(lead.resolutionEndDate) : null
   const resolutionValid = !!resolutionEnd && resolutionEnd > new Date()
+  const alreadyHasStore = !!lead.convertedStoreId
   const readyToConvert = stage === 'VALIDACION_LEGAL' && allApproved && resolutionValid
 
   const daysToExpire = resolutionEnd ? Math.ceil((resolutionEnd.getTime() - Date.now()) / 86400000) : null
@@ -301,20 +302,37 @@ export function CrmClientDetailView({ leadId, onBack }: Props) {
       {/* ── CTA footer ── */}
       {stage !== 'CLIENTE_ACTIVO' && stage !== 'RECHAZADO' && (
         <div className="sticky bottom-4 flex justify-end">
-          <Button
-            size="lg"
-            className="gap-2 shadow-lg"
-            disabled={!readyToConvert || approveLead.isPending}
-            onClick={handleConvert}
-          >
-            {approveLead.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-            Marcar como Listo para Facturar
-            {!readyToConvert && (
-              <span className="text-[10px] opacity-80 ml-1">
-                ({REQUIRED_DOCUMENT_TYPES.filter((t) => latestByType(t)?.status === 'APPROVED').length}/4{!resolutionValid ? ' · resolución no vigente' : ''})
-              </span>
-            )}
-          </Button>
+          {alreadyHasStore ? (
+            <Button
+              size="lg"
+              className="gap-2 shadow-lg"
+              disabled={!allApproved || !resolutionValid || updateLead.isPending}
+              onClick={() => changeStage('CLIENTE_ACTIVO')}
+            >
+              {updateLead.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              Marcar Expediente Completo
+              {(!allApproved || !resolutionValid) && (
+                <span className="text-[10px] opacity-80 ml-1">
+                  ({REQUIRED_DOCUMENT_TYPES.filter((t) => latestByType(t)?.status === 'APPROVED').length}/4{!resolutionValid ? ' · resolución no vigente' : ''})
+                </span>
+              )}
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              className="gap-2 shadow-lg"
+              disabled={!readyToConvert || approveLead.isPending}
+              onClick={handleConvert}
+            >
+              {approveLead.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              Marcar como Listo para Facturar
+              {!readyToConvert && (
+                <span className="text-[10px] opacity-80 ml-1">
+                  ({REQUIRED_DOCUMENT_TYPES.filter((t) => latestByType(t)?.status === 'APPROVED').length}/4{!resolutionValid ? ' · resolución no vigente' : ''})
+                </span>
+              )}
+            </Button>
+          )}
         </div>
       )}
     </div>

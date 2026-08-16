@@ -179,6 +179,37 @@ export async function POST(req: NextRequest) {
         },
       })
 
+      // Quick Start salta el flujo de leads y activa la cuenta al toque, pero
+      // igual necesita expediente legal DIAN (RUT, Cámara, cédula, resolución)
+      // antes de poder facturar electrónicamente — se crea un lead ya vinculado
+      // a la tienda para que el super admin le haga seguimiento desde el CRM.
+      const lead = await tx.lead.create({
+        data: {
+          ownerFullName: data.fullName.trim(),
+          ownerCedula: data.cedula.trim(),
+          ownerPhone: data.phone?.trim() || null,
+          ownerPassword: passwordHash,
+          storeName: data.storeName.trim(),
+          nit: 'PENDIENTE',
+          legalName: data.storeName.trim(),
+          businessType: 'NATURAL',
+          storePhone: data.phone?.trim() || null,
+          stage: 'DOC_PENDIENTE',
+          status: 'APPROVED',
+          source: 'QUICKSTART',
+          reviewedBy: 'SYSTEM_QUICKSTART',
+          reviewedAt: now,
+          convertedStoreId: storeId,
+        },
+      })
+      await tx.leadActivity.create({
+        data: {
+          leadId: lead.id,
+          type: 'STAGE_CHANGE',
+          title: 'Cuenta creada vía Quick Start — pendiente expediente legal DIAN',
+        },
+      })
+
       return { user, store: user.store!, subscription }
     })
 

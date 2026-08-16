@@ -60,6 +60,18 @@ const SOURCE_LABELS: Record<string, string> = {
   WEB: 'Web',
   WHATSAPP: 'WhatsApp',
   REFERRAL: 'Referido',
+  QUICKSTART: 'Quick Start',
+  MANUAL: 'Manual',
+}
+
+// ─── Stage (pipeline CRM) Configuration ───
+const STAGE_CONFIG: Record<string, { label: string; bgClass: string }> = {
+  LEAD: { label: 'Lead', bgClass: 'bg-slate-500/10 border-slate-500/20 text-slate-400' },
+  CONTACTADO: { label: 'Contactado', bgClass: 'bg-sky-500/10 border-sky-500/20 text-sky-400' },
+  DOC_PENDIENTE: { label: 'Doc. Pendiente', bgClass: 'bg-amber-500/10 border-amber-500/20 text-amber-400' },
+  VALIDACION_LEGAL: { label: 'Validación Legal', bgClass: 'bg-violet-500/10 border-violet-500/20 text-violet-400' },
+  CLIENTE_ACTIVO: { label: 'Cliente Activo', bgClass: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' },
+  RECHAZADO: { label: 'Rechazado', bgClass: 'bg-red-500/10 border-red-500/20 text-red-400' },
 }
 
 type FilterTab = 'ALL' | 'NEW' | 'CONTACTED' | 'APPROVED' | 'REJECTED' | 'CONVERTED'
@@ -138,6 +150,43 @@ function StatusBadge({ status }: { status: string }) {
       {config.label}
     </Badge>
   )
+}
+
+// ─── Stage Badge (etapa del pipeline CRM) ───
+function StageBadge({ stage }: { stage: string }) {
+  const config = STAGE_CONFIG[stage] || STAGE_CONFIG.LEAD
+  return (
+    <Badge variant="outline" className={`text-[10px] ${config.bgClass}`}>
+      {config.label}
+    </Badge>
+  )
+}
+
+// ─── Doc Stats (expediente legal: RUT, Cámara, Cédula, Resolución DIAN) ───
+function DocStatsIndicator({ lead }: { lead: LeadData }) {
+  if (lead.docStats && lead.docStats.uploaded > 0) {
+    const { uploaded, approved, total } = lead.docStats
+    const allApproved = approved === total
+    return (
+      <span
+        className={`inline-flex items-center gap-1 text-[10px] ${allApproved ? 'text-emerald-400' : 'text-amber-400'}`}
+        title={`${approved} de ${total} documentos aprobados (${uploaded} subidos)`}
+      >
+        {allApproved ? <FileCheck className="h-3 w-3" /> : <FileWarning className="h-3 w-3" />}
+        {approved}/{total} aprobados
+      </span>
+    )
+  }
+  // Legacy leads (registro completo previo al expediente legal nuevo): solo RUT/Cámara
+  if (lead.rutFilePath || lead.camaraFilePath) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <DocIndicator label="RUT" hasFile={!!lead.rutFilePath} />
+        <DocIndicator label="Cámara" hasFile={!!lead.camaraFilePath} />
+      </div>
+    )
+  }
+  return <span className="text-[10px] text-zinc-600">Sin documentos</span>
 }
 
 // ─── Document Indicator ───
@@ -603,6 +652,7 @@ export function LeadsView() {
                     <th className="text-left px-4 py-3 font-medium">Ubicación</th>
                     <th className="text-left px-4 py-3 font-medium">Tipo</th>
                     <th className="text-left px-4 py-3 font-medium">Documentos</th>
+                    <th className="text-left px-4 py-3 font-medium">Etapa</th>
                     <th className="text-left px-4 py-3 font-medium">Estado</th>
                     <th className="text-left px-4 py-3 font-medium">Fecha</th>
                     <th className="text-right px-4 py-3 font-medium">Acciones</th>
@@ -666,10 +716,10 @@ export function LeadsView() {
                         </Badge>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <DocIndicator label="RUT" hasFile={!!lead.rutFilePath} />
-                          <DocIndicator label="Cámara" hasFile={!!lead.camaraFilePath} />
-                        </div>
+                        <DocStatsIndicator lead={lead} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <StageBadge stage={lead.stage} />
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={lead.status} />
@@ -730,9 +780,9 @@ export function LeadsView() {
                     <span>{[lead.department, lead.cityName].filter(Boolean).join(', ') || 'Sin ubicación'}</span>
                     <span className="ml-auto">{relativeTime(lead.createdAt)}</span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <DocIndicator label="RUT" hasFile={!!lead.rutFilePath} />
-                    <DocIndicator label="Cámara" hasFile={!!lead.camaraFilePath} />
+                  <div className="flex items-center justify-between gap-3">
+                    <DocStatsIndicator lead={lead} />
+                    <StageBadge stage={lead.stage} />
                   </div>
                 </div>
               ))}

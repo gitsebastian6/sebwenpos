@@ -7,6 +7,22 @@ export const dynamic = 'force-dynamic'
 
 const validStatuses = ['NEW', 'CONTACTED', 'APPROVED', 'REJECTED', 'CONVERTED'] as const
 export const VALID_STAGES = ['LEAD', 'CONTACTADO', 'DOC_PENDIENTE', 'VALIDACION_LEGAL', 'CLIENTE_ACTIVO', 'RECHAZADO'] as const
+const REQUIRED_DOC_TYPES = ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REPRESENTANTE', 'RESOLUCION_DIAN'] as const
+
+// For each required document type, keep only the latest version and count
+// how many are uploaded vs. approved — used to render doc status in the leads table.
+function computeDocStats(documents: { documentType: string; status: string; version: number }[]) {
+  let uploaded = 0
+  let approved = 0
+  for (const type of REQUIRED_DOC_TYPES) {
+    const versions = documents.filter((d) => d.documentType === type)
+    if (versions.length === 0) continue
+    uploaded++
+    const latest = versions.reduce((a, b) => (b.version > a.version ? b : a))
+    if (latest.status === 'APPROVED') approved++
+  }
+  return { uploaded, approved, total: REQUIRED_DOC_TYPES.length }
+}
 
 // ─── Schema for manual lead creation ───
 const createLeadSchema = z.object({
@@ -67,7 +83,10 @@ export async function GET(req: NextRequest) {
       db.lead.findMany({
         where: Object.keys(where).length > 0 ? where : undefined,
         orderBy: { createdAt: 'desc' },
-        include: { assignedTo: { select: { id: true, fullName: true } } },
+        include: {
+          assignedTo: { select: { id: true, fullName: true } },
+          documents: { select: { documentType: true, status: true, version: true } },
+        },
       }),
       db.lead.count({ where: { status: 'NEW' } }),
       db.lead.count({ where: { status: 'CONTACTED' } }),
@@ -81,8 +100,13 @@ export async function GET(req: NextRequest) {
     const byStage: Record<string, number> = Object.fromEntries(VALID_STAGES.map((s) => [s, 0]))
     for (const row of stageCounts) byStage[row.stage] = row._count.id
 
+    const leadsWithDocStats = leads.map(({ documents, ...lead }) => ({
+      ...lead,
+      docStats: computeDocStats(documents),
+    }))
+
     return NextResponse.json({
-      leads,
+      leads: leadsWithDocStats,
       stats: {
         new: statsNew,
         contacted: statsContacted,
