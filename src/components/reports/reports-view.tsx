@@ -90,7 +90,7 @@ export function ReportsView() {
 
   // ── Export helpers ──
   const dateRangeStr = `${fdate(from)} - ${fdate(to)}`
-  const storeName = store?.name || 'Viva POS'
+  const storeName = store?.name || 'Sebwen POS'
 
   const handleExportExcel = () => {
     const exportData = getExportData(tab, data!, [])

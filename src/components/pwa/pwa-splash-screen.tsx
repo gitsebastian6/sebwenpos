@@ -52,7 +52,7 @@ export function PWASplashScreen() {
         <div className="h-20 w-20 rounded-2xl bg-primary/10 flex items-center justify-center animate-pulse">
           <img
             src="/logo.png"
-            alt="Viva POS"
+            alt="Sebwen POS"
             className="h-14 w-14 object-contain"
           />
         </div>
@@ -60,7 +60,7 @@ export function PWASplashScreen() {
 
       {/* Brand */}
       <h1 className="text-xl font-bold text-white tracking-tight">
-        Viva POS
+        Sebwen POS
       </h1>
       <p className="mt-1 text-xs text-zinc-500">
         Cargando sistema...

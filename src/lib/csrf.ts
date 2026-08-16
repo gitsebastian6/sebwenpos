@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — CSRF Token Helpers
+// Sebwen POS — CSRF Token Helpers
 // ---------------------------------------------------------------------------
 // Implements the Double-Submit Cookie pattern for CSRF protection.
 // On login, the server generates a random CSRF token and:

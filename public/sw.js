@@ -3,9 +3,9 @@
 const SW_VERSION = 'v1';
 
 // ─── Cache Names ──────────────────────────────────────────────────────
-const STATIC_CACHE = `viva-static-${SW_VERSION}`;
-const RUNTIME_CACHE = `viva-runtime-${SW_VERSION}`;
-const API_CACHE = `viva-api-${SW_VERSION}`;
+const STATIC_CACHE = `sebwen-static-${SW_VERSION}`;
+const RUNTIME_CACHE = `sebwen-runtime-${SW_VERSION}`;
+const API_CACHE = `sebwen-api-${SW_VERSION}`;
 
 // ─── App Shell: static assets to pre-cache on install ─────────────────
 const APP_SHELL = [
@@ -204,10 +204,10 @@ self.addEventListener('push', (event) => {
   try {
     data = event.data.json();
   } catch {
-    data = { title: 'Viva POS', body: event.data.text() };
+    data = { title: 'Sebwen POS', body: event.data.text() };
   }
 
-  const title = data.title || 'Viva POS';
+  const title = data.title || 'Sebwen POS';
   const options = {
     body: data.body || '',
     icon: data.icon || '/icon-192x192.png',
@@ -220,7 +220,7 @@ self.addEventListener('push', (event) => {
       ...data.data,
     },
     actions: data.actions || [],
-    tag: data.tag || `viva-${Date.now()}`,
+    tag: data.tag || `sebwen-${Date.now()}`,
     requireInteraction: data.requireInteraction || false,
     renotify: data.renotify || true,
   };

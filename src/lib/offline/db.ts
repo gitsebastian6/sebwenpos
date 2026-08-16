@@ -94,7 +94,7 @@ export interface SyncMeta {
 
 // ─── Database ──────────────────────────────────────────────────────────
 
-class VivaDB extends Dexie {
+class SebwenDB extends Dexie {
   products!: EntityTable<OfflineProduct, 'id'>;
   services!: EntityTable<OfflineService, 'id'>;
   categories!: EntityTable<OfflineCategory, 'id'>;
@@ -104,7 +104,7 @@ class VivaDB extends Dexie {
   syncMeta!: EntityTable<SyncMeta, 'key'>;
 
   constructor() {
-    super('vivapos');
+    super('sebwenpos');
 
     this.version(1).stores({
       products: 'id, storeId, categoryId, barcode, name, updatedAt',
@@ -118,7 +118,7 @@ class VivaDB extends Dexie {
   }
 }
 
-export const db = new VivaDB();
+export const db = new SebwenDB();
 
 // ─── Sync Helpers ──────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# VivaPOS — Tables Real-Time Sync Service (Socket.IO)
+# SebwenPOS — Tables Real-Time Sync Service (Socket.IO)
 # ---------------------------------------------------------------------------
 FROM node:20-bookworm-slim
 

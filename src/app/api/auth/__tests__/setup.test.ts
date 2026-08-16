@@ -43,7 +43,7 @@ describe('POST /api/auth/setup', () => {
     cedula: '1234567890',
     password: 'SecurePass123',
     fullName: 'Admin Principal',
-    email: 'admin@viva.com',
+    email: 'admin@sebwen.com',
   }
 
   it('creates SUPER_ADMIN successfully', async () => {

@@ -966,7 +966,7 @@ export function StoreDetailView({ store: detail, plans, onBack, onResetPassword,
       </Dialog>
 
       <footer className="border-t py-3 px-4 sm:px-6 text-center text-xs text-muted-foreground">
-        Viva POS · Detalle de Tienda · {store.name}
+        Sebwen POS · Detalle de Tienda · {store.name}
       </footer>
     </div>
   )

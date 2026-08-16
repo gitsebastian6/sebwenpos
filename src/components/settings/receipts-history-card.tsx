@@ -54,8 +54,8 @@ interface ReceiptsHistoryCardProps {
   onReceiptUpdated?: () => void
 }
 
-const VIVA_SUPPORT_PHONE = '573012695457'
-const SUPPORT_WHATSAPP = `https://wa.me/${VIVA_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, quiero actualizar mi plan de suscripción en Viva POS')}`
+const SEBWEN_SUPPORT_PHONE = '573012695457'
+const SUPPORT_WHATSAPP = `https://wa.me/${SEBWEN_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, quiero actualizar mi plan de suscripción en Sebwen POS')}`
 
 function parsePlanChangeNotes(notes: string | null) {
   if (!notes) return null

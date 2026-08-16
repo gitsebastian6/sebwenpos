@@ -1,5 +1,5 @@
 // ============================================================
-// Viva POS — Shared Formatters & Utilities
+// Sebwen POS — Shared Formatters & Utilities
 // Centralized formatting functions used across all components
 // ============================================================
 

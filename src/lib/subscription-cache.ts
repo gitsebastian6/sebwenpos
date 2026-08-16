@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Subscription Status In-Memory Cache
+// Sebwen POS — Subscription Status In-Memory Cache
 // ---------------------------------------------------------------------------
 // Lightweight in-memory cache shared between middleware and API routes.
 // Follows the same pattern as the token revocation list in auth-helpers.ts:

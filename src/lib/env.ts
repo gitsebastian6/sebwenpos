@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Environment Variable Validation
+// Sebwen POS — Environment Variable Validation
 // ---------------------------------------------------------------------------
 // Centralized access to environment variables with type-safe, fail-fast
 // validation.  Secrets that are missing in production will crash the server

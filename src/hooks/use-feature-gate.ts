@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — useFeatureGate Hook
+// Sebwen POS — useFeatureGate Hook
 // ---------------------------------------------------------------------------
 // React hook to check if the current store's plan has a specific feature.
 // Shows an upgrade prompt when the feature is not available.

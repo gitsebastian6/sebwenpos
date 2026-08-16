@@ -1,5 +1,5 @@
 /**
- * Viva POS — SQLite → PostgreSQL Migration Script
+ * Sebwen POS — SQLite → PostgreSQL Migration Script
  *
  * Reads ALL data from SQLite (bun:sqlite) and inserts into PostgreSQL (pg).
  * Handles boolean conversion (0/1 → true/false) and preserves ISO8601 date strings.
@@ -16,11 +16,11 @@ import { Pool } from "pg";
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 const SQLITE_PATH = process.env.SQLITE_PATH || "db/custom.db";
-// Defaults match docker-compose.yml's postgres service (vivapos/vivapos).
+// Defaults match docker-compose.yml's postgres service (sebwenpos/sebwenpos).
 // Override with PG_DATABASE_URL if migrating against a different target.
 const PG_CONNECTION_STRING =
   process.env.PG_DATABASE_URL ||
-  "postgresql://vivapos:vivapos_secret_2025@127.0.0.1:5432/vivapos";
+  "postgresql://sebwenpos:sebwenpos_secret_2025@127.0.0.1:5432/sebwenpos";
 
 // ─── Column metadata: which columns are BOOLEAN and DATETIME ─────────────────
 
@@ -194,7 +194,7 @@ function buildInsertQuery(
 
 async function migrate() {
   console.log("═══════════════════════════════════════════════════════");
-  console.log("  Viva POS — SQLite → PostgreSQL Migration");
+  console.log("  Sebwen POS — SQLite → PostgreSQL Migration");
   console.log("═══════════════════════════════════════════════════════");
   console.log();
 

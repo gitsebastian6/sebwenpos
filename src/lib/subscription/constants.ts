@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Subscription Constants
+// Sebwen POS — Subscription Constants
 // ---------------------------------------------------------------------------
 // All subscription-related constants: plan features, statuses, history events,
 // labels (Spanish), billing periods, and grace period configuration.

@@ -1,5 +1,5 @@
 // ============================================================
-// Viva POS — Shared TypeScript Types
+// Sebwen POS — Shared TypeScript Types
 // Centralized type definitions for all components and API routes
 // ============================================================
 

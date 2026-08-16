@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Viva POS — Unified Deploy Script
+# Sebwen POS — Unified Deploy Script
 # =============================================================================
 # Replaces: deploy-vps.sh, cd-deploy.sh, docker-entrypoint.sh,
 #           add-cd-workflow.sh, setup-cd-workflow.sh
@@ -30,15 +30,15 @@ err()  { echo -e "${RED}[deploy]${NC} $*"; exit 1; }
 # Subcommand: vps — Full VPS deployment
 # =============================================================================
 cmd_vps() {
-  APP_NAME="vivapos"
+  APP_NAME="sebwenpos"
   APP_DIR="/opt/${APP_NAME}"
   DATA_DIR="/opt/${APP_NAME}/data"
   ENV_FILE="${APP_DIR}/.env"
   DOCKER_COMPOSE_FILE="${APP_DIR}/docker-compose.yml"
-  IMAGE="ghcr.io/gitsebastian6/vivapos:latest"
+  IMAGE="ghcr.io/gitsebastian6/sebwenpos:latest"
   PORT=3000
 
-  log "VivaPOS VPS Deployment"
+  log "SebwenPOS VPS Deployment"
   log "========================="
 
   [ "$(id -u)" -eq 0 ] || err "This script must be run as root (use sudo)"
@@ -63,7 +63,7 @@ cmd_vps() {
   if [ ! -f "${ENV_FILE}" ]; then
     log "Creating .env file..."
     cat > "${ENV_FILE}" << 'EOF'
-# VivaPOS — Production Environment Variables
+# SebwenPOS — Production Environment Variables
 # Generate secrets with: openssl rand -base64 32
 
 DATABASE_URL="file:/app/db/custom.db"
@@ -76,7 +76,7 @@ NODE_ENV="production"
 NEXT_PUBLIC_SENTRY_DSN=""
 
 DIAN_SOFTWARE_PROVIDER_NIT=""
-DIAN_SOFTWARE_NAME="Viva POS"
+DIAN_SOFTWARE_NAME="Sebwen POS"
 DIAN_SOFTWARE_PIN=""
 DIAN_CERT_PASSWORD=""
 
@@ -86,7 +86,7 @@ SMTP_SECURE="false"
 SMTP_USER=""
 SMTP_PASS=""
 SMTP_FROM="facturacion@your-domain.com"
-SMTP_FROM_NAME="Viva POS Facturación"
+SMTP_FROM_NAME="Sebwen POS Facturación"
 
 MESSAGEBIRD_API_KEY=""
 MESSAGEBIRD_PHONE=""
@@ -108,13 +108,13 @@ EOF
 version: "3.8"
 services:
   app:
-    image: ghcr.io/gitsebastian6/vivapos:latest
-    container_name: vivapos
+    image: ghcr.io/gitsebastian6/sebwenpos:latest
+    container_name: sebwenpos
     restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
-      - vivapos-data:/app/db
+      - sebwenpos-data:/app/db
     env_file:
       - .env
     healthcheck:
@@ -126,7 +126,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
-    container_name: vivapos-caddy
+    container_name: sebwenpos-caddy
     restart: unless-stopped
     ports:
       - "80:80"
@@ -140,7 +140,7 @@ services:
         condition: service_healthy
 
 volumes:
-  vivapos-data:
+  sebwenpos-data:
     driver: local
   caddy_data:
   caddy_config:
@@ -149,7 +149,7 @@ COMPOSE
   fi
 
   # Start the application
-  log "Starting VivaPOS..."
+  log "Starting SebwenPOS..."
   cd "${APP_DIR}"
   docker compose pull 2>/dev/null || true
   docker compose up -d
@@ -157,7 +157,7 @@ COMPOSE
   log "Waiting for application to start..."
   for i in $(seq 1 30); do
     if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
-      ok "VivaPOS is running and healthy!"
+      ok "SebwenPOS is running and healthy!"
       ok "Access at: http://localhost:${PORT}"
       return
     fi
@@ -173,8 +173,8 @@ COMPOSE
 # =============================================================================
 cmd_cd() {
   REGISTRY="ghcr.io"
-  IMAGE_NAME="gitsebastian6/vivapos"
-  CONTAINER_NAME="vivapos"
+  IMAGE_NAME="gitsebastian6/sebwenpos"
+  CONTAINER_NAME="sebwenpos"
   DEFAULT_PORT=3000
 
   DEPLOY=false
@@ -263,8 +263,8 @@ docker tag ${DEPLOY_IMAGE} ${REGISTRY}/${IMAGE_NAME}:latest
 docker stop ${CONTAINER_NAME} 2>/dev/null || true
 docker rm ${CONTAINER_NAME} 2>/dev/null || true
 docker run -d --name ${CONTAINER_NAME} --restart unless-stopped \
-  -p ${DEFAULT_PORT}:3000 -v vivapos-data:/app/db \
-  --env-file /opt/vivapos/.env ${DEPLOY_IMAGE}
+  -p ${DEFAULT_PORT}:3000 -v sebwenpos-data:/app/db \
+  --env-file /opt/sebwenpos/.env ${DEPLOY_IMAGE}
 sleep 15
 if curl -sf http://localhost:${DEFAULT_PORT}/api/health > /dev/null 2>&1; then
   echo "Deployment successful!"
@@ -285,7 +285,7 @@ DEPLOY_SCRIPT
 # =============================================================================
 cmd_entrypoint() {
   echo "═══════════════════════════════════════════"
-  echo "  VivaPOS — Docker Startup"
+  echo "  SebwenPOS — Docker Startup"
   echo "═══════════════════════════════════════════"
 
   # Wait for PostgreSQL
@@ -315,7 +315,7 @@ cmd_entrypoint() {
   npx prisma db push --skip-generate --accept-data-loss 2>/dev/null || echo "DB push skipped"
 
   # Seed on first run
-  SEED_MARKER="/tmp/.vivapos-seeded"
+  SEED_MARKER="/tmp/.sebwenpos-seeded"
   if [ ! -f "$SEED_MARKER" ]; then
     echo "First run — seeding database..."
     npx tsx prisma/seed.ts 2>/dev/null || echo "Seed skipped"
@@ -323,7 +323,7 @@ cmd_entrypoint() {
   fi
 
   # Start server
-  echo "Starting VivaPOS on port ${PORT:-3000}..."
+  echo "Starting SebwenPOS on port ${PORT:-3000}..."
   exec "$@"
 }
 
@@ -331,12 +331,12 @@ cmd_entrypoint() {
 # Subcommand: workflow — Setup CI/CD workflow on GitHub
 # =============================================================================
 cmd_workflow() {
-  REPO="gitsebastian6/vivapos"
+  REPO="gitsebastian6/sebwenpos"
   WORKFLOW_FILE=".github/workflows/ci.yml"
   SOURCE_FILE=".github/workflows/ci.yml"
 
   echo "═══════════════════════════════════════════"
-  echo "  VivaPOS — CI/CD Workflow Setup"
+  echo "  SebwenPOS — CI/CD Workflow Setup"
   echo "═══════════════════════════════════════════"
   echo ""
   echo "The workflow file needs 'workflow' scope on your PAT."
@@ -396,7 +396,7 @@ case "$COMMAND" in
   entrypoint)    cmd_entrypoint "$@" ;;
   workflow)      cmd_workflow ;;
   help|--help|-h)
-    echo "Viva POS — Unified Deploy Script"
+    echo "Sebwen POS — Unified Deploy Script"
     echo ""
     echo "Usage: bash scripts/deploy.sh [COMMAND] [OPTIONS]"
     echo ""

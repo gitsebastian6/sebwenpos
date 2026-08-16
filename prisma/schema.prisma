@@ -8,7 +8,7 @@ datasource db {
 }
 
 // ╔══════════════════════════════════════════════════════════════════╗
-// ║  VIVA POS — Hybrid Schema (SQLite dev / PostgreSQL prod)    ║
+// ║  SEBWEN POS — Hybrid Schema (SQLite dev / PostgreSQL prod)    ║
 // ║  ─────────────────────────────────────────────────────────────  ║
 // ║  DEVELOPMENT: SQLite (file:./db/custom.db) — zero config        ║
 // ║  PRODUCTION:  PostgreSQL — change provider + DATABASE_URL       ║

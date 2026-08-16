@@ -1,5 +1,5 @@
 #!/bin/bash
-# VivaPOS Process Supervisor
+# SebwenPOS Process Supervisor
 # Restarts the server immediately when it crashes
 # Uses exponential backoff to prevent crash loops
 

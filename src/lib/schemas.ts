@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Shared Zod Schemas
+// Sebwen POS — Shared Zod Schemas
 // ---------------------------------------------------------------------------
 // Common validation schemas used across multiple API endpoints.
 // Import these in route files instead of defining inline schemas.

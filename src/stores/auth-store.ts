@@ -230,7 +230,7 @@ export const useAuthStore = create<AuthState>()(
             try {
               const { QueryClient } = await import('@tanstack/react-query')
               // The QueryClient is managed by the provider — we trigger refetch via a custom event
-              window.dispatchEvent(new CustomEvent('viva:invalidate-queries'))
+              window.dispatchEvent(new CustomEvent('sebwen:invalidate-queries'))
             } catch { /* TanStack Query may not be loaded yet */ }
             return true
           }

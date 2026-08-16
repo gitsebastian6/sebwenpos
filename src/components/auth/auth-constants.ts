@@ -4,7 +4,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 
 export const SUPPORT_PHONE = '3012695457'
-export const SUPPORT_WHATSAPP = `https://wa.me/57${SUPPORT_PHONE}?text=Hola%2C%20necesito%20informaci%C3%B3n%20sobre%20Viva%20POS`
+export const SUPPORT_WHATSAPP = `https://wa.me/57${SUPPORT_PHONE}?text=Hola%2C%20necesito%20informaci%C3%B3n%20sobre%20Sebwen%20POS`
 
 export interface PlanInfo {
   name: string
@@ -85,7 +85,7 @@ export interface BlockedInfo {
 
 export function getLicenseRequestWhatsAppUrl(plan?: string): string {
   const lines = [
-    '🎉 *Solicitud de Licencia Viva POS*',
+    '🎉 *Solicitud de Licencia Sebwen POS*',
     '',
     'Por favor completa los siguientes datos para activar tu cuenta:',
     '',

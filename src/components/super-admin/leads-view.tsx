@@ -516,7 +516,7 @@ export function LeadsView() {
   }
 
   const waMessage = (name: string) => {
-    return encodeURIComponent(`Hola ${name}, somos el equipo de VivaPOS. Estamos revisando tu solicitud de prueba...`)
+    return encodeURIComponent(`Hola ${name}, somos el equipo de SebwenPOS. Estamos revisando tu solicitud de prueba...`)
   }
 
   // ── Tab definitions ──

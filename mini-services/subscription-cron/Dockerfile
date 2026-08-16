@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# VivaPOS — Subscription Cron Service
+# SebwenPOS — Subscription Cron Service
 # ---------------------------------------------------------------------------
 # Periodically triggers the app's own Prisma-based subscription transition
 # and alert endpoints. Needs the real Bun runtime for Bun.serve().

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Subscription History & Billing Records
+// Sebwen POS — Subscription History & Billing Records
 // ---------------------------------------------------------------------------
 // Functions for logging subscription history events and creating billing
 // records for subscription payments/extensions.

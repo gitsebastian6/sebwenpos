@@ -6,7 +6,7 @@ import DEFAULT_PLANS from '@data/default-plans.json'
 export const dynamic = 'force-dynamic'
 
 /**
- * VIVA POS — Plan Marketing Configuration
+ * SEBWEN POS — Plan Marketing Configuration
  *
  * Plan hierarchy: Trial → Básico → Pro → Empresarial
  * Each higher tier includes ALL features from lower tiers plus extras.

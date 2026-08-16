@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Subscription Pricing
+// Sebwen POS — Subscription Pricing
 // ---------------------------------------------------------------------------
 // Pricing calculation and currency formatting utilities for subscriptions.
 // ---------------------------------------------------------------------------

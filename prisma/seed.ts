@@ -53,7 +53,7 @@ async function main() {
     data: {
       cedula: '1098765432',
       phone: '3001234567',
-      email: 'admin@viva.com',
+      email: 'admin@sebwen.com',
       passwordHash,
       fullName: 'Carlos Bar Manager',
       role: 'OWNER',

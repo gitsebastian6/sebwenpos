@@ -1,5 +1,5 @@
 /**
- * Viva POS — Application Constants
+ * Sebwen POS — Application Constants
  *
  * All configurable values are centralized here.
  * DIAN-standard values are documented with their official reference.
@@ -28,7 +28,7 @@ export const DIAN_INVOICE_TYPE = '01'
 export const DIAN_EXPORT_INVOICE_TYPE = '02'
 
 // ═══════════════════════════════════════════════════════════════
-// Viva Business Constants
+// Sebwen Business Constants
 // ═══════════════════════════════════════════════════════════════
 
 /** Support phone number — loaded from env var SUPPORT_PHONE */

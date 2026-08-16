@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Subscription Helpers (Barrel Export)
+// Sebwen POS — Subscription Helpers (Barrel Export)
 // ---------------------------------------------------------------------------
 // Re-exports all subscription utilities from focused modules.
 // All consumers can import from '@/lib/subscription-helpers' (backward compat)

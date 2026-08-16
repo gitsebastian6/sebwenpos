@@ -1,6 +1,6 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# Viva POS — Ensure .env has required secrets for development
+# Sebwen POS — Ensure .env has required secrets for development
 # ---------------------------------------------------------------------------
 # This script runs before `bun run dev` to guarantee the app can start.
 # It only adds MISSING keys — never overwrites existing values.
@@ -29,14 +29,14 @@ fi
 
 # Ensure INTERNAL_SECRET (required by middleware for internal routes)
 if ! grep -q '^INTERNAL_SECRET=' "$ENV_FILE"; then
-  echo "INTERNAL_SECRET=viva-internal-secret-2025" >> "$ENV_FILE"
+  echo "INTERNAL_SECRET=sebwen-internal-secret-2025" >> "$ENV_FILE"
   echo "[ensure-env] Added INTERNAL_SECRET"
   NEEDS_WRITE=true
 fi
 
 # Ensure AUTH_SECRET (required for HMAC token signing)
 if ! grep -q '^AUTH_SECRET=' "$ENV_FILE"; then
-  echo "AUTH_SECRET=viva-auth-secret-key-2025-secure" >> "$ENV_FILE"
+  echo "AUTH_SECRET=sebwen-auth-secret-key-2025-secure" >> "$ENV_FILE"
   echo "[ensure-env] Added AUTH_SECRET"
   NEEDS_WRITE=true
 fi

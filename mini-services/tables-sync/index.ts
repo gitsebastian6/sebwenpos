@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// VivaPOS — Tables Real-Time Sync Mini-Service
+// SebwenPOS — Tables Real-Time Sync Mini-Service
 // ---------------------------------------------------------------------------
 // Port 3005: Socket.IO server (frontend connects via Caddy gateway)
 // Port 3006: HTTP broadcast API (backend API routes call directly)

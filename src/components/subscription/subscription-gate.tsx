@@ -18,9 +18,9 @@ import {
 import { useState } from 'react'
 
 // ── Support contact info (same as subscription-info-card) ──
-const VIVA_SUPPORT_PHONE = '573012695457'
-const SUPPORT_WHATSAPP = `https://wa.me/${VIVA_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, necesito ayuda con mi suscripción en Viva POS')}`
-const SUPPORT_PHONE = VIVA_SUPPORT_PHONE.slice(2)
+const SEBWEN_SUPPORT_PHONE = '573012695457'
+const SUPPORT_WHATSAPP = `https://wa.me/${SEBWEN_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, necesito ayuda con mi suscripción en Sebwen POS')}`
+const SUPPORT_PHONE = SEBWEN_SUPPORT_PHONE.slice(2)
 
 interface SubscriptionGateProps {
   children: React.ReactNode

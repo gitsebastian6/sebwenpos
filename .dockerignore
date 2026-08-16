@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# VivaPOS — Docker Ignore
+# SebwenPOS — Docker Ignore
 # ---------------------------------------------------------------------------
 # Exclude files that are not needed in the Docker build context to speed up
 # the build and reduce the image size.

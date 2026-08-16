@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Subscription Feature Checking
+// Sebwen POS — Subscription Feature Checking
 // ---------------------------------------------------------------------------
 // Feature parsing, plan/store feature checks, subscription status helpers,
 // and feature-gating utilities for API middleware.

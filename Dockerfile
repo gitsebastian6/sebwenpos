@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# VivaPOS — Production Docker Image (PostgreSQL)
+# SebwenPOS — Production Docker Image (PostgreSQL)
 # ---------------------------------------------------------------------------
 # Multi-stage build optimized for Next.js standalone output:
 #   Stage 1 (deps):    Install production dependencies only
@@ -12,8 +12,8 @@
 #
 # Usage:
 #   docker compose up --build          (with docker-compose.yml)
-#   docker build -t vivapos .
-#   docker run -p 3000:3000 --env-file .env.docker vivapos
+#   docker build -t sebwenpos .
+#   docker run -p 3000:3000 --env-file .env.docker sebwenpos
 # ---------------------------------------------------------------------------
 
 # ── Stage 1: Dependencies ──────────────────────────────────────────────────

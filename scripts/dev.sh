@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Viva POS — Unified Dev Script
+# Sebwen POS — Unified Dev Script
 # =============================================================================
 # Replaces: dev-start.sh, dev.sh, keepalive.sh, keep-server.sh, start-next.sh,
 #           start.sh, run-server.sh, start-dev.sh, sandbox-keepalive.sh,
@@ -332,7 +332,7 @@ case "$COMMAND" in
     cmd_test
     ;;
   help|--help|-h)
-    echo "Viva POS — Unified Dev Script"
+    echo "Sebwen POS — Unified Dev Script"
     echo ""
     echo "Usage: bash scripts/dev.sh [COMMAND]"
     echo ""

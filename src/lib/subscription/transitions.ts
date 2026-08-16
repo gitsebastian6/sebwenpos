@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Subscription Status Transitions
+// Sebwen POS — Subscription Status Transitions
 // ---------------------------------------------------------------------------
 // Auto-transition logic for overdue subscriptions: grace period management,
 // status healing, and bulk/single subscription transition functions.

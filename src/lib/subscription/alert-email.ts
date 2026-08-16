@@ -27,7 +27,7 @@ export function buildExpiryAlertHtml(params: {
   const isUrgent = daysRemaining <= 1
 
   const whatsappMessage = encodeURIComponent(
-    `Hola, soy ${ownerName} de "${storeName}". Mi suscripción ${planName} en Viva POS vence ${isUrgent ? 'mañana' : `en ${daysRemaining} días`}. Quisiera renovar/actualizar mi plan.`
+    `Hola, soy ${ownerName} de "${storeName}". Mi suscripción ${planName} en Sebwen POS vence ${isUrgent ? 'mañana' : `en ${daysRemaining} días`}. Quisiera renovar/actualizar mi plan.`
   )
   const whatsappLink = `https://wa.me/${supportWhatsApp}?text=${whatsappMessage}`
 
@@ -44,7 +44,7 @@ export function buildExpiryAlertHtml(params: {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Recordatorio de Suscripción — Viva POS</title>
+  <title>Recordatorio de Suscripción — Sebwen POS</title>
 </head>
 <body style="margin:0; padding:0; background-color:#f0f2f5; font-family:Arial, Helvetica, sans-serif; color:#1a1a2e;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2f5; padding:32px 16px;">
@@ -57,7 +57,7 @@ export function buildExpiryAlertHtml(params: {
             <td style="background-color:${accentColor}; padding:24px 32px; text-align:center;">
               <p style="margin:0; font-size:28px; line-height:1;">${iconEmoji}</p>
               <h1 style="margin:8px 0 0; font-size:18px; font-weight:700; color:#ffffff;">Recordatorio de Suscripción</h1>
-              <p style="margin:4px 0 0; font-size:13px; color:rgba(255,255,255,0.9);">Viva POS</p>
+              <p style="margin:4px 0 0; font-size:13px; color:rgba(255,255,255,0.9);">Sebwen POS</p>
             </td>
           </tr>
 
@@ -141,7 +141,7 @@ export function buildExpiryAlertHtml(params: {
           <tr>
             <td style="background-color:#f8f9fa; padding:16px 32px; text-align:center; border-top:1px solid #e5e7eb;">
               <p style="margin:0 0 4px; font-size:11px; color:#6c757d;">
-                Este es un recordatorio automático de Viva POS. Puede renovar su suscripción desde la sección "Suscripción" en su panel de administración o contactando a nuestro equipo de soporte.
+                Este es un recordatorio automático de Sebwen POS. Puede renovar su suscripción desde la sección "Suscripción" en su panel de administración o contactando a nuestro equipo de soporte.
               </p>
               <p style="margin:0; font-size:10px; color:#adb5bd;">
                 Si ya renovó su plan, ignore este mensaje.
@@ -174,7 +174,7 @@ export function buildGracePeriodEndingHtml(params: {
   const { ownerName, storeName, planName, graceEndDateFormatted, supportPhone, supportWhatsApp } = params
 
   const whatsappMessage = encodeURIComponent(
-    `Hola, soy ${ownerName} de "${storeName}". Mi período de gracia en Viva POS termina mañana y quiero ponerme al día con el pago para no perder acceso.`
+    `Hola, soy ${ownerName} de "${storeName}". Mi período de gracia en Sebwen POS termina mañana y quiero ponerme al día con el pago para no perder acceso.`
   )
   const whatsappLink = `https://wa.me/${supportWhatsApp}?text=${whatsappMessage}`
 
@@ -183,7 +183,7 @@ export function buildGracePeriodEndingHtml(params: {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Último aviso — Viva POS</title>
+  <title>Último aviso — Sebwen POS</title>
 </head>
 <body style="margin:0; padding:0; background-color:#f0f2f5; font-family:Arial, Helvetica, sans-serif; color:#1a1a2e;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2f5; padding:32px 16px;">
@@ -196,7 +196,7 @@ export function buildGracePeriodEndingHtml(params: {
             <td style="background-color:#dc2626; padding:24px 32px; text-align:center;">
               <p style="margin:0; font-size:28px; line-height:1;">⛔</p>
               <h1 style="margin:8px 0 0; font-size:18px; font-weight:700; color:#ffffff;">Último Aviso — Período de Gracia</h1>
-              <p style="margin:4px 0 0; font-size:13px; color:rgba(255,255,255,0.9);">Viva POS</p>
+              <p style="margin:4px 0 0; font-size:13px; color:rgba(255,255,255,0.9);">Sebwen POS</p>
             </td>
           </tr>
 
@@ -254,7 +254,7 @@ export function buildGracePeriodEndingHtml(params: {
           <tr>
             <td style="background-color:#f8f9fa; padding:16px 32px; text-align:center; border-top:1px solid #e5e7eb;">
               <p style="margin:0 0 4px; font-size:11px; color:#6c757d;">
-                Este es un recordatorio automático de Viva POS. Puede regularizar su suscripción desde la sección "Suscripción" en su panel de administración o contactando a nuestro equipo de soporte.
+                Este es un recordatorio automático de Sebwen POS. Puede regularizar su suscripción desde la sección "Suscripción" en su panel de administración o contactando a nuestro equipo de soporte.
               </p>
               <p style="margin:0; font-size:10px; color:#adb5bd;">
                 Si ya realizó el pago, ignore este mensaje.

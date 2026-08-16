@@ -59,7 +59,7 @@ export async function GET() {
         apiKey: settings['messagebird_api_key'] || '',
         phoneNumber: settings['messagebird_phone'] || '',
         enabled: settings['messagebird_enabled'] === 'true',
-        template: settings['messagebird_template'] || 'Tu código de verificación para Viva POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.',
+        template: settings['messagebird_template'] || 'Tu código de verificación para Sebwen POS es: {{code}}. Válido por 5 minutos. No lo compartas con nadie.',
         testMode: settings['messagebird_test_mode'] === 'true',
       },
       wompi: {

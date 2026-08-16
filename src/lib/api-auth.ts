@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Server-side Auth Helpers for API Routes
+// Sebwen POS — Server-side Auth Helpers for API Routes
 // ---------------------------------------------------------------------------
 // Use these helpers inside API route handlers to extract and validate
 // the authenticated user information that the middleware sets in headers.

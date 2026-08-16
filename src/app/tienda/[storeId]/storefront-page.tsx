@@ -120,7 +120,7 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
     })
 
     message += `\n💰 *Total: ${formatPrice(getCartTotal())}*`
-    message += `\n\n_Pedido enviado desde la tienda virtual de Viva_`
+    message += `\n\n_Pedido enviado desde la tienda virtual de Sebwen_`
 
     const phone = store.phone.replace(/\D/g, '')
     const encodedMessage = encodeURIComponent(message)
@@ -163,7 +163,7 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
       <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/60">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="Viva" width={28} height={28} className="object-contain" />
+            <Image src="/logo.png" alt="Sebwen" width={28} height={28} className="object-contain" />
             <span className="font-bold text-sm text-zinc-200">{store.name}</span>
           </div>
           <div className="flex items-center gap-2">

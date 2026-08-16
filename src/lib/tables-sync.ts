@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// VivaPOS — Tables Real-Time Sync Helper (Server-Side)
+// SebwenPOS — Tables Real-Time Sync Helper (Server-Side)
 // ---------------------------------------------------------------------------
 // Used by API routes to broadcast events to the tables-sync mini-service.
 // The mini-service (port 3005) receives the event and broadcasts it via

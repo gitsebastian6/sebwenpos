@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Shared Demo Transaction Processor
+// Sebwen POS — Shared Demo Transaction Processor
 // ---------------------------------------------------------------------------
 // Extracts the processDemoApproval logic from the status route so it can be
 // reused by the /api/payments/wompi/demo-process endpoint and the

@@ -540,7 +540,7 @@ function PlanChangeInner({
                             <MessageCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                             <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">¿Necesitas datos de pago?</p>
                           </div>
-                          <a href="https://wa.me/573012695457?text=Hola%2C%20quiero%20los%20datos%20de%20pago%20para%20mi%20suscripción%20Viva%20POS" target="_blank" rel="noopener noreferrer"
+                          <a href="https://wa.me/573012695457?text=Hola%2C%20quiero%20los%20datos%20de%20pago%20para%20mi%20suscripción%20Sebwen%20POS" target="_blank" rel="noopener noreferrer"
                              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
                             Escribir por WhatsApp →
                           </a>

@@ -31,9 +31,9 @@ interface SubscriptionInfoCardProps {
   onRefresh?: () => void
 }
 
-const VIVA_SUPPORT_PHONE = '573012695457'
-const SUPPORT_WHATSAPP = `https://wa.me/${VIVA_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, quiero actualizar mi plan de suscripción en Viva POS')}`
-const SUPPORT_PHONE = VIVA_SUPPORT_PHONE.slice(2) // local 10-digit format
+const SEBWEN_SUPPORT_PHONE = '573012695457'
+const SUPPORT_WHATSAPP = `https://wa.me/${SEBWEN_SUPPORT_PHONE}?text=${encodeURIComponent('Hola, quiero actualizar mi plan de suscripción en Sebwen POS')}`
+const SUPPORT_PHONE = SEBWEN_SUPPORT_PHONE.slice(2) // local 10-digit format
 
 export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, onCancel, isOwner = true, isFetching = false, onRefresh }: SubscriptionInfoCardProps) {
   if (!subInfo) {
@@ -163,7 +163,7 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
                 <p className="text-xs mt-1.5 text-muted-foreground leading-relaxed">
                   {daysRem <= 3
                     ? 'Actualiza tu plan antes de que expire para no perder acceso al sistema.'
-                    : 'Estás evaluando Viva POS. Puedes actualizar tu plan en cualquier momento.'}
+                    : 'Estás evaluando Sebwen POS. Puedes actualizar tu plan en cualquier momento.'}
                 </p>
 
                 {/* Progress bar */}

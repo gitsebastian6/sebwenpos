@@ -38,7 +38,7 @@ export async function getMessageBirdConfig(): Promise<MessageBirdConfig> {
     apiKey: map['messagebird_api_key'] || '',
     phoneNumber: map['messagebird_phone'] || '',
     enabled: map['messagebird_enabled'] === 'true',
-    templateText: map['messagebird_template'] || `Tu código de verificación para Viva POS es: {{code}}. Válido por ${OTP_TTL_MS / 60000} minutos. No lo compartas con nadie.`,
+    templateText: map['messagebird_template'] || `Tu código de verificación para Sebwen POS es: {{code}}. Válido por ${OTP_TTL_MS / 60000} minutos. No lo compartas con nadie.`,
     testMode: map['messagebird_test_mode'] === 'true',
   }
 }

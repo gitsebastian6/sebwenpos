@@ -59,7 +59,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     // Try to navigate to dashboard by dispatching a view change via custom event
     // (avoids circular imports with the app store)
     try {
-      window.dispatchEvent(new CustomEvent('viva:navigate', { detail: 'dashboard' }))
+      window.dispatchEvent(new CustomEvent('sebwen:navigate', { detail: 'dashboard' }))
     } catch {
       // If event fails, just retry
     }

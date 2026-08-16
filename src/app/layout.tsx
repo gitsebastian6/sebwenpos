@@ -25,10 +25,10 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Viva POS - Sistema de Punto de Venta Colombiano",
+  title: "Sebwen POS - Sistema de Punto de Venta Colombiano",
   description: "Sistema de punto de venta e inventario multi-tienda para Colombia. Facturación electrónica DIAN, gestión de inventario, reportes en tiempo real.",
   manifest: "/manifest.webmanifest",
-  applicationName: "Viva POS",
+  applicationName: "Sebwen POS",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#09090b" },
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Viva POS",
+    title: "Sebwen POS",
   },
   formatDetection: {
     telephone: false,

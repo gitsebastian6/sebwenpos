@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
-// VivaPOS — AI Assistant (Production Chat Widget)
+// SebwenPOS — AI Assistant (Production Chat Widget)
 // ---------------------------------------------------------------------------
 // Uses TanStack Query (useMutation) for API calls — consistent with the rest
 // of the app. Includes: session management, context-aware quick actions,
@@ -43,7 +43,7 @@ interface ChatState {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'viva-chat-history'
+const STORAGE_KEY = 'sebwen-chat-history'
 const MAX_STORED_MESSAGES = 50
 
 // ─── Context-Aware Quick Actions ───────────────────────────────────────────
@@ -283,7 +283,7 @@ export function AiAssistant() {
         <button
           onClick={() => setOpen(true)}
           className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg transition-all duration-300 hover:bg-emerald-700 hover:shadow-xl hover:scale-105 active:scale-95"
-          aria-label="Abrir asistente Viva"
+          aria-label="Abrir asistente Sebwen"
         >
           <MessageCircle className="h-6 w-6" />
           <span className="absolute -top-1 -right-1 flex h-4 w-4">
@@ -303,7 +303,7 @@ export function AiAssistant() {
                 <Sparkles className="h-4 w-4" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold">Viva</h3>
+                <h3 className="text-sm font-semibold">Sebwen</h3>
                 <p className="text-[10px] text-emerald-100">Asistente Virtual</p>
               </div>
             </div>
@@ -346,10 +346,10 @@ export function AiAssistant() {
                     <Bot className="h-7 w-7 text-emerald-600" />
                   </div>
                   <h4 className="mb-1 text-sm font-semibold text-foreground">
-                    ¡Hola{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}! Soy Viva 👋
+                    ¡Hola{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}! Soy Sebwen 👋
                   </h4>
                   <p className="mb-4 text-xs text-muted-foreground max-w-[260px]">
-                    Tu asistente para VivaPOS. Pregúntame cómo usar cualquier función del sistema.
+                    Tu asistente para SebwenPOS. Pregúntame cómo usar cualquier función del sistema.
                   </p>
                   <div className="grid grid-cols-2 gap-2 w-full max-w-[320px]">
                     {contextActions.map((action) => (
@@ -483,7 +483,7 @@ export function AiAssistant() {
             </div>
             <div className="mt-1.5 flex items-center justify-between">
               <p className="text-[10px] text-muted-foreground">
-                Viva puede cometer errores. Verifica la información importante.
+                Sebwen puede cometer errores. Verifica la información importante.
               </p>
               {messages.length > 0 && (
                 <span className="text-[10px] text-muted-foreground">

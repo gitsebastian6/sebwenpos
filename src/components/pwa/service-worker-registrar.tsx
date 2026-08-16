@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 
 /**
- * ServiceWorkerRegistrar — registers the Viva POS service worker on mount.
+ * ServiceWorkerRegistrar — registers the Sebwen POS service worker on mount.
  * Also shows an "Update available" banner when a new SW version is detected.
  */
 export function ServiceWorkerRegistrar() {
@@ -73,7 +73,7 @@ export function ServiceWorkerRegistrar() {
       <div className="flex-1">
         <p className="text-sm font-medium">Nueva versión disponible</p>
         <p className="text-xs text-muted-foreground">
-          Actualiza para obtener la última versión de Viva POS
+          Actualiza para obtener la última versión de Sebwen POS
         </p>
       </div>
       <button

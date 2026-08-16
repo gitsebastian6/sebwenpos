@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 
 /**
- * Viva POS — Database Client (SQLite)
+ * Sebwen POS — Database Client (SQLite)
  * ─────────────────────────────────────────────────────────
  * Development: SQLite (file-based, zero config)
  * Production:  Change provider in schema.prisma + DATABASE_URL in .env

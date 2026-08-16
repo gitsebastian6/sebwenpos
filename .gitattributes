@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# VivaPOS — Git Attributes
+# SebwenPOS — Git Attributes
 # ---------------------------------------------------------------------------
 # Enforce LF line endings for shell scripts to prevent CRLF issues in Docker.
 # Windows users: Git will auto-convert CRLF on checkout but these files will

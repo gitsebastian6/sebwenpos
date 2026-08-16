@@ -511,7 +511,7 @@ export function printTicket(data: TicketData) {
     ${isDocEquivalente && !isElectronic ? '<div class="footer-msg">Autorizado mediante resolución DIAN como documento equivalente</div>' : ''}
     <div class="footer-msg">¡Vuelva pronto!</div>
     <hr class="dashed">
-    <div class="footer-brand">VIVA POS &bull; ${now.toLocaleDateString('es-CO')}</div>
+    <div class="footer-brand">SEBWEN POS &bull; ${now.toLocaleDateString('es-CO')}</div>
   </div>
 
   <script>

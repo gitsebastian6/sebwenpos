@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Global fetch interceptor
+// Sebwen POS — Global fetch interceptor
 // ---------------------------------------------------------------------------
 // Patches window.fetch to automatically inject Authorization: Bearer header
 // on every /api/ request. Must be imported early in the app.

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireEnv } from '@/lib/env'
 
 // ---------------------------------------------------------------------------
-// Viva POS — Auth Helpers (Web Crypto API for Edge Runtime compatibility)
+// Sebwen POS — Auth Helpers (Web Crypto API for Edge Runtime compatibility)
 // ---------------------------------------------------------------------------
 // Uses SubtleCrypto (Web Crypto API) which works in both Edge Runtime and Node.js.
 // Tokens are base64url-encoded JSON payloads with an HMAC-SHA256 signature.

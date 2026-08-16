@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Viva POS — Wompi Payment Gateway Client (Demo + Real)
+// Sebwen POS — Wompi Payment Gateway Client (Demo + Real)
 // ---------------------------------------------------------------------------
 // Supports three modes via WOMPI_ENV:
 //   - "demo"       → Simulates Wompi API (no keys needed, auto-approves)
