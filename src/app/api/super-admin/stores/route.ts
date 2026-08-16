@@ -105,18 +105,26 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     })
 
+    // ── Origin: was this store validated through the CRM legal pipeline, or created directly? ──
+    const convertedLeads = await db.lead.findMany({
+      where: { convertedStoreId: { in: stores.map((s) => s.id) } },
+      select: { id: true, convertedStoreId: true },
+    })
+    const leadIdByStoreId = new Map(convertedLeads.map((l) => [l.convertedStoreId, l.id]))
+
     // For branches without their own subscription, inherit parent's subscription
     const enrichedStores = stores.map(store => {
+      const withOrigin = { ...store, leadId: leadIdByStoreId.get(store.id) ?? null }
       if (!store.subscription && store.parentStore?.subscription) {
         return {
-          ...store,
+          ...withOrigin,
           subscription: {
             ...store.parentStore.subscription,
             inheritedFrom: store.parentStore.name,
           },
         }
       }
-      return store
+      return withOrigin
     })
 
     return NextResponse.json(enrichedStores)

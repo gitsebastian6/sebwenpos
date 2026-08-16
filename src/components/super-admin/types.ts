@@ -17,6 +17,8 @@ export interface StoreListItem {
   countryCode: string | null; createdAt: string; updatedAt: string
   parentStoreId: number | null; parentStore: { name: string } | null
   user: StoreOwner; _count: StoreCount
+  /** Lead ID this store was converted from via the CRM legal pipeline, or null if created directly. */
+  leadId: number | null
 }
 
 export interface PlanData {

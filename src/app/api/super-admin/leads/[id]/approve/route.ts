@@ -6,6 +6,64 @@ import { logStoreEvent } from '@/lib/event-logger'
 import { logSubscriptionHistory } from '@/lib/subscription-helpers'
 import { REQUIRED_DOCUMENT_TYPES } from '../documents/route'
 
+/**
+ * Notifies the new owner (email + WhatsApp) that their account is active,
+ * with login info and trial end date. Fire-and-forget — never blocks the response.
+ */
+async function notifyAccountActivated(params: {
+  ownerFullName: string
+  ownerEmail: string | null
+  ownerPhone: string | null
+  ownerCedula: string
+  storeName: string
+  trialEndDate: Date
+}) {
+  // Non-throwing: a missing SUPPORT_PHONE shouldn't block the email channel too.
+  const supportPhone = process.env.SUPPORT_PHONE || ''
+  const loginUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+  const trialEndFormatted = params.trialEndDate.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })
+
+  if (params.ownerEmail) {
+    try {
+      const { getSmtpConfig, createTransport } = await import('@/lib/invoicing/email-sender')
+      const { buildAccountActivatedHtml } = await import('@/lib/leads/notification-email')
+      const config = getSmtpConfig()
+      if (config && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(params.ownerEmail)) {
+        const transporter = createTransport(config)
+        const fromName = config.fromName ?? 'Sebwen POS'
+        const fromHeader = config.from.includes('<') ? `${fromName} ${config.from}` : `"${fromName}" <${config.from}>`
+        await transporter.sendMail({
+          from: fromHeader,
+          to: params.ownerEmail,
+          subject: `🎉 Tu cuenta de Sebwen POS ya está activa — ${params.storeName}`,
+          html: buildAccountActivatedHtml({
+            ownerName: params.ownerFullName,
+            storeName: params.storeName,
+            ownerCedula: params.ownerCedula,
+            trialEndFormatted,
+            loginUrl,
+            supportPhone,
+          }),
+        })
+      }
+    } catch (err) {
+      logger.error('[LeadNotify] Error sending account-activated email:', err)
+    }
+  }
+
+  if (params.ownerPhone) {
+    try {
+      const { sendWhatsAppMessage } = await import('@/lib/messagebird')
+      await sendWhatsAppMessage(
+        params.ownerPhone,
+        `¡Hola ${params.ownerFullName}! Tu cuenta de Sebwen POS para "${params.storeName}" ya está activa, con 7 días de prueba gratis hasta el ${trialEndFormatted}. Ingresa con tu cédula (${params.ownerCedula}) y la contraseña que creaste al registrarte.${loginUrl ? ` ${loginUrl}` : ''}`,
+      )
+    } catch (err) {
+      logger.error('[LeadNotify] Error sending account-activated WhatsApp:', err)
+    }
+  }
+}
+
 export const dynamic = 'force-dynamic'
 
 /**
@@ -88,9 +146,11 @@ export async function POST(
       )
     }
 
-    // Use the hashed password from the lead, or generate one
+    // Use the hashed password captured at lead creation, or generate a random
+    // one for legacy leads that predate the required ownerPassword field.
     const { hashPassword } = await import('@/lib/auth')
-    const passwordHash = lead.ownerPassword || await hashPassword('TempPass123!')
+    const crypto = await import('crypto')
+    const passwordHash = lead.ownerPassword || await hashPassword(crypto.randomBytes(12).toString('base64url'))
 
     const adminPermissions = JSON.stringify({
       dashboard: true, pos: true, tables: true, products: true,
@@ -282,6 +342,15 @@ export async function POST(
     }
 
     logger.info(`[SuperAdmin] Lead #${leadId} (${lead.storeName}) → Store #${result.storeId}`)
+
+    notifyAccountActivated({
+      ownerFullName: lead.ownerFullName,
+      ownerEmail: lead.ownerEmail,
+      ownerPhone: lead.ownerPhone,
+      ownerCedula: lead.ownerCedula,
+      storeName: lead.storeName,
+      trialEndDate: result.subscription.trialEndDate!,
+    }).catch(() => {})
 
     return NextResponse.json({
       storeId: result.storeId,

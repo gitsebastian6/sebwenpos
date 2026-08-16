@@ -7,6 +7,62 @@ import { REQUIRED_DOCUMENT_TYPES } from '../route'
 
 export const dynamic = 'force-dynamic'
 
+const DOC_LABELS: Record<string, string> = {
+  RUT: 'RUT',
+  CAMARA_COMERCIO: 'Cámara de Comercio',
+  CEDULA_REPRESENTANTE: 'Cédula Rep. Legal',
+  RESOLUCION_DIAN: 'Resolución DIAN',
+}
+
+/**
+ * Notifies the lead's owner (email + WhatsApp) that a document was rejected
+ * and needs a corrected re-upload. Fire-and-forget — never blocks the response.
+ */
+async function notifyDocumentRejected(lead: { ownerFullName: string; ownerEmail: string | null; ownerPhone: string | null; storeName: string }, documentType: string, reason: string) {
+  const documentLabel = DOC_LABELS[documentType] ?? documentType
+  // Non-throwing: a missing SUPPORT_PHONE shouldn't block the email channel too.
+  const supportPhone = process.env.SUPPORT_PHONE || ''
+
+  if (lead.ownerEmail) {
+    try {
+      const { getSmtpConfig, createTransport } = await import('@/lib/invoicing/email-sender')
+      const { buildDocumentRejectedHtml } = await import('@/lib/leads/notification-email')
+      const config = getSmtpConfig()
+      if (config && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.ownerEmail)) {
+        const transporter = createTransport(config)
+        const fromName = config.fromName ?? 'Sebwen POS'
+        const fromHeader = config.from.includes('<') ? `${fromName} ${config.from}` : `"${fromName}" <${config.from}>`
+        await transporter.sendMail({
+          from: fromHeader,
+          to: lead.ownerEmail,
+          subject: `📄 Necesitamos corregir un documento — ${lead.storeName}`,
+          html: buildDocumentRejectedHtml({
+            ownerName: lead.ownerFullName,
+            storeName: lead.storeName,
+            documentLabel,
+            reason,
+            supportPhone,
+          }),
+        })
+      }
+    } catch (err) {
+      logger.error('[LeadNotify] Error sending document-rejected email:', err)
+    }
+  }
+
+  if (lead.ownerPhone) {
+    try {
+      const { sendWhatsAppMessage } = await import('@/lib/messagebird')
+      await sendWhatsAppMessage(
+        lead.ownerPhone,
+        `Hola ${lead.ownerFullName}, revisamos el documento "${documentLabel}" que enviaste para "${lead.storeName}" y no pudimos aprobarlo. Motivo: ${reason}. Por favor respóndenos con una versión corregida.`,
+      )
+    } catch (err) {
+      logger.error('[LeadNotify] Error sending document-rejected WhatsApp:', err)
+    }
+  }
+}
+
 const reviewSchema = z.object({
   status: z.enum(['APPROVED', 'REJECTED']),
   rejectionReason: z.string().max(500).optional(),
@@ -66,6 +122,10 @@ export async function PATCH(
         createdById: auth?.userId ?? null,
       },
     })
+
+    if (data.status === 'REJECTED') {
+      notifyDocumentRejected(lead, doc.documentType, data.rejectionReason!.trim()).catch(() => {})
+    }
 
     // If this rejection leaves the type without any pending/approved version,
     // the lead can no longer be considered "fully documented" — send it back.

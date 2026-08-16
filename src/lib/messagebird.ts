@@ -133,6 +133,63 @@ export async function sendOTPViaWhatsApp(phone: string, userId: number): Promise
   }
 }
 
+/**
+ * Sends a free-form WhatsApp text message via the same MessageBird
+ * Conversations API used for OTP. Used for CRM notifications (document
+ * rejected, account activated) — not tied to the OTP flow.
+ */
+export async function sendWhatsAppMessage(phone: string, message: string): Promise<{ success: boolean; error?: string }> {
+  const config = await getMessageBirdConfig()
+
+  if (!config.testMode && !config.enabled) {
+    return { success: false, error: 'WhatsApp no está habilitado.' }
+  }
+  if (!config.testMode && (!config.apiKey || !config.phoneNumber)) {
+    return { success: false, error: 'WhatsApp no está configurado correctamente.' }
+  }
+  if (!phone || phone.trim().length < 7) {
+    return { success: false, error: 'Número de teléfono no válido.' }
+  }
+
+  const normalizedPhone = normalizePhone(phone)
+  if (normalizedPhone.length < 10) {
+    return { success: false, error: 'Número de teléfono no válido.' }
+  }
+
+  if (config.testMode) {
+    return { success: true }
+  }
+
+  try {
+    const fromPhone = normalizePhone(config.phoneNumber)
+
+    const response = await fetch('https://conversations.messagebird.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Authorization': `AccessKey ${config.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: `+${normalizedPhone}`,
+        from: `+${fromPhone}`,
+        type: 'text',
+        content: { text: message },
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.text()
+      console.error('MessageBird API error:', response.status, errorData)
+      return { success: false, error: 'Error al enviar el mensaje por WhatsApp.' }
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error('MessageBird request error:', error)
+    return { success: false, error: 'Error de conexión con el servicio de WhatsApp.' }
+  }
+}
+
 export async function verifyOTP(userId: number, phone: string, code: string): Promise<{ valid: boolean; error?: string }> {
   if (!code || code.length !== OTP_LENGTH) {
     return { valid: false, error: 'El código debe tener 6 dígitos.' }

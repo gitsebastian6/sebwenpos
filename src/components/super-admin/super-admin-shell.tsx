@@ -278,9 +278,11 @@ export function SuperAdminShell() {
                 <StoresTable
                   stores={stores}
                   loading={loading}
+                  plans={plans}
                   onViewDetail={handleViewDetail}
                   onResetPassword={(u) => { setSelectedUser(u); setShowResetDialog(true) }}
                   onDeleteStore={handleDeleteStore}
+                  onOpenLead={setSelectedLeadId}
                 />
               </>
             )}

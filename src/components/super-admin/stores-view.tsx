@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useCreateStoreAdmin, useSuperAdminResetPassword } from '@/hooks/api/use-super-admin'
+import { useCreateStoreAdmin, useSuperAdminResetPassword, useUpdateStoreSubscription, useCancelStoreSubscriptionAdmin } from '@/hooks/api/use-super-admin'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,7 @@ import {
   Store, Building2, Users, Package, ShoppingCart, Crown, Plus,
   CreditCard, User, Lock, Eye, EyeOff, Phone, Mail, MapPin, Hash,
   KeyRound, FileText, Receipt, AlertTriangle, XCircle, CheckCircle2, Upload,
+  ShieldCheck, RefreshCw, Ban, PencilLine,
 } from 'lucide-react'
 import { formatCOP, formatDate, getSubscriptionStatusBadge, BILLING_PERIODS, BILLING_PERIOD_LABELS } from './helpers'
 import type { StoreListItem, StoreOwner, PlanData, SubscriptionData } from './types'
@@ -75,12 +76,18 @@ export function StoresKPICards({ totalStores, totalEmployees, totalProducts, tot
 interface StoresTableProps {
   stores: StoreListItem[]
   loading: boolean
+  plans: PlanData[]
   onViewDetail: (storeId: number) => void
   onResetPassword: (user: StoreOwner) => void
   onDeleteStore: (storeId: number, storeName: string) => void
+  onOpenLead?: (leadId: number) => void
 }
 
-export function StoresTable({ stores, loading, onViewDetail, onResetPassword, onDeleteStore }: StoresTableProps) {
+export function StoresTable({ stores, loading, plans, onViewDetail, onResetPassword, onDeleteStore, onOpenLead }: StoresTableProps) {
+  const [planDialogStore, setPlanDialogStore] = useState<StoreListItem | null>(null)
+  const [cancelDialogStore, setCancelDialogStore] = useState<StoreListItem | null>(null)
+  const reactivateSubscription = useUpdateStoreSubscription()
+
   return (
     <Card className="rounded-xl border-border/50">
       <CardHeader className="pb-3">
@@ -111,7 +118,7 @@ export function StoresTable({ stores, loading, onViewDetail, onResetPassword, on
                   <TableHead className="text-center min-w-[60px]">Clien.</TableHead>
                   <TableHead className="min-w-[200px]">Plan / Estado</TableHead>
                   <TableHead className="min-w-[90px]">Creada</TableHead>
-                  <TableHead className="text-right min-w-[160px]">Acciones</TableHead>
+                  <TableHead className="text-right min-w-[260px]">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -125,6 +132,20 @@ export function StoresTable({ stores, loading, onViewDetail, onResetPassword, on
                         <div className="min-w-0">
                           <p className="font-medium text-sm truncate flex items-center">{s.name}{s.parentStoreId && (<Badge variant="outline" className="text-[10px] ml-1.5 text-violet-500 border-violet-500/30">Sucursal</Badge>)}</p>
                           {s.address && <p className="text-xs text-muted-foreground truncate">{s.address}</p>}
+                          {s.leadId ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onOpenLead?.(s.leadId!) }}
+                              className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline mt-0.5"
+                              title="Ver expediente legal en el CRM"
+                            >
+                              <ShieldCheck className="h-2.5 w-2.5" />CRM validado
+                            </button>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
+                              <PencilLine className="h-2.5 w-2.5" />Alta directa
+                            </span>
+                          )}
                         </div>
                       </div>
                     </TableCell>
@@ -190,31 +211,78 @@ export function StoresTable({ stores, loading, onViewDetail, onResetPassword, on
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{formatDate(s.createdAt)}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => onViewDetail(s.id)}>
-                          <Eye className="h-3.5 w-3.5" /><span className="hidden lg:inline">Detalles</span>
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Resetear contraseña" aria-label="Restablecer contraseña" onClick={() => onResetPassword(s.user)}>
-                          <KeyRound className="h-3.5 w-3.5 text-amber-500" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Eliminar tienda" aria-label="Eliminar tienda">
-                              <XCircle className="h-3.5 w-3.5 text-destructive" />
+                      {(() => {
+                        const sub = (s as StoreListItem & { subscription?: (SubscriptionData & { inheritedFrom?: string }) | null }).subscription
+                        const canReactivate = !s.parentStoreId && sub && (sub.status === 'EXPIRED' || sub.status === 'CANCELLED')
+                        const canCancel = !s.parentStoreId && sub && (sub.status === 'ACTIVE' || sub.status === 'PAST_DUE')
+                        return (
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => onViewDetail(s.id)}>
+                              <Eye className="h-3.5 w-3.5" /><span className="hidden lg:inline">Detalles</span>
                             </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent className="rounded-xl backdrop-blur-sm">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>¿Eliminar &quot;{s.name}&quot;?</AlertDialogTitle>
-                              <AlertDialogDescription>Esta acción eliminará permanentemente la tienda, todos sus empleados, productos, órdenes, clientes y datos asociados. No se puede deshacer.</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90 active:scale-[0.98] transition-all" onClick={() => onDeleteStore(s.id, s.name)}>Eliminar</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
+                            {!s.parentStoreId && sub && (
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Cambiar plan" aria-label="Cambiar plan" onClick={() => setPlanDialogStore(s)}>
+                                <Crown className="h-3.5 w-3.5 text-amber-500" />
+                              </Button>
+                            )}
+                            {canReactivate && (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" title="Reactivar suscripción" aria-label="Reactivar suscripción">
+                                    <RefreshCw className="h-3.5 w-3.5 text-emerald-500" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="rounded-xl backdrop-blur-sm">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>¿Reactivar suscripción de &quot;{s.name}&quot;?</AlertDialogTitle>
+                                    <AlertDialogDescription>Se reactivará con el plan {sub!.plan.name} ({sub!.billingPeriod === 'TRIAL' ? '7 días de prueba' : BILLING_PERIOD_LABELS[sub!.billingPeriod] ?? sub!.billingPeriod}), a partir de hoy.</AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      className="bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] transition-all"
+                                      onClick={() => reactivateSubscription.mutate(
+                                        { id: s.id, body: { planId: sub!.planId, billingPeriod: sub!.billingPeriod } },
+                                        {
+                                          onSuccess: () => toast.success(`Suscripción de "${s.name}" reactivada`),
+                                          onError: (err) => toast.error(err.message || 'Error al reactivar suscripción'),
+                                        },
+                                      )}
+                                    >
+                                      Reactivar
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
+                            {canCancel && (
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Cancelar suscripción" aria-label="Cancelar suscripción" onClick={() => setCancelDialogStore(s)}>
+                                <Ban className="h-3.5 w-3.5 text-red-500" />
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Resetear contraseña" aria-label="Restablecer contraseña" onClick={() => onResetPassword(s.user)}>
+                              <KeyRound className="h-3.5 w-3.5 text-amber-500" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" title="Eliminar tienda" aria-label="Eliminar tienda">
+                                  <XCircle className="h-3.5 w-3.5 text-destructive" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="rounded-xl backdrop-blur-sm">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>¿Eliminar &quot;{s.name}&quot;?</AlertDialogTitle>
+                                  <AlertDialogDescription>Esta acción eliminará permanentemente la tienda, todos sus empleados, productos, órdenes, clientes y datos asociados. No se puede deshacer.</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90 active:scale-[0.98] transition-all" onClick={() => onDeleteStore(s.id, s.name)}>Eliminar</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        )
+                      })()}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -223,7 +291,130 @@ export function StoresTable({ stores, loading, onViewDetail, onResetPassword, on
           </div>
         )}
       </CardContent>
+
+      <QuickChangePlanDialog store={planDialogStore} plans={plans} onOpenChange={(open) => { if (!open) setPlanDialogStore(null) }} />
+      <CancelSubscriptionDialog store={cancelDialogStore} onOpenChange={(open) => { if (!open) setCancelDialogStore(null) }} />
     </Card>
+  )
+}
+
+// ---- Quick Change Plan Dialog (row-level action) ----
+function QuickChangePlanDialog({ store, plans, onOpenChange }: { store: StoreListItem | null; plans: PlanData[]; onOpenChange: (open: boolean) => void }) {
+  const updateSubscription = useUpdateStoreSubscription()
+  const currentSub = store ? (store as StoreListItem & { subscription?: SubscriptionData | null }).subscription : null
+  const [selectedPlanId, setSelectedPlanId] = useState('')
+  const [selectedPeriod, setSelectedPeriod] = useState('MONTHLY')
+
+  // Reset selection whenever a different store is targeted
+  const targetStoreId = store?.id ?? null
+  const [lastStoreId, setLastStoreId] = useState<number | null>(null)
+  if (targetStoreId !== lastStoreId) {
+    setLastStoreId(targetStoreId)
+    setSelectedPlanId(currentSub?.planId ? String(currentSub.planId) : '')
+    setSelectedPeriod(currentSub?.billingPeriod && currentSub.billingPeriod !== 'TRIAL' ? currentSub.billingPeriod : 'MONTHLY')
+  }
+
+  function handleConfirm() {
+    if (!store || !selectedPlanId) return
+    updateSubscription.mutate(
+      { id: store.id, body: { planId: parseInt(selectedPlanId, 10), billingPeriod: selectedPeriod } },
+      {
+        onSuccess: () => { toast.success(`Plan de "${store.name}" actualizado`); onOpenChange(false) },
+        onError: (err) => toast.error(err.message || 'Error al cambiar el plan'),
+      },
+    )
+  }
+
+  return (
+    <Dialog open={!!store} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm rounded-xl backdrop-blur-sm">
+        <DialogHeader>
+          <DialogTitle>Cambiar plan</DialogTitle>
+          <DialogDescription>{store && <>Tienda: <strong>{store.name}</strong></>}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Plan</Label>
+            <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+              <SelectTrigger><SelectValue placeholder="Seleccione un plan" /></SelectTrigger>
+              <SelectContent>
+                {plans.filter((p) => p.isActive).sort((a, b) => a.sortOrder - b.sortOrder).map((p) => (
+                  <SelectItem key={p.id} value={p.id.toString()}>{p.name} — {p.price === 0 ? 'Gratis' : `${formatCOP(p.price)}/mes`}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {(() => {
+            const plan = plans.find((p) => p.id.toString() === selectedPlanId)
+            if (!plan || plan.price === 0) return null
+            return (
+              <div className="space-y-2">
+                <Label>Período de facturación</Label>
+                <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {BILLING_PERIODS.filter((bp) => bp.value !== 'TRIAL').map((bp) => (
+                      <SelectItem key={bp.value} value={bp.value}>{bp.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )
+          })()}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={handleConfirm} disabled={!selectedPlanId || updateSubscription.isPending} className="gap-2 active:scale-[0.98] transition-all">
+            {updateSubscription.isPending ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Crown className="h-4 w-4" />}
+            Confirmar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ---- Cancel Subscription Dialog (row-level action) ----
+function CancelSubscriptionDialog({ store, onOpenChange }: { store: StoreListItem | null; onOpenChange: (open: boolean) => void }) {
+  const cancelSubscription = useCancelStoreSubscriptionAdmin()
+  const [reason, setReason] = useState('')
+
+  function handleConfirm() {
+    if (!store || reason.trim().length < 5) return
+    cancelSubscription.mutate(
+      { id: store.id, cancelReason: reason.trim() },
+      {
+        onSuccess: () => { toast.success(`Suscripción de "${store.name}" cancelada`); setReason(''); onOpenChange(false) },
+        onError: (err) => toast.error(err.message || 'Error al cancelar la suscripción'),
+      },
+    )
+  }
+
+  return (
+    <Dialog open={!!store} onOpenChange={(open) => { if (!open) setReason(''); onOpenChange(open) }}>
+      <DialogContent className="max-w-sm rounded-xl backdrop-blur-sm">
+        <DialogHeader>
+          <DialogTitle>Cancelar suscripción</DialogTitle>
+          <DialogDescription>{store && <>Tienda: <strong>{store.name}</strong> — el acceso se mantiene hasta el fin del período ya pagado.</>}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 py-2">
+          <Label>Motivo de la cancelación *</Label>
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej: cliente solicitó cancelar por WhatsApp, negocio cerró..." rows={3} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Volver</Button>
+          <Button
+            variant="destructive"
+            onClick={handleConfirm}
+            disabled={reason.trim().length < 5 || cancelSubscription.isPending}
+            className="gap-2 active:scale-[0.98] transition-all"
+          >
+            {cancelSubscription.isPending ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Ban className="h-4 w-4" />}
+            Cancelar suscripción
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

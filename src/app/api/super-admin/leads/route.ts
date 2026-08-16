@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
+import { hashPassword } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -156,13 +157,17 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // ownerPassword must be hashed before storage — approve/route.ts copies it
+    // as-is into User.passwordHash when the lead is converted into an account.
+    const ownerPasswordHash = await hashPassword(data.ownerPassword)
+
     const lead = await db.lead.create({
       data: {
         ownerFullName: data.ownerFullName.trim(),
         ownerCedula: data.ownerCedula.trim(),
         ownerEmail: data.ownerEmail?.trim() || null,
         ownerPhone: data.ownerPhone?.trim() || null,
-        ownerPassword: data.ownerPassword,
+        ownerPassword: ownerPasswordHash,
         storeName: data.storeName.trim(),
         nit: data.nit.trim(),
         legalName: data.legalName.trim(),
