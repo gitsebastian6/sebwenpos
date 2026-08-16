@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Search,
   Plus,
@@ -67,6 +68,7 @@ export function CustomersView() {
   const [payingCustomer, setPayingCustomer] = useState<Customer | null>(null)
   const [payAmount, setPayAmount] = useState('')
   const [payNote, setPayNote] = useState('')
+  const [payMethod, setPayMethod] = useState('CASH')
   const [paying, setPaying] = useState(false)
 
   // ─── TanStack Query hooks ──────────────────────────────────────────────
@@ -161,12 +163,14 @@ export function CustomersView() {
           storeId: store.id,
           amount,
           note: payNote.trim() || undefined,
+          paymentMethod: payMethod,
         },
       })
       toast.success(data.message)
       setPayingCustomer(null)
       setPayAmount('')
       setPayNote('')
+      setPayMethod('CASH')
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al registrar abono')
     } finally {
@@ -455,6 +459,22 @@ export function CustomersView() {
                   store?.currencyCode
                   )}
                 </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pay-method">Método de pago</Label>
+              <Select value={payMethod} onValueChange={setPayMethod}>
+                <SelectTrigger id="pay-method"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CASH">Efectivo</SelectItem>
+                  <SelectItem value="NEQUI">Nequi</SelectItem>
+                  <SelectItem value="DAVIPLATA">Daviplata</SelectItem>
+                  <SelectItem value="CARD">Tarjeta</SelectItem>
+                  <SelectItem value="TRANSFER">Transferencia</SelectItem>
+                </SelectContent>
+              </Select>
+              {payMethod === 'CASH' && (
+                <p className="text-[11px] text-muted-foreground">Se sumará al efectivo esperado del turno de caja abierto.</p>
               )}
             </div>
             <div className="space-y-2">

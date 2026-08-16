@@ -30,6 +30,8 @@ const storeUpdateSchema = z.object({
   storeDescription: z.string().max(500).optional().nullable(),
   storeWhatsapp: z.string().max(30).optional().nullable(),
   storeActive: z.boolean().optional(),
+  // Días de antigüedad para considerar una deuda de CxC "vencida" (Índice de Morosidad)
+  debtOverdueDays: z.number().int().min(1).max(365).optional(),
 })
 
 // GET /api/stores?storeId=1  OR  GET /api/stores?userId=1

@@ -21,6 +21,9 @@ export function PWASplashScreen() {
 
     if (!isStandalone) return;
 
+    // Deliberately client-only: must run post-mount (window/matchMedia are
+    // unavailable during SSR) so the splash doesn't cause a hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-only browser check, not a render-driven sync
     setVisible(true);
 
     // Hide after app is ready (fonts + minimal delay for perceived performance)

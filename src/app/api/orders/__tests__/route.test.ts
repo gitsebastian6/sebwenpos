@@ -38,11 +38,15 @@ const mockDb = vi.hoisted(() => ({
   journalEntry: {
     create: vi.fn(),
   },
+  subscription: {
+    findUnique: vi.fn(),
+  },
   $transaction: vi.fn(),
 }))
 
 const mockApiAuth = vi.hoisted(() => ({
   requireStoreAccess: vi.fn().mockReturnValue(null),
+  getAuthUser: vi.fn().mockReturnValue({ userId: 1, role: 'OWNER', storeId: 1, employeeId: null }),
 }))
 
 vi.mock('@/lib/db', () => ({ db: mockDb }))
@@ -153,6 +157,11 @@ describe('POST /api/orders', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockApiAuth.requireStoreAccess.mockReturnValue(null)
+    // Active subscription by default — tests for the 403 subscription-gate path override this
+    mockDb.subscription.findUnique.mockResolvedValue({
+      status: 'ACTIVE',
+      plan: { features: '{}' },
+    })
   })
 
   it('creates a simple order with one product', async () => {
@@ -167,6 +176,41 @@ describe('POST /api/orders', () => {
     expect(body.status).toBe('COMPLETED')
     expect(body.paymentMethod).toBe('CASH')
     expect(body.orderItems).toHaveLength(1)
+  })
+
+  it('applies a discount proportionally to the IVA base of every line (fiscal correctness)', async () => {
+    setupSuccessfulTransactionMocks()
+
+    // Capture the exact payload passed to tx.order.create instead of relying on the fixed mock return
+    let capturedOrderCreateArgs: any = null
+    mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
+      const mockTx = {
+        order: { create: vi.fn((args: any) => { capturedOrderCreateArgs = args; return Promise.resolve(mockCreatedOrder) }) },
+        product: { findUnique: vi.fn().mockResolvedValue({ currentStock: 50, name: 'Café' }), update: vi.fn() },
+        inventoryMovement: { create: vi.fn() },
+        serviceTransaction: { create: vi.fn() },
+        ledgerAccount: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 99, name: 'Descuentos en Ventas' }) },
+        journalEntry: { create: vi.fn() },
+        customer: { update: vi.fn() },
+      }
+      return cb(mockTx)
+    })
+
+    // Product: salePrice 10000 x qty 2 = totalRow 20000, 19% IVA => taxBase 16807 / taxAmount 3193
+    // 10% discount = 2000 => ratio 0.1 => post-discount taxBase 15126 / taxAmount 2874
+    const discountedBody = { ...validOrderBody, discountType: 'PERCENTAGE', discountAmount: 10 }
+    const request = mockPostRequest(discountedBody)
+    const response = await POST(request as any)
+    const { status } = await parseResponse(response)
+
+    expect(status).toBe(201)
+    const items = capturedOrderCreateArgs.data.orderItems.create
+    expect(items[0].taxBase).toBe(15126)
+    expect(items[0].taxAmount).toBe(2874)
+    expect(capturedOrderCreateArgs.data.taxAmount).toBe(2874)
+    expect(capturedOrderCreateArgs.data.discountAmount).toBe(2000)
+    // totalRow/unitPrice stay at list price — only the IVA-facing figures are discounted
+    expect(items[0].totalRow).toBe(20000)
   })
 
   it('rejects order with missing storeId (400)', async () => {

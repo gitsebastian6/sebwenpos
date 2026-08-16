@@ -1,26 +1,26 @@
 /**
  * Viva POS — SQLite → PostgreSQL Migration Script
- * 
+ *
  * Reads ALL data from SQLite (bun:sqlite) and inserts into PostgreSQL (pg).
  * Handles boolean conversion (0/1 → true/false) and preserves ISO8601 date strings.
  * Uses PostgreSQL transactions for atomicity.
  * Resets autoincrement sequences after insertion.
- * 
- * Usage: cd /home/z/my-project && bun run prisma/migrate-sqlite-to-pg.ts
+ *
+ * Usage: bun run prisma/migrate-sqlite-to-pg.ts
+ * Override the target with PG_DATABASE_URL if it differs from the docker-compose default.
  */
 
 import { Database } from "bun:sqlite";
-import { Pool, Client } from "pg";
+import { Pool } from "pg";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
-const SQLITE_PATH = "db/custom.db";
-const PG_CONFIG = {
-  host: "127.0.0.1",
-  port: 5432,
-  user: "z",
-  database: "viva",
-};
+const SQLITE_PATH = process.env.SQLITE_PATH || "db/custom.db";
+// Defaults match docker-compose.yml's postgres service (vivapos/vivapos).
+// Override with PG_DATABASE_URL if migrating against a different target.
+const PG_CONNECTION_STRING =
+  process.env.PG_DATABASE_URL ||
+  "postgresql://vivapos:vivapos_secret_2025@127.0.0.1:5432/vivapos";
 
 // ─── Column metadata: which columns are BOOLEAN and DATETIME ─────────────────
 
@@ -203,8 +203,9 @@ async function migrate() {
   const sqlite = new Database(SQLITE_PATH, { readonly: true });
 
   // Open PostgreSQL
-  console.log(`🐘 Connecting to PostgreSQL: ${PG_CONFIG.host}:${PG_CONFIG.port}/${PG_CONFIG.database}`);
-  const pgPool = new Pool(PG_CONFIG);
+  const pgTarget = PG_CONNECTION_STRING.replace(/:[^:@/]*@/, ":***@"); // mask password in logs
+  console.log(`🐘 Connecting to PostgreSQL: ${pgTarget}`);
+  const pgPool = new Pool({ connectionString: PG_CONNECTION_STRING });
   const pgClient = await pgPool.connect();
 
   const results: Record<string, { sqlite: number; pg: number }> = {};

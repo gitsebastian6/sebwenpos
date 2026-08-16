@@ -158,6 +158,7 @@ export function EmployeesView() {
     phone: '',
     email: '',
     fullName: '',
+    commissionRate: '',
   })
   const [editActive, setEditActive] = useState(true)
 
@@ -226,6 +227,7 @@ export function EmployeesView() {
       phone: employee.user.phone || '',
       email: employee.user.email || '',
       fullName: employee.user.fullName || '',
+      commissionRate: employee.commissionRate != null ? String(employee.commissionRate) : '',
     })
     setEditActive(employee.isActive)
     setShowEditDialog(true)
@@ -240,6 +242,7 @@ export function EmployeesView() {
         fullName: editForm.fullName || null,
         phone: editForm.phone || null,
         email: editForm.email || null,
+        commissionRate: editForm.commissionRate !== '' ? Number(editForm.commissionRate) : null,
       }
       if (editForm.roleId) {
         body.roleId = parseInt(editForm.roleId)
@@ -648,6 +651,24 @@ export function EmployeesView() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Comisión */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-commission">% Comisión por venta</Label>
+              <Input
+                id="edit-commission"
+                type="number"
+                min="0"
+                max="100"
+                placeholder="Ej: 5"
+                value={editForm.commissionRate}
+                onChange={(e) => setEditForm((f) => ({ ...f, commissionRate: e.target.value }))}
+                className="max-w-[140px] focus-visible:ring-primary/20 focus-visible:border-primary/40"
+              />
+              <p className="text-xs text-muted-foreground">
+                Se aplica sobre ventas netas cuando el servicio vendido no tiene su propio % (Servicios &gt; editar servicio).
+              </p>
             </div>
 
             {/* Rol */}

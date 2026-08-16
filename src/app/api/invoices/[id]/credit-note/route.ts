@@ -280,6 +280,8 @@ export async function POST(
         referencedInvoiceId: invoice.cufe || null,
         referencedPrefix: invoice.prefix,
         referencedConsec: invoice.consecutive,
+        // Detalle de items (PDF/API leen "productName"; el payload de entrada usa "description")
+        items: JSON.stringify(createPayload.items.map((i) => ({ ...i, productName: i.description }))),
         status: 'DRAFT',
         testMode: data.testMode !== undefined ? data.testMode : (store.invoiceTestMode ?? true),
         notes: data.notes || null,

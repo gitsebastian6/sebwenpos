@@ -31,6 +31,9 @@ export function CifrasTab({ d, cc }: TabProps) {
           <div><span className="text-muted-foreground text-xs">Ticket Prom. Mes:</span> <span className="font-bold">{formatCurrency(d.localEnCifras.ordersMonth > 0 ? Math.round(d.localEnCifras.salesMonth / d.localEnCifras.ordersMonth) : 0, cc)}</span></div>
           <div><span className="text-muted-foreground text-xs">Clientes con Deuda:</span> <span className="font-bold">{d.localEnCifras.debtCount}</span></div>
           <div><span className="text-muted-foreground text-xs">Ventas Mes Anterior:</span> <span className="font-bold">{formatCurrency(d.localEnCifras.lastMonthSales, cc)}</span></div>
+          {d.quotesSummary && d.quotesSummary.totalCount > 0 && (
+            <div><span className="text-muted-foreground text-xs">Tasa de Conversión (cotizaciones):</span> <span className="font-bold">{d.quotesSummary.conversionRate}%</span> <span className="text-muted-foreground text-xs">({d.quotesSummary.convertedCount}/{d.quotesSummary.totalCount})</span></div>
+          )}
         </div>
       </CardContent></Card>
     </TabsContent>
@@ -39,14 +42,24 @@ export function CifrasTab({ d, cc }: TabProps) {
 
 // ── 2. VENTAS ──
 export function VentasTab({ d, cc }: TabProps) {
+  const devoluciones = d.returns.totalValue
   return (
     <TabsContent value="ventas" className="space-y-4 mt-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label="Total Ventas" value={formatCurrency(d.sales.total, cc)} icon={DollarSign} color="text-emerald-600 dark:text-emerald-400" />
+        <Stat label="Ventas Netas" value={formatCurrency(d.sales.total, cc)} icon={DollarSign} color="text-emerald-600 dark:text-emerald-400" />
         <Stat label="Órdenes" value={d.sales.orderCount} icon={ShoppingCart} />
         <Stat label="Ticket Promedio" value={formatCurrency(d.sales.avgTicket, cc)} icon={Receipt} />
-        <Stat label="POS vs Mesa" value={`Mesa ${Math.round(d.sales.bySource.MESA.total / (d.sales.total || 1) * 100)}%`} icon={Package} />
+        <Stat label="POS vs Mesa" value={`Mesa ${Math.round(d.sales.bySource.MESA.total / (d.sales.grossTotal || 1) * 100)}%`} icon={Package} />
       </div>
+      {devoluciones > 0 && (
+        <Card className="border-dashed"><CardContent className="p-3">
+          <div className="flex flex-wrap gap-6 text-sm">
+            <div><span className="text-muted-foreground text-xs">Ventas Brutas:</span> <span className="font-bold">{formatCurrency(d.sales.grossTotal, cc)}</span></div>
+            <div><span className="text-muted-foreground text-xs">Devoluciones:</span> <span className="font-bold text-red-600">-{formatCurrency(devoluciones, cc)}</span></div>
+            <div><span className="text-muted-foreground text-xs">= Ventas Netas:</span> <span className="font-bold text-emerald-600">{formatCurrency(d.sales.total, cc)}</span></div>
+          </div>
+        </CardContent></Card>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Por Método de Pago</CardTitle></CardHeader><CardContent>
           {Object.entries(d.sales.byPayment).length === 0 ? <EmptyState icon={Receipt} title="Sin ventas" /> : (
@@ -99,11 +112,16 @@ export function RentabilidadTab({ d, cc }: TabProps) {
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label="Descuentos" value={formatCurrency(d.profitability.discounts, cc)} icon={Tag} color="text-amber-600" />
+        <Stat label="Devoluciones" value={formatCurrency(d.profitability.returns, cc)} icon={Tag} color="text-amber-600" />
         <Stat label="Ingresos Netos" value={formatCurrency(d.profitability.netRevenue, cc)} icon={DollarSign} />
+        <Stat label="Pérdidas (merma)" value={formatCurrency(d.profitability.losses, cc)} icon={Tag} color="text-red-600" />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label="Utilidad Neta" value={formatCurrency(d.profitability.netProfit, cc)} icon={TrendingUp} color={d.profitability.netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'} />
         <Stat label="Margen Neto" value={`${d.profitability.netMargin}%`} color={d.profitability.netMargin >= 20 ? 'text-emerald-600' : 'text-red-600'} />
+        <Stat label="Propinas del Período" value={formatCurrency(d.profitability.tips, cc)} icon={DollarSign} />
       </div>
-      <Stat label="Propinas del Período" value={formatCurrency(d.profitability.tips, cc)} icon={DollarSign} />
+      <p className="text-[11px] text-muted-foreground">Utilidad Neta = Ingresos Netos − Costos (COGS) − Pérdidas por merma. Ingresos Netos = Ingresos Brutos − Descuentos − Devoluciones.</p>
     </TabsContent>
   )
 }
@@ -114,7 +132,7 @@ export function PuntoEqTab({ d, cc }: TabProps) {
     <TabsContent value="punto-eq" className="space-y-4 mt-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label="Punto de Equilibrio" value={formatCurrency(d.breakEven.breakEvenPoint, cc)} icon={Target} />
-        <Stat label="Ventas del Período" value={formatCurrency(d.sales.total, cc)} icon={DollarSign} color="text-emerald-600" />
+        <Stat label="Ventas Netas del Período" value={formatCurrency(d.sales.total, cc)} icon={DollarSign} color="text-emerald-600" />
         <Stat label="Distancia al Equilibrio" value={d.breakEven.distanceToBreakEven > 0 ? formatCurrency(d.breakEven.distanceToBreakEven, cc) : '¡Superado! ✓'} color={d.breakEven.distanceToBreakEven > 0 ? 'text-amber-600' : 'text-emerald-600'} />
         <Stat label="% Alcanzado" value={`${d.breakEven.achievedPercent}%`} icon={Percent} color={d.breakEven.achievedPercent >= 100 ? 'text-emerald-600' : 'text-amber-600'} />
       </div>

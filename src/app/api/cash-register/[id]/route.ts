@@ -250,7 +250,22 @@ export async function PUT(
       }
     }
 
-    const expectedCash = shift.openingBalance + cashTotal
+    // Recaudos CxC: cash abonos collected during this shift (fiado being paid off)
+    const cashPayments = await db.customerPayment.aggregate({
+      where: { cashRegisterId: shiftId, paymentMethod: 'CASH' },
+      _sum: { amount: true },
+    })
+    const cxcCollected = cashPayments._sum.amount ?? 0
+
+    // Gastos de caja menor: cash expenses paid out of this shift's till
+    const cashExpenses = await db.expense.aggregate({
+      where: { cashRegisterId: shiftId },
+      _sum: { amount: true },
+    })
+    const pettyCashExpenses = cashExpenses._sum.amount ?? 0
+
+    // Fondo Inicial + Ventas Efectivo + Recaudos CxC - Gastos Caja Menor = Saldo Teórico
+    const expectedCash = shift.openingBalance + cashTotal + cxcCollected - pettyCashExpenses
     const difference = closingBalance - expectedCash
     const closedAt = new Date()
 
@@ -270,7 +285,12 @@ export async function PUT(
       },
     })
 
-    return NextResponse.json({ shift: updated, expectedCash, difference })
+    return NextResponse.json({
+      shift: updated,
+      expectedCash,
+      difference,
+      breakdown: { openingBalance: shift.openingBalance, cashSales: cashTotal, cxcCollected, pettyCashExpenses },
+    })
   } catch (error) {
     logger.error('PUT /api/cash-register/[id] error:', error)
     return NextResponse.json({ error: 'Error al procesar turno' }, { status: 500 })

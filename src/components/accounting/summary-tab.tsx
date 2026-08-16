@@ -50,7 +50,14 @@ export function SummaryTab({ accounts, currencyCode }: SummaryTabProps) {
   const totalPropinas = propinaAccount ? Math.abs(propinaAccount.balance) : 0
 
   const ventasAccount = accounts.find((a) => a.type === 'INCOME' && a.name === 'Ventas')
-  const totalVentas = ventasAccount ? Math.abs(ventasAccount.balance) : (totalIngresos - totalPropinas)
+  const totalVentasBrutas = ventasAccount ? Math.abs(ventasAccount.balance) : (totalIngresos - totalPropinas)
+
+  const descuentoAccount = accounts.find((a) => a.type === 'EXPENSE' && a.name === 'Descuentos en Ventas')
+  const totalDescuentos = descuentoAccount ? Math.max(0, descuentoAccount.balance) : 0
+  const totalVentas = totalVentasBrutas - totalDescuentos
+
+  const perdidaAccount = accounts.find((a) => a.type === 'EXPENSE' && a.name === 'Pérdida por Merma')
+  const totalPerdidas = perdidaAccount ? Math.max(0, perdidaAccount.balance) : 0
 
   const netIncome = totalIngresos - totalGastos
   const barMax = Math.max(totalIngresos, totalGastos, 1)
@@ -74,7 +81,11 @@ export function SummaryTab({ accounts, currencyCode }: SummaryTabProps) {
             <p className="text-2xl font-bold text-teal-700 dark:text-teal-400 tabular-nums">
               {formatCurrency(totalVentas, currencyCode)}
             </p>
-            <p className="text-[11px] text-muted-foreground mt-1">Productos y servicios</p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {totalDescuentos > 0
+                ? `Bruto: ${formatCurrency(totalVentasBrutas, currencyCode)} · Descuentos: -${formatCurrency(totalDescuentos, currencyCode)}`
+                : 'Productos y servicios'}
+            </p>
           </CardContent>
         </Card>
 
@@ -188,6 +199,14 @@ export function SummaryTab({ accounts, currencyCode }: SummaryTabProps) {
                 style={{ width: `${barMax > 0 ? (totalGastos / barMax) * 100 : 0}%` }}
               />
             </div>
+            {(totalDescuentos > 0 || totalPerdidas > 0) && (
+              <p className="text-[11px] text-muted-foreground">
+                Incluye {totalDescuentos > 0 && `${formatCurrency(totalDescuentos, currencyCode)} en descuentos`}
+                {totalDescuentos > 0 && totalPerdidas > 0 && ' y '}
+                {totalPerdidas > 0 && `${formatCurrency(totalPerdidas, currencyCode)} en pérdidas por merma`}
+                {' '}— no son gastos operativos, son deducciones de venta e inventario.
+              </p>
+            )}
           </div>
 
           <Separator />

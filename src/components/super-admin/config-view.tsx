@@ -48,7 +48,6 @@ export function ConfigView() {
       })
     }
     if (configData?.wompi) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync form state from query data
       setWpConfig({
         demoVisible: configData.wompi.demoVisible || false,
         enabled: configData.wompi.enabled || false,

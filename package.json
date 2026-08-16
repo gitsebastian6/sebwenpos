@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "bash scripts/ensure-env.sh && npx next dev -p 3000 -H 0.0.0.0",
     "dev:start": "bash start.sh",
-    "dev:safe": "cd mini-services/keepalive && bun --hot index.ts",
+    "dev:safe": "cd mini-services/server-keepalive && bun --hot index.ts",
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",

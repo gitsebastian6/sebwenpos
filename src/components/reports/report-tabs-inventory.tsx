@@ -99,6 +99,7 @@ export function PerdidasTab({ d, cc, registeredLosses, totalLossesValue, openLos
           </Button>
         </div>
       </CardHeader><CardContent>
+        <p className="text-[11px] text-muted-foreground -mt-2 mb-3">Cada pérdida registrada se descuenta de la Utilidad Neta (pestaña Rentabilidad) y se registra como gasto en Contabilidad.</p>
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-3">
             <p className="text-[10px] text-muted-foreground font-medium">Total Pérdidas</p>
@@ -124,7 +125,7 @@ export function PerdidasTab({ d, cc, registeredLosses, totalLossesValue, openLos
                 <TableCell className="text-xs font-medium">{m.product?.name || `ID ${m.productId}`}</TableCell>
                 <TableCell><Badge variant="outline" className="text-[10px]">{LOSS_REASONS[reasonCode] || reasonCode || '—'}</Badge></TableCell>
                 <TableCell className="text-right text-xs font-medium text-red-600">-{Math.abs(m.quantity)}</TableCell>
-                <TableCell className="text-right text-xs font-medium text-red-600">{formatCurrency((Math.abs(m.quantity) * (m.product?.costPrice || m.product?.salePrice || 0)), cc)}</TableCell>
+                <TableCell className="text-right text-xs font-medium text-red-600">{formatCurrency((Math.abs(m.quantity) * (m.product?.costPrice || 0)), cc)}</TableCell>
                 <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">{userNotes || '—'}</TableCell>
               </TableRow>
               )

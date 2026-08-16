@@ -67,6 +67,52 @@ export async function POST(req: NextRequest) {
         },
       })
 
+      // Book the loss as a non-operational expense so it shows up in Contabilidad
+      // instead of only existing as an isolated inventory movement (valued at cost,
+      // never at sale price — see reports-view.tsx totalLossesValue for the same rule).
+      const lossValue = product.costPrice * data.quantity
+      if (lossValue > 0) {
+        let inventarioAccount = await tx.ledgerAccount.findFirst({
+          where: { storeId: data.storeId, name: 'Inventario Productos' },
+        })
+        if (!inventarioAccount) {
+          inventarioAccount = await tx.ledgerAccount.create({
+            data: { storeId: data.storeId, name: 'Inventario Productos', type: 'ASSET', isDefault: false },
+          })
+        }
+        let perdidaAccount = await tx.ledgerAccount.findFirst({
+          where: { storeId: data.storeId, name: 'Pérdida por Merma' },
+        })
+        if (!perdidaAccount) {
+          perdidaAccount = await tx.ledgerAccount.create({
+            data: { storeId: data.storeId, name: 'Pérdida por Merma', type: 'EXPENSE', isDefault: false },
+          })
+        }
+        const description = `Pérdida: ${product.name} x${data.quantity}${data.reason ? ` (${data.reason})` : ''}`
+        await tx.journalEntry.create({
+          data: {
+            storeId: data.storeId,
+            ledgerAccountId: perdidaAccount.id,
+            amount: lossValue,
+            direction: 'DEBIT',
+            description,
+            referenceType: 'INVENTORY_MOVEMENT',
+            referenceId: mov.id,
+          },
+        })
+        await tx.journalEntry.create({
+          data: {
+            storeId: data.storeId,
+            ledgerAccountId: inventarioAccount.id,
+            amount: lossValue,
+            direction: 'CREDIT',
+            description,
+            referenceType: 'INVENTORY_MOVEMENT',
+            referenceId: mov.id,
+          },
+        })
+      }
+
       return mov
     })
 

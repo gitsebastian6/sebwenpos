@@ -143,15 +143,26 @@ export function NotasCreditoTab({ d, cc }: TabProps) {
 
 // ── 19. CUENTAS POR COBRAR ──
 export function CxcTab({ d, cc }: TabProps) {
+  const overdueDays = d.delinquencyIndex.overdueDays
+  const isOverdue = (c: DebtItem) => !!c.debtSince && (Date.now() - new Date(c.debtSince).getTime()) / 86400000 >= overdueDays
   return (
     <TabsContent value="cxc" className="space-y-4 mt-4">
-      <Stat label="Deuda Total" value={formatCurrency(d.debts.reduce((s: number, c: DebtItem) => s + c.totalDebt, 0), cc)} icon={Users} color="text-red-600" />
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        <Stat label="Deuda Total" value={formatCurrency(d.delinquencyIndex.totalDebtTotal, cc)} icon={Users} color="text-red-600" />
+        <Stat label={`Cartera Vencida (+${overdueDays}d)`} value={formatCurrency(d.delinquencyIndex.overdueDebtTotal, cc)} icon={Users} color="text-red-600" />
+        <Stat label="Índice de Morosidad" value={`${d.delinquencyIndex.rate}%`} icon={Users} color={d.delinquencyIndex.rate >= 30 ? 'text-red-600' : d.delinquencyIndex.rate >= 10 ? 'text-amber-600' : 'text-emerald-600'} />
+      </div>
       <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Clientes con Deuda</CardTitle></CardHeader><CardContent>
         <div className="max-h-96 overflow-y-auto">
-          <Table><TableHeader><TableRow><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs">Teléfono</TableHead><TableHead className="text-xs text-right">Deuda</TableHead></TableRow></TableHeader><TableBody>
-            {d.debts.length === 0 ? <TableRow><TableCell colSpan={3}><EmptyState icon={Users} title="¡Sin deudas pendientes! 🎉" /></TableCell></TableRow> :
+          <Table><TableHeader><TableRow><TableHead className="text-xs">Cliente</TableHead><TableHead className="text-xs">Teléfono</TableHead><TableHead className="text-xs">Estado</TableHead><TableHead className="text-xs text-right">Deuda</TableHead></TableRow></TableHeader><TableBody>
+            {d.debts.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={Users} title="¡Sin deudas pendientes! 🎉" /></TableCell></TableRow> :
             d.debts.map((c: DebtItem) => (
-              <TableRow className="hover:bg-muted/30 transition-colors" key={c.id}><TableCell className="text-xs font-medium">{c.name}</TableCell><TableCell className="text-xs text-muted-foreground">{c.phone || '—'}</TableCell><TableCell className="text-right text-sm font-bold text-red-600">{formatCurrency(c.totalDebt, cc)}</TableCell></TableRow>
+              <TableRow className="hover:bg-muted/30 transition-colors" key={c.id}>
+                <TableCell className="text-xs font-medium">{c.name}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{c.phone || '—'}</TableCell>
+                <TableCell>{isOverdue(c) ? <Badge variant="destructive" className="text-[10px]">Vencida</Badge> : <Badge variant="outline" className="text-[10px]">Al día</Badge>}</TableCell>
+                <TableCell className="text-right text-sm font-bold text-red-600">{formatCurrency(c.totalDebt, cc)}</TableCell>
+              </TableRow>
             ))}
           </TableBody></Table>
         </div>

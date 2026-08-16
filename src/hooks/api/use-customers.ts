@@ -88,7 +88,7 @@ export function useUpdateCustomer() {
 export function usePayCustomerDebt() {
   const queryClient = useQueryClient()
 
-  return useMutation<any, Error, { id: number; body: { storeId: number; amount: number; note?: string } }>({
+  return useMutation<any, Error, { id: number; body: { storeId: number; amount: number; note?: string; paymentMethod?: string } }>({
     mutationFn: async ({ id, body }) => {
       return throwIfNotOk(
         await fetch(`/api/customers/${id}/pay-debt`, {

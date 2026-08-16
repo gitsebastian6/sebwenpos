@@ -160,8 +160,11 @@ export function ReportsView() {
   trazData.forEach((m: TraceabilityItem) => { if (trazCounts[m.movementType] !== undefined) trazCounts[m.movementType]++ })
 
   // ── Registered losses from traceability ──
+  // Valued at cost (never salePrice — a loss must never be valued at what it would
+  // have sold for, that overstates the loss by the full margin). Products missing
+  // a cost default to 0 rather than silently borrowing the sale price.
   const registeredLosses = trazData.filter((m: TraceabilityItem) => m.movementType === 'LOSS')
-  const totalLossesValue = registeredLosses.reduce((s: number, m: TraceabilityItem) => s + ((m.quantity || 0) * (m.product?.costPrice || m.product?.salePrice || 0)), 0)
+  const totalLossesValue = registeredLosses.reduce((s: number, m: TraceabilityItem) => s + (Math.abs(m.quantity || 0) * (m.product?.costPrice || 0)), 0)
 
   return (
     <div className="space-y-4">

@@ -56,11 +56,29 @@ export function CierresTab({ d, cc }: TabProps) {
 export function ComisionesTab({ d, cc }: TabProps) {
   return (
     <TabsContent value="comisiones" className="space-y-4 mt-4">
+      <Card><CardHeader className="pb-3">
+        <CardTitle className="text-sm">Comisiones de Empleados</CardTitle>
+        <CardDescription>(Venta Neta − Impuestos) × % de comisión, solo sobre ventas ya pagadas. Configura el % en Empleados o por Servicio.</CardDescription>
+      </CardHeader><CardContent>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <Stat label="Total Comisiones" value={formatCurrency(d.employeeCommissions.total, cc)} icon={Percent} color="text-emerald-600" />
+          <Stat label="Empleados con Ventas" value={d.employeeCommissions.items.length} icon={Percent} />
+        </div>
+        <div className="max-h-64 overflow-y-auto">
+          <Table><TableHeader><TableRow><TableHead className="text-xs">Empleado</TableHead><TableHead className="text-xs">Cargo</TableHead><TableHead className="text-xs text-right">Base (neto sin IVA)</TableHead><TableHead className="text-xs text-right">Comisión</TableHead></TableRow></TableHeader><TableBody>
+            {d.employeeCommissions.items.length === 0 ? <TableRow><TableCell colSpan={4}><EmptyState icon={Percent} title="Sin comisiones en el período" desc="Configura un % de comisión en Empleados o Servicios para que aparezcan aquí" /></TableCell></TableRow> :
+            d.employeeCommissions.items.map((e) => (
+              <TableRow className="hover:bg-muted/30 transition-colors" key={e.employeeId}><TableCell className="text-xs font-medium">{e.name}</TableCell><TableCell className="text-xs text-muted-foreground">{e.position || '—'}</TableCell><TableCell className="text-right text-xs">{formatCurrency(e.base, cc)}</TableCell><TableCell className="text-right text-sm font-bold text-emerald-600">{formatCurrency(e.commission, cc)}</TableCell></TableRow>
+            ))}
+          </TableBody></Table>
+        </div>
+      </CardContent></Card>
+
       <div className="grid grid-cols-2 gap-4">
         <Stat label="Ingreso por Servicios" value={formatCurrency(d.commissions.total, cc)} icon={DollarSign} color="text-emerald-600" />
         <Stat label="Transacciones" value={d.commissions.count} icon={Percent} />
       </div>
-      <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Ingresos por Servicios del Bar</CardTitle><CardDescription>Transacciones de servicios (billar, mesa de juegos, etc.)</CardDescription></CardHeader><CardContent>
+      <Card><CardHeader className="pb-3"><CardTitle className="text-sm">Ingresos por Servicios del Bar</CardTitle><CardDescription>Transacciones de servicios (billar, mesa de juegos, etc.) — no es lo mismo que la comisión del empleado</CardDescription></CardHeader><CardContent>
         <div className="max-h-96 overflow-y-auto">
           <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Servicio</TableHead><TableHead className="text-xs text-right">Cantidad</TableHead><TableHead className="text-xs text-right">Unitario</TableHead><TableHead className="text-xs text-right">Total</TableHead></TableRow></TableHeader><TableBody>
             {d.commissions.items.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={Percent} title="Sin servicios en el período" /></TableCell></TableRow> :

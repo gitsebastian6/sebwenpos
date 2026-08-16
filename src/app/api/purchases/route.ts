@@ -373,23 +373,32 @@ export async function POST(req: NextRequest) {
         const product = products.find((p) => p.id === item.productId)
         if (!product) continue
 
+        // Costo Promedio Ponderado (CPP): never overwrite with the latest purchase
+        // price alone — that inflates/deflates margin on existing stock. The new
+        // unit cost is the weighted average of what's already on hand plus what
+        // just came in.
+        const existingStock = Math.max(0, product.currentStock)
+        const newCostPrice = Math.round(
+          (existingStock * product.costPrice + item.quantity * item.unitCost) / (existingStock + item.quantity)
+        )
+
         // Update stock and cost price
         await tx.product.update({
           where: { id: item.productId },
           data: {
             currentStock: { increment: item.quantity },
-            costPrice: item.unitCost,
+            costPrice: newCostPrice,
           },
         })
 
         // Create CostHistory if cost changed
-        if (product.costPrice !== item.unitCost) {
+        if (product.costPrice !== newCostPrice) {
           await tx.costHistory.create({
             data: {
               productId: item.productId,
               storeId: data.storeId,
               previousCost: product.costPrice,
-              newCost: item.unitCost,
+              newCost: newCostPrice,
               purchaseId: createdPurchase.id,
               reason: 'PURCHASE',
             },

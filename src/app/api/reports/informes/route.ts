@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
       // 2. INVENTARIO — Valuación y días
       safe('inv-valuation', () => db.$queryRawUnsafe(`
         SELECT COALESCE(SUM(cost_price * current_stock), 0) as "totalCost",
-               COALESCE(SUM(salePrice * current_stock), 0) as "totalRetail",
+               COALESCE(SUM("salePrice" * current_stock), 0) as "totalRetail",
                COUNT(CASE WHEN current_stock = 0 THEN 1 END) as "outOfStock",
                COUNT(CASE WHEN current_stock <= min_stock THEN 1 END) as "lowStock",
                COUNT(*) as "totalProducts"
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
 
       // 6. VENTAS PERDIDAS
       safe('lost-sales', () => db.$queryRawUnsafe(`
-        SELECT p.id, p.name, p.salePrice as "salePrice",
+        SELECT p.id, p.name, p."salePrice" as "salePrice",
                COALESCE(v.total_qty, 0) as "sold30d",
                CASE WHEN v.total_qty > 0 THEN ROUND(v.total_qty / 30.0, 1) ELSE 0 END as "avgDaily"
         FROM products p
@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
       // 16. CxC — Customer debts
       safe('debts', () => db.customer.findMany({
         where: { storeId, totalDebt: { gt: 0 } },
-        select: { id: true, name: true, phone: true, totalDebt: true },
+        select: { id: true, name: true, phone: true, totalDebt: true, debtSince: true },
         orderBy: { totalDebt: 'desc' }
       })),
 
@@ -239,13 +239,18 @@ export async function GET(request: NextRequest) {
         take: 100
       })),
 
-      // 17b. COTIZACIONES — KPIs
+      // 17b. COTIZACIONES — KPIs (scoped to the same period as the `quotes` list above)
       safe('quotes-kpis', () => db.quotation.aggregate({
-        where: { storeId, status: 'ACTIVE' },
+        where: { storeId, status: 'ACTIVE', ...(dateFilter ? { createdAt: dateFilter } : {}) },
         _sum: { total: true }, _count: { id: true }
       })),
       safe('quotes-converted', () => db.quotation.count({
-        where: { storeId, status: 'CONVERTED' }
+        where: { storeId, status: 'CONVERTED', ...(dateFilter ? { createdAt: dateFilter } : {}) }
+      })),
+      // Uncapped total (the `quotes` list above is capped at 100) — needed for
+      // Tasa de Conversión = Facturas Creadas / Cotizaciones Emitidas
+      safe('quotes-total-count', () => db.quotation.count({
+        where: { storeId, ...(dateFilter ? { createdAt: dateFilter } : {}) }
       })),
 
       // 19. FACTURAS ELECTRÓNICAS
@@ -299,9 +304,69 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' },
         take: 100,
       })),
+
+      // 21. PÉRDIDAS — total valued at cost (uncapped, unlike the `traceability` list below
+      // which is limited to the 200 most recent movements and shouldn't drive totals)
+      safe('losses-value', () => {
+        const lGte = dateFilter?.gte || monthStart
+        const lLte = dateFilter?.lte || todayEnd
+        return db.$queryRawUnsafe(`
+          SELECT COALESCE(SUM(p.cost_price * ABS(im.quantity)), 0) as "lossesValue"
+          FROM inventory_movements im
+          JOIN products p ON p.id = im.product_id
+          WHERE im.store_id = ${storeId} AND im.movement_type = 'LOSS'
+          AND im.created_at >= ${sql.timestamp(lGte.getTime())} AND im.created_at <= ${sql.timestamp(lLte.getTime())}
+        `)
+      }),
+
+      // 29. Store config — Índice de Morosidad threshold
+      safe('store-config', () => db.store.findUnique({
+        where: { id: storeId },
+        select: { debtOverdueDays: true },
+      })),
+
+      // 30. Comisiones de empleados — solo órdenes pagadas (COMPLETED; una CREDIT que se
+      // salda pasa a COMPLETED en pay-debt/route.ts, así que esto ya respeta "factura pagada")
+      safe('employee-sales', () => db.order.findMany({
+        where: {
+          storeId,
+          status: 'COMPLETED',
+          soldByEmployeeId: { not: null },
+          ...(dateFilter ? { createdAt: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }),
+        },
+        select: {
+          id: true,
+          soldByEmployeeId: true,
+          orderItems: {
+            select: {
+              taxBase: true,
+              product: { select: { id: true } },
+              service: { select: { id: true, name: true, commissionRate: true } },
+            },
+          },
+        },
+      })),
+      safe('employees-for-commission', () => db.employee.findMany({
+        where: { storeId },
+        select: { id: true, commissionRate: true, position: true, user: { select: { fullName: true } } },
+      })),
+
+      // 32. Trazabilidad — audit log (user, acción, valor anterior/nuevo). Complementa
+      // `traceability` (movimientos de inventario, sin usuario) con el registro real de
+      // quién hizo qué — ver src/lib/audit-logger.ts / AuditLog en el schema.
+      safe('audit-log', () => db.auditLog.findMany({
+        where: { storeId, ...(dateFilter ? { createdAt: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }) },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      })),
     ])
 
     const N = (v: unknown) => Number(v ?? 0)
+
+    // Devoluciones — computed up front so Ventas/Rentabilidad can be reported net
+    // of returns ("Venta Neta = Venta Bruta - Descuentos - Devoluciones").
+    const returns = Array.isArray(results[12]) ? results[12] : []
+    const returnsTotalValue = returns.reduce((s, r) => s + r.quantity * (r.product?.salePrice || 0), 0)
 
     // ── 1. TU LOCAL EN CIFRAS ──
     const todaySales = results[0]
@@ -343,15 +408,24 @@ export async function GET(request: NextRequest) {
     const cogs = N(profitRow?.cogs)
     const discounts = N(profitRow?.discounts)
     const tips = N(profitRow?.tips)
+    const lossesRow = Array.isArray(results[28]) ? results[28][0] : null
+    const lossesValue = N(lossesRow?.lossesValue)
+    // Venta Neta = Venta Bruta - Descuentos - Devoluciones (netRevenue below reflects this —
+    // grossMargin stays on gross revenue as a separate, informational figure). Pérdidas (merma)
+    // are a non-operational expense: they reduce netProfit but never touch netRevenue/netMargin,
+    // so shrinkage doesn't distort the sales margin.
+    const netRevenue = revenue - discounts - returnsTotalValue
     const profitability = {
       revenue,
       cogs,
       grossProfit: revenue - cogs,
       grossMargin: revenue > 0 ? Math.round(((revenue - cogs) / revenue) * 1000) / 10 : 0,
-      netRevenue: revenue - discounts,
-      netProfit: revenue - discounts - cogs,
-      netMargin: (revenue - discounts) > 0 ? Math.round(((revenue - discounts - cogs) / (revenue - discounts)) * 1000) / 10 : 0,
+      netRevenue,
+      netProfit: netRevenue - cogs - lossesValue,
+      netMargin: netRevenue > 0 ? Math.round(((netRevenue - cogs) / netRevenue) * 1000) / 10 : 0,
       discounts,
+      returns: returnsTotalValue,
+      losses: lossesValue,
       tips,
     }
 
@@ -393,6 +467,9 @@ export async function GET(request: NextRequest) {
 
     const orders = (salesData.ordersList || []) as unknown[]
 
+    // Ventas Netas = Ventas - Devoluciones (used for the headline sales total and break-even)
+    const netSalesTotal = salesTotal - returnsTotalValue
+
     // ── 7. PUNTO DE EQUILIBRIO ──
     const beRow = Array.isArray(results[11]) ? results[11][0] : null
     const fixedCosts = N(beRow?.fixedCosts)
@@ -404,12 +481,11 @@ export async function GET(request: NextRequest) {
       variableCostRatio: Math.round(variableCostRatio * 1000) / 1000,
       contributionMargin: Math.round(contributionMargin * 1000) / 1000,
       breakEvenPoint,
-      distanceToBreakEven: Math.max(0, breakEvenPoint - salesTotal),
-      achievedPercent: breakEvenPoint > 0 ? Math.min(100, Math.round((salesTotal / breakEvenPoint) * 100)) : 0,
+      distanceToBreakEven: Math.max(0, breakEvenPoint - netSalesTotal),
+      achievedPercent: breakEvenPoint > 0 ? Math.min(100, Math.round((netSalesTotal / breakEvenPoint) * 100)) : 0,
     }
 
     // ── 8-14. Direct arrays ──
-    const returns = Array.isArray(results[12]) ? results[12] : []
     const cashRegisters = Array.isArray(results[13]) ? results[13] : []
     const commissions = Array.isArray(results[14]) ? results[14] : []
     const adjustments = Array.isArray(results[15]) ? results[15] : []
@@ -417,13 +493,52 @@ export async function GET(request: NextRequest) {
     const allExpenses = Array.isArray(results[17]) ? results[17] : []
     const discountOrders = Array.isArray(results[18]) ? results[18] : []
     const traceability = Array.isArray(results[19]) ? results[19] : []
+    const auditLogRaw = Array.isArray(results[32]) ? (results[32] as any[]) : []
+    const auditUserIds = Array.from(new Set(auditLogRaw.map((a) => a.userId).filter((id): id is number => id != null)))
+    const auditUsers = auditUserIds.length > 0
+      ? await db.user.findMany({ where: { id: { in: auditUserIds } }, select: { id: true, fullName: true } })
+      : []
+    const auditUserNameById = new Map(auditUsers.map((u) => [u.id, u.fullName || `Usuario #${u.id}`]))
+    const auditLog = auditLogRaw.map((a) => ({
+      id: a.id,
+      userName: a.userId ? auditUserNameById.get(a.userId) || `Usuario #${a.userId}` : 'Sistema',
+      action: a.action,
+      entity: a.entity,
+      entityId: a.entityId,
+      oldValue: a.oldValue,
+      newValue: a.newValue,
+      createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt,
+    }))
     const debts = Array.isArray(results[20]) ? results[20] : []
+
+    // Índice de Morosidad: Cartera Vencida / Cartera Total. "Vencida" = debtSince older
+    // than the store's configured threshold (debtSince is an approximation — see the
+    // Customer.debtSince schema comment — there's no per-order debt itemization to age precisely).
+    const storeConfig = results[29] as { debtOverdueDays: number } | null
+    const overdueDays = storeConfig?.debtOverdueDays ?? 30
+    const overdueThreshold = new Date(now.getTime() - overdueDays * 86400000)
+    let overdueDebtTotal = 0
+    const totalDebtSum = debts.reduce((s: number, c: any) => s + c.totalDebt, 0)
+    for (const c of debts as any[]) {
+      if (c.debtSince && new Date(c.debtSince) <= overdueThreshold) overdueDebtTotal += c.totalDebt
+    }
+    const delinquencyIndex = {
+      overdueDebtTotal,
+      totalDebtTotal: totalDebtSum,
+      rate: totalDebtSum > 0 ? Math.round((overdueDebtTotal / totalDebtSum) * 1000) / 10 : 0,
+      overdueDays,
+    }
     const quotes = Array.isArray(results[21]) ? results[21] : []
     const quotesKpis = results[22] || null
     const quotesConverted = Number(results[23] || 0)
-    const ivaOrdersRaw = Array.isArray(results[24]) ? results[24] : []
+    const quotesTotalCount = Number(results[24] || 0)
+    // NOTE: results[] is a plain positional array from one big Promise.all — it's easy for
+    // these indices to drift out of sync with the query list above whenever a query is added
+    // or reordered (this exact drift previously mis-mapped these three fields silently).
+    // Verify against the safe('name', ...) call order above whenever this array changes.
     const invoices = Array.isArray(results[25]) ? results[25] : []
     const creditNotes = Array.isArray(results[26]) ? results[26] : []
+    const ivaOrdersRaw = Array.isArray(results[27]) ? results[27] : []
 
     // ── 18. IVA RECAUDADO ──
     const ivaOrders = ivaOrdersRaw
@@ -479,6 +594,33 @@ export async function GET(request: NextRequest) {
     // Services/commissions total
     const servicesTotal = commissions.reduce((s, c) => s + c.totalAmount, 0)
 
+    // Comisiones de empleados: (Venta Neta - Impuestos) * % Comisión, por línea vendida.
+    // Rate: usa el % del servicio si el item es un servicio con su propio commissionRate;
+    // si no, usa el % del empleado que hizo la venta (aplica también a productos).
+    const employeeSales = Array.isArray(results[30]) ? (results[30] as any[]) : []
+    const employeesForCommission = Array.isArray(results[31]) ? (results[31] as any[]) : []
+    const employeeById = new Map(employeesForCommission.map((e) => [e.id, e]))
+    const commissionByEmployee = new Map<number, { employeeId: number; name: string; position: string | null; base: number; commission: number }>()
+    for (const order of employeeSales) {
+      const emp = employeeById.get(order.soldByEmployeeId)
+      if (!emp) continue
+      for (const item of order.orderItems as any[]) {
+        const rate = item.service?.commissionRate ?? emp.commissionRate ?? 0
+        if (!rate) continue
+        const base = item.taxBase || 0
+        const commission = Math.round(base * (rate / 100))
+        const key = emp.id
+        if (!commissionByEmployee.has(key)) {
+          commissionByEmployee.set(key, { employeeId: emp.id, name: emp.user?.fullName || 'Empleado', position: emp.position, base: 0, commission: 0 })
+        }
+        const entry = commissionByEmployee.get(key)!
+        entry.base += base
+        entry.commission += commission
+      }
+    }
+    const employeeCommissions = Array.from(commissionByEmployee.values()).sort((a, b) => b.commission - a.commission)
+    const employeeCommissionsTotal = employeeCommissions.reduce((s, e) => s + e.commission, 0)
+
     return NextResponse.json({
       period: { from: from || monthStart.toISOString().split('T')[0], to: to || todayEnd.toISOString().split('T')[0] },
       localEnCifras,
@@ -487,9 +629,10 @@ export async function GET(request: NextRequest) {
       purchases: { items: purchases, total: purchasesTotal, byProvider: purchasesByProvider },
       sales: {
         orders,
-        total: salesTotal,
+        total: netSalesTotal,
+        grossTotal: salesTotal,
         orderCount: salesOrderCount,
-        avgTicket: salesOrderCount > 0 ? Math.round(salesTotal / salesOrderCount) : 0,
+        avgTicket: salesOrderCount > 0 ? Math.round(netSalesTotal / salesOrderCount) : 0,
         byPayment: salesByPayment,
         byCategory: salesByCategory,
         bySource: salesBySource,
@@ -497,7 +640,7 @@ export async function GET(request: NextRequest) {
       },
       lostSales: Array.isArray(results[10]) ? results[10] : [],
       breakEven,
-      returns: { items: returns, totalValue: returns.reduce((s, r) => Math.abs(s + r.quantity * (r.product?.salePrice || 0)), 0) },
+      returns: { items: returns, totalValue: returnsTotalValue },
       cashRegisters: cashRegisters.map(c => ({
         id: c.id, openedAt: c.openedAt.toISOString(), closedAt: c.closedAt?.toISOString() || null,
         openingBalance: c.openingBalance, closingBalance: c.closingBalance,
@@ -505,18 +648,23 @@ export async function GET(request: NextRequest) {
         status: c.status, user: c.user?.fullName || 'N/A', notes: c.notes
       })),
       commissions: { items: commissions, total: servicesTotal, count: commissions.length },
+      employeeCommissions: { items: employeeCommissions, total: employeeCommissionsTotal },
       adjustments: { items: adjustments, count: adjustments.length },
       taxes: { items: taxExpenses, total: taxTotal, count: taxExpenses.length },
       expenses: { items: allExpenses, total: expensesTotal, byCategory: expensesByCategory },
       discounts: { items: discountOrders, total: discountsTotal, count: discountOrders.length },
       traceability,
+      auditLog,
       debts,
+      delinquencyIndex,
       quotes,
       quotesSummary: {
         activeCount: Number(quotesKpis?._count?.id || 0),
         activeTotal: Number(quotesKpis?._sum?.total || 0),
         convertedCount: quotesConverted,
-        totalCount: quotes.length,
+        totalCount: quotesTotalCount,
+        // Tasa de Conversión = Cotizaciones convertidas en venta / Cotizaciones emitidas en el período
+        conversionRate: quotesTotalCount > 0 ? Math.round((quotesConverted / quotesTotalCount) * 1000) / 10 : 0,
       },
       invoices: invoices.map((inv: any) => ({
         id: inv.id,

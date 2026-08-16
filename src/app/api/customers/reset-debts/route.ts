@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       // 1. Reset all customer debts to 0
       await tx.customer.updateMany({
         where: { storeId, totalDebt: { gt: 0 } },
-        data: { totalDebt: 0 },
+        data: { totalDebt: 0, debtSince: null },
       })
 
       // 2. Mark all CREDIT orders as COMPLETED

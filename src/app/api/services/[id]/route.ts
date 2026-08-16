@@ -14,6 +14,7 @@ const updateServiceSchema = z.object({
   price: z.number().int().min(0).optional(),
   icon: z.string().min(1).max(50).optional(),
   unit: z.string().min(1).max(50).optional(),
+  commissionRate: z.number().int().min(0).max(100).optional().nullable(),
   isActive: z.boolean().optional(),
 })
 
@@ -104,6 +105,7 @@ export async function PUT(
         ...(data.price !== undefined && { price: data.price }),
         ...(data.icon !== undefined && { icon: data.icon }),
         ...(data.unit !== undefined && { unit: data.unit }),
+        ...(data.commissionRate !== undefined && { commissionRate: data.commissionRate }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
       },
     })

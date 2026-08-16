@@ -120,6 +120,26 @@ export function CloseCashDialog({
                     {formatCurrency(shiftData.cashSales, currencyCode)}
                   </p>
                 </div>
+                {!!shiftData.cxcCollected && (
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium">
+                      + Recaudos CxC (abonos)
+                    </p>
+                    <p className="text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                      {formatCurrency(shiftData.cxcCollected, currencyCode)}
+                    </p>
+                  </div>
+                )}
+                {!!shiftData.pettyCashExpenses && (
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium">
+                      − Gastos de Caja Menor
+                    </p>
+                    <p className="text-sm font-bold tabular-nums text-red-700 dark:text-red-400">
+                      -{formatCurrency(shiftData.pettyCashExpenses, currencyCode)}
+                    </p>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground font-medium">

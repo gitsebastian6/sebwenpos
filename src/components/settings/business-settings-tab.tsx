@@ -26,6 +26,7 @@ export function BusinessSettingsTab() {
   const [storeAddress, setStoreAddress] = useState(store?.address || '')
   const [storePhone, setStorePhone] = useState(store?.phone || '')
   const [storeCurrency, setStoreCurrency] = useState(store?.currencyCode || 'COP')
+  const [debtOverdueDays, setDebtOverdueDays] = useState(String((store as any)?.debtOverdueDays || 30))
 
   // Tienda Virtual
   const [storeSlug, setStoreSlug] = useState((store as any)?.storeSlug || '')
@@ -38,6 +39,7 @@ export function BusinessSettingsTab() {
     storeAddress !== (store?.address || '') ||
     storePhone !== (store?.phone || '') ||
     storeCurrency !== (store?.currencyCode || 'COP') ||
+    debtOverdueDays !== String((store as any)?.debtOverdueDays || 30) ||
     storeSlug !== ((store as any)?.storeSlug || '') ||
     storeDescription !== ((store as any)?.storeDescription || '') ||
     storeWhatsapp !== ((store as any)?.storeWhatsapp || '') ||
@@ -58,6 +60,7 @@ export function BusinessSettingsTab() {
           address: storeAddress || null,
           phone: storePhone || null,
           currencyCode: storeCurrency,
+          debtOverdueDays: Number(debtOverdueDays) || 30,
           storeSlug: storeSlug || null,
           storeDescription: storeDescription || null,
           storeWhatsapp: storeWhatsapp || null,
@@ -157,6 +160,24 @@ export function BusinessSettingsTab() {
               <SelectItem value="BRL">BRL - Real Brasileño</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <Label htmlFor="debt-overdue-days">Días para que una deuda se considere vencida</Label>
+          <Input
+            id="debt-overdue-days"
+            type="number"
+            min="1"
+            max="365"
+            value={debtOverdueDays}
+            onChange={(e) => setDebtOverdueDays(e.target.value)}
+            className="max-w-[140px] focus-visible:ring-primary/20 focus-visible:border-primary/40"
+          />
+          <p className="text-xs text-muted-foreground">
+            Se usa para calcular el Índice de Morosidad en Informes &gt; CxC.
+          </p>
         </div>
 
         <Button

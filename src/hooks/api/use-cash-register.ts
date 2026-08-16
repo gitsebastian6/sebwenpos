@@ -48,6 +48,8 @@ export interface OpenShiftData {
   cashSales: number
   otherSales: number
   creditSales: number
+  cxcCollected: number
+  pettyCashExpenses: number
   expectedCash: number
   byPayment: Record<string, { count: number; total: number; tips: number }>
   recentOrders: Array<{

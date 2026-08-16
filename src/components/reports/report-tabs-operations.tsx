@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Percent, Receipt, RotateCcw, SlidersHorizontal, DollarSign, Plus, Route, Filter } from 'lucide-react'
+import { Percent, Receipt, RotateCcw, SlidersHorizontal, DollarSign, Plus, Route, Filter, UserCog } from 'lucide-react'
 import type { ReportsData, TaxItem, ReturnItem, AdjustmentItem, TraceabilityItem, IvaByCode, IvaOrder } from './reports-export'
 import { fdate, fdatetime, MOV_TYPE, MOV_BADGE } from './reports-export'
 import { Stat, EmptyState } from './report-shared'
@@ -304,6 +304,31 @@ export function TrazabilidadTab({ d, cc, trazFilter, setTrazFilter, filteredTraz
                   {m.quantity > 0 ? '+' : ''}{m.quantity}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">{m.notes || '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody></Table>
+        </div>
+      </CardContent></Card>
+
+      {/* ── Log de Auditoría (quién hizo qué) ── */}
+      <Card><CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2"><UserCog className="h-4 w-4" />Log de Auditoría</CardTitle>
+        <CardDescription>Registro inmutable de acciones — usuario, fecha, acción, valor anterior y nuevo</CardDescription>
+      </CardHeader><CardContent>
+        <div className="max-h-96 overflow-y-auto">
+          <Table><TableHeader><TableRow><TableHead className="text-xs">Fecha</TableHead><TableHead className="text-xs">Usuario</TableHead><TableHead className="text-xs">Acción</TableHead><TableHead className="text-xs">Entidad</TableHead><TableHead className="text-xs">Cambio</TableHead></TableRow></TableHeader><TableBody>
+            {d.auditLog.length === 0 ? <TableRow><TableCell colSpan={5}><EmptyState icon={UserCog} title="Sin eventos de auditoría en el período" /></TableCell></TableRow> :
+            d.auditLog.map((a) => (
+              <TableRow className="hover:bg-muted/30 transition-colors" key={a.id}>
+                <TableCell className="text-xs whitespace-nowrap">{fdatetime(a.createdAt)}</TableCell>
+                <TableCell className="text-xs font-medium">{a.userName}</TableCell>
+                <TableCell><Badge variant="outline" className="text-[10px]">{a.action}</Badge></TableCell>
+                <TableCell className="text-xs text-muted-foreground">{a.entity}{a.entityId ? ` #${a.entityId}` : ''}</TableCell>
+                <TableCell className="text-xs text-muted-foreground max-w-[280px] truncate">
+                  {a.oldValue || a.newValue
+                    ? `${a.oldValue ? a.oldValue.slice(0, 60) : '—'} → ${a.newValue ? a.newValue.slice(0, 60) : '—'}`
+                    : '—'}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody></Table>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { generateOrderNumber } from '@/lib/auth'
-import { requireStoreAccess } from '@/lib/api-auth'
+import { requireStoreAccess, getAuthUser } from '@/lib/api-auth'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { auditLogFromRequest } from '@/lib/audit-logger'
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(req, data.storeId)
     if (storeAccessError) return storeAccessError
+    const auth = getAuthUser(req)
 
     // ── Subscription gate: block order creation when subscription is expired/cancelled ──
     const subActive = await isSubscriptionActive(data.storeId)
@@ -211,6 +212,37 @@ export async function POST(req: NextRequest) {
     const subtotal = orderItemsData.reduce((sum, i) => sum + i.totalRow, 0)
     const tipAmount = data.tipAmount || 0
 
+    // Calculate discount (before finalizing the tax breakdown — see below)
+    let discountAmount = 0
+    if (data.discountType === 'PERCENTAGE' && data.discountAmount > 0) {
+      discountAmount = Math.round(subtotal * (data.discountAmount / 100))
+    } else if (data.discountType === 'FIXED') {
+      discountAmount = Math.min(data.discountAmount, subtotal)
+    }
+
+    // A discount reduces what the business actually received, so the IVA base
+    // must shrink proportionally too — otherwise the order (and DIAN reporting)
+    // declares tax on money that was never collected. totalRow/unitPrice are
+    // left untouched (they still represent list price, e.g. for the receipt);
+    // only taxBase/taxAmount — the DIAN-facing figures — are discounted.
+    if (discountAmount > 0 && subtotal > 0) {
+      const discountRatio = discountAmount / subtotal
+      for (const item of orderItemsData) {
+        item.taxBase = Math.round(item.taxBase * (1 - discountRatio))
+        item.taxAmount = Math.round(item.taxAmount * (1 - discountRatio))
+      }
+      for (const key of Object.keys(taxBreakdownMap)) delete taxBreakdownMap[key]
+      for (const item of orderItemsData) {
+        if (!item.taxCode) continue
+        if (!taxBreakdownMap[item.taxCode]) {
+          taxBreakdownMap[item.taxCode] = { code: item.taxCode, name: item.taxCode, base: 0, rate: item.taxRate, amount: 0 }
+        }
+        taxBreakdownMap[item.taxCode].base += item.taxBase
+        taxBreakdownMap[item.taxCode].amount += item.taxAmount
+      }
+      orderTaxAmount = orderItemsData.reduce((sum, i) => sum + i.taxAmount, 0)
+    }
+
     // Resolve tax rate names for breakdown
     const allTaxRateIds = new Set<string>()
     for (const key of Object.keys(taxBreakdownMap)) {
@@ -232,13 +264,6 @@ export async function POST(req: NextRequest) {
       ? JSON.stringify(Object.values(taxBreakdownMap))
       : null
 
-    // Calculate discount
-    let discountAmount = 0
-    if (data.discountType === 'PERCENTAGE' && data.discountAmount > 0) {
-      discountAmount = Math.round(subtotal * (data.discountAmount / 100))
-    } else if (data.discountType === 'FIXED') {
-      discountAmount = Math.min(data.discountAmount, subtotal)
-    }
     // In Colombia, prices are tax-inclusive so total = subtotal - discount + tip
     // (tax is already embedded in subtotal/item prices)
     const total = subtotal - discountAmount + tipAmount
@@ -306,6 +331,7 @@ export async function POST(req: NextRequest) {
           storeId: data.storeId,
           customerId: data.customerId ?? null,
           cashRegisterId: targetCashRegisterId,
+          soldByEmployeeId: auth?.employeeId ?? null,
           orderNumber,
           subtotal,
           taxAmount: orderTaxAmount,
@@ -377,6 +403,19 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      // Descuentos en Ventas: contra-revenue account so a discounted sale still
+      // balances (DEBIT Caja/CxC total + DEBIT Descuento = CREDIT Ventas subtotal).
+      // Created lazily so existing stores get it without a backfill migration.
+      const getDescuentoAccount = async () => {
+        const existing = await tx.ledgerAccount.findFirst({
+          where: { storeId: data.storeId, name: 'Descuentos en Ventas' },
+        })
+        if (existing) return existing
+        return tx.ledgerAccount.create({
+          data: { storeId: data.storeId, name: 'Descuentos en Ventas', type: 'EXPENSE', isDefault: false },
+        })
+      }
+
       // 3. Create journal entries (double-entry accounting)
       if (data.paymentMethod !== 'CREDIT' && data.paymentMethod !== 'FIADO') {
         // Find or use default asset account (Caja) and income account (Ventas)
@@ -384,7 +423,7 @@ export async function POST(req: NextRequest) {
           where: { storeId: data.storeId, type: 'ASSET', isDefault: true },
         })
         const ventasAccount = await tx.ledgerAccount.findFirst({
-          where: { storeId: data.storeId, type: 'INCOME' },
+          where: { storeId: data.storeId, name: 'Ventas' },
         })
 
         // DEBIT Caja for full total (subtotal + tip)
@@ -415,6 +454,21 @@ export async function POST(req: NextRequest) {
             },
           })
         }
+        // DEBIT Descuentos en Ventas for discountAmount (if any) — keeps the entry balanced
+        if (discountAmount > 0) {
+          const descuentoAccount = await getDescuentoAccount()
+          await tx.journalEntry.create({
+            data: {
+              storeId: data.storeId,
+              ledgerAccountId: descuentoAccount.id,
+              amount: discountAmount,
+              direction: 'DEBIT',
+              description: `Descuento venta ${orderNumber}`,
+              referenceType: 'ORDER',
+              referenceId: createdOrder.id,
+            },
+          })
+        }
         // CREDIT Propina for tip amount (if any)
         if (tipAmount > 0) {
           const propinaAccount = await tx.ledgerAccount.findFirst({
@@ -438,16 +492,24 @@ export async function POST(req: NextRequest) {
 
       // 4. Update customer debt if CREDIT/FIADO payment
       if ((data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO') && data.customerId) {
+        // Stamp debtSince only when debt starts accruing from $0 (Índice de Morosidad aging proxy)
+        const debtCustomer = await tx.customer.findUnique({
+          where: { id: data.customerId },
+          select: { totalDebt: true },
+        })
         await tx.customer.update({
           where: { id: data.customerId },
-          data: { totalDebt: { increment: total } },
+          data: {
+            totalDebt: { increment: total },
+            ...(debtCustomer && debtCustomer.totalDebt <= 0 ? { debtSince: new Date() } : {}),
+          },
         })
         // Also create accounts receivable journal entry
         const cuentasPorCobrar = await tx.ledgerAccount.findFirst({
           where: { storeId: data.storeId, name: { contains: 'Cuentas por Cobrar' } },
         })
         const ventasAccount = await tx.ledgerAccount.findFirst({
-          where: { storeId: data.storeId, type: 'INCOME' },
+          where: { storeId: data.storeId, name: 'Ventas' },
         })
         if (cuentasPorCobrar) {
           await tx.journalEntry.create({
@@ -470,6 +532,21 @@ export async function POST(req: NextRequest) {
               amount: subtotal,
               direction: 'CREDIT',
               description: `Venta fiada ${orderNumber}`,
+              referenceType: 'ORDER',
+              referenceId: createdOrder.id,
+            },
+          })
+        }
+        // DEBIT Descuentos en Ventas for discountAmount (if any) — keeps the entry balanced
+        if (discountAmount > 0) {
+          const descuentoAccount = await getDescuentoAccount()
+          await tx.journalEntry.create({
+            data: {
+              storeId: data.storeId,
+              ledgerAccountId: descuentoAccount.id,
+              amount: discountAmount,
+              direction: 'DEBIT',
+              description: `Descuento venta fiada ${orderNumber}`,
               referenceType: 'ORDER',
               referenceId: createdOrder.id,
             },

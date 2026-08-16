@@ -51,6 +51,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       'PushManager' in window &&
       'Notification' in window;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-only browser feature-detection, not a render-driven sync
     setIsSupported(supported);
 
     if (supported) {

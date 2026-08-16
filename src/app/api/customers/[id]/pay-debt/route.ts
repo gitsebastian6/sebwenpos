@@ -10,6 +10,7 @@ const payDebtSchema = z.object({
   storeId: z.number().positive(),
   amount: z.number().positive('El monto debe ser mayor a 0'),
   note: z.string().optional(),
+  paymentMethod: z.enum(['CASH', 'NEQUI', 'DAVIPLATA', 'CARD', 'TRANSFER']).default('CASH'),
 })
 
 // POST /api/customers/[id]/pay-debt
@@ -29,7 +30,7 @@ export async function POST(
       )
     }
 
-    const { storeId, amount, note } = parsed.data
+    const { storeId, amount, note, paymentMethod } = parsed.data
     const customerId = Number(id)
 
     const storeAccessErr = requireStoreAccess(request, storeId)
@@ -108,11 +109,32 @@ export async function POST(
         remainingPayment -= appliedToOrder
       }
 
-      // Update customer debt
+      // Update customer debt (clear debtSince once fully paid — see schema comment)
       const newDebt = freshCustomer.totalDebt - effectiveAmount
       await tx.customer.update({
         where: { id: customerId },
-        data: { totalDebt: newDebt },
+        data: { totalDebt: newDebt, ...(newDebt <= 0 ? { debtSince: null } : {}) },
+      })
+
+      // Record the payment (abono) itself — needed for CxC recaudos on cash-register close
+      // and as an audit trail, since Customer.totalDebt is only a running balance.
+      let cashRegisterId: number | null = null
+      if (paymentMethod === 'CASH') {
+        const openShift = await tx.cashRegister.findFirst({
+          where: { storeId, status: 'OPEN' },
+          select: { id: true },
+        })
+        cashRegisterId = openShift?.id ?? null
+      }
+      await tx.customerPayment.create({
+        data: {
+          storeId,
+          customerId,
+          amount: effectiveAmount,
+          paymentMethod,
+          cashRegisterId,
+          notes: note || null,
+        },
       })
 
       // Find or create a Caja ledger account for the journal entry

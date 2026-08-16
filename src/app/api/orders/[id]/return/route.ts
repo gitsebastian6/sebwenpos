@@ -180,9 +180,14 @@ export async function POST(
 
           // Only reduce debt if returnAmount > 0
           if (returnAmount > 0) {
+            const debtCustomer = await tx.customer.findUnique({
+              where: { id: order.customerId },
+              select: { totalDebt: true },
+            })
+            const willBeCleared = !!debtCustomer && debtCustomer.totalDebt - returnAmount <= 0
             await tx.customer.update({
               where: { id: order.customerId },
-              data: { totalDebt: { decrement: returnAmount } },
+              data: { totalDebt: { decrement: returnAmount }, ...(willBeCleared ? { debtSince: null } : {}) },
             })
             logger.info(`Return: reduced customer ${order.customerId} debt by $${returnAmount}`)
           }
@@ -256,7 +261,7 @@ export async function POST(
         let ncSubtotalBase = 0
         let ncTotalTax = 0
         let ncGrandTotal = 0
-        const ncItems: { description: string; quantity: number; unitPrice: number; taxAmount: number; taxBase: number; taxCode: string; taxRate: number }[] = []
+        const ncItems: { productName: string; description: string; quantity: number; unitPrice: number; taxAmount: number; taxBase: number; taxCode: string; taxRate: number }[] = []
 
         for (const reqItem of body.items!) {
           const item = itemMap.get(reqItem.orderItemId)!
@@ -271,6 +276,7 @@ export async function POST(
           ncGrandTotal += totalRow
 
           ncItems.push({
+            productName: item.product?.name || 'Producto',
             description: `Devolución: ${item.product?.name || 'Producto'}`,
             quantity: reqItem.quantity,
             unitPrice,
@@ -385,6 +391,7 @@ export async function POST(
             referencedInvoiceId: invoice.cufe || null,
             referencedPrefix: invoice.prefix,
             referencedConsec: invoice.consecutive,
+            items: JSON.stringify(ncItems),
             status: 'DRAFT',
             testMode: store?.invoiceTestMode ?? true,
             notes: `Auto-generada por devolución de orden #${order.orderNumber}`,

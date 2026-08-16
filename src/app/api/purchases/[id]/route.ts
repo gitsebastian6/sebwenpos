@@ -476,12 +476,24 @@ export async function PUT(
               },
             })
 
+            // Costo Promedio Ponderado (CPP) — same rule as a normal purchase: blend
+            // with existing stock instead of overwriting with the latest unit cost.
+            const productForCpp = await tx.product.findUnique({
+              where: { id: item.productId },
+              select: { costPrice: true, currentStock: true },
+            })
+            const existingStock = Math.max(0, productForCpp?.currentStock ?? 0)
+            const existingCost = productForCpp?.costPrice ?? newUnitCost
+            const newCostPrice = Math.round(
+              (existingStock * existingCost + newQuantity * newUnitCost) / (existingStock + newQuantity)
+            )
+
             // Increment stock
             await tx.product.update({
               where: { id: item.productId },
               data: {
                 currentStock: { increment: newQuantity },
-                costPrice: newUnitCost,
+                costPrice: newCostPrice,
               },
             })
 

@@ -31,6 +31,7 @@ export interface Employee {
   roleId: number | null
   position: string | null
   permissions: string
+  commissionRate: number | null
   isActive: boolean
   createdAt: string
   updatedAt: string

@@ -150,6 +150,8 @@ model Store {
   phone        String?
   currencyCode String   @default("COP") @map("currency_code")
   countryCode  String?  @map("country_code")
+  // Días de antigüedad sin pagar para que una deuda de CxC se considere "vencida" (Índice de Morosidad)
+  debtOverdueDays Int   @default(30) @map("debt_overdue_days")
   // DIAN Resolution (Facturación Electrónica)
   invoicePrefix          String?  @map("invoice_prefix")
   resolutionNumber       String?  @map("resolution_number")
@@ -225,6 +227,7 @@ model Store {
   storeEventLogs     StoreEventLog[]
   wompiTransactions  WompiTransaction[]
   pushSubscriptions  PushSubscription[]
+  customerPayments   CustomerPayment[]
 
   @@map("stores")
 }
@@ -564,6 +567,8 @@ model CreditNote {
   referencedInvoiceId String?  @map("referenced_invoice_id")
   referencedPrefix   String?  @map("referenced_prefix")
   referencedConsec   Int?     @map("referenced_consec")
+  // JSON array of returned line items: { orderItemId, productName, quantity, unitPrice, taxCode, taxRate, taxAmount, taxBase }[]
+  items             String?
   status            String    @default("DRAFT")
   dianResponse      String?   @map("dian_response")
   sentAt            DateTime? @map("sent_at")
@@ -924,24 +929,30 @@ model Customer {
   address         String?
   regime          String?
   totalDebt       Int      @default(0) @map("total_debt")
+  // When the customer's debt started accruing from $0 — reset to null once totalDebt
+  // reaches 0 again. Approximates "how long has this debt been outstanding" for the
+  // Índice de Morosidad (no per-order debt itemization exists to age precisely).
+  debtSince       DateTime? @map("debt_since")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt
 
-  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store          Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
   orders         Order[]
   tableSessions  TableSession[]
   quotations     Quotation[]
+  payments       CustomerPayment[]
 
   @@index([storeId])
   @@map("customers")
 }
 
 model Order {
-  id             Int            @id @default(autoincrement())
-  storeId        Int            @map("store_id")
-  customerId     Int?           @map("customer_id")
-  tableSessionId Int?           @map("table_session_id")
-  cashRegisterId Int?           @map("cash_register_id")
+  id                Int            @id @default(autoincrement())
+  storeId           Int            @map("store_id")
+  customerId        Int?           @map("customer_id")
+  tableSessionId    Int?           @map("table_session_id")
+  cashRegisterId    Int?           @map("cash_register_id")
+  soldByEmployeeId  Int?           @map("sold_by_employee_id")
   orderNumber    String         @map("order_number")
   subtotal       Int
   taxAmount      Int            @default(0) @map("tax_amount")
@@ -961,6 +972,7 @@ model Order {
   customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
   tableSession       TableSession?       @relation(fields: [tableSessionId], references: [id], onDelete: SetNull)
   cashRegister       CashRegister?       @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
+  soldByEmployee     Employee?           @relation(fields: [soldByEmployeeId], references: [id], onDelete: SetNull)
   orderItems         OrderItem[]
   inventoryMovements InventoryMovement[] @relation("OrderMovements")
   invoice            Invoice?
@@ -972,6 +984,7 @@ model Order {
   @@index([customerId])
   @@index([tableSessionId])
   @@index([cashRegisterId])
+  @@index([soldByEmployeeId])
   @@map("orders")
 }
 
@@ -1121,6 +1134,9 @@ model Service {
   price       Int      @default(0)
   icon        String   @default("Star")
   unit        String   @default("servicio")
+  // % de comisión sobre venta neta específico de este servicio — tiene prioridad
+  // sobre el commissionRate del empleado que lo vendió. null/0 = usa el del empleado.
+  commissionRate Int?  @map("commission_rate")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt
@@ -1175,6 +1191,8 @@ model CashRegister {
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
   user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
   orders Order[]
+  expenses Expense[]
+  customerPayments CustomerPayment[]
 
   @@index([storeId, status])
   @@index([userId])
@@ -1193,13 +1211,44 @@ model Expense {
   amount      Int
   date        DateTime @default(now())
   notes       String?
+  // Set only when the expense was paid in cash out of an open register's till
+  // (gasto de caja menor) — used to compute the register's expectedCash on close.
+  cashRegisterId Int?  @map("cash_register_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt
 
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  cashRegister CashRegister? @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
 
   @@index([storeId, date])
+  @@index([cashRegisterId])
   @@map("expenses")
+}
+
+// ----------------------------------------------
+// CONTEXTO: ABONOS A CARTERA (CxC)
+// ----------------------------------------------
+
+model CustomerPayment {
+  id             Int      @id @default(autoincrement())
+  storeId        Int      @map("store_id")
+  customerId     Int      @map("customer_id")
+  amount         Int
+  paymentMethod  String   @default("CASH") @map("payment_method")
+  // Set only when paid in cash into an open register's till — used to compute
+  // the register's expectedCash on close (Recaudos CxC).
+  cashRegisterId Int?     @map("cash_register_id")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  cashRegister CashRegister? @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
+
+  @@index([storeId, createdAt])
+  @@index([customerId])
+  @@index([cashRegisterId])
+  @@map("customer_payments")
 }
 
 // ----------------------------------------------
@@ -1229,19 +1278,23 @@ model Role {
 // ----------------------------------------------
 
 model Employee {
-  id          Int      @id @default(autoincrement())
-  storeId     Int      @map("store_id")
-  userId      Int      @unique @map("user_id")
-  roleId      Int?     @map("role_id")
-  position    String?
-  permissions String   @default("{}") @map("permissions")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  storeId         Int      @map("store_id")
+  userId          Int      @unique @map("user_id")
+  roleId          Int?     @map("role_id")
+  position        String?
+  permissions     String   @default("{}") @map("permissions")
+  // % de comisión sobre venta neta (sin impuestos) cuando el item vendido no tiene
+  // su propio commissionRate en Service — ej. 5 = 5%. null/0 = sin comisión.
+  commissionRate  Int?     @map("commission_rate")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt
 
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  user  User  @relation("EmployeeStore", fields: [userId], references: [id], onDelete: Restrict)
-  role  Role? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  store  Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user   User    @relation("EmployeeStore", fields: [userId], references: [id], onDelete: Restrict)
+  role   Role?   @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  orders Order[]
 
   @@index([storeId])
   @@index([roleId])

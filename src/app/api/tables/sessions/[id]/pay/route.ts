@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { generateOrderNumber } from '@/lib/auth'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
+import { requireStoreAccess, getAuthUser } from '@/lib/api-auth'
 import { isSubscriptionActive } from '@/lib/subscription-helpers'
 import { emitPaymentProcessed, emitComandaItemsUpdated } from '@/lib/tables-sync'
 
@@ -62,6 +62,7 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const auth = getAuthUser(req)
 
     // ── Subscription gate: block payment when subscription is expired/cancelled ──
     const subActive = await isSubscriptionActive(data.storeId)
@@ -203,6 +204,28 @@ export async function POST(
       }
     })
 
+    // A discount reduces what the business actually received, so the IVA base
+    // must shrink proportionally too — otherwise the order (and DIAN reporting)
+    // declares tax on money that was never collected. totalRow/unitPrice are
+    // left untouched; only taxBase/taxAmount — the DIAN-facing figures — are discounted.
+    if (discountAmount > 0 && subtotal > 0) {
+      const discountRatio = discountAmount / subtotal
+      for (const item of orderItemsData) {
+        item.taxBase = Math.round(item.taxBase * (1 - discountRatio))
+        item.taxAmount = Math.round(item.taxAmount * (1 - discountRatio))
+      }
+      for (const key of Object.keys(taxBreakdownMap)) delete taxBreakdownMap[key]
+      for (const item of orderItemsData) {
+        if (!item.taxCode) continue
+        if (!taxBreakdownMap[item.taxCode]) {
+          taxBreakdownMap[item.taxCode] = { code: item.taxCode, name: item.taxCode, base: 0, rate: item.taxRate, amount: 0 }
+        }
+        taxBreakdownMap[item.taxCode].base += item.taxBase
+        taxBreakdownMap[item.taxCode].amount += item.taxAmount
+      }
+      orderTaxAmount = orderItemsData.reduce((sum, i) => sum + i.taxAmount, 0)
+    }
+
     const taxBreakdownJson = Object.keys(taxBreakdownMap).length > 0
       ? JSON.stringify(Object.values(taxBreakdownMap))
       : null
@@ -242,6 +265,7 @@ export async function POST(
           customerId: data.customerId ?? session.customerId ?? null,
           tableSessionId: sid,
           cashRegisterId: targetCashRegisterId,
+          soldByEmployeeId: auth?.employeeId ?? null,
           orderNumber,
           subtotal: subtotal,
           taxAmount: orderTaxAmount,
@@ -306,13 +330,26 @@ export async function POST(
         })
       }
 
+      // Descuentos en Ventas: contra-revenue account so a discounted sale still
+      // balances (DEBIT Caja/CxC total + DEBIT Descuento = CREDIT Ventas subtotal).
+      // Created lazily so existing stores get it without a backfill migration.
+      const getDescuentoAccount = async () => {
+        const existing = await tx.ledgerAccount.findFirst({
+          where: { storeId: data.storeId, name: 'Descuentos en Ventas' },
+        })
+        if (existing) return existing
+        return tx.ledgerAccount.create({
+          data: { storeId: data.storeId, name: 'Descuentos en Ventas', type: 'EXPENSE', isDefault: false },
+        })
+      }
+
       // 5. Create journal entries (double-entry: DEBIT caja, CREDIT ventas)
       if (data.paymentMethod !== 'CREDIT' && data.paymentMethod !== 'FIADO') {
         const cajaAccount = await tx.ledgerAccount.findFirst({
           where: { storeId: data.storeId, type: 'ASSET', isDefault: true },
         })
         const ventasAccount = await tx.ledgerAccount.findFirst({
-          where: { storeId: data.storeId, type: 'INCOME' },
+          where: { storeId: data.storeId, name: 'Ventas' },
         })
 
         // DEBIT Caja for full total (subtotal + tip)
@@ -338,6 +375,21 @@ export async function POST(
               amount: subtotal,
               direction: 'CREDIT',
               description: `Venta ${orderNumber} - ${tableLabel}`,
+              referenceType: 'ORDER',
+              referenceId: createdOrder.id,
+            },
+          })
+        }
+        // DEBIT Descuentos en Ventas for discountAmount (if any) — keeps the entry balanced
+        if (discountAmount > 0) {
+          const descuentoAccount = await getDescuentoAccount()
+          await tx.journalEntry.create({
+            data: {
+              storeId: data.storeId,
+              ledgerAccountId: descuentoAccount.id,
+              amount: discountAmount,
+              direction: 'DEBIT',
+              description: `Descuento venta ${orderNumber} - ${tableLabel}`,
               referenceType: 'ORDER',
               referenceId: createdOrder.id,
             },
@@ -369,7 +421,7 @@ export async function POST(
           where: { storeId: data.storeId, name: { contains: 'Cuentas por Cobrar' } },
         })
         const ventasAccount = await tx.ledgerAccount.findFirst({
-          where: { storeId: data.storeId, type: 'INCOME' },
+          where: { storeId: data.storeId, name: 'Ventas' },
         })
 
         if (cuentasPorCobrar) {
@@ -385,12 +437,14 @@ export async function POST(
             },
           })
         }
+        // CREDIT Ventas for subtotal (not total — a discount is its own contra-entry below,
+        // consistent with the cash-sale branch above and with src/app/api/orders/route.ts)
         if (ventasAccount) {
           await tx.journalEntry.create({
             data: {
               storeId: data.storeId,
               ledgerAccountId: ventasAccount.id,
-              amount: total,
+              amount: subtotal,
               direction: 'CREDIT',
               description: `Venta fiada ${orderNumber} - ${tableLabel}`,
               referenceType: 'ORDER',
@@ -398,12 +452,36 @@ export async function POST(
             },
           })
         }
+        // DEBIT Descuentos en Ventas for discountAmount (if any) — keeps the entry balanced
+        if (discountAmount > 0) {
+          const descuentoAccount = await getDescuentoAccount()
+          await tx.journalEntry.create({
+            data: {
+              storeId: data.storeId,
+              ledgerAccountId: descuentoAccount.id,
+              amount: discountAmount,
+              direction: 'DEBIT',
+              description: `Descuento venta fiada ${orderNumber} - ${tableLabel}`,
+              referenceType: 'ORDER',
+              referenceId: createdOrder.id,
+            },
+          })
+        }
 
-        // Update customer debt if customerId is provided
+        // Update customer debt if customerId is provided (total = subtotal - discount,
+        // matching what the CxC journal entry above actually debits)
         if (customerId) {
+          // Stamp debtSince only when debt starts accruing from $0 (Índice de Morosidad aging proxy)
+          const debtCustomer = await tx.customer.findUnique({
+            where: { id: customerId },
+            select: { totalDebt: true },
+          })
           await tx.customer.update({
             where: { id: customerId },
-            data: { totalDebt: { increment: subtotal } },
+            data: {
+              totalDebt: { increment: total },
+              ...(debtCustomer && debtCustomer.totalDebt <= 0 ? { debtSince: new Date() } : {}),
+            },
           })
         }
       }

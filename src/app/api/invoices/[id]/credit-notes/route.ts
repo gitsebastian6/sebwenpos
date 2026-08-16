@@ -12,6 +12,11 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+// Same labels used in the credit-note PDF (src/app/api/credit-notes/[id]/pdf/route.ts)
+const RETURN_CODE_LABELS: Record<string, string> = {
+  '01': 'Devolución Parcial', '02': 'Anulación', '03': 'Descuento', '04': 'Bonificación', '05': 'Ajuste',
+}
+
 // ─── Esquemas de validación ───────────────────────────────────────────────
 
 const creditNoteItemSchema = z.object({
@@ -414,6 +419,7 @@ export async function POST(
           // Numeración DIAN
           prefix: 'NC',
           consecutive: consecResult.consecutive,
+          concept: body.reason?.trim() || RETURN_CODE_LABELS[body.returnCode ?? '01'] || 'Nota crédito',
           resolutionNumber: consecResult.resolutionNumber,
           resolutionDate: consecResult.startDate ? new Date(consecResult.resolutionDate) : null,
           startDate: consecResult.startDate,
@@ -448,10 +454,12 @@ export async function POST(
           cufe,
           qrCode,
           notes: body.notes ?? null,
+          // Detalle de items devueltos (para mostrar en API/PDF)
+          items: JSON.stringify(returnedItemsData),
           // Estado
           status: consecResult.testMode ? 'DRAFT' : 'PENDING_VALIDATE',
           testMode: consecResult.testMode,
-        } as any,
+        },
       })
 
       // 9. Update returnedQuantity for each OrderItem
@@ -547,7 +555,7 @@ export async function POST(
         totalWithTax: Number(creditNote.totalWithTax),
         grandTotal: Number(creditNote.grandTotal),
         // Items
-        items: JSON.parse((creditNote as any).items || '[]'),
+        items: JSON.parse(creditNote.items || '[]'),
         // Motivo
         reason: creditNote.reason,
         returnCode: creditNote.returnCode,

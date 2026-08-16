@@ -97,6 +97,14 @@ export async function POST(request: NextRequest) {
         throw new Error('No se encontró cuenta de caja (ASSET default). Crea una en Contabilidad > Cuentas.')
       }
 
+      // This route always debits Caja for the expense (see journal entries below), so
+      // if a register is currently open, link this expense to it — it needs to be
+      // subtracted from that shift's expectedCash on close (gasto de caja menor).
+      const openShift = await tx.cashRegister.findFirst({
+        where: { storeId, status: 'OPEN' },
+        select: { id: true },
+      })
+
       // Create expense record
       const exp = await tx.expense.create({
         data: {
@@ -106,6 +114,7 @@ export async function POST(request: NextRequest) {
           amount,
           date: dateObj,
           notes,
+          cashRegisterId: openShift?.id ?? null,
         },
       })
 

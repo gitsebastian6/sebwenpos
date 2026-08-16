@@ -14,6 +14,7 @@ const updateEmployeeSchema = z.object({
   phone: z.string().optional().nullable(),
   email: z.string().email().optional().nullable(),
   roleId: z.number().int().positive().optional().nullable(),
+  commissionRate: z.number().int().min(0).max(100).optional().nullable(),
 })
 
 // GET /api/employees/[id]
@@ -73,6 +74,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (data.roleId !== undefined) updateData.roleId = data.roleId
     if (data.isActive !== undefined) updateData.isActive = data.isActive
     if (data.permissions !== undefined) updateData.permissions = JSON.stringify(data.permissions)
+    if (data.commissionRate !== undefined) updateData.commissionRate = data.commissionRate
     if (data.fullName !== undefined) userUpdateData.fullName = data.fullName
     if (data.phone !== undefined) userUpdateData.phone = data.phone
     if (data.email !== undefined) userUpdateData.email = data.email

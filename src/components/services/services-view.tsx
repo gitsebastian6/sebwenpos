@@ -73,6 +73,7 @@ interface Service {
   price: number
   icon: string
   unit: string
+  commissionRate: number | null
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -204,6 +205,7 @@ export function ServicesView() {
   const [editPrice, setEditPrice] = useState('')
   const [editIcon, setEditIcon] = useState('Star')
   const [editUnit, setEditUnit] = useState('servicio')
+  const [editCommissionRate, setEditCommissionRate] = useState('')
   const [isSavingService, setIsSavingService] = useState(false)
 
   // Edit transaction dialog
@@ -263,6 +265,7 @@ export function ServicesView() {
     setEditPrice(String(s.price))
     setEditIcon(s.icon)
     setEditUnit(s.unit)
+    setEditCommissionRate(s.commissionRate != null ? String(s.commissionRate) : '')
   }
 
   async function handleSaveService() {
@@ -275,6 +278,7 @@ export function ServicesView() {
           name: editName.trim(),
           description: editDescription.trim() || null,
           price: Math.round(parseFloat(editPrice)),
+          commissionRate: editCommissionRate !== '' ? Number(editCommissionRate) : null,
           icon: editIcon,
           unit: editUnit,
         },
@@ -874,6 +878,10 @@ export function ServicesView() {
             <div className="space-y-2">
               <Label>Ícono</Label>
               <CategoryIconPicker value={editIcon} onChange={setEditIcon} />
+            </div>
+            <div className="space-y-2">
+              <Label>% Comisión (opcional)</Label>
+              <Input type="number" min="0" max="100" placeholder="Usa la del empleado si se deja vacío" value={editCommissionRate} onChange={(e) => setEditCommissionRate(e.target.value)} />
             </div>
           </div>
           <DialogFooter>

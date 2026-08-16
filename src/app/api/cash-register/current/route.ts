@@ -73,6 +73,15 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Same formula as the close endpoint (src/app/api/cash-register/[id]/route.ts):
+      // Fondo Inicial + Ventas Efectivo + Recaudos CxC - Gastos Caja Menor
+      const [cashPayments, cashExpenses] = await Promise.all([
+        db.customerPayment.aggregate({ where: { cashRegisterId: shift.id, paymentMethod: 'CASH' }, _sum: { amount: true } }),
+        db.expense.aggregate({ where: { cashRegisterId: shift.id }, _sum: { amount: true } }),
+      ])
+      const cxcCollected = cashPayments._sum.amount ?? 0
+      const pettyCashExpenses = cashExpenses._sum.amount ?? 0
+
       return {
         shift,
         orderCount: orders.length,
@@ -81,7 +90,9 @@ export async function GET(request: NextRequest) {
         cashSales,
         otherSales,
         creditSales,
-        expectedCash: shift.openingBalance + cashSales,
+        cxcCollected,
+        pettyCashExpenses,
+        expectedCash: shift.openingBalance + cashSales + cxcCollected - pettyCashExpenses,
         byPayment,
         recentOrders: orders.slice(0, 15).map((o) => ({
           id: o.id,

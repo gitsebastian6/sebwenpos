@@ -15,7 +15,7 @@ export interface TraceabilityItem { id: number; createdAt: string; movementType:
 export interface QuoteItem { id: number; createdAt: string; quotationNumber: string; customerName: string | null; customer?: { name: string } | null; total: number; items?: unknown[]; status: string; validUntil?: string | null }
 export interface InvoiceItem { id: number; createdAt: string; invoiceNumber: string; customerName: string; grandTotal: number; status: string; testMode: boolean; cufe?: string | null }
 export interface CreditNoteItem { id: number; createdAt: string; noteNumber: string; noteType: string; customerName: string; totalAmount: number; status: string; invoiceNumber: string | null }
-export interface DebtItem { id: number; name: string; phone: string | null; totalDebt: number }
+export interface DebtItem { id: number; name: string; phone: string | null; totalDebt: number; debtSince: string | null }
 export interface IvaByCode { name: string; code: string; rate: number; base: number; amount: number }
 export interface IvaOrder { id: number; orderNumber: string; createdAt: string; taxAmount: number; subtotal: number; total: number; customer?: { name: string } | null }
 export interface TaxItem { id: number; date: string; description: string; amount: number; notes?: string }
@@ -30,7 +30,7 @@ export interface ReportsData {
     openTables: number; totalDebt: number; debtCount: number;
   }
   sales: {
-    total: number; orderCount: number; avgTicket: number;
+    total: number; grossTotal: number; orderCount: number; avgTicket: number;
     byPayment: Record<string, SalesPaymentEntry>; byCategory: Record<string, SalesCategoryEntry>;
     bySource: Record<string, SalesPaymentEntry>; topProducts: TopProduct[];
   }
@@ -41,7 +41,7 @@ export interface ReportsData {
   }
   profitability: {
     revenue: number; cogs: number; grossProfit: number; grossMargin: number;
-    netRevenue: number; netProfit: number; netMargin: number; discounts: number; tips: number;
+    netRevenue: number; netProfit: number; netMargin: number; discounts: number; returns: number; losses: number; tips: number;
   }
   breakEven: {
     breakEvenPoint: number; distanceToBreakEven: number; achievedPercent: number;
@@ -51,14 +51,17 @@ export interface ReportsData {
   returns: { items: ReturnItem[]; totalValue: number }
   cashRegisters: CashRegister[]
   commissions: { items: CommissionItem[]; total: number; count: number }
+  employeeCommissions: { items: Array<{ employeeId: number; name: string; position: string | null; base: number; commission: number }>; total: number }
   adjustments: { items: AdjustmentItem[]; count: number }
   taxes: { items: TaxItem[]; total: number; count: number }
   expenses: { items: ExpenseItem[]; total: number; byCategory: Record<string, ExpenseCategoryEntry> }
   discounts: { items: DiscountItem[]; total: number; count: number }
   traceability: TraceabilityItem[]
+  auditLog: Array<{ id: number; userName: string; action: string; entity: string; entityId: number | null; oldValue: string | null; newValue: string | null; createdAt: string }>
   debts: DebtItem[]
+  delinquencyIndex: { overdueDebtTotal: number; totalDebtTotal: number; rate: number; overdueDays: number }
   quotes: QuoteItem[]
-  quotesSummary: { activeCount: number; activeTotal: number; convertedCount: number; totalCount: number } | null
+  quotesSummary: { activeCount: number; activeTotal: number; convertedCount: number; totalCount: number; conversionRate: number } | null
   invoices: InvoiceItem[]
   invoicesSummary: { total: number; count: number; validated: number; pending: number; rejected: number }
   creditNotes: CreditNoteItem[]
@@ -286,7 +289,9 @@ export function getExportData(
         ['Utilidad Bruta', p.grossProfit],
         ['Margen Bruto', `${p.grossMargin}%`],
         ['Descuentos', p.discounts],
+        ['Devoluciones', p.returns],
         ['Ingresos Netos', p.netRevenue],
+        ['Pérdidas (merma)', p.losses],
         ['Utilidad Neta', p.netProfit],
         ['Margen Neto', `${p.netMargin}%`],
         ['Propinas del Período', p.tips],
