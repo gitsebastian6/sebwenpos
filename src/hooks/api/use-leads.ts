@@ -2,20 +2,28 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryFetch, mutationFetch, throwIfNotOk } from './query-helpers'
-import type { LeadData, LeadsStats } from '@/components/super-admin/types'
+import type { LeadData, LeadsStats, LeadDocumentData, LeadActivityData, LeadContactData } from '@/components/super-admin/types'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+export const CRM_STAGES = ['LEAD', 'CONTACTADO', 'DOC_PENDIENTE', 'VALIDACION_LEGAL', 'CLIENTE_ACTIVO', 'RECHAZADO'] as const
+export type CrmStage = typeof CRM_STAGES[number]
+export const REQUIRED_DOCUMENT_TYPES = ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REPRESENTANTE', 'RESOLUCION_DIAN'] as const
+export type DocumentType = typeof REQUIRED_DOCUMENT_TYPES[number]
+
 export interface LeadsListResponse {
   leads: LeadData[]
   stats: LeadsStats
+  stageStats: Record<CrmStage, number>
 }
 
 export interface LeadsListParams {
   status?: string
+  stage?: string
   search?: string
+  assignedToId?: number
 }
 
 export interface UpdateLeadPayload {
@@ -47,6 +55,19 @@ export interface UpdateLeadPayload {
   camaraFileBase64?: string
   camaraFileName?: string
   camaraFileType?: string
+  // Pipeline CRM
+  stage?: CrmStage
+  assignedToId?: number | null
+  // Datos fiscales
+  taxRegime?: string | null
+  fiscalResponsibilities?: string | null
+  // Resolución DIAN (borrador)
+  resolutionPrefix?: string | null
+  resolutionNumber?: string | null
+  resolutionStartDate?: string | null
+  resolutionEndDate?: string | null
+  resolutionStartNumber?: number | null
+  resolutionEndNumber?: number | null
 }
 
 export interface ApproveLeadResponse {
@@ -73,7 +94,9 @@ export const leadsKeys = {
 export function useLeads(params: LeadsListParams = {}) {
   const sp = new URLSearchParams()
   if (params.status) sp.set('status', params.status)
+  if (params.stage) sp.set('stage', params.stage)
   if (params.search?.trim()) sp.set('search', params.search.trim())
+  if (params.assignedToId) sp.set('assignedToId', String(params.assignedToId))
 
   return useQuery<LeadsListResponse>({
     queryKey: leadsKeys.list(params),
@@ -141,4 +164,159 @@ export async function downloadLeadFile(leadId: number, type: 'rut' | 'camara'): 
     throw new Error('Error al descargar el documento')
   }
   return res.blob()
+}
+
+// ---------------------------------------------------------------------------
+// Expediente Legal — LeadDocument
+// ---------------------------------------------------------------------------
+
+export function useLeadDocuments(leadId: number | undefined | null) {
+  return useQuery<{ documents: LeadDocumentData[] }>({
+    queryKey: ['leads', 'documents', leadId],
+    queryFn: () => queryFetch(`/api/super-admin/leads/${leadId}/documents`),
+    enabled: !!leadId,
+    staleTime: 10_000,
+  })
+}
+
+export function useUploadLeadDocument() {
+  const qc = useQueryClient()
+  return useMutation<
+    { document: LeadDocumentData; newStage: string | null },
+    Error,
+    { leadId: number; documentType: DocumentType; fileBase64: string; fileName: string; fileType: string }
+  >({
+    mutationFn: ({ leadId, ...body }) =>
+      mutationFetch(`/api/super-admin/leads/${leadId}/documents`, 'POST', body),
+    onSuccess: (_data, { leadId }) => {
+      qc.invalidateQueries({ queryKey: ['leads', 'documents', leadId] })
+      qc.invalidateQueries({ queryKey: ['leads', 'activities', leadId] })
+      qc.invalidateQueries({ queryKey: leadsKeys.all })
+      qc.invalidateQueries({ queryKey: leadsKeys.detail(leadId) })
+    },
+  })
+}
+
+export function useReviewLeadDocument() {
+  const qc = useQueryClient()
+  return useMutation<
+    { document: LeadDocumentData; newStage: string | null },
+    Error,
+    { leadId: number; docId: number; status: 'APPROVED' | 'REJECTED'; rejectionReason?: string }
+  >({
+    mutationFn: ({ leadId, docId, ...body }) =>
+      mutationFetch(`/api/super-admin/leads/${leadId}/documents/${docId}`, 'PATCH', body),
+    onSuccess: (_data, { leadId }) => {
+      qc.invalidateQueries({ queryKey: ['leads', 'documents', leadId] })
+      qc.invalidateQueries({ queryKey: ['leads', 'activities', leadId] })
+      qc.invalidateQueries({ queryKey: leadsKeys.all })
+      qc.invalidateQueries({ queryKey: leadsKeys.detail(leadId) })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Actividad / timeline
+// ---------------------------------------------------------------------------
+
+export function useLeadActivities(leadId: number | undefined | null) {
+  return useQuery<{ activities: LeadActivityData[] }>({
+    queryKey: ['leads', 'activities', leadId],
+    queryFn: () => queryFetch(`/api/super-admin/leads/${leadId}/activities`),
+    enabled: !!leadId,
+    staleTime: 10_000,
+  })
+}
+
+export function useCreateLeadActivity() {
+  const qc = useQueryClient()
+  return useMutation<
+    { activity: LeadActivityData },
+    Error,
+    { leadId: number; type: 'NOTE' | 'CALL' | 'TASK' | 'WHATSAPP' | 'EMAIL'; title: string; description?: string; dueDate?: string }
+  >({
+    mutationFn: ({ leadId, ...body }) =>
+      mutationFetch(`/api/super-admin/leads/${leadId}/activities`, 'POST', body),
+    onSuccess: (_data, { leadId }) => {
+      qc.invalidateQueries({ queryKey: ['leads', 'activities', leadId] })
+    },
+  })
+}
+
+export function useCompleteLeadActivity() {
+  const qc = useQueryClient()
+  return useMutation<unknown, Error, { leadId: number; activityId: number; completed?: boolean }>({
+    mutationFn: ({ leadId, activityId, completed = true }) =>
+      mutationFetch(`/api/super-admin/leads/${leadId}/activities/${activityId}`, 'PATCH', { completed }),
+    onSuccess: (_data, { leadId }) => {
+      qc.invalidateQueries({ queryKey: ['leads', 'activities', leadId] })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Contactos adicionales
+// ---------------------------------------------------------------------------
+
+export function useLeadContacts(leadId: number | undefined | null) {
+  return useQuery<{ contacts: LeadContactData[] }>({
+    queryKey: ['leads', 'contacts', leadId],
+    queryFn: () => queryFetch(`/api/super-admin/leads/${leadId}/contacts`),
+    enabled: !!leadId,
+    staleTime: 15_000,
+  })
+}
+
+export function useCreateLeadContact() {
+  const qc = useQueryClient()
+  return useMutation<
+    { contact: LeadContactData },
+    Error,
+    { leadId: number; fullName: string; cedula?: string; role: string; email?: string; phone?: string; isPrimary?: boolean }
+  >({
+    mutationFn: ({ leadId, ...body }) =>
+      mutationFetch(`/api/super-admin/leads/${leadId}/contacts`, 'POST', body),
+    onSuccess: (_data, { leadId }) => {
+      qc.invalidateQueries({ queryKey: ['leads', 'contacts', leadId] })
+    },
+  })
+}
+
+export function useDeleteLeadContact() {
+  const qc = useQueryClient()
+  return useMutation<unknown, Error, { leadId: number; contactId: number }>({
+    mutationFn: ({ leadId, contactId }) =>
+      fetch(`/api/super-admin/leads/${leadId}/contacts/${contactId}`, { method: 'DELETE' }).then(throwIfNotOk),
+    onSuccess: (_data, { leadId }) => {
+      qc.invalidateQueries({ queryKey: ['leads', 'contacts', leadId] })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Alertas de vencimiento — Resolución DIAN
+// ---------------------------------------------------------------------------
+
+export interface CrmAlertRow {
+  id: number
+  nit: string
+  resolutionEndDate: string | null
+  alertStatus: 'EXPIRED' | 'EXPIRING_SOON'
+  daysRemaining: number | null
+}
+export interface CrmAlertLeadRow extends CrmAlertRow {
+  storeName: string
+  stage: string
+  assignedTo: { id: number; fullName: string | null } | null
+}
+export interface CrmAlertStoreRow extends CrmAlertRow {
+  name: string
+}
+
+export function useCrmAlerts() {
+  return useQuery<{ leads: CrmAlertLeadRow[]; stores: CrmAlertStoreRow[]; warningWindowDays: number }>({
+    queryKey: ['crm', 'alerts'],
+    queryFn: () => queryFetch('/api/super-admin/crm/alerts'),
+    staleTime: 60_000,
+  })
 }

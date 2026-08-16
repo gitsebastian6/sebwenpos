@@ -4,12 +4,16 @@ import { getAuthUser } from '@/lib/api-auth'
 import { logger } from '@/lib/logger'
 import { logStoreEvent } from '@/lib/event-logger'
 import { logSubscriptionHistory } from '@/lib/subscription-helpers'
+import { REQUIRED_DOCUMENT_TYPES } from '../documents/route'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * POST /api/super-admin/leads/[id]/approve
- * Convert an APPROVED lead into a full Store account (User + Store + Subscription).
+ * Convert a lead in VALIDACION_LEGAL — with its 4 required legal documents
+ * approved and a valid DIAN resolution — into a full Store account
+ * (User + Store + Subscription). Also copies the fiscal/resolution data
+ * captured during the CRM onboarding straight onto the new Store.
  */
 export async function POST(
   _req: NextRequest,
@@ -32,9 +36,29 @@ export async function POST(
       return NextResponse.json({ error: 'Lead no encontrado' }, { status: 404 })
     }
 
-    if (lead.status !== 'APPROVED') {
+    if (lead.stage !== 'VALIDACION_LEGAL') {
       return NextResponse.json(
-        { error: `Solo se pueden convertir leads en estado APPROVED. Estado actual: ${lead.status}` },
+        { error: `Solo se pueden convertir leads en etapa Validación Legal. Etapa actual: ${lead.stage}` },
+        { status: 409 },
+      )
+    }
+
+    const allDocs = await db.leadDocument.findMany({ where: { leadId } })
+    for (const type of REQUIRED_DOCUMENT_TYPES) {
+      const latest = allDocs
+        .filter((d) => d.documentType === type)
+        .sort((a, b) => b.version - a.version)[0]
+      if (!latest || latest.status !== 'APPROVED') {
+        return NextResponse.json(
+          { error: `El documento "${type}" aún no está aprobado. No se puede activar la cuenta.` },
+          { status: 409 },
+        )
+      }
+    }
+
+    if (!lead.resolutionEndDate || lead.resolutionEndDate <= new Date()) {
+      return NextResponse.json(
+        { error: 'La Resolución DIAN no tiene una fecha de vigencia futura registrada.' },
         { status: 409 },
       )
     }
@@ -97,6 +121,15 @@ export async function POST(
               countryCode: 'CO',
               cityName: lead.cityName,
               divipolaCode: null,
+              // Datos fiscales y de Resolución DIAN capturados durante el onboarding CRM
+              taxRegime: lead.taxRegime,
+              fiscalResponsibilities: lead.fiscalResponsibilities,
+              invoicePrefix: lead.resolutionPrefix,
+              resolutionNumber: lead.resolutionNumber,
+              resolutionStartDate: lead.resolutionStartDate,
+              resolutionEndDate: lead.resolutionEndDate,
+              resolutionStartNumber: lead.resolutionStartNumber,
+              resolutionEndNumber: lead.resolutionEndNumber,
             },
           },
         },
@@ -194,14 +227,23 @@ export async function POST(
         },
       })
 
-      // 7. Mark lead as CONVERTED
+      // 7. Mark lead as CONVERTED / Cliente Activo
       await tx.lead.update({
         where: { id: leadId },
         data: {
           status: 'CONVERTED',
+          stage: 'CLIENTE_ACTIVO',
           convertedStoreId: storeId,
           reviewedBy: 'SUPER_ADMIN',
           reviewedAt: now,
+        },
+      })
+
+      await tx.leadActivity.create({
+        data: {
+          leadId,
+          type: 'STAGE_CHANGE',
+          title: 'Etapa: Validación Legal → Cliente Activo (cuenta creada)',
         },
       })
 

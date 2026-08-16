@@ -73,6 +73,9 @@ model User {
   cashRegisters     CashRegister[]
   purchases        Purchase[]       @relation("UserPurchases")
   purchasePaymentRecords PurchasePayment[] @relation("UserPurchasePayments")
+  assignedLeads       Lead[]         @relation("LeadAssignedTo")
+  leadDocumentReviews LeadDocument[] @relation("LeadDocumentReviewer")
+  leadActivities      LeadActivity[] @relation("LeadActivityCreator")
 
   @@map("users")
 }
@@ -171,6 +174,9 @@ model Store {
   // DIVIPOLA (código municipio DIAN)
   divipolaCode           String?  @map("divipola_code")
   cityName               String?  @map("city_name")
+  // Datos fiscales (capturados en el CRM legal durante el onboarding, ver Lead)
+  taxRegime              String?  @map("tax_regime")
+  fiscalResponsibilities String?  @map("fiscal_responsibilities")
   // Certificate management
   certUploadedAt    DateTime? @map("cert_uploaded_at")
   certExpiresAt     DateTime? @map("cert_expires_at")
@@ -365,7 +371,7 @@ model BillingRecord {
 
 model Lead {
   id                Int       @id @default(autoincrement())
-  // ── Contacto ──
+  // ── Contacto primario (compat — ver también Contact para contactos adicionales) ──
   ownerFullName     String    @map("owner_full_name")
   ownerCedula       String    @map("owner_cedula")
   ownerEmail        String?   @map("owner_email")
@@ -382,7 +388,17 @@ model Lead {
   address           String?   @map("address")
   hasCamaraComercio Boolean   @default(false) @map("has_camara_comercio")
   registrationNumber String? @map("registration_number")
-  // ── Documentos adjuntos ──
+  // ── Datos fiscales (CRM legal — se copian a Store en la conversión) ──
+  taxRegime         String?   @map("tax_regime") // Responsable de IVA, No Responsable, Régimen Simple...
+  fiscalResponsibilities String? @map("fiscal_responsibilities") // JSON array de códigos RUT casilla 53
+  // ── Resolución DIAN (capturable antes de la conversión — mismo nombre que Store para copia directa) ──
+  resolutionPrefix      String?   @map("resolution_prefix")
+  resolutionNumber      String?   @map("resolution_number")
+  resolutionStartDate   DateTime? @map("resolution_start_date")
+  resolutionEndDate     DateTime? @map("resolution_end_date")
+  resolutionStartNumber Int?      @map("resolution_start_number")
+  resolutionEndNumber   Int?      @map("resolution_end_number")
+  // ── Documentos adjuntos (legacy — se está migrando a LeadDocument, ver abajo) ──
   rutFilePath       String?   @map("rut_file_path")      // RUT/Documento tributario
   rutFileName       String?   @map("rut_file_name")
   rutFileSize       Int?      @map("rut_file_size")
@@ -391,8 +407,11 @@ model Lead {
   camaraFileName    String?   @map("camara_file_name")
   camaraFileSize    Int?      @map("camara_file_size")
   camaraFileType    String?   @map("camara_file_type")
-  // ── Estado ──
-  status            String    @default("NEW") // NEW, CONTACTED, APPROVED, REJECTED, CONVERTED
+  // ── Pipeline CRM ──
+  stage             String    @default("LEAD") @map("stage")
+  // LEAD, CONTACTADO, DOC_PENDIENTE, VALIDACION_LEGAL, CLIENTE_ACTIVO, RECHAZADO
+  assignedToId      Int?      @map("assigned_to_id") // Asesor comercial responsable
+  status            String    @default("NEW") // legacy — NEW, CONTACTED, APPROVED, REJECTED, CONVERTED (ver stage)
   source            String    @default("WEB") // WEB, WHATSAPP, REFERRAL
   notes             String?   // Notas del super admin
   reviewedBy        String?   @map("reviewed_by")
@@ -401,10 +420,90 @@ model Lead {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt
 
+  // Asesor comercial (usuario Super Admin) responsable del lead — no es Employee,
+  // que pertenece al staff de un tenant ya creado.
+  assignedTo User? @relation("LeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  contacts   Contact[]
+  documents  LeadDocument[]
+  activities LeadActivity[]
+
   @@index([status])
+  @@index([stage])
+  @@index([assignedToId])
   @@index([ownerCedula])
   @@index([nit])
   @@map("leads")
+}
+
+// ----------------------------------------------
+// CONTEXTO: CRM — CONTACTOS ADICIONALES DEL LEAD
+// ----------------------------------------------
+
+model Contact {
+  id        Int      @id @default(autoincrement())
+  leadId    Int      @map("lead_id")
+  fullName  String   @map("full_name")
+  cedula    String?
+  role      String   @default("OTRO") // REPRESENTANTE_LEGAL, CONTADOR, ENCARGADO, OTRO
+  email     String?
+  phone     String?
+  isPrimary Boolean  @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_contacts")
+}
+
+// ----------------------------------------------
+// CONTEXTO: CRM — EXPEDIENTE LEGAL (documentos DIAN)
+// ----------------------------------------------
+
+model LeadDocument {
+  id              Int       @id @default(autoincrement())
+  leadId          Int       @map("lead_id")
+  documentType    String    @map("document_type")
+  // RUT, CAMARA_COMERCIO, CEDULA_REPRESENTANTE, RESOLUCION_DIAN
+  filePath        String    @map("file_path")
+  fileName        String    @map("file_name")
+  fileSize        Int       @map("file_size")
+  fileType        String    @map("file_type")
+  status          String    @default("PENDING") @map("status") // PENDING, APPROVED, REJECTED
+  rejectionReason String?   @map("rejection_reason")
+  version         Int       @default(1)
+  uploadedAt      DateTime  @default(now()) @map("uploaded_at")
+  reviewedBy      Int?      @map("reviewed_by")
+  reviewedAt      DateTime? @map("reviewed_at")
+
+  lead     Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  reviewer User? @relation("LeadDocumentReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([leadId, documentType])
+  @@map("lead_documents")
+}
+
+// ----------------------------------------------
+// CONTEXTO: CRM — ACTIVIDAD Y BITÁCORA COMERCIAL
+// ----------------------------------------------
+
+model LeadActivity {
+  id          Int       @id @default(autoincrement())
+  leadId      Int       @map("lead_id")
+  type        String    // NOTE, CALL, TASK, WHATSAPP, STAGE_CHANGE, DOCUMENT_EVENT
+  title       String
+  description String?
+  dueDate     DateTime? @map("due_date")
+  completedAt DateTime? @map("completed_at")
+  createdById Int?      @map("created_by_id") // null = generado por el sistema
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  lead      Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("LeadActivityCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([leadId, createdAt])
+  @@map("lead_activities")
 }
 
 model PaymentReceipt {

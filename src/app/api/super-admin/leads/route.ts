@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger'
 export const dynamic = 'force-dynamic'
 
 const validStatuses = ['NEW', 'CONTACTED', 'APPROVED', 'REJECTED', 'CONVERTED'] as const
+export const VALID_STAGES = ['LEAD', 'CONTACTADO', 'DOC_PENDIENTE', 'VALIDACION_LEGAL', 'CLIENTE_ACTIVO', 'RECHAZADO'] as const
 
 // ─── Schema for manual lead creation ───
 const createLeadSchema = z.object({
@@ -34,13 +35,21 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
+    const stage = searchParams.get('stage')
     const search = searchParams.get('search')
+    const assignedToId = searchParams.get('assignedToId')
 
     // ─── Build where clause ───
     const where: Record<string, unknown> = {}
 
     if (status && validStatuses.includes(status as typeof validStatuses[number])) {
       where.status = status
+    }
+    if (stage && VALID_STAGES.includes(stage as typeof VALID_STAGES[number])) {
+      where.stage = stage
+    }
+    if (assignedToId) {
+      where.assignedToId = Number(assignedToId)
     }
 
     if (search) {
@@ -54,19 +63,23 @@ export async function GET(req: NextRequest) {
     }
 
     // ─── Fetch leads and stats in parallel ───
-    const [leads, statsNew, statsContacted, statsApproved, statsRejected, statsConverted] = await Promise.all([
+    const [leads, statsNew, statsContacted, statsApproved, statsRejected, statsConverted, stageCounts] = await Promise.all([
       db.lead.findMany({
         where: Object.keys(where).length > 0 ? where : undefined,
         orderBy: { createdAt: 'desc' },
+        include: { assignedTo: { select: { id: true, fullName: true } } },
       }),
       db.lead.count({ where: { status: 'NEW' } }),
       db.lead.count({ where: { status: 'CONTACTED' } }),
       db.lead.count({ where: { status: 'APPROVED' } }),
       db.lead.count({ where: { status: 'REJECTED' } }),
       db.lead.count({ where: { status: 'CONVERTED' } }),
+      db.lead.groupBy({ by: ['stage'], _count: { id: true } }),
     ])
 
     const total = statsNew + statsContacted + statsApproved + statsRejected + statsConverted
+    const byStage: Record<string, number> = Object.fromEntries(VALID_STAGES.map((s) => [s, 0]))
+    for (const row of stageCounts) byStage[row.stage] = row._count.id
 
     return NextResponse.json({
       leads,
@@ -78,6 +91,7 @@ export async function GET(req: NextRequest) {
         converted: statsConverted,
         total,
       },
+      stageStats: byStage,
     })
   } catch (error) {
     logger.error('[SuperAdmin] Error listing leads:', error)

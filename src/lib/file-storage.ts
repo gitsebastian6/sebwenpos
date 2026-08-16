@@ -7,14 +7,15 @@ const UPLOADS_DIR = join(process.cwd(), 'uploads')
 
 /**
  * Save a base64-encoded file to disk and return the relative path.
- * Files are stored in: uploads/receipts/YYYY/MM/uuid.ext
+ * Files are stored in: uploads/{category}/YYYY/MM/uuid.ext
  */
-export async function saveReceiptFile(params: {
+export async function saveCategorizedFile(params: {
   base64Data: string
   fileName: string
   fileType: string
+  category: string
 }): Promise<string> {
-  const { base64Data, fileName, fileType } = params
+  const { base64Data, fileName, fileType, category } = params
 
   // Strip data URL prefix if present (data:image/png;base64,...)
   const rawBase64 = base64Data.replace(/^data:[^;]+;base64,/, '')
@@ -22,13 +23,13 @@ export async function saveReceiptFile(params: {
   // Decode base64 to buffer
   const buffer = Buffer.from(rawBase64, 'base64')
 
-  // Generate storage path: receipts/YYYY/MM/uuid.ext
+  // Generate storage path: {category}/YYYY/MM/uuid.ext
   const now = new Date()
   const year = now.getFullYear().toString()
   const month = (now.getMonth() + 1).toString().padStart(2, '0')
   const ext = extname(fileName) || mimeTypeToExtension(fileType)
   const storedName = `${randomUUID()}${ext}`
-  const relativeDir = `receipts/${year}/${month}`
+  const relativeDir = `${category}/${year}/${month}`
   const relativePath = `${relativeDir}/${storedName}`
 
   // Ensure directory exists
@@ -39,9 +40,34 @@ export async function saveReceiptFile(params: {
   const absolutePath = join(UPLOADS_DIR, relativePath)
   await writeFile(absolutePath, buffer)
 
-  logger.info(`[file-storage] Saved receipt file: ${relativePath} (${buffer.length} bytes)`)
+  logger.info(`[file-storage] Saved ${category} file: ${relativePath} (${buffer.length} bytes)`)
 
   return relativePath
+}
+
+/**
+ * Save a base64-encoded file to disk and return the relative path.
+ * Files are stored in: uploads/receipts/YYYY/MM/uuid.ext
+ */
+export async function saveReceiptFile(params: {
+  base64Data: string
+  fileName: string
+  fileType: string
+}): Promise<string> {
+  return saveCategorizedFile({ ...params, category: 'receipts' })
+}
+
+/**
+ * Save a base64-encoded legal document (RUT, Cámara de Comercio, cédula,
+ * resolución DIAN) uploaded during CRM lead onboarding.
+ * Files are stored in: uploads/lead-docs/YYYY/MM/uuid.ext
+ */
+export async function saveLeadDocumentFile(params: {
+  base64Data: string
+  fileName: string
+  fileType: string
+}): Promise<string> {
+  return saveCategorizedFile({ ...params, category: 'lead-docs' })
 }
 
 /**

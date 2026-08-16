@@ -3,16 +3,36 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { saveReceiptFile, deleteReceiptFile } from '@/lib/file-storage'
+import { getAuthUser } from '@/lib/api-auth'
+
+const STAGE_LABELS: Record<string, string> = {
+  LEAD: 'Lead', CONTACTADO: 'Contactado', DOC_PENDIENTE: 'Documentación Pendiente',
+  VALIDACION_LEGAL: 'Validación Legal', CLIENTE_ACTIVO: 'Cliente Activo', RECHAZADO: 'Rechazado',
+}
 
 export const dynamic = 'force-dynamic'
 
 const validStatuses = ['NEW', 'CONTACTED', 'APPROVED', 'REJECTED', 'CONVERTED'] as const
+const validStages = ['LEAD', 'CONTACTADO', 'DOC_PENDIENTE', 'VALIDACION_LEGAL', 'CLIENTE_ACTIVO', 'RECHAZADO'] as const
 
 const updateLeadSchema = z.object({
   // Original fields
   status: z.enum(validStatuses).optional(),
   notes: z.string().max(2000).optional(),
   reviewedBy: z.string().max(100).optional(),
+  // Pipeline CRM
+  stage: z.enum(validStages).optional(),
+  assignedToId: z.number().int().positive().nullable().optional(),
+  // Datos fiscales
+  taxRegime: z.string().max(100).nullable().optional(),
+  fiscalResponsibilities: z.string().max(500).nullable().optional(),
+  // Resolución DIAN (borrador, se copia a Store en la conversión)
+  resolutionPrefix: z.string().max(10).nullable().optional(),
+  resolutionNumber: z.string().max(50).nullable().optional(),
+  resolutionStartDate: z.string().nullable().optional(),
+  resolutionEndDate: z.string().nullable().optional(),
+  resolutionStartNumber: z.number().int().min(0).nullable().optional(),
+  resolutionEndNumber: z.number().int().min(0).nullable().optional(),
   // Contact fields
   ownerFullName: z.string().max(200).optional(),
   ownerEmail: z.string().email().max(200).nullable().optional(),
@@ -146,6 +166,9 @@ export async function PATCH(
       camaraFileType = data.camaraFileType
     }
 
+    const auth = getAuthUser(req)
+    const stageChanged = data.stage !== undefined && data.stage !== lead.stage
+
     const updated = await db.lead.update({
       where: { id: leadId },
       data: {
@@ -174,6 +197,19 @@ export async function PATCH(
         camaraFileSize,
         camaraFileName,
         camaraFileType,
+        // Pipeline CRM
+        ...(data.stage !== undefined ? { stage: data.stage } : {}),
+        ...(data.assignedToId !== undefined ? { assignedToId: data.assignedToId } : {}),
+        // Datos fiscales
+        ...(data.taxRegime !== undefined ? { taxRegime: data.taxRegime } : {}),
+        ...(data.fiscalResponsibilities !== undefined ? { fiscalResponsibilities: data.fiscalResponsibilities } : {}),
+        // Resolución DIAN (borrador)
+        ...(data.resolutionPrefix !== undefined ? { resolutionPrefix: data.resolutionPrefix } : {}),
+        ...(data.resolutionNumber !== undefined ? { resolutionNumber: data.resolutionNumber } : {}),
+        ...(data.resolutionStartDate !== undefined ? { resolutionStartDate: data.resolutionStartDate ? new Date(data.resolutionStartDate) : null } : {}),
+        ...(data.resolutionEndDate !== undefined ? { resolutionEndDate: data.resolutionEndDate ? new Date(data.resolutionEndDate) : null } : {}),
+        ...(data.resolutionStartNumber !== undefined ? { resolutionStartNumber: data.resolutionStartNumber } : {}),
+        ...(data.resolutionEndNumber !== undefined ? { resolutionEndNumber: data.resolutionEndNumber } : {}),
         // Status/notes/reviewer
         ...(data.status ? { status: data.status } : {}),
         ...(data.notes !== undefined ? { notes: data.notes || null } : {}),
@@ -183,7 +219,32 @@ export async function PATCH(
       },
     })
 
-    logger.info(`[SuperAdmin] Lead #${leadId} updated: status=${data.status || 'unchanged'}, fields=${JSON.stringify(Object.keys(body))}`)
+    // Log stage changes in the activity timeline, and auto-create a follow-up
+    // task when the advisor requests documents (moves the lead to DOC_PENDIENTE)
+    if (stageChanged) {
+      await db.leadActivity.create({
+        data: {
+          leadId,
+          type: 'STAGE_CHANGE',
+          title: `Etapa: ${STAGE_LABELS[lead.stage] || lead.stage} → ${STAGE_LABELS[data.stage!] || data.stage}`,
+          createdById: auth?.userId ?? null,
+        },
+      })
+      if (data.stage === 'DOC_PENDIENTE') {
+        await db.leadActivity.create({
+          data: {
+            leadId,
+            type: 'TASK',
+            title: 'Confirmar que el cliente recibió la solicitud de documentos',
+            description: 'Se solicitaron RUT, Cámara de Comercio, cédula del representante legal y Resolución DIAN.',
+            dueDate: new Date(Date.now() + 48 * 60 * 60 * 1000),
+            createdById: auth?.userId ?? null,
+          },
+        })
+      }
+    }
+
+    logger.info(`[SuperAdmin] Lead #${leadId} updated: status=${data.status || 'unchanged'}, stage=${data.stage || 'unchanged'}, fields=${JSON.stringify(Object.keys(body))}`)
 
     return NextResponse.json(updated)
   } catch (error: unknown) {

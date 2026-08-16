@@ -132,6 +132,62 @@ export interface LeadData {
   convertedStoreId: number | null
   createdAt: string
   updatedAt: string
+  // ── Pipeline CRM ──
+  stage: string
+  assignedToId: number | null
+  assignedTo?: { id: number; fullName: string | null } | null
+  // ── Datos fiscales ──
+  taxRegime: string | null
+  fiscalResponsibilities: string | null
+  // ── Resolución DIAN (borrador) ──
+  resolutionPrefix: string | null
+  resolutionNumber: string | null
+  resolutionStartDate: string | null
+  resolutionEndDate: string | null
+  resolutionStartNumber: number | null
+  resolutionEndNumber: number | null
+}
+
+export interface LeadDocumentData {
+  id: number
+  leadId: number
+  documentType: 'RUT' | 'CAMARA_COMERCIO' | 'CEDULA_REPRESENTANTE' | 'RESOLUCION_DIAN'
+  filePath: string
+  fileName: string
+  fileSize: number
+  fileType: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  rejectionReason: string | null
+  version: number
+  uploadedAt: string
+  reviewedBy: number | null
+  reviewedAt: string | null
+  reviewer?: { id: number; fullName: string | null } | null
+}
+
+export interface LeadActivityData {
+  id: number
+  leadId: number
+  type: 'NOTE' | 'CALL' | 'TASK' | 'WHATSAPP' | 'EMAIL' | 'STAGE_CHANGE' | 'DOCUMENT_EVENT'
+  title: string
+  description: string | null
+  dueDate: string | null
+  completedAt: string | null
+  createdById: number | null
+  createdAt: string
+  createdBy?: { id: number; fullName: string | null } | null
+}
+
+export interface LeadContactData {
+  id: number
+  leadId: number
+  fullName: string
+  cedula: string | null
+  role: 'REPRESENTANTE_LEGAL' | 'CONTADOR' | 'ENCARGADO' | 'OTRO'
+  email: string | null
+  phone: string | null
+  isPrimary: boolean
+  createdAt: string
 }
 
 export interface LeadsStats {

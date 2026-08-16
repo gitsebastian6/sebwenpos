@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import {
   Store, Plus, Crown, Settings, TrendingUp, Shield,
   LogOut, Moon, Sun, Wallet, Users, CircleDollarSign,
+  Kanban, List, AlertTriangle,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import dynamic from 'next/dynamic'
@@ -21,6 +22,9 @@ import { StoresKPICards, StoresTable, CreateStoreDialog, ResetPasswordDialog } f
 import { StoreDetailView } from './store-detail-view'
 import { PendingPaymentsView } from './pending-payments-view'
 import { LeadsView } from './leads-view'
+import { CrmPipelineView } from './crm-pipeline-view'
+import { CrmClientDetailView } from './crm-client-detail-view'
+import { CrmAlertsView } from './crm-alerts-view'
 import { CustomersDebtView } from './customers-debt-view'
 import {
   useSuperAdminStores,
@@ -43,6 +47,8 @@ export function SuperAdminShell() {
   const [selectedUser, setSelectedUser] = useState<StoreOwner | null>(null)
   const [currentView, setCurrentView] = useState<'stores' | 'leads' | 'plans' | 'payments' | 'customers' | 'config' | 'stats'>('stores')
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null)
+  const [crmSubView, setCrmSubView] = useState<'pipeline' | 'lista' | 'alertas'>('pipeline')
+  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null)
 
   // ── Query hooks ──
   const storesQuery = useSuperAdminStores()
@@ -113,6 +119,34 @@ export function SuperAdminShell() {
     )
   }
 
+  // ---- CRM LEAD DETAIL (Expediente Legal) ----
+  if (selectedLeadId) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 bg-primary rounded-lg flex items-center justify-center">
+              <Shield className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-sm">Expediente Legal</h2>
+              <p className="text-xs text-muted-foreground">Sebwen POS · CRM</p>
+            </div>
+          </div>
+          <div className="flex-1" />
+          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive gap-2" onClick={() => { logout(); toast.success('Sesión cerrada') }}>
+            <LogOut className="h-4 w-4" /><span className="hidden sm:inline">Salir</span>
+          </Button>
+        </header>
+        <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+          <div className="max-w-6xl mx-auto">
+            <CrmClientDetailView leadId={selectedLeadId} onBack={() => setSelectedLeadId(null)} />
+          </div>
+        </main>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Top Bar */}
@@ -143,14 +177,14 @@ export function SuperAdminShell() {
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-                  {currentView === 'stores' ? 'Panel de Tiendas' : currentView === 'leads' ? 'CRM de Leads' : currentView === 'config' ? 'Configuración del Sistema' : currentView === 'stats' ? 'Estadísticas del SaaS' : currentView === 'payments' ? 'Pagos y Comprobantes' : currentView === 'customers' ? 'Clientes y Cartera' : 'Planes de Suscripción'}
+                  {currentView === 'stores' ? 'Panel de Tiendas' : currentView === 'leads' ? 'CRM · Expediente Legal DIAN' : currentView === 'config' ? 'Configuración del Sistema' : currentView === 'stats' ? 'Estadísticas del SaaS' : currentView === 'payments' ? 'Pagos y Comprobantes' : currentView === 'customers' ? 'Clientes y Cartera' : 'Planes de Suscripción'}
                 </h1>
               </div>
               <p className="text-muted-foreground">
                 {currentView === 'stores'
                   ? 'Administración centralizada de todos los establecimientos'
                   : currentView === 'leads'
-                  ? 'Gestión de leads y prospectos — seguimiento, aprobación y conversión a cuentas'
+                  ? 'Embudo de ventas y recolección del expediente legal DIAN antes de activar cada cuenta'
                   : currentView === 'config'
                   ? 'Integraciones y configuración global del sistema'
                   : currentView === 'stats'
@@ -178,7 +212,7 @@ export function SuperAdminShell() {
                   className="gap-1.5 h-8 transition-all duration-200"
                   onClick={() => setCurrentView('leads')}
                 >
-                  <Users className="h-3.5 w-3.5" />Leads
+                  <Users className="h-3.5 w-3.5" />CRM
                 </Button>
                 <Button
                   variant={currentView === 'plans' ? 'default' : 'ghost'}
@@ -251,9 +285,24 @@ export function SuperAdminShell() {
               </>
             )}
 
-            {/* LEADS VIEW */}
+            {/* LEADS / CRM VIEW */}
             {currentView === 'leads' && (
-              <LeadsView />
+              <div className="space-y-4">
+                <div className="flex items-center rounded-lg border p-1 bg-muted/50 w-fit">
+                  <Button variant={crmSubView === 'pipeline' ? 'default' : 'ghost'} size="sm" className="gap-1.5 h-7 text-xs" onClick={() => setCrmSubView('pipeline')}>
+                    <Kanban className="h-3.5 w-3.5" />Pipeline
+                  </Button>
+                  <Button variant={crmSubView === 'lista' ? 'default' : 'ghost'} size="sm" className="gap-1.5 h-7 text-xs" onClick={() => setCrmSubView('lista')}>
+                    <List className="h-3.5 w-3.5" />Lista
+                  </Button>
+                  <Button variant={crmSubView === 'alertas' ? 'default' : 'ghost'} size="sm" className="gap-1.5 h-7 text-xs" onClick={() => setCrmSubView('alertas')}>
+                    <AlertTriangle className="h-3.5 w-3.5" />Alertas DIAN
+                  </Button>
+                </div>
+                {crmSubView === 'pipeline' && <CrmPipelineView onOpenLead={setSelectedLeadId} />}
+                {crmSubView === 'lista' && <LeadsView />}
+                {crmSubView === 'alertas' && <CrmAlertsView onOpenLead={setSelectedLeadId} />}
+              </div>
             )}
 
             {/* PLANS VIEW */}
