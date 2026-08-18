@@ -10,6 +10,10 @@ export const dynamic = 'force-dynamic'
 
 const purchaseItemSchema = z.object({
   productId: z.number().int().positive(),
+  // Extra presentation being purchased (e.g. "Caja x24"). Omit for the
+  // product's own base "Unidad" — quantity/unitCost are always denominated
+  // in whichever of the two this is; stock/CPP convert to base units below.
+  presentationId: z.number().int().positive().optional(),
   quantity: z.number().int().positive('La cantidad debe ser mayor a 0'),
   unitCost: z.number().int().min(0, 'El costo unitario no puede ser negativo'),
   ivaRate: z.number().int().min(0).max(100).default(19),
@@ -27,6 +31,10 @@ const createPurchaseSchema = z.object({
   date: z.string().optional(),              // ISO date string
   paymentTerms: z.enum(['CONTADO', 'CREDITO_30', 'CREDITO_60', 'CREDITO_90']).default('CONTADO'),
   notes: z.string().max(500).optional(),
+  // Impuesto al Consumo (IC) declarado en la factura — a nivel de documento
+  // completo, no por línea (a diferencia del IVA). No es descontable, así
+  // que solo se suma al total a pagar; nunca afecta el costo del producto.
+  consumptionTax: z.number().int().min(0).default(0),
 })
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -194,6 +202,7 @@ export async function GET(request: NextRequest) {
         totalReteIca: p.totalReteIca,
         totalReteIva: p.totalReteIva,
         totalDiscount: p.totalDiscount,
+        totalConsumptionTax: p.totalConsumptionTax,
         notes: p.notes,
         total: p.total,
         status: p.status,
@@ -206,6 +215,8 @@ export async function GET(request: NextRequest) {
           product: item.product
             ? { id: item.product.id, name: item.product.name, costPrice: item.product.costPrice }
             : null,
+          presentationName: item.presentationName ?? null,
+          unitsPerPack: item.unitsPerPack,
           quantity: item.quantity,
           returnedQuantity: item.returnedQuantity,
           unitCost: item.unitCost,
@@ -272,6 +283,29 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Resolve presentations (Caja x24, etc.) — always from the DB, and must
+    // actually belong to the product they're being purchased under.
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitsPerPack: number }>()
+    const presentationIds = data.items.map((i) => i.presentationId).filter((id): id is number => !!id)
+    if (presentationIds.length > 0) {
+      const presentations = await db.productPresentation.findMany({
+        where: { id: { in: presentationIds }, isActive: true, product: { storeId: data.storeId } },
+        select: { id: true, productId: true, name: true, unitsPerPack: true },
+      })
+      for (const p of presentations) presentationMap.set(p.id, p)
+    }
+    for (const item of data.items) {
+      if (!item.presentationId) continue
+      const presentation = presentationMap.get(item.presentationId)
+      if (!presentation || presentation.productId !== item.productId) {
+        const product = products.find((p) => p.id === item.productId)
+        return NextResponse.json(
+          { error: `La presentación seleccionada para "${product?.name || item.productId}" ya no existe o fue desactivada` },
+          { status: 400 },
+        )
+      }
+    }
+
     // Verify provider and get regime for retenciones
     let providerRegime = 'NO_RESPONSABLE'
     if (data.providerId) {
@@ -304,7 +338,7 @@ export async function POST(req: NextRequest) {
     const { totalReteFuente, totalReteIca, totalReteIva } = calculateRetenciones(subtotal, providerRegime)
 
     // Grand total
-    const total = subtotal + totalIva - totalReteFuente - totalReteIca - totalReteIva - totalDiscount
+    const total = subtotal + totalIva + data.consumptionTax - totalReteFuente - totalReteIca - totalReteIva - totalDiscount
 
     // Payment status
     const isContado = data.paymentTerms === 'CONTADO'
@@ -344,23 +378,30 @@ export async function POST(req: NextRequest) {
           totalReteIca,
           totalReteIva,
           totalDiscount,
+          totalConsumptionTax: data.consumptionTax,
           notes: data.notes || null,
           total,
           status: 'COMPLETED',
           createdById: auth?.userId || null,
           purchaseItems: {
-            create: itemsWithCalculations.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              unitCost: item.unitCost,
-              ivaRate: item.ivaRate,
-              ivaAmount: item.ivaAmount,
-              discountAmount: item.discountAmount,
-              lotNumber: item.lotNumber || null,
-              expiryDate: parseOptionalDate(item.expiryDate),
-              manufacturingDate: parseOptionalDate(item.manufacturingDate),
-              total: item.total,
-            })),
+            create: itemsWithCalculations.map((item) => {
+              const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
+              return {
+                productId: item.productId,
+                presentationId: presentation ? presentation.id : null,
+                presentationName: presentation ? presentation.name : null,
+                unitsPerPack: presentation ? presentation.unitsPerPack : 1,
+                quantity: item.quantity,
+                unitCost: item.unitCost,
+                ivaRate: item.ivaRate,
+                ivaAmount: item.ivaAmount,
+                discountAmount: item.discountAmount,
+                lotNumber: item.lotNumber || null,
+                expiryDate: parseOptionalDate(item.expiryDate),
+                manufacturingDate: parseOptionalDate(item.manufacturingDate),
+                total: item.total,
+              }
+            }),
           },
         },
         include: {
@@ -373,23 +414,37 @@ export async function POST(req: NextRequest) {
         const product = products.find((p) => p.id === item.productId)
         if (!product) continue
 
+        const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
+        const unitsPerPack = presentation ? presentation.unitsPerPack : 1
+        const baseUnits = item.quantity * unitsPerPack
+
         // Costo Promedio Ponderado (CPP): never overwrite with the latest purchase
         // price alone — that inflates/deflates margin on existing stock. The new
         // unit cost is the weighted average of what's already on hand plus what
-        // just came in.
+        // just came in. item.quantity*item.unitCost is the line's total cost
+        // regardless of denomination, so dividing by baseUnits (not item.quantity)
+        // correctly reduces it to a per-base-unit weighted average.
         const existingStock = Math.max(0, product.currentStock)
         const newCostPrice = Math.round(
-          (existingStock * product.costPrice + item.quantity * item.unitCost) / (existingStock + item.quantity)
+          (existingStock * product.costPrice + item.quantity * item.unitCost) / (existingStock + baseUnits)
         )
 
-        // Update stock and cost price
+        // Update stock (in base units) and cost price
         await tx.product.update({
           where: { id: item.productId },
           data: {
-            currentStock: { increment: item.quantity },
+            currentStock: { increment: baseUnits },
             costPrice: newCostPrice,
           },
         })
+
+        // Keep the presentation's own displayed cost in sync with what was just paid for it
+        if (presentation) {
+          await tx.productPresentation.update({
+            where: { id: presentation.id },
+            data: { costPrice: item.unitCost },
+          })
+        }
 
         // Create CostHistory if cost changed
         if (product.costPrice !== newCostPrice) {
@@ -405,15 +460,17 @@ export async function POST(req: NextRequest) {
           })
         }
 
-        // Create inventory movement
+        // Create inventory movement (always in base units)
         await tx.inventoryMovement.create({
           data: {
             storeId: data.storeId,
             productId: item.productId,
-            quantity: item.quantity,
+            quantity: baseUnits,
             movementType: 'PURCHASE',
             referenceId: createdPurchase.id,
-            notes: `Compra ${consecutiveNumber} — ${product.name} x${item.quantity}`,
+            notes: presentation
+              ? `Compra ${consecutiveNumber} — ${product.name} — ${presentation.name} x${item.quantity} (${baseUnits} uds base)`
+              : `Compra ${consecutiveNumber} — ${product.name} x${item.quantity}`,
           },
         })
       }

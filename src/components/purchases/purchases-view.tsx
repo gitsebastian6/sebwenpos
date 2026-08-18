@@ -27,7 +27,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   usePurchases, useDeletePurchase,
-  type Purchase, type StatusFilter, type ProviderOption,
+  type Purchase, type StatusFilter,
 } from '@/hooks/api/use-purchases'
 import {
   getDocBadge, getPaymentStatusBadge, getStatusBadge, isOverdue,
@@ -35,7 +35,7 @@ import {
 import { handlePrintPurchases, handleExportExcel } from './purchase-export-utils'
 import { PurchaseFormDialog } from './purchase-form-dialog'
 import { PurchaseDetailDialog } from './purchase-detail-dialog'
-import { PurchaseXmlImport, PurchaseXmlHelpDialog } from './purchase-xml-import'
+import { PurchaseXmlImport, PurchaseXmlHelpDialog, type XmlPreview } from './purchase-xml-import'
 
 // ══════════════════════════════════════════════════════════════════════
 // MAIN VIEW (orchestrator)
@@ -64,13 +64,11 @@ export function PurchasesView() {
 
   // XML import state (lifted for file input trigger)
   const [xmlParsing, setXmlParsing] = useState(false)
-  const [xmlPreview, setXmlPreview] = useState<{
-    fileName: string; items: { name: string; quantity: number; unitCost: number }[]
-    invoiceNumber?: string; invoiceDate?: string; providerName?: string; providerNit?: string; xmlFormat?: string
-  } | null>(null)
+  const [xmlPreview, setXmlPreview] = useState<XmlPreview | null>(null)
   const [xmlNotes, setXmlNotes] = useState('')
   const [xmlProviderId, setXmlProviderId] = useState<string>('none')
-  const [xmlProviders, setXmlProviders] = useState<ProviderOption[]>([])
+  const [xmlPaymentTerms, setXmlPaymentTerms] = useState<string>('CONTADO')
+  const [xmlConsumptionTax, setXmlConsumptionTax] = useState<string>('0')
   const [showXmlHelp, setShowXmlHelp] = useState(false)
 
   // ─── KPIs ──
@@ -298,9 +296,12 @@ export function PurchasesView() {
 
       <PurchaseXmlImport
         xmlParsing={xmlParsing} xmlPreview={xmlPreview} xmlNotes={xmlNotes}
-        xmlProviderId={xmlProviderId} xmlProviders={xmlProviders}
+        xmlProviderId={xmlProviderId} xmlPaymentTerms={xmlPaymentTerms}
+        xmlConsumptionTax={xmlConsumptionTax}
         setXmlParsing={setXmlParsing} setXmlPreview={setXmlPreview}
         setXmlNotes={setXmlNotes} setXmlProviderId={setXmlProviderId}
+        setXmlPaymentTerms={setXmlPaymentTerms}
+        setXmlConsumptionTax={setXmlConsumptionTax}
       />
 
       <PurchaseXmlHelpDialog open={showXmlHelp} onOpenChange={setShowXmlHelp} />

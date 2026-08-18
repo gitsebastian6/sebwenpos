@@ -121,9 +121,12 @@ export async function POST(
       }
     }
 
-    if (!lead.resolutionEndDate || lead.resolutionEndDate <= new Date()) {
+    // La Resolución DIAN es opcional: si el negocio nunca registró una, no
+    // bloquea la conversión (puede activar facturación electrónica después
+    // desde Configuración). Si SÍ registró una, tiene que estar vigente.
+    if (lead.resolutionEndDate && lead.resolutionEndDate <= new Date()) {
       return NextResponse.json(
-        { error: 'La Resolución DIAN no tiene una fecha de vigencia futura registrada.' },
+        { error: 'La Resolución DIAN registrada ya venció. Actualízala o elimínala antes de continuar.' },
         { status: 409 },
       )
     }

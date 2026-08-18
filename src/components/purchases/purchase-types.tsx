@@ -8,6 +8,12 @@ import type { Purchase } from '@/hooks/api/use-purchases'
 export interface PurchaseItemRow {
   id: string
   productId: string
+  // Extra presentation being purchased (e.g. "Caja x24"). Empty string = the
+  // product's own base "Unidad". quantity/unitCost below are always in
+  // whichever of the two this is — stock converts to base units server-side.
+  presentationId: string
+  presentationName: string
+  unitsPerPack: number
   quantity: string
   unitCost: string
   ivaRate: number
@@ -83,6 +89,9 @@ export function isOverdue(purchase: Purchase): boolean {
 export const EMPTY_ITEM = (): PurchaseItemRow => ({
   id: crypto.randomUUID(),
   productId: '',
+  presentationId: '',
+  presentationName: '',
+  unitsPerPack: 1,
   quantity: '1',
   unitCost: '',
   ivaRate: 19,

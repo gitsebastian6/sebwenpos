@@ -76,6 +76,9 @@ export interface CartSidebarProps {
   cart: Array<{
     productId: number | null
     serviceId: number | null
+    presentationId?: number | null
+    presentationName?: string | null
+    unitsPerPack?: number
     name: string
     salePrice: number
     quantity: number
@@ -91,9 +94,9 @@ export interface CartSidebarProps {
   total: number
 
   // Cart operations
-  updateQuantity: (itemId: number, delta: number, isService: boolean) => void
-  removeFromCart: (itemId: number, isService: boolean) => void
-  updateItemNotes: (itemId: number, isService: boolean, notes: string) => void
+  updateQuantity: (itemId: number, delta: number, isService: boolean, presentationId?: number | null) => void
+  removeFromCart: (itemId: number, isService: boolean, presentationId?: number | null) => void
+  updateItemNotes: (itemId: number, isService: boolean, notes: string, presentationId?: number | null) => void
   clearCart: () => void
 
   // Discount
@@ -148,8 +151,8 @@ export interface CartSidebarProps {
 
 // ─── Cart item key helper ──────────────────────────────
 
-function cartItemKey(item: { isService: boolean; serviceId: number | null; productId: number | null }) {
-  return item.isService ? `svc-${item.serviceId}` : `prd-${item.productId}`
+function cartItemKey(item: { isService: boolean; serviceId: number | null; productId: number | null; presentationId?: number | null }) {
+  return item.isService ? `svc-${item.serviceId}` : `prd-${item.productId}-${item.presentationId ?? 0}`
 }
 
 // ─── Component ──────────────────────────────────────────
@@ -229,12 +232,12 @@ export function CartSidebar({
     <>
     <Sheet open={cartSheetOpen} onOpenChange={setCartSheetOpen}>
       <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0">
-        <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
+        <SheetHeader className="px-4 pt-4 pb-3 shrink-0 border-b border-border/40">
           <div className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5 text-emerald-600" />
-            <SheetTitle>Ticket</SheetTitle>
+            <SheetTitle className="text-lg">Ticket</SheetTitle>
             {cartItemCount > 0 && (
-              <Badge variant="secondary">{cartItemCount}</Badge>
+              <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 font-bold">{cartItemCount}</Badge>
             )}
           </div>
           <SheetDescription>
@@ -265,12 +268,17 @@ export function CartSidebar({
                   return (
                     <div
                       key={cartItemKey(item)}
-                      className="flex items-center gap-2 py-3 border-b border-border/40 last:border-b-0 hover:bg-muted/40 rounded-lg px-1.5 -mx-1.5 transition-colors duration-150"
+                      className="flex items-center gap-2.5 py-3.5 border-b border-border/40 last:border-b-0 hover:bg-muted/40 rounded-lg px-2 -mx-2 transition-colors duration-150"
                     >
                       {/* Item info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-medium truncate">{item.name}</p>
+                          <p className="text-[15px] font-semibold truncate">
+                            {item.name}
+                            {item.presentationName && (
+                              <span className="text-muted-foreground font-normal"> — {item.presentationName}</span>
+                            )}
+                          </p>
                           {item.isService && (
                             <Badge variant="secondary" className="text-[10px] px-1 py-0 shrink-0 bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300">
                               Svc
@@ -282,7 +290,7 @@ export function CartSidebar({
                               <PopoverTrigger asChild>
                                 <button
                                   type="button"
-                                  className="shrink-0 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                                  className="shrink-0 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors p-0.5"
                                   title={item.notes}
                                 >
                                   <MessageSquare className="h-3.5 w-3.5" />
@@ -292,7 +300,7 @@ export function CartSidebar({
                                 <p className="text-xs font-medium text-muted-foreground mb-1">Nota del artículo</p>
                                 <Textarea
                                   value={item.notes}
-                                  onChange={(e) => updateItemNotes(itemId, item.isService, e.target.value)}
+                                  onChange={(e) => updateItemNotes(itemId, item.isService, e.target.value, item.presentationId)}
                                   placeholder="Ej: sin hielo, extra limón..."
                                   className="min-h-[60px] resize-none text-sm"
                                   rows={2}
@@ -302,7 +310,7 @@ export function CartSidebar({
                                   variant="ghost"
                                   size="sm"
                                   className="mt-1.5 h-7 px-2 text-xs text-destructive hover:text-destructive"
-                                  onClick={() => updateItemNotes(itemId, item.isService, '')}
+                                  onClick={() => updateItemNotes(itemId, item.isService, '', item.presentationId)}
                                 >
                                   <X className="h-3 w-3 mr-1" />
                                   Quitar nota
@@ -311,7 +319,7 @@ export function CartSidebar({
                             </Popover>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           {formatCurrency(item.salePrice, currencyCode)} c/u
                         </p>
                         {item.notes && (
@@ -327,11 +335,11 @@ export function CartSidebar({
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-amber-600 shrink-0"
+                              className="h-8 w-8 text-muted-foreground hover:text-amber-600 shrink-0"
                               title="Agregar nota"
                               aria-label="Agregar nota"
                             >
-                              <Pencil className="h-3 w-3" />
+                              <Pencil className="h-3.5 w-3.5" />
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-64 p-3" align="end">
@@ -349,34 +357,34 @@ export function CartSidebar({
                       )}
 
                       {/* Quantity controls */}
-                      <div className="flex items-center gap-0.5 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0 bg-muted/50 rounded-lg p-0.5">
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="icon"
-                          className="h-8 w-8 active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300 dark:hover:border-emerald-800 hover:shadow-sm hover:shadow-emerald-500/10"
-                          onClick={() => updateQuantity(itemId, -1, item.isService)}
+                          className="h-9 w-9 rounded-md active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
+                          onClick={() => updateQuantity(itemId, -1, item.isService, item.presentationId)}
                           disabled={item.quantity <= 1}
                           aria-label="Reducir cantidad"
                         >
-                          <Minus className="h-3 w-3" />
+                          <Minus className="h-4 w-4" />
                         </Button>
-                        <span className="w-8 text-center text-sm font-bold tabular-nums text-foreground bg-muted/60 rounded-md py-1">
+                        <span className="w-9 text-center text-base font-bold tabular-nums text-foreground">
                           {item.quantity}
                         </span>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="icon"
-                          className="h-8 w-8 active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300 dark:hover:border-emerald-800 hover:shadow-sm hover:shadow-emerald-500/10"
-                          onClick={() => updateQuantity(itemId, 1, item.isService)}
+                          className="h-9 w-9 rounded-md active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
+                          onClick={() => updateQuantity(itemId, 1, item.isService, item.presentationId)}
                           disabled={!item.isService && item.quantity >= item.maxStock}
                           aria-label="Aumentar cantidad"
                         >
-                          <Plus className="h-3 w-3" />
+                          <Plus className="h-4 w-4" />
                         </Button>
                       </div>
 
                       {/* Line total */}
-                      <p className="text-sm font-bold tabular-nums min-w-[80px] text-right shrink-0 text-foreground">
+                      <p className="text-[15px] font-bold tabular-nums min-w-[92px] text-right shrink-0 text-foreground">
                         {formatCurrency(item.salePrice * item.quantity, currencyCode)}
                       </p>
 
@@ -384,8 +392,8 @@ export function CartSidebar({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 active:scale-90 transition-all duration-150 hover:shadow-sm"
-                        onClick={() => removeFromCart(itemId, item.isService)}
+                        className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 active:scale-90 transition-all duration-150"
+                        onClick={() => removeFromCart(itemId, item.isService, item.presentationId)}
                         title="Eliminar producto"
                         aria-label="Eliminar producto del carrito"
                       >

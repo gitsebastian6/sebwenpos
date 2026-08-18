@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import { DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
 import { playCartAdd, playSaleSuccess, playError } from '@/lib/pos-sounds'
-import type { CartItem, PaymentMethod, InvoiceMode, LastOrderData, LastInvoiceData, CustomerSummary, Service } from '@/types'
+import type { CartItem, PaymentMethod, InvoiceMode, LastOrderData, LastInvoiceData, CustomerSummary, Service, ProductPresentation } from '@/types'
 import type { Product, OpenCashRegister } from './use-pos-data'
 import { useCreateOrder, useCreateInvoice } from '@/hooks/api/use-pos'
 import { useOffline } from '@/lib/offline/offline-provider'
@@ -18,10 +18,48 @@ export type DiscountType = 'NONE' | 'PERCENTAGE' | 'FIXED'
 // ─── Hook deps ─────────────────────────────────────────
 
 interface UsePosCartDeps {
+  products: Product[]
   openCashRegisters: OpenCashRegister[]
   selectedCashRegisterId: string
   customers: CustomerSummary[]
   fetchOpenCashRegisters: () => void | Promise<void>
+}
+
+// ─── Cart line helpers ──────────────────────────────────
+// A product can be in the cart as multiple simultaneous lines — its base
+// "Unidad" plus up to 2 presentations (Six-pack, Caja x24) — all drawing
+// from the SAME shared stock pool (in base units). These helpers keep that
+// pool honest across every mutation.
+
+function isSameLine(item: CartItem, productId: number, presentationId: number | null) {
+  return item.productId === productId && (item.presentationId ?? null) === presentationId
+}
+
+/** Recompute each product-line's `maxStock` as "how many more of THIS line's
+ * unit could be added without the combined base-unit usage of every line of
+ * this same product exceeding currentStock" — keeps +/- buttons and
+ * add-to-cart honest when a product has several simultaneous presentation lines. */
+const UNLIMITED_STOCK = 999999
+
+function recomputeMaxStock(items: CartItem[], products: Product[]): CartItem[] {
+  const productsById = new Map(products.map((p) => [p.id, p]))
+  const baseUnitsByProduct = new Map<number, number>()
+  for (const item of items) {
+    if (item.isService || !item.productId) continue
+    const used = item.quantity * (item.unitsPerPack || 1)
+    baseUnitsByProduct.set(item.productId, (baseUnitsByProduct.get(item.productId) ?? 0) + used)
+  }
+  return items.map((item) => {
+    if (item.isService || !item.productId) return item
+    const product = productsById.get(item.productId)
+    if (product && product.trackInventory === false) return { ...item, maxStock: UNLIMITED_STOCK }
+    const currentStock = product?.currentStock ?? 0
+    const unitsPerPack = item.unitsPerPack || 1
+    const ownUsage = item.quantity * unitsPerPack
+    const otherUsage = (baseUnitsByProduct.get(item.productId) ?? 0) - ownUsage
+    const remaining = Math.max(0, currentStock - otherUsage)
+    return { ...item, maxStock: Math.floor(remaining / unitsPerPack) }
+  })
 }
 
 // ─── Hook ──────────────────────────────────────────────
@@ -77,37 +115,35 @@ export function usePosCart(deps: UsePosCartDeps) {
       const wasEmpty = cart.length === 0
       let didAdd = false
       setCart((prev) => {
-        const existing = prev.find((item) => item.productId === product.id)
-        if (existing) {
-          if (existing.quantity >= product.currentStock) {
-            toast.warning(`Stock insuficiente para "${product.name}"`)
-            return prev
-          }
-          didAdd = true
-          return prev.map((item) =>
-            item.productId === product.id
-              ? { ...item, quantity: item.quantity + 1 }
-              : item
-          )
-        }
-        if (product.currentStock <= 0) {
-          toast.warning(`Sin stock para "${product.name}"`)
+        const existing = prev.find((item) => isSameLine(item, product.id, null))
+        const otherUsage = prev
+          .filter((item) => !item.isService && item.productId === product.id && item !== existing)
+          .reduce((sum, item) => sum + item.quantity * (item.unitsPerPack || 1), 0)
+        const wouldUse = (existing ? existing.quantity + 1 : 1) + otherUsage
+        if (product.trackInventory !== false && wouldUse > product.currentStock) {
+          toast.warning(existing ? `Stock insuficiente para "${product.name}"` : `Sin stock para "${product.name}"`)
           return prev
         }
         didAdd = true
-        return [
-          ...prev,
-          {
-            productId: product.id,
-            serviceId: null,
-            name: product.name,
-            salePrice: product.salePrice,
-            quantity: 1,
-            maxStock: product.currentStock,
-            isService: false,
-            taxRate: product.taxRate || undefined,
-          },
-        ]
+        const next = existing
+          ? prev.map((item) => (item === existing ? { ...item, quantity: item.quantity + 1 } : item))
+          : [
+              ...prev,
+              {
+                productId: product.id,
+                serviceId: null,
+                presentationId: null,
+                presentationName: null,
+                unitsPerPack: 1,
+                name: product.name,
+                salePrice: product.salePrice,
+                quantity: 1,
+                maxStock: product.trackInventory === false ? UNLIMITED_STOCK : product.currentStock,
+                isService: false,
+                taxRate: product.taxRate || undefined,
+              },
+            ]
+        return recomputeMaxStock(next, deps.products)
       })
       if (didAdd) {
         playCartAdd()
@@ -117,7 +153,52 @@ export function usePosCart(deps: UsePosCartDeps) {
         setCartSheetOpen(true)
       }
     },
-    [cart.length]
+    [cart.length, deps.products]
+  )
+
+  const addPresentationToCart = useCallback(
+    (product: Product, presentation: ProductPresentation) => {
+      const wasEmpty = cart.length === 0
+      let didAdd = false
+      setCart((prev) => {
+        const existing = prev.find((item) => isSameLine(item, product.id, presentation.id))
+        const otherUsage = prev
+          .filter((item) => !item.isService && item.productId === product.id && item !== existing)
+          .reduce((sum, item) => sum + item.quantity * (item.unitsPerPack || 1), 0)
+        const wouldUseUnits = ((existing ? existing.quantity + 1 : 1) * presentation.unitsPerPack) + otherUsage
+        if (product.trackInventory !== false && wouldUseUnits > product.currentStock) {
+          toast.warning(`Stock insuficiente para "${product.name} — ${presentation.name}"`)
+          return prev
+        }
+        didAdd = true
+        const next = existing
+          ? prev.map((item) => (item === existing ? { ...item, quantity: item.quantity + 1 } : item))
+          : [
+              ...prev,
+              {
+                productId: product.id,
+                serviceId: null,
+                presentationId: presentation.id,
+                presentationName: presentation.name,
+                unitsPerPack: presentation.unitsPerPack,
+                name: product.name,
+                salePrice: presentation.salePrice,
+                quantity: 1,
+                maxStock: product.trackInventory === false ? UNLIMITED_STOCK : Math.floor(product.currentStock / presentation.unitsPerPack),
+                isService: false,
+                taxRate: product.taxRate || undefined,
+              },
+            ]
+        return recomputeMaxStock(next, deps.products)
+      })
+      if (didAdd) {
+        playCartAdd()
+      }
+      if (wasEmpty) {
+        setCartSheetOpen(true)
+      }
+    },
+    [cart.length, deps.products]
   )
 
   const addServiceToCart = useCallback(
@@ -159,11 +240,13 @@ export function usePosCart(deps: UsePosCartDeps) {
   )
 
   const updateQuantity = useCallback(
-    (itemId: number, delta: number, isService: boolean) => {
-      setCart((prev) =>
-        prev
+    (itemId: number, delta: number, isService: boolean, presentationId: number | null = null) => {
+      setCart((prev) => {
+        const next = prev
           .map((item) => {
-            const match = isService ? item.serviceId === itemId : item.productId === itemId
+            const match = isService
+              ? item.serviceId === itemId
+              : isSameLine(item, itemId, presentationId)
             if (!match) return item
             const newQty = item.quantity + delta
             if (newQty <= 0) return null
@@ -174,24 +257,26 @@ export function usePosCart(deps: UsePosCartDeps) {
             return { ...item, quantity: newQty }
           })
           .filter(Boolean) as CartItem[]
-      )
+        return recomputeMaxStock(next, deps.products)
+      })
     },
-    []
+    [deps.products]
   )
 
-  const removeFromCart = useCallback((itemId: number, isService: boolean) => {
-    setCart((prev) =>
-      prev.filter((item) =>
-        isService ? item.serviceId !== itemId : item.productId !== itemId
+  const removeFromCart = useCallback((itemId: number, isService: boolean, presentationId: number | null = null) => {
+    setCart((prev) => {
+      const next = prev.filter((item) =>
+        isService ? item.serviceId !== itemId : !isSameLine(item, itemId, presentationId)
       )
-    )
-  }, [])
+      return recomputeMaxStock(next, deps.products)
+    })
+  }, [deps.products])
 
   // ─── Update per-item notes ───────────────────────────
-  const updateItemNotes = useCallback((itemId: number, isService: boolean, itemNotes: string) => {
+  const updateItemNotes = useCallback((itemId: number, isService: boolean, itemNotes: string, presentationId: number | null = null) => {
     setCart((prev) =>
       prev.map((item) => {
-        const match = isService ? item.serviceId === itemId : item.productId === itemId
+        const match = isService ? item.serviceId === itemId : isSameLine(item, itemId, presentationId)
         if (!match) return item
         return { ...item, notes: itemNotes.trim() || undefined }
       })
@@ -309,6 +394,7 @@ export function usePosCart(deps: UsePosCartDeps) {
         ].filter(Boolean).join(' | ') || undefined,
         items: cart.map((item) => ({
           ...(item.isService ? { serviceId: item.serviceId } : { productId: item.productId }),
+          ...(item.presentationId ? { presentationId: item.presentationId } : {}),
           quantity: item.quantity,
           notes: item.notes || undefined,
         })),
@@ -420,6 +506,7 @@ export function usePosCart(deps: UsePosCartDeps) {
 
     // Cart operations
     addToCart,
+    addPresentationToCart,
     addServiceToCart,
     updateQuantity,
     removeFromCart,

@@ -14,12 +14,17 @@ export const dynamic = 'force-dynamic'
 const orderItemSchema = z.object({
   productId: z.number().int().positive().optional(),
   serviceId: z.number().int().positive().optional(),
+  // Extra presentation of the product (e.g. Six-pack, Caja x24). Omit for
+  // the product's own "Unidad" (base) presentation.
+  presentationId: z.number().int().positive().optional(),
   quantity: z.number().int().min(1),
   notes: z.string().max(200).optional(),
 }).refine((d) => d.productId || d.serviceId, {
   message: 'Debe especificar productId o serviceId',
 }).refine((d) => !(d.productId && d.serviceId), {
   message: 'Solo puede especificar productId o serviceId, no ambos',
+}).refine((d) => !d.presentationId || d.productId, {
+  message: 'presentationId solo aplica a productos',
 })
 
 const createOrderSchema = z.object({
@@ -59,14 +64,28 @@ export async function POST(req: NextRequest) {
     const serviceItems = data.items.filter((i) => i.serviceId)
 
     // Resolve product info (including tax rate)
-    const productMap = new Map<number, { id: number; name: string; salePrice: number; currentStock: number; taxRate: { id: number; code: string; rate: number; rateType: string; applyTo: string } | null }>()
+    const productMap = new Map<number, { id: number; name: string; salePrice: number; currentStock: number; trackInventory: boolean; taxRate: { id: number; code: string; rate: number; rateType: string; applyTo: string } | null }>()
     if (productItems.length > 0) {
       const productIds = productItems.map((i) => i.productId!)
       const products = await db.product.findMany({
         where: { id: { in: productIds }, storeId: data.storeId, isActive: true },
-        select: { id: true, name: true, salePrice: true, currentStock: true, taxRate: { select: { id: true, code: true, rate: true, rateType: true, applyTo: true } } },
+        select: { id: true, name: true, salePrice: true, currentStock: true, trackInventory: true, taxRate: { select: { id: true, code: true, rate: true, rateType: true, applyTo: true } } },
       })
       for (const p of products) productMap.set(p.id, p)
+    }
+
+    // Resolve presentation info (Six-pack, Caja x24, etc.) — price and stock
+    // conversion always come from the DB, never trusted from the client.
+    // Tax rate is NOT resolved per-presentation: it's inherited from the
+    // parent product (same product, same tax treatment regardless of packaging).
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; salePrice: number; unitsPerPack: number }>()
+    const presentationIds = productItems.map((i) => i.presentationId).filter((id): id is number => !!id)
+    if (presentationIds.length > 0) {
+      const presentations = await db.productPresentation.findMany({
+        where: { id: { in: presentationIds }, isActive: true, product: { storeId: data.storeId } },
+        select: { id: true, productId: true, name: true, salePrice: true, unitsPerPack: true },
+      })
+      for (const p of presentations) presentationMap.set(p.id, p)
     }
 
     // Fetch store's default tax rate (for products/services without an assigned rate)
@@ -90,7 +109,8 @@ export async function POST(req: NextRequest) {
       for (const s of services) serviceMap.set(s.id, s)
     }
 
-    // Validate all items exist
+    // Validate all items exist, and that any requested presentation is real,
+    // active, and actually belongs to the product it's being sold under.
     for (const item of productItems) {
       const product = productMap.get(item.productId!)
       if (!product) {
@@ -99,9 +119,32 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         )
       }
-      if (product.currentStock < item.quantity) {
+      if (item.presentationId) {
+        const presentation = presentationMap.get(item.presentationId)
+        if (!presentation || presentation.productId !== item.productId) {
+          return NextResponse.json(
+            { error: `La presentación seleccionada para "${product.name}" ya no existe o fue desactivada` },
+            { status: 400 },
+          )
+        }
+      }
+    }
+
+    // Stock check in base units, combined across all lines of the same
+    // product — a product's stock is a single shared pool, so e.g. "1
+    // Six-pack + 2 unidades sueltas" of the same product must be checked
+    // together (6 + 2 = 8 base units), not as two independent lines.
+    const baseUnitsByProduct = new Map<number, number>()
+    for (const item of productItems) {
+      const unitsPerPack = item.presentationId ? presentationMap.get(item.presentationId)!.unitsPerPack : 1
+      baseUnitsByProduct.set(item.productId!, (baseUnitsByProduct.get(item.productId!) ?? 0) + item.quantity * unitsPerPack)
+    }
+    for (const [productId, baseUnits] of baseUnitsByProduct) {
+      const product = productMap.get(productId)!
+      if (product.trackInventory === false) continue // no stock control — always sellable
+      if (product.currentStock < baseUnits) {
         return NextResponse.json(
-          { error: `Stock insuficiente para "${product.name}" (disponible: ${product.currentStock})` },
+          { error: `Stock insuficiente para "${product.name}" (disponible: ${product.currentStock} unidades)` },
           { status: 400 },
         )
       }
@@ -148,8 +191,12 @@ export async function POST(req: NextRequest) {
     const orderItemsData = data.items.map((item) => {
       if (item.productId) {
         const product = productMap.get(item.productId)!
-        const totalRow = product.salePrice * item.quantity
+        const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
+        const unitPrice = presentation ? presentation.salePrice : product.salePrice
+        const unitsPerPack = presentation ? presentation.unitsPerPack : 1
+        const totalRow = unitPrice * item.quantity
         // Determine tax rate: product's own rate > store default > none
+        // (presentations don't carry their own tax rate — same product, same tax treatment)
         const effectiveTax = product.taxRate
           ? { code: product.taxRate.code, rate: product.taxRate.rate, rateType: product.taxRate.rateType }
           : defaultTaxRate
@@ -169,8 +216,11 @@ export async function POST(req: NextRequest) {
         return {
           productId: item.productId,
           serviceId: null as number | null,
+          presentationId: presentation ? presentation.id : null as number | null,
+          presentationName: presentation ? presentation.name : null as string | null,
+          unitsPerPack,
           quantity: item.quantity,
-          unitPrice: product.salePrice,
+          unitPrice,
           totalRow,
           taxCode: tax.taxCode,
           taxRate: tax.taxRate,
@@ -198,6 +248,9 @@ export async function POST(req: NextRequest) {
         return {
           productId: null as number | null,
           serviceId: item.serviceId,
+          presentationId: null as number | null,
+          presentationName: null as string | null,
+          unitsPerPack: 1,
           quantity: item.quantity,
           unitPrice: service.price,
           totalRow,
@@ -362,29 +415,44 @@ export async function POST(req: NextRequest) {
       })
 
       // 2. Create inventory movements and decrement stock (only for product items)
+      //    Deducted — and re-validated — in base units: a presentation line
+      //    (e.g. 1 Six-pack) removes unitsPerPack base units from the single
+      //    shared stock pool, not 1.
       for (const item of productItems) {
-        // Re-validate stock inside transaction to prevent race condition
+        const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
+        const unitsPerPack = presentation ? presentation.unitsPerPack : 1
+        const baseUnits = item.quantity * unitsPerPack
+        const trackInventory = productMap.get(item.productId!)!.trackInventory
+
+        // Re-validate stock inside transaction to prevent race condition.
+        // Sequential + read-your-writes within the same tx also correctly
+        // handles multiple lines of the same product (e.g. Six-pack + Unidad).
         const freshProduct = await tx.product.findUnique({
           where: { id: item.productId },
           select: { currentStock: true, name: true },
         })
-        if (!freshProduct || freshProduct.currentStock < item.quantity) {
-          throw new Error(`Stock insuficiente para "${freshProduct?.name || 'Producto'}" (disponible: ${freshProduct?.currentStock || 0}). Intenta de nuevo.`)
+        if (!freshProduct) {
+          throw new Error('Producto no encontrado. Intenta de nuevo.')
+        }
+        if (trackInventory !== false && freshProduct.currentStock < baseUnits) {
+          throw new Error(`Stock insuficiente para "${freshProduct.name}" (disponible: ${freshProduct.currentStock}). Intenta de nuevo.`)
         }
 
         await tx.inventoryMovement.create({
           data: {
             storeId: data.storeId,
             productId: item.productId,
-            quantity: -item.quantity, // negative for sale
+            quantity: -baseUnits, // negative for sale, always in base units
             movementType: 'SALE',
             referenceId: createdOrder.id,
-            notes: `Venta ${orderNumber}`,
+            notes: presentation
+              ? `Venta ${orderNumber} — ${presentation.name} x${item.quantity} (${baseUnits} uds base)`
+              : `Venta ${orderNumber}`,
           },
         })
         await tx.product.update({
           where: { id: item.productId },
-          data: { currentStock: { decrement: item.quantity } },
+          data: { currentStock: { decrement: baseUnits } },
         })
       }
 
@@ -586,6 +654,7 @@ export async function POST(req: NextRequest) {
         orderItems: order.orderItems.map((item) => ({
           id: item.id,
           productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
+          presentationName: item.presentationName ?? null,
           quantity: item.quantity,
           unitPrice: Number(item.unitPrice),
           totalRow: Number(item.totalRow),
@@ -694,6 +763,7 @@ export async function GET(request: NextRequest) {
             select: {
               quantity: true,
               totalRow: true,
+              presentationName: true,
               product: { select: { name: true } },
               service: { select: { name: true } },
             },
@@ -716,6 +786,7 @@ export async function GET(request: NextRequest) {
       ...(includeItems ? {
         orderItems: (order.orderItems || []).map((item) => ({
           productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
+          presentationName: item.presentationName ?? null,
           quantity: item.quantity,
           totalRow: Number(item.totalRow),
         })),

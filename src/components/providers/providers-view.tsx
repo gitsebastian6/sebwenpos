@@ -5,9 +5,6 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useProviders, useCreateProvider, useUpdateProvider, useDeleteProvider } from '@/hooks/api/use-providers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
@@ -17,14 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,12 +35,10 @@ import {
   Phone,
   Mail,
   MapPin,
-  CalendarDays,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
 import { KPIBar } from '@/components/shared/kpi-bar'
-import { es } from 'date-fns/locale'
+import { ProviderFormDialog } from './provider-form-dialog'
 
 import type { Provider } from '@/types'
 
@@ -67,17 +54,6 @@ export function ProvidersView() {
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null)
   const [deleteProvider, setDeleteProvider] = useState<Provider | null>(null)
 
-  // Form state
-  const [formName, setFormName] = useState('')
-  const [formContactName, setFormContactName] = useState('')
-  const [formPhone, setFormPhone] = useState('')
-  const [formEmail, setFormEmail] = useState('')
-  const [formAddress, setFormAddress] = useState('')
-  const [formCity, setFormCity] = useState('')
-  const [formNit, setFormNit] = useState('')
-  const [formNotes, setFormNotes] = useState('')
-  const [formIsActive, setFormIsActive] = useState(true)
-
   // ── Query hooks ──
   const activeParam = activeFilter === 'all' ? undefined : activeFilter === 'active'
   const { data: providers = [], isLoading: loading } = useProviders(store?.id, {
@@ -89,83 +65,26 @@ export function ProvidersView() {
   const createProviderMut = useCreateProvider()
   const updateProviderMut = useUpdateProvider()
   const deleteProviderMut = useDeleteProvider()
-  const submitting = createProviderMut.isPending || updateProviderMut.isPending
   const deleting = deleteProviderMut.isPending
 
   function openCreateDialog() {
     setEditingProvider(null)
-    setFormName('')
-    setFormContactName('')
-    setFormPhone('')
-    setFormEmail('')
-    setFormAddress('')
-    setFormCity('')
-    setFormNit('')
-    setFormNotes('')
-    setFormIsActive(true)
     setDialogOpen(true)
   }
 
   function openEditDialog(provider: Provider) {
     setEditingProvider(provider)
-    setFormName(provider.name)
-    setFormContactName(provider.contactName || '')
-    setFormPhone(provider.phone || '')
-    setFormEmail(provider.email || '')
-    setFormAddress(provider.address || '')
-    setFormCity(provider.city || '')
-    setFormNit(provider.nit || '')
-    setFormNotes(provider.notes || '')
-    setFormIsActive(provider.isActive)
     setDialogOpen(true)
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!formName.trim()) {
-      toast.error('El nombre es obligatorio')
-      return
-    }
-    if (!store?.id) {
-      toast.error('Tienda no disponible')
-      return
-    }
-    try {
-      if (editingProvider) {
-        await updateProviderMut.mutateAsync({
-          id: editingProvider.id,
-          body: {
-            name: formName.trim(),
-            contactName: formContactName.trim() || '',
-            phone: formPhone.trim() || '',
-            email: formEmail.trim() || '',
-            address: formAddress.trim() || '',
-            city: formCity.trim() || '',
-            nit: formNit.trim() || '',
-            notes: formNotes.trim() || '',
-            isActive: formIsActive,
-          },
-        })
-        toast.success('Proveedor actualizado')
-      } else {
-        const body: Record<string, unknown> = {
-          storeId: store.id,
-          name: formName.trim(),
-        }
-        if (formContactName.trim()) body.contactName = formContactName.trim()
-        if (formPhone.trim()) body.phone = formPhone.trim()
-        if (formEmail.trim()) body.email = formEmail.trim()
-        if (formAddress.trim()) body.address = formAddress.trim()
-        if (formCity.trim()) body.city = formCity.trim()
-        if (formNit.trim()) body.nit = formNit.trim()
-        if (formNotes.trim()) body.notes = formNotes.trim()
-        await createProviderMut.mutateAsync({ body })
-        toast.success('Proveedor creado')
-      }
-      setDialogOpen(false)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error desconocido'
-      toast.error(message)
+  async function handleSaveProvider(body: Record<string, unknown>, isEditing: boolean) {
+    if (isEditing && editingProvider) {
+      await updateProviderMut.mutateAsync({ id: editingProvider.id, body })
+      toast.success('Proveedor actualizado')
+    } else {
+      if (!store?.id) throw new Error('Tienda no disponible')
+      await createProviderMut.mutateAsync({ body: { ...body, storeId: store.id } })
+      toast.success('Proveedor creado')
     }
   }
 
@@ -383,139 +302,12 @@ export function ProvidersView() {
       </Card>
 
       {/* ── Create / Edit Dialog ────────────────────────────────── */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {editingProvider ? 'Editar Proveedor' : 'Nuevo Proveedor'}
-            </DialogTitle>
-            <DialogDescription>
-              {editingProvider
-                ? 'Modifica los datos del proveedor.'
-                : 'Completa los datos para registrar un nuevo proveedor.'}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="provider-name">
-                Nombre / Razón Social <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="provider-name"
-                placeholder="Nombre del proveedor"
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="provider-contact">Persona de Contacto</Label>
-                <Input
-                  id="provider-contact"
-                  placeholder="Nombre del contacto"
-                  value={formContactName}
-                  onChange={(e) => setFormContactName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="provider-nit">NIT</Label>
-                <Input
-                  id="provider-nit"
-                  placeholder="Número de Identificación Tributaria"
-                  value={formNit}
-                  onChange={(e) => setFormNit(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="provider-phone">Teléfono</Label>
-                <Input
-                  id="provider-phone"
-                  placeholder="(555) 123-4567"
-                  value={formPhone}
-                  onChange={(e) => setFormPhone(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="provider-email">Email</Label>
-                <Input
-                  id="provider-email"
-                  type="email"
-                  placeholder="proveedor@ejemplo.com"
-                  value={formEmail}
-                  onChange={(e) => setFormEmail(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="provider-address">Dirección</Label>
-              <Input
-                id="provider-address"
-                placeholder="Dirección del proveedor"
-                value={formAddress}
-                onChange={(e) => setFormAddress(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="provider-city">Ciudad</Label>
-              <Input
-                id="provider-city"
-                placeholder="Ciudad"
-                value={formCity}
-                onChange={(e) => setFormCity(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="provider-notes">Notas</Label>
-              <Textarea
-                id="provider-notes"
-                placeholder="Notas adicionales sobre el proveedor..."
-                value={formNotes}
-                onChange={(e) => setFormNotes(e.target.value)}
-                rows={3}
-              />
-            </div>
-
-            {/* Active toggle (only in edit) */}
-            {editingProvider && (
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div className="space-y-0.5">
-                  <Label htmlFor="provider-active" className="text-sm font-medium">
-                    Estado
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    {formIsActive ? 'Proveedor activo' : 'Proveedor inactivo'}
-                  </p>
-                </div>
-                <Switch
-                  id="provider-active"
-                  checked={formIsActive}
-                  onCheckedChange={setFormIsActive}
-                />
-              </div>
-            )}
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDialogOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={submitting || !formName.trim()}>
-                {submitting
-                  ? 'Guardando...'
-                  : editingProvider
-                    ? 'Actualizar'
-                    : 'Crear Proveedor'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <ProviderFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        editingProvider={editingProvider}
+        onSave={handleSaveProvider}
+      />
 
       {/* ── Delete Confirmation ─────────────────────────────────── */}
       <AlertDialog

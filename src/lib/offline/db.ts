@@ -76,6 +76,7 @@ export interface PendingOrder {
     items: Array<{
       productId?: number;
       serviceId?: number;
+      presentationId?: number;
       quantity: number;
       notes?: string;
     }>;

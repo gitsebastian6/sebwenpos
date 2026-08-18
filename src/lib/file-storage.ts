@@ -71,6 +71,21 @@ export async function saveLeadDocumentFile(params: {
 }
 
 /**
+ * Save a base64-encoded product photo uploaded from the product form.
+ * Files are stored in: uploads/products/YYYY/MM/uuid.ext
+ * Unlike receipts/lead-docs, these are served publicly (see
+ * /api/public/uploads/products/[...path]) since they show up on the
+ * unauthenticated Tienda Virtual storefront.
+ */
+export async function saveProductImageFile(params: {
+  base64Data: string
+  fileName: string
+  fileType: string
+}): Promise<string> {
+  return saveCategorizedFile({ ...params, category: 'products' })
+}
+
+/**
  * Read a file from disk by its relative path.
  * Returns null if the file does not exist or cannot be read.
  */

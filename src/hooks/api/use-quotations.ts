@@ -24,6 +24,9 @@ export interface QuotationItem {
   id: number
   productId: number | null
   productName: string
+  presentationId: number | null
+  presentationName: string | null
+  unitsPerPack: number
   quantity: number
   unitPrice: number
   totalRow: number

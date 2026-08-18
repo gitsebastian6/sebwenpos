@@ -129,8 +129,11 @@ export async function PATCH(
 
     // If this rejection leaves the type without any pending/approved version,
     // the lead can no longer be considered "fully documented" — send it back.
+    // Only applies to the 3 required types; rejecting the optional Resolución
+    // DIAN shouldn't downgrade a lead that's otherwise fully documented.
     let newStage: string | null = null
-    if (data.status === 'REJECTED' && lead.stage === 'VALIDACION_LEGAL') {
+    const isRequiredType = (REQUIRED_DOCUMENT_TYPES as readonly string[]).includes(doc.documentType)
+    if (data.status === 'REJECTED' && isRequiredType && lead.stage === 'VALIDACION_LEGAL') {
       const remaining = await db.leadDocument.count({
         where: { leadId, documentType: doc.documentType, status: { in: ['PENDING', 'APPROVED'] } },
       })

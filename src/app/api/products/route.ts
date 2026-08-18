@@ -6,11 +6,25 @@ import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
+// A product's own sku/barcode/salePrice/costPrice ARE its "Unidad" (base)
+// presentation — this array only covers EXTRA presentations (max 2, so 3 total).
+const presentationSchema = z.object({
+  name: z.string().min(1, 'El nombre de la presentación es obligatorio').max(100),
+  unitLabel: z.string().max(10).default('UND'),
+  barcode: z.string().max(100).optional().or(z.literal('')),
+  sku: z.string().max(100).optional().or(z.literal('')),
+  unitsPerPack: z.number().int().min(1, 'Debe equivaler a 1 o más unidades base'),
+  salePrice: z.number().int().min(1, 'El precio de venta debe ser mayor a 0'),
+  costPrice: z.number().int().min(0).default(0),
+  isActive: z.boolean().default(true),
+})
+
 const createProductSchema = z.object({
   storeId: z.number().int().positive(),
   name: z.string().min(1, 'El nombre es obligatorio').max(200),
   sku: z.string().max(100).optional(),
   barcode: z.string().max(100).optional(),
+  unitLabel: z.string().max(10).default('UND'),
   categoryId: z.number().int().positive().optional(),
   providerId: z.number().int().positive().optional(),
   taxRateId: z.number().int().positive().optional(),
@@ -20,7 +34,10 @@ const createProductSchema = z.object({
   costPrice: z.number().int().min(0).default(0),
   salePrice: z.number().int().min(1, 'El precio de venta debe ser mayor a 0'),
   minStock: z.number().int().min(0).default(5),
+  trackInventory: z.boolean().default(true),
+  trackExpiration: z.boolean().default(false),
   isActive: z.boolean().default(true),
+  presentations: z.array(presentationSchema).max(2, 'Máximo 2 presentaciones adicionales').optional(),
 })
 
 // GET /api/products?storeId=X&q=search&categoryId=Y&active=true
@@ -77,6 +94,7 @@ export async function GET(req: NextRequest) {
         taxRate: {
           select: { id: true, name: true, code: true, rate: true, rateType: true },
         },
+        presentations: { orderBy: { sortOrder: 'asc' } },
         _count: {
           select: { orderItems: true },
         },
@@ -172,6 +190,7 @@ export async function POST(req: NextRequest) {
         name: data.name,
         sku: data.sku || null,
         barcode: data.barcode || null,
+        unitLabel: data.unitLabel,
         categoryId: data.categoryId || null,
         providerId: data.providerId || null,
         taxRateId: data.taxRateId || null,
@@ -181,7 +200,24 @@ export async function POST(req: NextRequest) {
         costPrice: data.costPrice,
         salePrice: data.salePrice,
         minStock: data.minStock,
+        trackInventory: data.trackInventory,
+        trackExpiration: data.trackExpiration,
         isActive: data.isActive,
+        ...(data.presentations?.length ? {
+          presentations: {
+            create: data.presentations.map((p, i) => ({
+              name: p.name,
+              unitLabel: p.unitLabel,
+              barcode: p.barcode || null,
+              sku: p.sku || null,
+              unitsPerPack: p.unitsPerPack,
+              salePrice: p.salePrice,
+              costPrice: p.costPrice,
+              isActive: p.isActive,
+              sortOrder: i,
+            })),
+          },
+        } : {}),
       },
       include: {
         category: {
@@ -193,6 +229,7 @@ export async function POST(req: NextRequest) {
         taxRate: {
           select: { id: true, name: true, code: true, rate: true, rateType: true },
         },
+        presentations: { orderBy: { sortOrder: 'asc' } },
       },
     })
 

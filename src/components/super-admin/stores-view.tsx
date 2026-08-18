@@ -20,7 +20,7 @@ import {
   Store, Building2, Users, Package, ShoppingCart, Crown, Plus,
   CreditCard, User, Lock, Eye, EyeOff, Phone, Mail, MapPin, Hash,
   KeyRound, FileText, Receipt, AlertTriangle, XCircle, CheckCircle2, Upload,
-  ShieldCheck, RefreshCw, Ban, PencilLine,
+  ShieldCheck, RefreshCw, Ban, PencilLine, FileWarning,
 } from 'lucide-react'
 import { formatCOP, formatDate, getSubscriptionStatusBadge, BILLING_PERIODS, BILLING_PERIOD_LABELS } from './helpers'
 import type { StoreListItem, StoreOwner, PlanData, SubscriptionData } from './types'
@@ -132,14 +132,23 @@ export function StoresTable({ stores, loading, plans, onViewDetail, onResetPassw
                         <div className="min-w-0">
                           <p className="font-medium text-sm truncate flex items-center">{s.name}{s.parentStoreId && (<Badge variant="outline" className="text-[10px] ml-1.5 text-violet-500 border-violet-500/30">Sucursal</Badge>)}</p>
                           {s.address && <p className="text-xs text-muted-foreground truncate">{s.address}</p>}
-                          {s.leadId ? (
+                          {s.leadId && s.leadValidated ? (
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); onOpenLead?.(s.leadId!) }}
                               className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline mt-0.5"
-                              title="Ver expediente legal en el CRM"
+                              title="Expediente legal validado — ver en el CRM"
                             >
                               <ShieldCheck className="h-2.5 w-2.5" />CRM validado
+                            </button>
+                          ) : s.leadId ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onOpenLead?.(s.leadId!) }}
+                              className="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 hover:underline mt-0.5"
+                              title="Expediente legal (RUT, Cámara, cédula, Resolución DIAN) todavía sin validar — ver en el CRM"
+                            >
+                              <FileWarning className="h-2.5 w-2.5" />Expediente pendiente
                             </button>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">

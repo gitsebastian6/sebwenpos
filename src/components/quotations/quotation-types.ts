@@ -18,6 +18,9 @@ export interface QuotationItem {
   id: number
   productId: number | null
   productName: string
+  presentationId: number | null
+  presentationName: string | null
+  unitsPerPack: number
   quantity: number
   unitPrice: number
   totalRow: number
@@ -46,21 +49,20 @@ export interface QuotationDetail extends Omit<QuotationListItem, 'itemCount'> {
   items: QuotationItem[]
 }
 
-export interface ProductSearchResult {
-  id: number
-  name: string
-  salePrice: number
-  currentStock: number
-  sku: string | null
-  category: { id: number; name: string; icon: string | null } | null
-}
-
 export interface CartItem {
   productId: number
   productName: string
+  presentationId: number | null
+  presentationName: string | null
+  unitsPerPack: number
   unitPrice: number
   quantity: number
   notes: string
+}
+
+/** Composite key so the same product's Unidad and a presentation can coexist as separate cart lines. */
+export function cartItemKey(productId: number, presentationId: number | null): string {
+  return `${productId}:${presentationId ?? ''}`
 }
 
 export type InvoiceMode = 'TIRILLA' | 'DOC_EQUIPOS' | 'ELECTRONICA'

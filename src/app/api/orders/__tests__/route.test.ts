@@ -8,6 +8,9 @@ const mockDb = vi.hoisted(() => ({
     findUnique: vi.fn(),
     update: vi.fn(),
   },
+  productPresentation: {
+    findMany: vi.fn(),
+  },
   service: {
     findMany: vi.fn(),
   },
@@ -213,6 +216,93 @@ describe('POST /api/orders', () => {
     expect(items[0].totalRow).toBe(20000)
   })
 
+  it('prices and deducts stock for a product presentation (Six-pack) using the DB record, not the client', async () => {
+    const sixPack = { id: 5, productId: 1, name: 'Six-pack', salePrice: 55000, unitsPerPack: 6 }
+    mockDb.product.findMany.mockResolvedValue([mockProduct]) // base salePrice 10000, currentStock 50
+    mockDb.productPresentation.findMany.mockResolvedValue([sixPack])
+    mockDb.taxRate.findFirst.mockResolvedValue(mockDefaultTaxRate)
+    mockDb.cashRegister.findFirst.mockResolvedValue(mockCashRegister)
+    mockDb.taxRate.findMany.mockResolvedValue([mockDefaultTaxRate])
+
+    let capturedOrderCreateArgs: any = null
+    const inventoryMovementCreate = vi.fn()
+    const productUpdate = vi.fn()
+    mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
+      const mockTx = {
+        order: { create: vi.fn((args: any) => { capturedOrderCreateArgs = args; return Promise.resolve(mockCreatedOrder) }) },
+        product: { findUnique: vi.fn().mockResolvedValue({ currentStock: 50, name: 'Café Colombiano' }), update: productUpdate },
+        inventoryMovement: { create: inventoryMovementCreate },
+        serviceTransaction: { create: vi.fn() },
+        ledgerAccount: { findFirst: vi.fn().mockResolvedValue(null) },
+        journalEntry: { create: vi.fn() },
+        customer: { update: vi.fn() },
+      }
+      return cb(mockTx)
+    })
+
+    const body = { ...validOrderBody, items: [{ productId: 1, presentationId: 5, quantity: 1 }] }
+    const request = mockPostRequest(body)
+    const response = await POST(request as any)
+    const { status } = await parseResponse(response)
+
+    expect(status).toBe(201)
+    const createdItem = capturedOrderCreateArgs.data.orderItems.create[0]
+    // Price comes from the presentation, not the product's base salePrice
+    expect(createdItem.unitPrice).toBe(55000)
+    expect(createdItem.totalRow).toBe(55000)
+    expect(createdItem.presentationId).toBe(5)
+    expect(createdItem.presentationName).toBe('Six-pack')
+    expect(createdItem.unitsPerPack).toBe(6)
+    // Stock/Kardex move in base units: 1 Six-pack = 6 base units, not 1
+    expect(inventoryMovementCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ quantity: -6, movementType: 'SALE' }) })
+    )
+    expect(productUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { currentStock: { decrement: 6 } } })
+    )
+  })
+
+  it('rejects a presentationId that does not belong to the given product (400)', async () => {
+    // Presentation exists but is registered under a different product — must not be honored
+    const foreignPresentation = { id: 5, productId: 999, name: 'Six-pack', salePrice: 55000, unitsPerPack: 6 }
+    mockDb.product.findMany.mockResolvedValue([mockProduct])
+    mockDb.productPresentation.findMany.mockResolvedValue([foreignPresentation])
+    mockDb.taxRate.findFirst.mockResolvedValue(mockDefaultTaxRate)
+    mockDb.cashRegister.findFirst.mockResolvedValue(mockCashRegister)
+
+    const body = { ...validOrderBody, items: [{ productId: 1, presentationId: 5, quantity: 1 }] }
+    const request = mockPostRequest(body)
+    const response = await POST(request as any)
+    const { status, body: respBody } = await parseResponse(response)
+
+    expect(status).toBe(400)
+    expect(respBody.error).toContain('presentación')
+  })
+
+  it('rejects when combined base-unit stock across multiple lines of the same product is insufficient (400)', async () => {
+    // 1 unidad suelta (1) + 2 Six-packs (2 x 6 = 12) = 13 base units needed, only 10 in stock
+    const lowStockProduct = { ...mockProduct, currentStock: 10 }
+    const sixPack = { id: 5, productId: 1, name: 'Six-pack', salePrice: 55000, unitsPerPack: 6 }
+    mockDb.product.findMany.mockResolvedValue([lowStockProduct])
+    mockDb.productPresentation.findMany.mockResolvedValue([sixPack])
+    mockDb.taxRate.findFirst.mockResolvedValue(mockDefaultTaxRate)
+    mockDb.cashRegister.findFirst.mockResolvedValue(mockCashRegister)
+
+    const body = {
+      ...validOrderBody,
+      items: [
+        { productId: 1, quantity: 1 },
+        { productId: 1, presentationId: 5, quantity: 2 },
+      ],
+    }
+    const request = mockPostRequest(body)
+    const response = await POST(request as any)
+    const { status, body: respBody } = await parseResponse(response)
+
+    expect(status).toBe(400)
+    expect(respBody.error).toContain('Stock insuficiente')
+  })
+
   it('rejects order with missing storeId (400)', async () => {
     const invalidBody = { ...validOrderBody, storeId: undefined }
     const request = mockPostRequest(invalidBody)
@@ -280,6 +370,48 @@ describe('POST /api/orders', () => {
   it('rejects order when product has insufficient stock (400)', async () => {
     const lowStockProduct = { ...mockProduct, currentStock: 1 }
     mockDb.product.findMany.mockResolvedValue([lowStockProduct])
+    mockDb.taxRate.findFirst.mockResolvedValue(mockDefaultTaxRate)
+    mockDb.cashRegister.findFirst.mockResolvedValue(mockCashRegister)
+
+    const request = mockPostRequest(validOrderBody) // quantity: 2 but stock: 1
+    const response = await POST(request as any)
+    const { status, body } = await parseResponse(response)
+
+    expect(status).toBe(400)
+    expect(body.error).toContain('Stock insuficiente')
+  })
+
+  it('sells a product with trackInventory=false even when currentStock is below the quantity requested', async () => {
+    const untrackedLowStock = { ...mockProduct, currentStock: 1, trackInventory: false }
+    mockDb.product.findMany.mockResolvedValue([untrackedLowStock])
+    mockDb.taxRate.findFirst.mockResolvedValue(mockDefaultTaxRate)
+    mockDb.cashRegister.findFirst.mockResolvedValue(mockCashRegister)
+    mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
+      const mockTx = {
+        order: { create: vi.fn().mockResolvedValue(mockCreatedOrder) },
+        product: { findUnique: vi.fn().mockResolvedValue({ currentStock: 1, name: 'Café' }), update: vi.fn() },
+        inventoryMovement: { create: vi.fn() },
+        serviceTransaction: { create: vi.fn() },
+        ledgerAccount: { findFirst: vi.fn().mockResolvedValue(null) },
+        journalEntry: { create: vi.fn() },
+        customer: { update: vi.fn() },
+      }
+      return cb(mockTx)
+    })
+    mockDb.taxRate.findMany.mockResolvedValue([mockDefaultTaxRate])
+
+    const request = mockPostRequest(validOrderBody) // quantity: 2 but stock: 1
+    const response = await POST(request as any)
+    const { status } = await parseResponse(response)
+
+    expect(status).toBe(201)
+  })
+
+  it('a product missing trackInventory in the DB row defaults to tracked (fails safe, never silently unlimited)', async () => {
+    // Simulates a select() that forgot to fetch trackInventory — should NOT
+    // be treated as "unlimited stock" just because the field came back undefined.
+    const { trackInventory: _omitted, ...productWithoutField } = { ...mockProduct, currentStock: 1, trackInventory: true }
+    mockDb.product.findMany.mockResolvedValue([productWithoutField])
     mockDb.taxRate.findFirst.mockResolvedValue(mockDefaultTaxRate)
     mockDb.cashRegister.findFirst.mockResolvedValue(mockCashRegister)
 

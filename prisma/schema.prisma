@@ -29,17 +29,17 @@ datasource db {
 // ----------------------------------------------
 
 model StoreEventLog {
-  id          Int      @id @default(autoincrement())
-  storeId     Int      @map("store_id")
-  eventType   String   @map("event_type")
+  id            Int      @id @default(autoincrement())
+  storeId       Int      @map("store_id")
+  eventType     String   @map("event_type")
   // STORE_CREATED, STORE_ACTIVATED, TRIAL_STARTED, TRIAL_ENDED,
   // SUBSCRIPTION_ACTIVE, SUBSCRIPTION_PAST_DUE, SUBSCRIPTION_CANCELLED,
   // SUBSCRIPTION_REACTIVATED, PLAN_UPGRADED, PLAN_DOWNGRADED,
   // BRANCH_CREATED, STORE_DELETED
-  previousValue String? @map("previous_value")
-  newValue     String?  @map("new_value")
-  metadata    String   @default("{}") @map("metadata")
-  createdAt   DateTime @default(now()) @map("created_at")
+  previousValue String?  @map("previous_value")
+  newValue      String?  @map("new_value")
+  metadata      String   @default("{}") @map("metadata")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
@@ -54,28 +54,28 @@ model StoreEventLog {
 // ----------------------------------------------
 
 model User {
-  id           Int      @id @default(autoincrement())
-  cedula       String   @unique
-  phone        String?
-  email        String?
-  passwordHash String
-  fullName     String?  @map("full_name")
-  role         String   @default("OWNER") // SUPER_ADMIN, OWNER, EMPLOYEE
-  securityQuestion  String?   @map("security_question")
-  securityAnswer    String?   @map("security_answer")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt
+  id               Int      @id @default(autoincrement())
+  cedula           String   @unique
+  phone            String?
+  email            String?
+  passwordHash     String
+  fullName         String?  @map("full_name")
+  role             String   @default("OWNER") // SUPER_ADMIN, OWNER, EMPLOYEE
+  securityQuestion String?  @map("security_question")
+  securityAnswer   String?  @map("security_answer")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt
 
   store    Store?    @relation("UserStore")
   employee Employee? @relation("EmployeeStore")
 
-  otpTokens         OtpToken[]
-  cashRegisters     CashRegister[]
-  purchases        Purchase[]       @relation("UserPurchases")
+  otpTokens              OtpToken[]
+  cashRegisters          CashRegister[]
+  purchases              Purchase[]        @relation("UserPurchases")
   purchasePaymentRecords PurchasePayment[] @relation("UserPurchasePayments")
-  assignedLeads       Lead[]         @relation("LeadAssignedTo")
-  leadDocumentReviews LeadDocument[] @relation("LeadDocumentReviewer")
-  leadActivities      LeadActivity[] @relation("LeadActivityCreator")
+  assignedLeads          Lead[]            @relation("LeadAssignedTo")
+  leadDocumentReviews    LeadDocument[]    @relation("LeadDocumentReviewer")
+  leadActivities         LeadActivity[]    @relation("LeadActivityCreator")
 
   @@map("users")
 }
@@ -86,14 +86,14 @@ model User {
 
 model RevokedToken {
   id        Int      @id @default(autoincrement())
-  tokenJti  String   @unique @map("token_jti")  // Unique token identifier (version.payloadHash)
+  tokenJti  String   @unique @map("token_jti") // Unique token identifier (version.payloadHash)
   userId    Int      @map("user_id")
-  reason    String   @default("LOGOUT")  // LOGOUT, PASSWORD_CHANGE, ACCOUNT_DISABLED, SECURITY_BREACH
-  expiresAt DateTime @map("expires_at")  // When the token would have expired — for cleanup
+  reason    String   @default("LOGOUT") // LOGOUT, PASSWORD_CHANGE, ACCOUNT_DISABLED, SECURITY_BREACH
+  expiresAt DateTime @map("expires_at") // When the token would have expired — for cleanup
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([tokenJti])
-  @@index([expiresAt])  // For cleanup cron: DELETE WHERE expiresAt < NOW
+  @@index([expiresAt]) // For cleanup cron: DELETE WHERE expiresAt < NOW
   @@index([userId])
   @@map("revoked_tokens")
 }
@@ -103,18 +103,18 @@ model RevokedToken {
 // ----------------------------------------------
 
 model AuditLog {
-  id         Int      @id @default(autoincrement())
-  storeId    Int?     @map("store_id")
-  userId     Int?     @map("user_id")
-  action     String                        // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, CANCEL, ADJUST, RETURN, etc.
-  entity     String                        // Order, Invoice, Product, Customer, InventoryMovement, etc.
-  entityId   Int?     @map("entity_id")    // ID of the affected entity
-  oldValue   String?  @map("old_value")    // JSON of previous state (for updates/deletes)
-  newValue   String?  @map("new_value")    // JSON of new state (for creates/updates)
-  ipAddress  String?  @map("ip_address")   // Client IP
-  userAgent  String?  @map("user_agent")   // Client browser/app
-  metadata   String   @default("{}") @map("metadata")  // Extra context (discount reason, payment method, etc.)
-  createdAt  DateTime @default(now()) @map("created_at")
+  id        Int      @id @default(autoincrement())
+  storeId   Int?     @map("store_id")
+  userId    Int?     @map("user_id")
+  action    String // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, CANCEL, ADJUST, RETURN, etc.
+  entity    String // Order, Invoice, Product, Customer, InventoryMovement, etc.
+  entityId  Int?     @map("entity_id") // ID of the affected entity
+  oldValue  String?  @map("old_value") // JSON of previous state (for updates/deletes)
+  newValue  String?  @map("new_value") // JSON of new state (for creates/updates)
+  ipAddress String?  @map("ip_address") // Client IP
+  userAgent String?  @map("user_agent") // Client browser/app
+  metadata  String   @default("{}") @map("metadata") // Extra context (discount reason, payment method, etc.)
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([storeId, entity, createdAt])
   @@index([storeId, action, createdAt])
@@ -144,96 +144,96 @@ model OtpToken {
 }
 
 model Store {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @unique @map("user_id")
-  name         String
-  legalName    String?  @map("legal_name")
-  nit          String?
-  address      String?
-  phone        String?
-  currencyCode String   @default("COP") @map("currency_code")
-  countryCode  String?  @map("country_code")
+  id                         Int       @id @default(autoincrement())
+  userId                     Int       @unique @map("user_id")
+  name                       String
+  legalName                  String?   @map("legal_name")
+  nit                        String?
+  address                    String?
+  phone                      String?
+  currencyCode               String    @default("COP") @map("currency_code")
+  countryCode                String?   @map("country_code")
   // Días de antigüedad sin pagar para que una deuda de CxC se considere "vencida" (Índice de Morosidad)
-  debtOverdueDays Int   @default(30) @map("debt_overdue_days")
+  debtOverdueDays            Int       @default(30) @map("debt_overdue_days")
   // DIAN Resolution (Facturación Electrónica)
-  invoicePrefix          String?  @map("invoice_prefix")
-  resolutionNumber       String?  @map("resolution_number")
-  resolutionStartDate    DateTime? @map("resolution_start_date")
-  resolutionEndDate      DateTime? @map("resolution_end_date")
-  resolutionStartNumber  Int?     @map("resolution_start_number")
-  resolutionEndNumber    Int?     @map("resolution_end_number")
-  invoiceTestMode        Boolean  @default(true) @map("invoice_test_mode")
+  invoicePrefix              String?   @map("invoice_prefix")
+  resolutionNumber           String?   @map("resolution_number")
+  resolutionStartDate        DateTime? @map("resolution_start_date")
+  resolutionEndDate          DateTime? @map("resolution_end_date")
+  resolutionStartNumber      Int?      @map("resolution_start_number")
+  resolutionEndNumber        Int?      @map("resolution_end_number")
+  invoiceTestMode            Boolean   @default(true) @map("invoice_test_mode")
   // Facturación Electrónica Híbrida
-  invoiceProvider        String   @default("NONE") @map("invoice_provider")
-  invoiceEnabled         Boolean  @default(false) @map("invoice_enabled")
-  certificateUploaded    Boolean  @default(false) @map("certificate_uploaded")
-  certificatePassword    String?  @map("certificate_password")
-  softwareId             String?  @map("software_id")
-  softwarePin            String?  @map("software_pin")
-  providerConfig         String   @default("{}") @map("provider_config")
+  invoiceProvider            String    @default("NONE") @map("invoice_provider")
+  invoiceEnabled             Boolean   @default(false) @map("invoice_enabled")
+  certificateUploaded        Boolean   @default(false) @map("certificate_uploaded")
+  certificatePassword        String?   @map("certificate_password")
+  softwareId                 String?   @map("software_id")
+  softwarePin                String?   @map("software_pin")
+  providerConfig             String    @default("{}") @map("provider_config")
   // DIVIPOLA (código municipio DIAN)
-  divipolaCode           String?  @map("divipola_code")
-  cityName               String?  @map("city_name")
+  divipolaCode               String?   @map("divipola_code")
+  cityName                   String?   @map("city_name")
   // Datos fiscales (capturados en el CRM legal durante el onboarding, ver Lead)
-  taxRegime              String?  @map("tax_regime")
-  fiscalResponsibilities String?  @map("fiscal_responsibilities")
+  taxRegime                  String?   @map("tax_regime")
+  fiscalResponsibilities     String?   @map("fiscal_responsibilities")
   // Certificate management
-  certUploadedAt    DateTime? @map("cert_uploaded_at")
-  certExpiresAt     DateTime? @map("cert_expires_at")
-  certSubject       String?   @map("cert_subject")
+  certUploadedAt             DateTime? @map("cert_uploaded_at")
+  certExpiresAt              DateTime? @map("cert_expires_at")
+  certSubject                String?   @map("cert_subject")
   // PTE (Proveedor Tecnológico Electrónico)
-  connectionMode    String    @default("OFFLINE") @map("connection_mode")
-  pteNit            String?   @map("pte_nit")
-  pteApiUrl         String?   @map("pte_api_url")
-  pteApiKey         String?   @map("pte_api_key")
-  electronicInvoicingEnabled Boolean @default(false) @map("electronic_invoicing_enabled")
+  connectionMode             String    @default("OFFLINE") @map("connection_mode")
+  pteNit                     String?   @map("pte_nit")
+  pteApiUrl                  String?   @map("pte_api_url")
+  pteApiKey                  String?   @map("pte_api_key")
+  electronicInvoicingEnabled Boolean   @default(false) @map("electronic_invoicing_enabled")
   // Sucursal / Branch support
-  parentStoreId          Int?     @map("parent_store_id")
+  parentStoreId              Int?      @map("parent_store_id")
   // Tienda Virtual (public storefront)
-  storeSlug       String?  @unique @map("store_slug")
-  storeDescription String? @map("store_description")
-  storeWhatsapp   String?  @map("store_whatsapp")
-  storeActive     Boolean  @default(false) @map("store_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt
+  storeSlug                  String?   @unique @map("store_slug")
+  storeDescription           String?   @map("store_description")
+  storeWhatsapp              String?   @map("store_whatsapp")
+  storeActive                Boolean   @default(false) @map("store_active")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt
 
-  user                User                 @relation("UserStore", fields: [userId], references: [id], onDelete: Restrict)
-  parentStore         Store?               @relation("StoreBranches", fields: [parentStoreId], references: [id])
-  branches            Store[]              @relation("StoreBranches")
-  employees           Employee[]
-  roles               Role[]
-  categories          Category[]
-  products            Product[]
-  inventoryMovements  InventoryMovement[]
-  customers           Customer[]
-  orders              Order[]
-  ledgerAccounts      LedgerAccount[]
-  journalEntries      JournalEntry[]
-  services            Service[]
-  serviceTransactions ServiceTransaction[]
-  barTables           BarTable[]
-  tableSessions       TableSession[]
-  comandaItems        ComandaItem[]
-  providers           Provider[]
-  purchases           Purchase[]
-  cashRegisters       CashRegister[]
-  expenses            Expense[]
-  taxRates            TaxRate[]
-  invoices            Invoice[]
-  creditNotes         CreditNote[]
-  debitNotes          DebitNote[]
-  contingencyInvoices ContingencyInvoice[]
-  quotations          Quotation[]
-  subscription        Subscription?
-  paymentReceipts     PaymentReceipt[]
+  user                  User                  @relation("UserStore", fields: [userId], references: [id], onDelete: Restrict)
+  parentStore           Store?                @relation("StoreBranches", fields: [parentStoreId], references: [id])
+  branches              Store[]               @relation("StoreBranches")
+  employees             Employee[]
+  roles                 Role[]
+  categories            Category[]
+  products              Product[]
+  inventoryMovements    InventoryMovement[]
+  customers             Customer[]
+  orders                Order[]
+  ledgerAccounts        LedgerAccount[]
+  journalEntries        JournalEntry[]
+  services              Service[]
+  serviceTransactions   ServiceTransaction[]
+  barTables             BarTable[]
+  tableSessions         TableSession[]
+  comandaItems          ComandaItem[]
+  providers             Provider[]
+  purchases             Purchase[]
+  cashRegisters         CashRegister[]
+  expenses              Expense[]
+  taxRates              TaxRate[]
+  invoices              Invoice[]
+  creditNotes           CreditNote[]
+  debitNotes            DebitNote[]
+  contingencyInvoices   ContingencyInvoice[]
+  quotations            Quotation[]
+  subscription          Subscription?
+  paymentReceipts       PaymentReceipt[]
   subscriptionHistories SubscriptionHistory[]
-  billingRecords      BillingRecord[]
-  purchasePayments    PurchasePayment[]
-  costHistories       CostHistory[]
-  storeEventLogs     StoreEventLog[]
-  wompiTransactions  WompiTransaction[]
-  pushSubscriptions  PushSubscription[]
-  customerPayments   CustomerPayment[]
+  billingRecords        BillingRecord[]
+  purchasePayments      PurchasePayment[]
+  costHistories         CostHistory[]
+  storeEventLogs        StoreEventLog[]
+  wompiTransactions     WompiTransaction[]
+  pushSubscriptions     PushSubscription[]
+  customerPayments      CustomerPayment[]
 
   @@map("stores")
 }
@@ -243,61 +243,61 @@ model Store {
 // ----------------------------------------------
 
 model Plan {
-  id          Int      @id @default(autoincrement())
-  name        String
-  description String?
-  price       Int
-  maxStores         Int @default(1) @map("max_stores")
-  maxEmployees      Int @default(5) @map("max_employees")
-  maxProducts       Int @default(100) @map("max_products")
-  features    String   @default("{}") @map("features")
-  sortOrder   Int      @default(0) @map("sort_order")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  name         String
+  description  String?
+  price        Int
+  maxStores    Int      @default(1) @map("max_stores")
+  maxEmployees Int      @default(5) @map("max_employees")
+  maxProducts  Int      @default(100) @map("max_products")
+  features     String   @default("{}") @map("features")
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt
 
-  subscriptions Subscription[]
+  subscriptions                 Subscription[]
   subscriptionHistoriesPrevious SubscriptionHistory[] @relation("HistoryPreviousPlan")
-  subscriptionHistoriesNew SubscriptionHistory[] @relation("HistoryNewPlan")
-  billingRecords BillingRecord[] @relation("BillingPlan")
+  subscriptionHistoriesNew      SubscriptionHistory[] @relation("HistoryNewPlan")
+  billingRecords                BillingRecord[]       @relation("BillingPlan")
 
   @@unique([name])
   @@map("plans")
 }
 
 model Subscription {
-  id             Int       @id @default(autoincrement())
-  storeId        Int       @unique @map("store_id")
-  planId         Int       @map("plan_id")
-  status         String    @default("TRIAL")
-  startDate      DateTime  @default(now()) @map("start_date")
-  endDate        DateTime? @map("end_date")
-  trialEndDate   DateTime? @map("trial_end_date")
-  graceEndDate   DateTime? @map("grace_end_date")
-  cancelReason   String?   @map("cancel_reason")
-  billingPeriod  String    @default("MONTHLY") @map("billing_period")
-  billingPrice   Int
-  lastBilledAt   DateTime? @map("last_billed_at")
-  nextBillingAt  DateTime? @map("next_billing_at")
+  id                    Int       @id @default(autoincrement())
+  storeId               Int       @unique @map("store_id")
+  planId                Int       @map("plan_id")
+  status                String    @default("TRIAL")
+  startDate             DateTime  @default(now()) @map("start_date")
+  endDate               DateTime? @map("end_date")
+  trialEndDate          DateTime? @map("trial_end_date")
+  graceEndDate          DateTime? @map("grace_end_date")
+  cancelReason          String?   @map("cancel_reason")
+  billingPeriod         String    @default("MONTHLY") @map("billing_period")
+  billingPrice          Int
+  lastBilledAt          DateTime? @map("last_billed_at")
+  nextBillingAt         DateTime? @map("next_billing_at")
   // ── Proration: credit for unused days when changing plans ──
-  prorationCredit Int      @default(0) @map("proration_credit")
-  previousPlanId  Int?     @map("previous_plan_id")
-  previousPlanName String? @map("previous_plan_name")
-  proratedDaysRemaining Int @default(0) @map("prorated_days_remaining")
+  prorationCredit       Int       @default(0) @map("proration_credit")
+  previousPlanId        Int?      @map("previous_plan_id")
+  previousPlanName      String?   @map("previous_plan_name")
+  proratedDaysRemaining Int       @default(0) @map("prorated_days_remaining")
   // ── Expiry alert tracking ──
-  alertSentAt3d  DateTime? @map("alert_sent_at_3d")
-  alertSentAt1d  DateTime? @map("alert_sent_at_1d")
+  alertSentAt3d         DateTime? @map("alert_sent_at_3d")
+  alertSentAt1d         DateTime? @map("alert_sent_at_1d")
   // Dunning: last-chance email sent the day before graceEndDate (PAST_DUE only)
-  graceAlertSentAt DateTime? @map("grace_alert_sent_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt
+  graceAlertSentAt      DateTime? @map("grace_alert_sent_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt
 
-  store            Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  plan            Plan              @relation(fields: [planId], references: [id], onDelete: Restrict)
-  paymentReceipts PaymentReceipt[]
+  store                 Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  plan                  Plan                  @relation(fields: [planId], references: [id], onDelete: Restrict)
+  paymentReceipts       PaymentReceipt[]
   subscriptionHistories SubscriptionHistory[]
-  billingRecords  BillingRecord[]
-  wompiTransactions  WompiTransaction[]
+  billingRecords        BillingRecord[]
+  wompiTransactions     WompiTransaction[]
 
   @@index([planId])
   @@map("subscriptions")
@@ -308,25 +308,25 @@ model Subscription {
 // ----------------------------------------------
 
 model SubscriptionHistory {
-  id             Int      @id @default(autoincrement())
-  storeId        Int      @map("store_id")
-  subscriptionId Int      @map("subscription_id")
-  eventType      String   @map("event_type") // CREATED, RENEWED, CANCELLED, PLAN_CHANGED, EXPIRED, REACTIVATED, TRIAL_STARTED, GRACE_STARTED, BILLING_PERIOD_CHANGED
-  previousStatus String?  @map("previous_status")
-  newStatus      String?  @map("new_status")
-  previousPlanId Int?     @map("previous_plan_id")
-  newPlanId      Int?     @map("new_plan_id")
-  previousPlanName String? @map("previous_plan_name")
-  newPlanName    String?  @map("new_plan_name")
-  description    String?
-  metadata       String   @default("{}") @map("metadata") // JSON with extra context
-  createdAt      DateTime @default(now()) @map("created_at")
+  id               Int      @id @default(autoincrement())
+  storeId          Int      @map("store_id")
+  subscriptionId   Int      @map("subscription_id")
+  eventType        String   @map("event_type") // CREATED, RENEWED, CANCELLED, PLAN_CHANGED, EXPIRED, REACTIVATED, TRIAL_STARTED, GRACE_STARTED, BILLING_PERIOD_CHANGED
+  previousStatus   String?  @map("previous_status")
+  newStatus        String?  @map("new_status")
+  previousPlanId   Int?     @map("previous_plan_id")
+  newPlanId        Int?     @map("new_plan_id")
+  previousPlanName String?  @map("previous_plan_name")
+  newPlanName      String?  @map("new_plan_name")
+  description      String?
+  metadata         String   @default("{}") @map("metadata") // JSON with extra context
+  createdAt        DateTime @default(now()) @map("created_at")
 
   store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
   subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
   // M-10: FK references for plan history tracking (denormalized for historical integrity)
-  previousPlan Plan?       @relation("HistoryPreviousPlan", fields: [previousPlanId], references: [id], onDelete: SetNull)
-  newPlan      Plan?       @relation("HistoryNewPlan", fields: [newPlanId], references: [id], onDelete: SetNull)
+  previousPlan Plan?        @relation("HistoryPreviousPlan", fields: [previousPlanId], references: [id], onDelete: SetNull)
+  newPlan      Plan?        @relation("HistoryNewPlan", fields: [newPlanId], references: [id], onDelete: SetNull)
 
   @@index([storeId])
   @@index([subscriptionId])
@@ -343,7 +343,7 @@ model BillingRecord {
   planId          Int      @map("plan_id")
   planName        String   @map("plan_name")
   billingPeriod   String   @map("billing_period") // MONTHLY, QUARTERLY, SEMI_ANNUAL, ANNUAL
-  amount          Int      // COP charged (subtotal)
+  amount          Int // COP charged (subtotal)
   prorationCredit Int      @default(0) @map("proration_credit")
   netAmount       Int      @map("net_amount") // amount - prorationCredit
   status          String   @default("PAID") // PAID, PENDING, FAILED, VOIDED
@@ -354,10 +354,10 @@ model BillingRecord {
   createdAt       DateTime @default(now()) @map("created_at")
 
   store        Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  subscription Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  receipt     PaymentReceipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+  subscription Subscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  receipt      PaymentReceipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
   // M-10: FK reference to plan (denormalized planName kept for historical records)
-  plan        Plan            @relation("BillingPlan", fields: [planId], references: [id], onDelete: Restrict)
+  plan         Plan            @relation("BillingPlan", fields: [planId], references: [id], onDelete: Restrict)
 
   @@index([storeId])
   @@index([subscriptionId])
@@ -370,59 +370,59 @@ model BillingRecord {
 // ----------------------------------------------
 
 model Lead {
-  id                Int       @id @default(autoincrement())
+  id                     Int       @id @default(autoincrement())
   // ── Contacto primario (compat — ver también Contact para contactos adicionales) ──
-  ownerFullName     String    @map("owner_full_name")
-  ownerCedula       String    @map("owner_cedula")
-  ownerEmail        String?   @map("owner_email")
-  ownerPhone        String?   @map("owner_phone")
-  ownerPassword     String?   @map("owner_password")  // Hashed, solo se usa al crear la cuenta
+  ownerFullName          String    @map("owner_full_name")
+  ownerCedula            String    @map("owner_cedula")
+  ownerEmail             String?   @map("owner_email")
+  ownerPhone             String?   @map("owner_phone")
+  ownerPassword          String?   @map("owner_password") // Hashed, solo se usa al crear la cuenta
   // ── Empresa ──
-  storeName         String    @map("store_name")
-  nit               String
-  legalName         String    @map("legal_name")
-  businessType      String    @default("NATURAL") @map("business_type")
-  storePhone        String?   @map("store_phone")
-  department        String?   @map("department")
-  cityName          String?   @map("city_name")
-  address           String?   @map("address")
-  hasCamaraComercio Boolean   @default(false) @map("has_camara_comercio")
-  registrationNumber String? @map("registration_number")
+  storeName              String    @map("store_name")
+  nit                    String
+  legalName              String    @map("legal_name")
+  businessType           String    @default("NATURAL") @map("business_type")
+  storePhone             String?   @map("store_phone")
+  department             String?   @map("department")
+  cityName               String?   @map("city_name")
+  address                String?   @map("address")
+  hasCamaraComercio      Boolean   @default(false) @map("has_camara_comercio")
+  registrationNumber     String?   @map("registration_number")
   // ── Datos fiscales (CRM legal — se copian a Store en la conversión) ──
-  taxRegime         String?   @map("tax_regime") // Responsable de IVA, No Responsable, Régimen Simple...
-  fiscalResponsibilities String? @map("fiscal_responsibilities") // JSON array de códigos RUT casilla 53
+  taxRegime              String?   @map("tax_regime") // Responsable de IVA, No Responsable, Régimen Simple...
+  fiscalResponsibilities String?   @map("fiscal_responsibilities") // JSON array de códigos RUT casilla 53
   // ── Resolución DIAN (capturable antes de la conversión — mismo nombre que Store para copia directa) ──
-  resolutionPrefix      String?   @map("resolution_prefix")
-  resolutionNumber      String?   @map("resolution_number")
-  resolutionStartDate   DateTime? @map("resolution_start_date")
-  resolutionEndDate     DateTime? @map("resolution_end_date")
-  resolutionStartNumber Int?      @map("resolution_start_number")
-  resolutionEndNumber   Int?      @map("resolution_end_number")
+  resolutionPrefix       String?   @map("resolution_prefix")
+  resolutionNumber       String?   @map("resolution_number")
+  resolutionStartDate    DateTime? @map("resolution_start_date")
+  resolutionEndDate      DateTime? @map("resolution_end_date")
+  resolutionStartNumber  Int?      @map("resolution_start_number")
+  resolutionEndNumber    Int?      @map("resolution_end_number")
   // ── Documentos adjuntos (legacy — se está migrando a LeadDocument, ver abajo) ──
-  rutFilePath       String?   @map("rut_file_path")      // RUT/Documento tributario
-  rutFileName       String?   @map("rut_file_name")
-  rutFileSize       Int?      @map("rut_file_size")
-  rutFileType       String?   @map("rut_file_type")
-  camaraFilePath    String?   @map("camara_file_path")   // Cámara de comercio
-  camaraFileName    String?   @map("camara_file_name")
-  camaraFileSize    Int?      @map("camara_file_size")
-  camaraFileType    String?   @map("camara_file_type")
+  rutFilePath            String?   @map("rut_file_path") // RUT/Documento tributario
+  rutFileName            String?   @map("rut_file_name")
+  rutFileSize            Int?      @map("rut_file_size")
+  rutFileType            String?   @map("rut_file_type")
+  camaraFilePath         String?   @map("camara_file_path") // Cámara de comercio
+  camaraFileName         String?   @map("camara_file_name")
+  camaraFileSize         Int?      @map("camara_file_size")
+  camaraFileType         String?   @map("camara_file_type")
   // ── Pipeline CRM ──
-  stage             String    @default("LEAD") @map("stage")
+  stage                  String    @default("LEAD") @map("stage")
   // LEAD, CONTACTADO, DOC_PENDIENTE, VALIDACION_LEGAL, CLIENTE_ACTIVO, RECHAZADO
-  assignedToId      Int?      @map("assigned_to_id") // Asesor comercial responsable
-  status            String    @default("NEW") // legacy — NEW, CONTACTED, APPROVED, REJECTED, CONVERTED (ver stage)
-  source            String    @default("WEB") // WEB, WHATSAPP, REFERRAL
-  notes             String?   // Notas del super admin
-  reviewedBy        String?   @map("reviewed_by")
-  reviewedAt        DateTime? @map("reviewed_at")
-  convertedStoreId  Int?      @map("converted_store_id") // Store ID cuando se convierte en cuenta
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt
+  assignedToId           Int?      @map("assigned_to_id") // Asesor comercial responsable
+  status                 String    @default("NEW") // legacy — NEW, CONTACTED, APPROVED, REJECTED, CONVERTED (ver stage)
+  source                 String    @default("WEB") // WEB, WHATSAPP, REFERRAL
+  notes                  String? // Notas del super admin
+  reviewedBy             String?   @map("reviewed_by")
+  reviewedAt             DateTime? @map("reviewed_at")
+  convertedStoreId       Int?      @map("converted_store_id") // Store ID cuando se convierte en cuenta
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt
 
   // Asesor comercial (usuario Super Admin) responsable del lead — no es Employee,
   // que pertenece al staff de un tenant ya creado.
-  assignedTo User? @relation("LeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo User?          @relation("LeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
   contacts   Contact[]
   documents  LeadDocument[]
   activities LeadActivity[]
@@ -491,7 +491,7 @@ model LeadDocument {
 model LeadActivity {
   id          Int       @id @default(autoincrement())
   leadId      Int       @map("lead_id")
-  type        String    // NOTE, CALL, TASK, WHATSAPP, STAGE_CHANGE, DOCUMENT_EVENT
+  type        String // NOTE, CALL, TASK, WHATSAPP, STAGE_CHANGE, DOCUMENT_EVENT
   title       String
   description String?
   dueDate     DateTime? @map("due_date")
@@ -513,8 +513,8 @@ model PaymentReceipt {
   fileName       String    @map("file_name")
   fileSize       Int       @map("file_size")
   fileType       String    @map("file_type")
-  fileData       String?   @map("file_data")   // Deprecated: kept for migration compat, new records use filePath
-  filePath       String?   @map("file_path")    // Relative path in /uploads/ (e.g., "receipts/2024/01/abc-123.png")
+  fileData       String?   @map("file_data") // Deprecated: kept for migration compat, new records use filePath
+  filePath       String?   @map("file_path") // Relative path in /uploads/ (e.g., "receipts/2024/01/abc-123.png")
   amount         Int
   reference      String?
   paymentMethod  String    @default("OTHER") @map("payment_method")
@@ -526,10 +526,10 @@ model PaymentReceipt {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt
 
-  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  billingRecords BillingRecord[]
-  wompiTransaction   WompiTransaction?
+  subscription     Subscription      @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  store            Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  billingRecords   BillingRecord[]
+  wompiTransaction WompiTransaction?
 
   @@index([subscriptionId])
   @@index([storeId, status])
@@ -555,8 +555,8 @@ model TaxRate {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt
 
-  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  products  Product[]
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products Product[]
 
   @@unique([storeId, code])
   @@map("tax_rates")
@@ -567,47 +567,47 @@ model TaxRate {
 // ----------------------------------------------
 
 model Invoice {
-  id              Int      @id @default(autoincrement())
-  storeId         Int      @map("store_id")
-  orderId         Int      @unique @map("order_id")
-  prefix          String   @default("FE")
-  consecutive     Int
-  resolutionNumber String? @map("resolution_number")
-  resolutionDate  DateTime? @map("resolution_date")
-  startDate       DateTime? @map("start_date")
-  endDate         DateTime? @map("end_date")
-  startNumber     Int?     @map("start_number")
-  endNumber       Int?     @map("end_number")
-  customerNit     String?  @map("customer_nit")
-  customerName    String?  @map("customer_name")
-  customerAddress String?  @map("customer_address")
-  customerPhone   String?  @map("customer_phone")
-  customerEmail   String?  @map("customer_email")
-  customerRegime  String?  @map("customer_regime")
-  customerType    String?  @map("customer_type")
-  subtotalBase    Int      @map("subtotal_base")
-  taxExemptAmount Int      @default(0) @map("tax_exempt_amount")
-  taxBreakdown    String?  @map("tax_breakdown")
-  totalTaxAmount  Int      @default(0) @map("total_tax_amount")
-  totalWithTax    Int      @map("total_with_tax")
-  discountAmount  Int      @default(0) @map("discount_amount")
-  tipAmount       Int      @default(0) @map("tip_amount")
-  grandTotal      Int      @map("grand_total")
-  paymentMethod   String?  @map("payment_method")
-  paymentNotes    String?  @map("payment_notes")
-  cufe            String?
-  qrCode          String?  @map("qr_code")
-  xmlContent      String?  @map("xml_content")
-  notes           String?
-  status          String   @default("DRAFT")
-  dianResponse    String?  @map("dian_response")
-  dianErrorCode   String?  @map("dian_error_code")
-  sentAt          DateTime? @map("sent_at")
-  validatedAt     DateTime? @map("validated_at")
-  emailedAt       DateTime? @map("emailed_at")
-  testMode        Boolean  @default(true) @map("test_mode")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt
+  id               Int       @id @default(autoincrement())
+  storeId          Int       @map("store_id")
+  orderId          Int       @unique @map("order_id")
+  prefix           String    @default("FE")
+  consecutive      Int
+  resolutionNumber String?   @map("resolution_number")
+  resolutionDate   DateTime? @map("resolution_date")
+  startDate        DateTime? @map("start_date")
+  endDate          DateTime? @map("end_date")
+  startNumber      Int?      @map("start_number")
+  endNumber        Int?      @map("end_number")
+  customerNit      String?   @map("customer_nit")
+  customerName     String?   @map("customer_name")
+  customerAddress  String?   @map("customer_address")
+  customerPhone    String?   @map("customer_phone")
+  customerEmail    String?   @map("customer_email")
+  customerRegime   String?   @map("customer_regime")
+  customerType     String?   @map("customer_type")
+  subtotalBase     Int       @map("subtotal_base")
+  taxExemptAmount  Int       @default(0) @map("tax_exempt_amount")
+  taxBreakdown     String?   @map("tax_breakdown")
+  totalTaxAmount   Int       @default(0) @map("total_tax_amount")
+  totalWithTax     Int       @map("total_with_tax")
+  discountAmount   Int       @default(0) @map("discount_amount")
+  tipAmount        Int       @default(0) @map("tip_amount")
+  grandTotal       Int       @map("grand_total")
+  paymentMethod    String?   @map("payment_method")
+  paymentNotes     String?   @map("payment_notes")
+  cufe             String?
+  qrCode           String?   @map("qr_code")
+  xmlContent       String?   @map("xml_content")
+  notes            String?
+  status           String    @default("DRAFT")
+  dianResponse     String?   @map("dian_response")
+  dianErrorCode    String?   @map("dian_error_code")
+  sentAt           DateTime? @map("sent_at")
+  validatedAt      DateTime? @map("validated_at")
+  emailedAt        DateTime? @map("emailed_at")
+  testMode         Boolean   @default(true) @map("test_mode")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
   order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
@@ -623,63 +623,63 @@ model Invoice {
 }
 
 model CreditNote {
-  id                Int       @id @default(autoincrement())
-  storeId           Int       @map("store_id")
-  invoiceId         Int?      @map("invoice_id")
-  prefix            String    @default("NC")
-  consecutive       Int
-  resolutionNumber  String?   @map("resolution_number")
-  resolutionDate    DateTime? @map("resolution_date")
-  startDate         DateTime? @map("start_date")
-  endDate           DateTime? @map("end_date")
-  startNumber       Int?      @map("start_number")
-  endNumber         Int?      @map("end_number")
-  noteType          String    @default("CREDIT")
-  concept           String    @map("concept")
-  description       String?
+  id                  Int       @id @default(autoincrement())
+  storeId             Int       @map("store_id")
+  invoiceId           Int?      @map("invoice_id")
+  prefix              String    @default("NC")
+  consecutive         Int
+  resolutionNumber    String?   @map("resolution_number")
+  resolutionDate      DateTime? @map("resolution_date")
+  startDate           DateTime? @map("start_date")
+  endDate             DateTime? @map("end_date")
+  startNumber         Int?      @map("start_number")
+  endNumber           Int?      @map("end_number")
+  noteType            String    @default("CREDIT")
+  concept             String    @map("concept")
+  description         String?
   // Motivo de la nota crédito
-  reason            String?
-  returnCode        String    @default("01") @map("return_code")
+  reason              String?
+  returnCode          String    @default("01") @map("return_code")
   // Emisor (supplier info for DIAN)
-  supplierNit       String?   @map("supplier_nit")
-  supplierName      String?   @map("supplier_name")
-  supplierAddress   String?   @map("supplier_address")
-  supplierPhone     String?   @map("supplier_phone")
-  supplierEmail     String?   @map("supplier_email")
-  customerNit       String?   @map("customer_nit")
-  customerName      String?   @map("customer_name")
-  customerEmail     String?   @map("customer_email")
-  customerPhone     String?   @map("customer_phone")
-  customerAddress   String?   @map("customer_address")
-  customerRegime    String?   @map("customer_regime")
-  customerType      String?   @map("customer_type")
-  subtotalBase      Int       @default(0) @map("subtotal_base")
-  taxExemptAmount   Int       @default(0) @map("tax_exempt_amount")
-  taxBreakdown      String?   @map("tax_breakdown")
-  totalTaxAmount    Int       @default(0) @map("total_tax_amount")
-  totalWithTax      Int       @map("total_with_tax")
-  discountAmount    Int       @default(0) @map("discount_amount")
-  grandTotal        Int       @map("grand_total")
-  cufe              String?
-  qrCode            String?   @map("qr_code")
-  xmlContent        String?   @map("xml_content")
-  referencedInvoiceId String?  @map("referenced_invoice_id")
-  referencedPrefix   String?  @map("referenced_prefix")
-  referencedConsec   Int?     @map("referenced_consec")
+  supplierNit         String?   @map("supplier_nit")
+  supplierName        String?   @map("supplier_name")
+  supplierAddress     String?   @map("supplier_address")
+  supplierPhone       String?   @map("supplier_phone")
+  supplierEmail       String?   @map("supplier_email")
+  customerNit         String?   @map("customer_nit")
+  customerName        String?   @map("customer_name")
+  customerEmail       String?   @map("customer_email")
+  customerPhone       String?   @map("customer_phone")
+  customerAddress     String?   @map("customer_address")
+  customerRegime      String?   @map("customer_regime")
+  customerType        String?   @map("customer_type")
+  subtotalBase        Int       @default(0) @map("subtotal_base")
+  taxExemptAmount     Int       @default(0) @map("tax_exempt_amount")
+  taxBreakdown        String?   @map("tax_breakdown")
+  totalTaxAmount      Int       @default(0) @map("total_tax_amount")
+  totalWithTax        Int       @map("total_with_tax")
+  discountAmount      Int       @default(0) @map("discount_amount")
+  grandTotal          Int       @map("grand_total")
+  cufe                String?
+  qrCode              String?   @map("qr_code")
+  xmlContent          String?   @map("xml_content")
+  referencedInvoiceId String?   @map("referenced_invoice_id")
+  referencedPrefix    String?   @map("referenced_prefix")
+  referencedConsec    Int?      @map("referenced_consec")
   // JSON array of returned line items: { orderItemId, productName, quantity, unitPrice, taxCode, taxRate, taxAmount, taxBase }[]
-  items             String?
-  status            String    @default("DRAFT")
-  dianResponse      String?   @map("dian_response")
-  sentAt            DateTime? @map("sent_at")
-  validatedAt       DateTime? @map("validated_at")
-  emailedAt         DateTime? @map("emailed_at")
-  testMode          Boolean   @default(true) @map("test_mode")
-  notes             String?
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt
+  items               String?
+  status              String    @default("DRAFT")
+  dianResponse        String?   @map("dian_response")
+  sentAt              DateTime? @map("sent_at")
+  validatedAt         DateTime? @map("validated_at")
+  emailedAt           DateTime? @map("emailed_at")
+  testMode            Boolean   @default(true) @map("test_mode")
+  notes               String?
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt
 
-  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  invoice  Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  store   Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
   @@unique([storeId, prefix, consecutive])
   @@index([storeId])
@@ -692,58 +692,58 @@ model CreditNote {
 // ----------------------------------------------
 
 model DebitNote {
-  id                Int       @id @default(autoincrement())
-  storeId           Int       @map("store_id")
-  invoiceId         Int?      @map("invoice_id")
-  prefix            String    @default("ND")
-  consecutive       Int
-  resolutionNumber  String?   @map("resolution_number")
-  resolutionDate    DateTime? @map("resolution_date")
-  startDate         DateTime? @map("start_date")
-  endDate           DateTime? @map("end_date")
-  startNumber       Int?      @map("start_number")
-  endNumber         Int?      @map("end_number")
+  id               Int       @id @default(autoincrement())
+  storeId          Int       @map("store_id")
+  invoiceId        Int?      @map("invoice_id")
+  prefix           String    @default("ND")
+  consecutive      Int
+  resolutionNumber String?   @map("resolution_number")
+  resolutionDate   DateTime? @map("resolution_date")
+  startDate        DateTime? @map("start_date")
+  endDate          DateTime? @map("end_date")
+  startNumber      Int?      @map("start_number")
+  endNumber        Int?      @map("end_number")
   // Emisor
-  supplierNit       String?   @map("supplier_nit")
-  supplierName      String?   @map("supplier_name")
-  supplierAddress   String?   @map("supplier_address")
-  supplierPhone     String?   @map("supplier_phone")
-  supplierEmail     String?   @map("supplier_email")
+  supplierNit      String?   @map("supplier_nit")
+  supplierName     String?   @map("supplier_name")
+  supplierAddress  String?   @map("supplier_address")
+  supplierPhone    String?   @map("supplier_phone")
+  supplierEmail    String?   @map("supplier_email")
   // Cliente
-  customerNit       String?   @map("customer_nit")
-  customerName      String?   @map("customer_name")
-  customerEmail     String?   @map("customer_email")
-  customerPhone     String?   @map("customer_phone")
-  customerAddress   String?   @map("customer_address")
-  customerRegime    String?   @map("customer_regime")
-  customerType      String?   @map("customer_type")
+  customerNit      String?   @map("customer_nit")
+  customerName     String?   @map("customer_name")
+  customerEmail    String?   @map("customer_email")
+  customerPhone    String?   @map("customer_phone")
+  customerAddress  String?   @map("customer_address")
+  customerRegime   String?   @map("customer_regime")
+  customerType     String?   @map("customer_type")
   // Desglose tributario
-  subtotalBase      Int       @default(0) @map("subtotal_base")
-  taxExemptAmount   Int       @default(0) @map("tax_exempt_amount")
-  taxBreakdown      String?   @map("tax_breakdown")
-  totalTaxAmount    Int       @default(0) @map("total_tax_amount")
-  totalWithTax      Int       @map("total_with_tax")
-  discountAmount    Int       @default(0) @map("discount_amount")
-  grandTotal        Int       @map("grand_total")
+  subtotalBase     Int       @default(0) @map("subtotal_base")
+  taxExemptAmount  Int       @default(0) @map("tax_exempt_amount")
+  taxBreakdown     String?   @map("tax_breakdown")
+  totalTaxAmount   Int       @default(0) @map("total_tax_amount")
+  totalWithTax     Int       @map("total_with_tax")
+  discountAmount   Int       @default(0) @map("discount_amount")
+  grandTotal       Int       @map("grand_total")
   // Motivo
-  reason            String?
-  debitCode         String    @default("01") @map("debit_code")
+  reason           String?
+  debitCode        String    @default("01") @map("debit_code")
   // DIAN
-  cufe              String?
-  qrCode            String?   @map("qr_code")
-  xmlContent        String?   @map("xml_content")
-  status            String    @default("DRAFT")
-  dianResponse      String?   @map("dian_response")
-  sentAt            DateTime? @map("sent_at")
-  validatedAt       DateTime? @map("validated_at")
-  emailedAt         DateTime? @map("emailed_at")
-  testMode          Boolean   @default(true) @map("test_mode")
-  notes             String?
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt
+  cufe             String?
+  qrCode           String?   @map("qr_code")
+  xmlContent       String?   @map("xml_content")
+  status           String    @default("DRAFT")
+  dianResponse     String?   @map("dian_response")
+  sentAt           DateTime? @map("sent_at")
+  validatedAt      DateTime? @map("validated_at")
+  emailedAt        DateTime? @map("emailed_at")
+  testMode         Boolean   @default(true) @map("test_mode")
+  notes            String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt
 
-  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  invoice  Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  store   Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
   @@unique([storeId, prefix, consecutive])
   @@index([storeId])
@@ -752,43 +752,43 @@ model DebitNote {
 }
 
 model ContingencyInvoice {
-  id                Int       @id @default(autoincrement())
-  storeId           Int       @map("store_id")
-  invoiceId         Int?      @map("invoice_id")
-  prefix            String    @default("FC")
-  consecutive       Int
-  contingencyType   String    @default("04")
-  reason            String?
-  customerNit       String?   @map("customer_nit")
-  customerName      String?   @map("customer_name")
-  customerEmail     String?   @map("customer_email")
-  customerPhone     String?   @map("customer_phone")
-  customerAddress   String?   @map("customer_address")
-  customerRegime    String?   @map("customer_regime")
-  customerType      String?   @map("customer_type")
-  subtotalBase      Int       @default(0) @map("subtotal_base")
-  taxExemptAmount   Int       @default(0) @map("tax_exempt_amount")
-  taxBreakdown      String?   @map("tax_breakdown")
-  totalTaxAmount    Int       @default(0) @map("total_tax_amount")
-  totalWithTax      Int       @map("total_with_tax")
-  discountAmount    Int       @default(0) @map("discount_amount")
-  grandTotal        Int       @map("grand_total")
-  originalCufe      String?   @map("original_cufe")
-  originalCufeQR    String?   @map("original_cufe_qr")
-  contingencyCufe   String?   @map("contingency_cufe")
-  xmlContent        String?   @map("xml_content")
-  status            String    @default("DRAFT")
-  dianResponse      String?   @map("dian_response")
-  contingencyStart  DateTime  @default(now()) @map("contingency_start")
-  contingencyEnd    DateTime? @map("contingency_end")
-  retransmittedAt   DateTime? @map("retransmitted_at")
-  testMode          Boolean   @default(true) @map("test_mode")
-  notes             String?
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt
+  id               Int       @id @default(autoincrement())
+  storeId          Int       @map("store_id")
+  invoiceId        Int?      @map("invoice_id")
+  prefix           String    @default("FC")
+  consecutive      Int
+  contingencyType  String    @default("04")
+  reason           String?
+  customerNit      String?   @map("customer_nit")
+  customerName     String?   @map("customer_name")
+  customerEmail    String?   @map("customer_email")
+  customerPhone    String?   @map("customer_phone")
+  customerAddress  String?   @map("customer_address")
+  customerRegime   String?   @map("customer_regime")
+  customerType     String?   @map("customer_type")
+  subtotalBase     Int       @default(0) @map("subtotal_base")
+  taxExemptAmount  Int       @default(0) @map("tax_exempt_amount")
+  taxBreakdown     String?   @map("tax_breakdown")
+  totalTaxAmount   Int       @default(0) @map("total_tax_amount")
+  totalWithTax     Int       @map("total_with_tax")
+  discountAmount   Int       @default(0) @map("discount_amount")
+  grandTotal       Int       @map("grand_total")
+  originalCufe     String?   @map("original_cufe")
+  originalCufeQR   String?   @map("original_cufe_qr")
+  contingencyCufe  String?   @map("contingency_cufe")
+  xmlContent       String?   @map("xml_content")
+  status           String    @default("DRAFT")
+  dianResponse     String?   @map("dian_response")
+  contingencyStart DateTime  @default(now()) @map("contingency_start")
+  contingencyEnd   DateTime? @map("contingency_end")
+  retransmittedAt  DateTime? @map("retransmitted_at")
+  testMode         Boolean   @default(true) @map("test_mode")
+  notes            String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt
 
-  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  invoice  Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  store   Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
   @@unique([storeId, prefix, consecutive])
   @@index([storeId])
@@ -816,42 +816,91 @@ model Category {
 }
 
 model Product {
-  id            Int      @id @default(autoincrement())
-  storeId       Int      @map("store_id")
-  categoryId    Int?     @map("category_id")
-  providerId    Int?     @map("provider_id")
-  taxRateId     Int?     @map("tax_rate_id")
-  sku           String?
-  barcode       String?
-  name          String
-  description   String?
-  imgUrl        String?  @map("img_url")
-  invima        String?
-  costPrice     Int      @default(0) @map("cost_price")
-  salePrice     Int
-  commission    Int      @default(0) @map("commission")
-  currentStock  Int      @default(0) @map("current_stock")
-  minStock      Int      @default(5) @map("min_stock")
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  storeId        Int      @map("store_id")
+  categoryId     Int?     @map("category_id")
+  providerId     Int?     @map("provider_id")
+  taxRateId      Int?     @map("tax_rate_id")
+  sku            String?
+  barcode        String?
+  name           String
+  // Unit-of-measure code for the base "Unidad" (UND, KG, L, etc.) — see
+  // UNIT_OF_MEASURE_OPTIONS in src/lib/constants.ts. Purely a label for
+  // display/reporting; conversions between presentations still run on
+  // unitsPerPack regardless of what this says.
+  unitLabel      String   @default("UND") @map("unit_label")
+  description    String?
+  imgUrl         String?  @map("img_url")
+  invima         String?
+  costPrice      Int      @default(0) @map("cost_price")
+  salePrice      Int
+  commission     Int      @default(0) @map("commission")
+  currentStock   Int      @default(0) @map("current_stock")
+  minStock       Int      @default(5) @map("min_stock")
+  // false = stock is never validated/blocked at sale time (e.g. items sold by
+  // weight, made-to-order food, anything not counted unit by unit). Purchases
+  // and inventory movements still record normally either way.
+  trackInventory Boolean  @default(true) @map("track_inventory")
+  // Whether this product is expected to carry lote/fecha de vencimiento on purchases
+  // (perishables, medicine, etc). Purely advisory today — used to prompt for those
+  // fields in Compras; does not block a purchase if left empty.
+  trackExpiration Boolean @default(false) @map("track_expiration")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt
 
-  store              Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  category           Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  provider           Provider?            @relation(fields: [providerId], references: [id], onDelete: SetNull)
-  taxRate            TaxRate?             @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
+  store              Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category           Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  provider           Provider?             @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  taxRate            TaxRate?              @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
   inventoryMovements InventoryMovement[]
   orderItems         OrderItem[]
   comandaItems       ComandaItem[]
   purchaseItems      PurchaseItem[]
   quotationItems     QuotationItem[]
   costHistories      CostHistory[]
+  presentations      ProductPresentation[]
 
+  @@unique([storeId, name])
   @@index([categoryId])
   @@index([providerId])
   @@index([taxRateId])
-  @@unique([storeId, name])
   @@map("products")
+}
+
+// ----------------------------------------------
+// CONTEXTO: PRESENTACIONES DE PRODUCTO
+// ----------------------------------------------
+// Un producto vive con su presentación base (los campos sku/barcode/salePrice/
+// costPrice/currentStock de arriba en Product SON la presentación "Unidad").
+// Esta tabla guarda únicamente presentaciones EXTRA del mismo producto — hasta
+// 2 más (3 en total), cada una con su propio código de barras/SKU y precio,
+// pero descontando del mismo currentStock de Product (convertido a unidades
+// base vía unitsPerPack) — nunca stock separado.
+// Ejemplos: Six-pack (unitsPerPack=6) o Cajetilla de cigarrillos (unitsPerPack=20).
+model ProductPresentation {
+  id           Int      @id @default(autoincrement())
+  productId    Int      @map("product_id")
+  name         String // "Six-pack", "Caja x24", "Cajetilla"
+  unitLabel    String   @default("UND") @map("unit_label") // ver UNIT_OF_MEASURE_OPTIONS — ej. "CAJ" para "Caja x24"
+  barcode      String?  @map("barcode")
+  sku          String?  @map("sku") // código/referencia del proveedor para esta presentación (homologación)
+  unitsPerPack Int      @map("units_per_pack") // cuántas unidades base equivale esta presentación
+  salePrice    Int      @map("sale_price")
+  costPrice    Int      @default(0) @map("cost_price")
+  isActive     Boolean  @default(true) @map("is_active")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt
+
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems     OrderItem[]
+  purchaseItems  PurchaseItem[]
+  quotationItems QuotationItem[]
+
+  @@index([productId])
+  @@index([barcode])
+  @@map("product_presentations")
 }
 
 model InventoryMovement {
@@ -860,13 +909,16 @@ model InventoryMovement {
   productId    Int      @map("product_id")
   quantity     Int
   movementType String   @map("movement_type")
+  // Polymorphic reference — an Order.id for SALE/RETURN, a Purchase.id for
+  // PURCHASE/PURCHASE_RETURN/ADJUSTMENT, discriminated by movementType. Never
+  // give this a real FK/@relation to just one of those tables — Postgres will
+  // enforce it against that single table and reject every other movementType.
   referenceId  Int?     @map("reference_id")
   notes        String?
   createdAt    DateTime @default(now()) @map("created_at")
 
   store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  order   Order?  @relation("OrderMovements", fields: [referenceId], references: [id], onDelete: Cascade)
 
   @@index([storeId, productId, createdAt])
   @@index([referenceId])
@@ -874,36 +926,40 @@ model InventoryMovement {
 }
 
 model Purchase {
-  id               Int       @id @default(autoincrement())
-  storeId          Int       @map("store_id")
-  providerId       Int?      @map("provider_id")
-  invoiceNumber    String?   @map("invoice_number")
-  documentType     String    @default("FACTURA_COMPRA") @map("document_type") // FACTURA_COMPRA, NOTA_CREDITO, NOTA_DEBITO, RECIBO_CAJA, ORDEN_COMPRA
+  id                Int       @id @default(autoincrement())
+  storeId           Int       @map("store_id")
+  providerId        Int?      @map("provider_id")
+  invoiceNumber     String?   @map("invoice_number")
+  documentType      String    @default("FACTURA_COMPRA") @map("document_type") // FACTURA_COMPRA, NOTA_CREDITO, NOTA_DEBITO, RECIBO_CAJA, ORDEN_COMPRA
   consecutiveNumber String?   @map("consecutive_number")
-  date             DateTime  @default(now())
-  dueDate          DateTime? @map("due_date")
-  paymentTerms     String    @default("CONTADO") @map("payment_terms") // CONTADO, CREDITO_30, CREDITO_60, CREDITO_90
-  paymentStatus    String    @default("PENDING") @map("payment_status") // PENDING, PARTIAL, PAID
-  amountPaid       Int       @default(0) @map("amount_paid")
-  subtotal         Int       @default(0)
-  totalIva         Int       @default(0) @map("total_iva")
-  totalReteFuente  Int       @default(0) @map("total_rete_fuente")
-  totalReteIca     Int       @default(0) @map("total_rete_ica")
-  totalReteIva     Int       @default(0) @map("total_rete_iva")
-  totalDiscount    Int       @default(0) @map("total_discount")
-  notes            String?
-  total            Int       @default(0)
-  status           String    @default("COMPLETED") // PENDING, APPROVED, RECEIVED, PARTIAL, COMPLETED, CANCELLED
-  createdById      Int?      @map("created_by_id")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt
+  date              DateTime  @default(now())
+  dueDate           DateTime? @map("due_date")
+  paymentTerms      String    @default("CONTADO") @map("payment_terms") // CONTADO, CREDITO_30, CREDITO_60, CREDITO_90
+  paymentStatus     String    @default("PENDING") @map("payment_status") // PENDING, PARTIAL, PAID
+  amountPaid        Int       @default(0) @map("amount_paid")
+  subtotal          Int       @default(0)
+  totalIva          Int       @default(0) @map("total_iva")
+  totalReteFuente   Int       @default(0) @map("total_rete_fuente")
+  totalReteIca      Int       @default(0) @map("total_rete_ica")
+  totalReteIva      Int       @default(0) @map("total_rete_iva")
+  totalDiscount     Int       @default(0) @map("total_discount")
+  // Impuesto al Consumo (IC) — e.g. on beer or bebidas azucaradas. Unlike IVA
+  // it is not creditable/descontable, so it's kept as a document-level charge
+  // that adds to the total owed and never touches product cost/CPP.
+  totalConsumptionTax Int     @default(0) @map("total_consumption_tax")
+  notes             String?
+  total             Int       @default(0)
+  status            String    @default("COMPLETED") // PENDING, APPROVED, RECEIVED, PARTIAL, COMPLETED, CANCELLED
+  createdById       Int?      @map("created_by_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt
 
-  store            Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  provider         Provider?         @relation(fields: [providerId], references: [id], onDelete: SetNull)
-  purchaseItems    PurchaseItem[]
-  purchasePayments PurchasePayment[]
-  costHistoryRecords  CostHistory[]
-  createdBy        User?             @relation("UserPurchases", fields: [createdById], references: [id], onDelete: SetNull)
+  store              Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  provider           Provider?         @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  purchaseItems      PurchaseItem[]
+  purchasePayments   PurchasePayment[]
+  costHistoryRecords CostHistory[]
+  createdBy          User?             @relation("UserPurchases", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([storeId])
   @@index([providerId])
@@ -913,49 +969,57 @@ model Purchase {
 }
 
 model PurchaseItem {
-  id               Int      @id @default(autoincrement())
-  purchaseId       Int      @map("purchase_id")
-  productId        Int      @map("product_id")
-  quantity         Int
-  returnedQuantity Int      @default(0) @map("returned_quantity")
-  unitCost         Int      @map("unit_cost")
-  ivaRate          Int      @default(0) @map("iva_rate") // IVA % for this item (0 = exento, 19, 5, etc.)
-  ivaAmount        Int      @default(0) @map("iva_amount")
-  discountAmount   Int      @default(0) @map("discount_amount")
-  lotNumber        String?  @map("lot_number")
-  expiryDate       DateTime? @map("expiry_date")
+  id                Int       @id @default(autoincrement())
+  purchaseId        Int       @map("purchase_id")
+  productId         Int       @map("product_id")
+  presentationId    Int?      @map("presentation_id")
+  // Snapshots (survive presentation rename/delete) — quantity/unitCost above are
+  // always denominated in THIS presentation's own unit (e.g. "5 cajas x24"), and
+  // unitsPerPack is what converts them into base-unit stock movements.
+  presentationName  String?   @map("presentation_name")
+  unitsPerPack      Int       @default(1) @map("units_per_pack")
+  quantity          Int
+  returnedQuantity  Int       @default(0) @map("returned_quantity")
+  unitCost          Int       @map("unit_cost")
+  ivaRate           Int       @default(0) @map("iva_rate") // IVA % for this item (0 = exento, 19, 5, etc.)
+  ivaAmount         Int       @default(0) @map("iva_amount")
+  discountAmount    Int       @default(0) @map("discount_amount")
+  lotNumber         String?   @map("lot_number")
+  expiryDate        DateTime? @map("expiry_date")
   manufacturingDate DateTime? @map("manufacturing_date")
-  total            Int      // unitCost * quantity + ivaAmount - discountAmount
+  total             Int // unitCost * quantity + ivaAmount - discountAmount
 
-  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  purchase     Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id], onDelete: SetNull)
 
   @@index([purchaseId])
   @@index([productId])
+  @@index([presentationId])
   @@map("purchase_items")
 }
 
 model Provider {
-  id           Int      @id @default(autoincrement())
-  storeId      Int      @map("store_id")
-  name         String
-  contactName  String?  @map("contact_name")
-  phone        String?
-  email        String?
-  address      String?
-  city         String?
-  nit          String?
-  dv           String?                          // Dígito de verificación
-  regime       String   @default("NO_RESPONSABLE") // RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO, GRAN_CONTRIBUTUYENTE
-  autoretainer Boolean  @default(false) @map("autoretainer") // Autoretenedor de IVA
-  paymentTerms String   @default("CONTADO") @map("payment_terms") // CONTADO, CREDITO_30, CREDITO_60, CREDITO_90
-  creditLimit  Int      @default(0) @map("credit_limit")
-  totalDebt    Int      @default(0) @map("total_debt")
-  totalPurchases Int     @default(0) @map("total_purchases")
-  notes        String?
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  storeId        Int      @map("store_id")
+  name           String
+  contactName    String?  @map("contact_name")
+  phone          String?
+  email          String?
+  address        String?
+  city           String?
+  nit            String?
+  dv             String? // Dígito de verificación
+  regime         String   @default("NO_RESPONSABLE") // RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO, GRAN_CONTRIBUTUYENTE
+  autoretainer   Boolean  @default(false) @map("autoretainer") // Autoretenedor de IVA
+  paymentTerms   String   @default("CONTADO") @map("payment_terms") // CONTADO, CREDITO_30, CREDITO_60, CREDITO_90
+  creditLimit    Int      @default(0) @map("credit_limit")
+  totalDebt      Int      @default(0) @map("total_debt")
+  totalPurchases Int      @default(0) @map("total_purchases")
+  notes          String?
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt
 
   store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
   products  Product[]
@@ -1001,11 +1065,11 @@ model CostHistory {
   previousCost Int      @map("previous_cost")
   newCost      Int      @map("new_cost")
   purchaseId   Int?     @map("purchase_id")
-  reason       String?  // PURCHASE, MANUAL, ADJUSTMENT
+  reason       String? // PURCHASE, MANUAL, ADJUSTMENT
   createdAt    DateTime @default(now()) @map("created_at")
 
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product  Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
   purchase Purchase? @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
 
   @@index([productId, createdAt])
@@ -1018,64 +1082,63 @@ model CostHistory {
 // ----------------------------------------------
 
 model Customer {
-  id              Int      @id @default(autoincrement())
-  storeId         Int      @map("store_id")
-  name            String
-  phone           String?
-  email           String?
-  nit             String?
-  documentType    String?  @map("document_type")
-  address         String?
-  regime          String?
-  totalDebt       Int      @default(0) @map("total_debt")
+  id           Int       @id @default(autoincrement())
+  storeId      Int       @map("store_id")
+  name         String
+  phone        String?
+  email        String?
+  nit          String?
+  documentType String?   @map("document_type")
+  address      String?
+  regime       String?
+  totalDebt    Int       @default(0) @map("total_debt")
   // When the customer's debt started accruing from $0 — reset to null once totalDebt
   // reaches 0 again. Approximates "how long has this debt been outstanding" for the
   // Índice de Morosidad (no per-order debt itemization exists to age precisely).
-  debtSince       DateTime? @map("debt_since")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt
+  debtSince    DateTime? @map("debt_since")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt
 
-  store          Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  orders         Order[]
-  tableSessions  TableSession[]
-  quotations     Quotation[]
-  payments       CustomerPayment[]
+  store         Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders        Order[]
+  tableSessions TableSession[]
+  quotations    Quotation[]
+  payments      CustomerPayment[]
 
   @@index([storeId])
   @@map("customers")
 }
 
 model Order {
-  id                Int            @id @default(autoincrement())
-  storeId           Int            @map("store_id")
-  customerId        Int?           @map("customer_id")
-  tableSessionId    Int?           @map("table_session_id")
-  cashRegisterId    Int?           @map("cash_register_id")
-  soldByEmployeeId  Int?           @map("sold_by_employee_id")
-  orderNumber    String         @map("order_number")
-  subtotal       Int
-  taxAmount      Int            @default(0) @map("tax_amount")
-  taxBreakdown   String?        @map("tax_breakdown")
-  tipAmount      Int            @default(0) @map("tip_amount")
-  discountAmount Int            @default(0) @map("discount_amount")
-  discountType   String         @default("NONE") @map("discount_type")
-  discountReason String?        @map("discount_reason")
-  total          Int
-  status         String         @default("COMPLETED")
-  paymentMethod  String         @default("CASH") @map("payment_method")
-  notes          String?
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt
+  id               Int      @id @default(autoincrement())
+  storeId          Int      @map("store_id")
+  customerId       Int?     @map("customer_id")
+  tableSessionId   Int?     @map("table_session_id")
+  cashRegisterId   Int?     @map("cash_register_id")
+  soldByEmployeeId Int?     @map("sold_by_employee_id")
+  orderNumber      String   @map("order_number")
+  subtotal         Int
+  taxAmount        Int      @default(0) @map("tax_amount")
+  taxBreakdown     String?  @map("tax_breakdown")
+  tipAmount        Int      @default(0) @map("tip_amount")
+  discountAmount   Int      @default(0) @map("discount_amount")
+  discountType     String   @default("NONE") @map("discount_type")
+  discountReason   String?  @map("discount_reason")
+  total            Int
+  status           String   @default("COMPLETED")
+  paymentMethod    String   @default("CASH") @map("payment_method")
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt
 
-  store              Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  tableSession       TableSession?       @relation(fields: [tableSessionId], references: [id], onDelete: SetNull)
-  cashRegister       CashRegister?       @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
-  soldByEmployee     Employee?           @relation(fields: [soldByEmployeeId], references: [id], onDelete: SetNull)
-  orderItems         OrderItem[]
-  inventoryMovements InventoryMovement[] @relation("OrderMovements")
-  invoice            Invoice?
-  wompiTransaction   WompiTransaction?
+  store            Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer         Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  tableSession     TableSession?     @relation(fields: [tableSessionId], references: [id], onDelete: SetNull)
+  cashRegister     CashRegister?     @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
+  soldByEmployee   Employee?         @relation(fields: [soldByEmployeeId], references: [id], onDelete: SetNull)
+  orderItems       OrderItem[]
+  invoice          Invoice?
+  wompiTransaction WompiTransaction?
 
   @@unique([storeId, orderNumber])
   @@index([storeId, createdAt])
@@ -1088,27 +1151,35 @@ model Order {
 }
 
 model OrderItem {
-  id               Int      @id @default(autoincrement())
-  orderId          Int      @map("order_id")
-  productId        Int?     @map("product_id")
-  serviceId        Int?     @map("service_id")
+  id               Int     @id @default(autoincrement())
+  orderId          Int     @map("order_id")
+  productId        Int?    @map("product_id")
+  serviceId        Int?    @map("service_id")
+  presentationId   Int?    @map("presentation_id")
+  // Snapshots (survive presentation rename/delete) — receipts/returns/history
+  // must keep showing what was actually sold, and stock must keep restoring
+  // at the right base-unit ratio, regardless of later product edits.
+  presentationName String? @map("presentation_name")
+  unitsPerPack     Int     @default(1) @map("units_per_pack")
   quantity         Int
-  returnedQuantity Int      @default(0) @map("returned_quantity")
-  unitPrice        Int      @map("unit_price")
-  totalRow         Int      @map("total_row")
-  taxCode          String?  @map("tax_code")
-  taxRate          Int      @default(0) @map("tax_rate")
-  taxAmount        Int      @default(0) @map("tax_amount")
-  taxBase          Int      @default(0) @map("tax_base")
+  returnedQuantity Int     @default(0) @map("returned_quantity")
+  unitPrice        Int     @map("unit_price")
+  totalRow         Int     @map("total_row")
+  taxCode          String? @map("tax_code")
+  taxRate          Int     @default(0) @map("tax_rate")
+  taxAmount        Int     @default(0) @map("tax_amount")
+  taxBase          Int     @default(0) @map("tax_base")
   notes            String?
 
-  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  order        Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product      Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)
+  service      Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([productId])
   @@index([serviceId])
+  @@index([presentationId])
   @@map("order_items")
 }
 
@@ -1127,28 +1198,28 @@ model BarTable {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt
 
-  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  tableSessions  TableSession[]
+  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  tableSessions TableSession[]
 
   @@unique([storeId, number])
   @@map("bar_tables")
 }
 
 model TableSession {
-  id           Int      @id @default(autoincrement())
-  storeId      Int      @map("store_id")
-  barTableId   Int      @map("bar_table_id")
-  customerId   Int?     @map("customer_id")
-  guests       Int      @default(1)
-  startedAt    DateTime @default(now()) @map("started_at")
-  closedAt     DateTime? @map("closed_at")
-  status       String   @default("OPEN")
-  notes        String?
+  id         Int       @id @default(autoincrement())
+  storeId    Int       @map("store_id")
+  barTableId Int       @map("bar_table_id")
+  customerId Int?      @map("customer_id")
+  guests     Int       @default(1)
+  startedAt  DateTime  @default(now()) @map("started_at")
+  closedAt   DateTime? @map("closed_at")
+  status     String    @default("OPEN")
+  notes      String?
 
-  store       Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  barTable    BarTable     @relation(fields: [barTableId], references: [id], onDelete: Cascade)
-  customer    Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  orders      Order[]
+  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  barTable     BarTable      @relation(fields: [barTableId], references: [id], onDelete: Cascade)
+  customer     Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  orders       Order[]
   comandaItems ComandaItem[]
 
   @@index([storeId])
@@ -1171,10 +1242,10 @@ model ComandaItem {
   status         String   @default("PENDING")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  tableSession TableSession  @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
-  product      Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
-  service      Service?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  tableSession TableSession @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  product      Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
   @@index([storeId])
   @@index([tableSessionId])
@@ -1188,15 +1259,15 @@ model ComandaItem {
 // ----------------------------------------------
 
 model LedgerAccount {
-  id        Int     @id @default(autoincrement())
-  storeId   Int     @map("store_id")
+  id        Int      @id @default(autoincrement())
+  storeId   Int      @map("store_id")
   name      String
   type      String
-  isDefault Boolean @default(false) @map("is_default")
+  isDefault Boolean  @default(false) @map("is_default")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt
 
-  store          Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
   journalEntries JournalEntry[]
 
   @@index([storeId])
@@ -1226,40 +1297,40 @@ model JournalEntry {
 // ----------------------------------------------
 
 model Service {
-  id          Int      @id @default(autoincrement())
-  storeId     Int      @map("store_id")
-  name        String
-  description String?
-  price       Int      @default(0)
-  icon        String   @default("Star")
-  unit        String   @default("servicio")
+  id             Int      @id @default(autoincrement())
+  storeId        Int      @map("store_id")
+  name           String
+  description    String?
+  price          Int      @default(0)
+  icon           String   @default("Star")
+  unit           String   @default("servicio")
   // % de comisión sobre venta neta específico de este servicio — tiene prioridad
   // sobre el commissionRate del empleado que lo vendió. null/0 = usa el del empleado.
-  commissionRate Int?  @map("commission_rate")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt
+  commissionRate Int?     @map("commission_rate")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt
 
-  store              Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store               Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   serviceTransactions ServiceTransaction[]
   comandaItems        ComandaItem[]
-  orderItems         OrderItem[]
+  orderItems          OrderItem[]
 
   @@unique([storeId, name])
   @@map("services")
 }
 
 model ServiceTransaction {
-  id           Int      @id @default(autoincrement())
-  storeId      Int      @map("store_id")
-  serviceId    Int      @map("service_id")
-  quantity     Int      @default(1)
-  unitPrice    Int      @map("unit_price")
-  totalAmount  Int      @map("total_amount")
-  notes        String?
-  status       String   @default("COMPLETED")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  storeId     Int      @map("store_id")
+  serviceId   Int      @map("service_id")
+  quantity    Int      @default(1)
+  unitPrice   Int      @map("unit_price")
+  totalAmount Int      @map("total_amount")
+  notes       String?
+  status      String   @default("COMPLETED")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt
 
   store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
   service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
@@ -1274,23 +1345,23 @@ model ServiceTransaction {
 // ----------------------------------------------
 
 model CashRegister {
-  id              Int       @id @default(autoincrement())
-  storeId         Int       @map("store_id")
-  userId          Int?      @map("user_id")
-  openedAt        DateTime  @default(now()) @map("opened_at")
-  closedAt        DateTime? @map("closed_at")
-  openingBalance  Int       @default(0) @map("opening_balance")
-  closingBalance  Int?      @map("closing_balance")
-  expectedCash    Int?      @map("expected_cash")
-  difference      Int?      @map("difference")
-  status          String    @default("OPEN")
-  countBreakdown  String?   @map("count_breakdown")
-  notes           String?
+  id             Int       @id @default(autoincrement())
+  storeId        Int       @map("store_id")
+  userId         Int?      @map("user_id")
+  openedAt       DateTime  @default(now()) @map("opened_at")
+  closedAt       DateTime? @map("closed_at")
+  openingBalance Int       @default(0) @map("opening_balance")
+  closingBalance Int?      @map("closing_balance")
+  expectedCash   Int?      @map("expected_cash")
+  difference     Int?      @map("difference")
+  status         String    @default("OPEN")
+  countBreakdown String?   @map("count_breakdown")
+  notes          String?
 
-  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-  orders Order[]
-  expenses Expense[]
+  store            Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orders           Order[]
+  expenses         Expense[]
   customerPayments CustomerPayment[]
 
   @@index([storeId, status])
@@ -1303,18 +1374,18 @@ model CashRegister {
 // ----------------------------------------------
 
 model Expense {
-  id          Int      @id @default(autoincrement())
-  storeId     Int      @map("store_id")
-  category    String
-  description String
-  amount      Int
-  date        DateTime @default(now())
-  notes       String?
+  id             Int      @id @default(autoincrement())
+  storeId        Int      @map("store_id")
+  category       String
+  description    String
+  amount         Int
+  date           DateTime @default(now())
+  notes          String?
   // Set only when the expense was paid in cash out of an open register's till
   // (gasto de caja menor) — used to compute the register's expectedCash on close.
-  cashRegisterId Int?  @map("cash_register_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt
+  cashRegisterId Int?     @map("cash_register_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt
 
   store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
   cashRegister CashRegister? @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
@@ -1377,18 +1448,18 @@ model Role {
 // ----------------------------------------------
 
 model Employee {
-  id              Int      @id @default(autoincrement())
-  storeId         Int      @map("store_id")
-  userId          Int      @unique @map("user_id")
-  roleId          Int?     @map("role_id")
-  position        String?
-  permissions     String   @default("{}") @map("permissions")
+  id             Int      @id @default(autoincrement())
+  storeId        Int      @map("store_id")
+  userId         Int      @unique @map("user_id")
+  roleId         Int?     @map("role_id")
+  position       String?
+  permissions    String   @default("{}") @map("permissions")
   // % de comisión sobre venta neta (sin impuestos) cuando el item vendido no tiene
   // su propio commissionRate en Service — ej. 5 = 5%. null/0 = sin comisión.
-  commissionRate  Int?     @map("commission_rate")
-  isActive        Boolean  @default(true) @map("is_active")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt
+  commissionRate Int?     @map("commission_rate")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt
 
   store  Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
   user   User    @relation("EmployeeStore", fields: [userId], references: [id], onDelete: Restrict)
@@ -1405,30 +1476,30 @@ model Employee {
 // ----------------------------------------------
 
 model Quotation {
-  id                Int       @id @default(autoincrement())
-  storeId           Int       @map("store_id")
-  customerId        Int?      @map("customer_id")
-  quotationNumber   String    @map("quotation_number")
-  customerName      String?   @map("customer_name")
-  customerNit       String?   @map("customer_nit")
-  customerEmail     String?   @map("customer_email")
-  customerPhone     String?   @map("customer_phone")
-  customerAddress   String?   @map("customer_address")
-  subtotal          Int       @default(0)
-  taxAmount         Int       @default(0) @map("tax_amount")
-  taxBreakdown      String?   @map("tax_breakdown")
-  discountAmount    Int       @default(0) @map("discount_amount")
-  discountType      String    @default("NONE") @map("discount_type")
-  total             Int       @default(0)
-  validUntil        DateTime? @map("valid_until")
-  notes             String?
-  status            String    @default("ACTIVE")
-  convertedToOrderId Int?     @map("converted_to_order_id")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt
+  id                 Int       @id @default(autoincrement())
+  storeId            Int       @map("store_id")
+  customerId         Int?      @map("customer_id")
+  quotationNumber    String    @map("quotation_number")
+  customerName       String?   @map("customer_name")
+  customerNit        String?   @map("customer_nit")
+  customerEmail      String?   @map("customer_email")
+  customerPhone      String?   @map("customer_phone")
+  customerAddress    String?   @map("customer_address")
+  subtotal           Int       @default(0)
+  taxAmount          Int       @default(0) @map("tax_amount")
+  taxBreakdown       String?   @map("tax_breakdown")
+  discountAmount     Int       @default(0) @map("discount_amount")
+  discountType       String    @default("NONE") @map("discount_type")
+  total              Int       @default(0)
+  validUntil         DateTime? @map("valid_until")
+  notes              String?
+  status             String    @default("ACTIVE")
+  convertedToOrderId Int?      @map("converted_to_order_id")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt
 
-  store    Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  customer Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  store    Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
   items    QuotationItem[]
 
   @@unique([storeId, quotationNumber])
@@ -1438,24 +1509,30 @@ model Quotation {
 }
 
 model QuotationItem {
-  id            Int      @id @default(autoincrement())
-  quotationId   Int      @map("quotation_id")
-  productId     Int?     @map("product_id")
-  productName   String   @map("product_name")
-  quantity      Int
-  unitPrice     Int      @map("unit_price")
-  totalRow      Int      @map("total_row")
-  taxCode       String?  @map("tax_code")
-  taxRate       Int      @default(0) @map("tax_rate")
-  taxAmount     Int      @default(0) @map("tax_amount")
-  taxBase       Int      @default(0) @map("tax_base")
-  notes         String?
+  id             Int     @id @default(autoincrement())
+  quotationId    Int     @map("quotation_id")
+  productId      Int?    @map("product_id")
+  productName    String  @map("product_name")
+  presentationId Int?    @map("presentation_id")
+  // Snapshot (survives presentation rename/delete) — mirrors OrderItem/PurchaseItem.
+  presentationName String? @map("presentation_name")
+  unitsPerPack     Int     @default(1) @map("units_per_pack")
+  quantity    Int
+  unitPrice   Int     @map("unit_price")
+  totalRow    Int     @map("total_row")
+  taxCode     String? @map("tax_code")
+  taxRate     Int     @default(0) @map("tax_rate")
+  taxAmount   Int     @default(0) @map("tax_amount")
+  taxBase     Int     @default(0) @map("tax_base")
+  notes       String?
 
-  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  product   Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  quotation    Quotation            @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product      Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id], onDelete: SetNull)
 
   @@index([quotationId])
   @@index([productId])
+  @@index([presentationId])
   @@map("quotation_items")
 }
 
@@ -1477,35 +1554,35 @@ model SystemSetting {
 // ----------------------------------------------
 
 model WompiTransaction {
-  id              Int       @id @default(autoincrement())
-  storeId         Int       @map("store_id")
-  subscriptionId  Int?      @map("subscription_id")  // For subscription payments
-  orderId         Int?      @unique @map("order_id")          // For POS payments
-  receiptId       Int?      @unique @map("receipt_id")         // Linked PaymentReceipt
-  wompiId         String?   @map("wompi_id")          // Wompi's transaction ID
-  wompiPaymentLinkId String? @map("wompi_payment_link_id")
-  reference       String    @map("reference")          // Our internal reference
-  amount          Int       // COP (Wompi uses cents, we store as whole COP)
-  amountInCents   Int       @map("amount_in_cents")    // Wompi format (COP * 100)
-  currency        String    @default("COP") @map("currency")
-  paymentMethod   String?   @map("payment_method")    // CARD, NEQUI, DAVIPLATA, PSE, BANCOLOMBIA
-  paymentMethodType String? @map("payment_method_type") // CARD, NEQUI, etc from Wompi
-  status          String    @default("PENDING")        // PENDING, APPROVED, DECLINED, VOIDED, ERROR
-  wompiStatus     String?   @map("wompi_status")       // Raw status from Wompi
-  customerEmail   String?   @map("customer_email")
-  customerName    String?   @map("customer_name")
-  customerPhone   String?   @map("customer_phone")
-  customerDocument String?  @map("customer_document")  // Cédula/NIT
-  metadata        String    @default("{}") @map("metadata") // JSON with extra context
-  wompiResponse   String?   @map("wompi_response")     // Full Wompi response JSON
-  paidAt          DateTime? @map("paid_at")
-  expiresAt       DateTime? @map("expires_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt
+  id                 Int       @id @default(autoincrement())
+  storeId            Int       @map("store_id")
+  subscriptionId     Int?      @map("subscription_id") // For subscription payments
+  orderId            Int?      @unique @map("order_id") // For POS payments
+  receiptId          Int?      @unique @map("receipt_id") // Linked PaymentReceipt
+  wompiId            String?   @map("wompi_id") // Wompi's transaction ID
+  wompiPaymentLinkId String?   @map("wompi_payment_link_id")
+  reference          String    @map("reference") // Our internal reference
+  amount             Int // COP (Wompi uses cents, we store as whole COP)
+  amountInCents      Int       @map("amount_in_cents") // Wompi format (COP * 100)
+  currency           String    @default("COP") @map("currency")
+  paymentMethod      String?   @map("payment_method") // CARD, NEQUI, DAVIPLATA, PSE, BANCOLOMBIA
+  paymentMethodType  String?   @map("payment_method_type") // CARD, NEQUI, etc from Wompi
+  status             String    @default("PENDING") // PENDING, APPROVED, DECLINED, VOIDED, ERROR
+  wompiStatus        String?   @map("wompi_status") // Raw status from Wompi
+  customerEmail      String?   @map("customer_email")
+  customerName       String?   @map("customer_name")
+  customerPhone      String?   @map("customer_phone")
+  customerDocument   String?   @map("customer_document") // Cédula/NIT
+  metadata           String    @default("{}") @map("metadata") // JSON with extra context
+  wompiResponse      String?   @map("wompi_response") // Full Wompi response JSON
+  paidAt             DateTime? @map("paid_at")
+  expiresAt          DateTime? @map("expires_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt
 
-  store        Store?         @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  subscription Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  order        Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  store        Store?          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  subscription Subscription?   @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  order        Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
   receipt      PaymentReceipt? @relation(fields: [receiptId], references: [id], onDelete: SetNull)
 
   @@unique([reference])
@@ -1523,16 +1600,16 @@ model WompiTransaction {
 // ----------------------------------------------
 
 model ChatSession {
-  id          Int       @id @default(autoincrement())
-  sessionId   String    @unique @map("session_id")  // UUID for client-side tracking
-  userId      Int       @map("user_id")
-  storeId     Int?      @map("store_id")
-  title       String?   // Auto-generated from first message
-  tokensUsed  Int       @default(0) @map("tokens_used")
+  id           Int      @id @default(autoincrement())
+  sessionId    String   @unique @map("session_id") // UUID for client-side tracking
+  userId       Int      @map("user_id")
+  storeId      Int?     @map("store_id")
+  title        String? // Auto-generated from first message
+  tokensUsed   Int      @default(0) @map("tokens_used")
   messageCount Int      @default(0) @map("message_count")
-  isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt
 
   messages ChatMessage[]
 
@@ -1544,14 +1621,14 @@ model ChatSession {
 }
 
 model ChatMessage {
-  id          Int      @id @default(autoincrement())
-  sessionId   Int      @map("session_id")
-  role        String   // system, user, assistant
-  content     String
-  tokens      Int      @default(0)  // Token count for this message
-  model       String?  // GLM model used
-  latencyMs   Int?     @map("latency_ms")  // Response time in ms
-  createdAt   DateTime @default(now()) @map("created_at")
+  id        Int      @id @default(autoincrement())
+  sessionId Int      @map("session_id")
+  role      String // system, user, assistant
+  content   String
+  tokens    Int      @default(0) // Token count for this message
+  model     String? // GLM model used
+  latencyMs Int?     @map("latency_ms") // Response time in ms
+  createdAt DateTime @default(now()) @map("created_at")
 
   session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
@@ -1565,15 +1642,15 @@ model ChatMessage {
 // ----------------------------------------------
 
 model PushSubscription {
-  id          Int      @id @default(autoincrement())
-  storeId     Int      @map("store_id")
-  userId      Int      @map("user_id")
-  endpoint    String   @unique
-  p256dh      String   // Public key for encryption
-  auth        String   // Auth secret
-  userAgent   String?  @map("user_agent")  // Browser/device info
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  storeId   Int      @map("store_id")
+  userId    Int      @map("user_id")
+  endpoint  String   @unique
+  p256dh    String // Public key for encryption
+  auth      String // Auth secret
+  userAgent String?  @map("user_agent") // Browser/device info
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 

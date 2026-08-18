@@ -20,7 +20,7 @@ import { printTicket, type TicketItem } from '@/lib/print-ticket'
 import { KPIBar } from '@/components/shared/kpi-bar'
 import { playError } from '@/lib/pos-sounds'
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner'
-import type { OrderItemData } from '@/types'
+import type { OrderItemData, ProductPresentation } from '@/types'
 import { usePosData } from '@/hooks/pos/use-pos-data'
 import { usePosCart } from '@/hooks/pos/use-pos-cart'
 import { POSReturnDialog, type POSReturnDialogRef } from '@/components/pos/pos-return-dialog'
@@ -56,6 +56,7 @@ export function POSView() {
 
   // ─── Cart hook ──────────────────────────────────────
   const cart = usePosCart({
+    products,
     openCashRegisters,
     selectedCashRegisterId,
     customers,
@@ -79,13 +80,32 @@ export function POSView() {
   // ─── Barcode scan handler ──────────────────────────
   const handleBarcodeScan = useCallback(
     (barcode: string) => {
-      // Search products for exact barcode match (case insensitive)
-      const product = products.find(
-        (p) => p.barcode && p.barcode.toLowerCase() === barcode.toLowerCase()
-      )
-      if (product) {
-        cart.addToCart(product)
-        toast.success(`Escaneado: ${product.name}`)
+      const lower = barcode.toLowerCase()
+      // Exact match on the base "Unidad" barcode first...
+      const product = products.find((p) => p.barcode && p.barcode.toLowerCase() === lower)
+      // ...otherwise search each product's presentations (Six-pack, Caja x24, etc.)
+      let matchedProduct = product
+      let matchedPresentation: ProductPresentation | undefined
+      if (!matchedProduct) {
+        for (const p of products) {
+          const presentation = p.presentations?.find(
+            (pr) => pr.isActive && pr.barcode && pr.barcode.toLowerCase() === lower
+          )
+          if (presentation) {
+            matchedProduct = p
+            matchedPresentation = presentation
+            break
+          }
+        }
+      }
+
+      if (matchedProduct && matchedPresentation) {
+        cart.addPresentationToCart(matchedProduct, matchedPresentation)
+        toast.success(`Escaneado: ${matchedProduct.name} — ${matchedPresentation.name}`)
+        setBarcodeFlash('success')
+      } else if (matchedProduct) {
+        cart.addToCart(matchedProduct)
+        toast.success(`Escaneado: ${matchedProduct.name}`)
         setBarcodeFlash('success')
       } else {
         playError()
@@ -162,7 +182,7 @@ export function POSView() {
   const printLastOrderTicket = useCallback(() => {
     if (!cart.lastOrderData) return
     const items: TicketItem[] = (cart.lastOrderData.orderItems || []).map((item: OrderItemData) => ({
-      name: item.productName,
+      name: item.presentationName ? `${item.productName} — ${item.presentationName}` : item.productName,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       total: item.totalRow,
@@ -316,6 +336,7 @@ export function POSView() {
         currencyCode={currencyCode}
         cart={cart.cart}
         onAddToCart={cart.addToCart}
+        onAddPresentation={cart.addPresentationToCart}
         onAddService={(service) => cart.addServiceToCart(service as any)}
       />
 

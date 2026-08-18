@@ -7,8 +7,13 @@ import { PersonalSettingsTab } from '@/components/settings/personal-settings-tab
 import { InvoiceSettingsTab } from '@/components/settings/invoice-settings-tab'
 import { SubscriptionPaymentPanel } from '@/components/settings/subscription-payment-panel'
 import { TaxRatesPanel } from '@/components/settings/tax-rates-panel'
+import { useAppStore } from '@/stores/app-store'
 
 export function SettingsView() {
+  // Read once at mount — Settings remounts fresh every time you navigate into
+  // it, so this reflects whichever tab goToSettingsTab() requested, if any.
+  const initialTab = useAppStore((s) => s.settingsTab)
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -22,7 +27,7 @@ export function SettingsView() {
         </div>
       </div>
 
-      <Tabs defaultValue="business" className="space-y-6">
+      <Tabs defaultValue={initialTab} className="space-y-6">
         <TabsList className="w-full flex overflow-x-auto gap-1 md:inline-grid md:grid-cols-5 md:w-auto md:gap-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <TabsTrigger value="business" className="gap-0 shrink-0 md:gap-2 md:shrink">
             <Building2 className="h-4 w-4 shrink-0" />

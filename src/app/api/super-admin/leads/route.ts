@@ -8,7 +8,9 @@ export const dynamic = 'force-dynamic'
 
 const validStatuses = ['NEW', 'CONTACTED', 'APPROVED', 'REJECTED', 'CONVERTED'] as const
 export const VALID_STAGES = ['LEAD', 'CONTACTADO', 'DOC_PENDIENTE', 'VALIDACION_LEGAL', 'CLIENTE_ACTIVO', 'RECHAZADO'] as const
-const REQUIRED_DOC_TYPES = ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REPRESENTANTE', 'RESOLUCION_DIAN'] as const
+// Mantener en sync con REQUIRED_DOCUMENT_TYPES en documents/route.ts — la
+// Resolución DIAN es opcional, no cuenta para el expediente mínimo aprobable.
+const REQUIRED_DOC_TYPES = ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REPRESENTANTE'] as const
 
 // For each required document type, keep only the latest version and count
 // how many are uploaded vs. approved — used to render doc status in the leads table.

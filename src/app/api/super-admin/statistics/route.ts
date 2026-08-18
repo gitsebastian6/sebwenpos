@@ -259,15 +259,19 @@ export async function GET() {
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
+    // NOTE: aliases must be double-quoted to keep camelCase in the result set —
+    // PostgreSQL folds unquoted identifiers to lowercase (SQLite doesn't), and
+    // a SELECT alias can't be referenced in HAVING (only in ORDER BY) — this
+    // query previously only worked against the SQLite dev database.
     const topStores = await db.$queryRawUnsafe(`
-      SELECT s.id as storeId, s.name as storeName, COUNT(o.id) as orderCount,
-             SUM(CASE WHEN o.status != 'CANCELLED' THEN o.total ELSE 0 END) as totalSales
+      SELECT s.id as "storeId", s.name as "storeName", COUNT(o.id) as "orderCount",
+             SUM(CASE WHEN o.status != 'CANCELLED' THEN o.total ELSE 0 END) as "totalSales"
       FROM stores s
       LEFT JOIN orders o ON o.store_id = s.id AND o.created_at >= '${thirtyDaysAgo.toISOString()}'
       WHERE s.parent_store_id IS NULL
       GROUP BY s.id, s.name
-      HAVING orderCount > 0
-      ORDER BY orderCount DESC
+      HAVING COUNT(o.id) > 0
+      ORDER BY "orderCount" DESC
       LIMIT 10
     `)
 

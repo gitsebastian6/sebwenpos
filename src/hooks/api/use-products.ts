@@ -67,6 +67,10 @@ export function useCreateProduct() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['categories'] })
+      // Compras keeps its own product picker cache (['purchase-products', storeId])
+      // since it needs a bigger page size — it must be refreshed too, or newly
+      // created/edited products (and their presentations) won't show up there.
+      queryClient.invalidateQueries({ queryKey: ['purchase-products'] })
     },
   })
 }
@@ -87,6 +91,7 @@ export function useUpdateProduct() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['categories'] })
+      queryClient.invalidateQueries({ queryKey: ['purchase-products'] })
     },
   })
 }
@@ -101,6 +106,7 @@ export function useDeleteProduct() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['categories'] })
+      queryClient.invalidateQueries({ queryKey: ['purchase-products'] })
     },
   })
 }
@@ -123,6 +129,7 @@ export function useImportProducts() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['categories'] })
+      queryClient.invalidateQueries({ queryKey: ['purchase-products'] })
     },
   })
 }

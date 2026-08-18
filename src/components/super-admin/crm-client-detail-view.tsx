@@ -23,7 +23,7 @@ import {
   useLeadDetail, useUpdateLead, useApproveLead,
   useLeadDocuments, useUploadLeadDocument, useReviewLeadDocument,
   useLeadActivities, useCreateLeadActivity,
-  REQUIRED_DOCUMENT_TYPES, type DocumentType, type CrmStage,
+  ALL_DOCUMENT_TYPES, REQUIRED_DOCUMENT_TYPES, type DocumentType, type CrmStage,
 } from '@/hooks/api/use-leads'
 import type { LeadDocumentData, LeadActivityData } from './types'
 
@@ -31,6 +31,7 @@ const DOC_LABELS: Record<DocumentType, string> = {
   RUT: 'RUT', CAMARA_COMERCIO: 'Cámara de Comercio',
   CEDULA_REPRESENTANTE: 'Cédula Rep. Legal', RESOLUCION_DIAN: 'Resolución DIAN',
 }
+const OPTIONAL_DOC_TYPES: readonly DocumentType[] = ['RESOLUCION_DIAN']
 
 const STAGE_LABELS: Record<string, string> = {
   LEAD: 'Lead', CONTACTADO: 'Contactado', DOC_PENDIENTE: 'Documentación Pendiente',
@@ -81,7 +82,8 @@ export function CrmClientDetailView({ leadId, onBack }: Props) {
 
   const allApproved = REQUIRED_DOCUMENT_TYPES.every((t) => latestByType(t)?.status === 'APPROVED')
   const resolutionEnd = lead.resolutionEndDate ? new Date(lead.resolutionEndDate) : null
-  const resolutionValid = !!resolutionEnd && resolutionEnd > new Date()
+  // Opcional: si nunca se registró resolución, no bloquea. Si se registró, debe estar vigente.
+  const resolutionValid = !resolutionEnd || resolutionEnd > new Date()
   const alreadyHasStore = !!lead.convertedStoreId
   const readyToConvert = stage === 'VALIDACION_LEGAL' && allApproved && resolutionValid
 
@@ -199,15 +201,15 @@ export function CrmClientDetailView({ leadId, onBack }: Props) {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center justify-between">
-                <span>Documentos requeridos</span>
+                <span>Documentos del expediente</span>
                 <span className="text-xs font-normal text-muted-foreground">
-                  {REQUIRED_DOCUMENT_TYPES.filter((t) => latestByType(t)?.status === 'APPROVED').length} / 4 aprobados
+                  {REQUIRED_DOCUMENT_TYPES.filter((t) => latestByType(t)?.status === 'APPROVED').length} / {REQUIRED_DOCUMENT_TYPES.length} obligatorios aprobados
                 </span>
               </CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {REQUIRED_DOCUMENT_TYPES.map((type) => (
-                <DocumentCard key={type} leadId={leadId} type={type} doc={latestByType(type)} disabled={stage === 'CLIENTE_ACTIVO'} />
+              {ALL_DOCUMENT_TYPES.map((type) => (
+                <DocumentCard key={type} leadId={leadId} type={type} doc={latestByType(type)} disabled={stage === 'CLIENTE_ACTIVO'} optional={OPTIONAL_DOC_TYPES.includes(type)} />
               ))}
             </CardContent>
           </Card>
@@ -313,7 +315,7 @@ export function CrmClientDetailView({ leadId, onBack }: Props) {
               Marcar Expediente Completo
               {(!allApproved || !resolutionValid) && (
                 <span className="text-[10px] opacity-80 ml-1">
-                  ({REQUIRED_DOCUMENT_TYPES.filter((t) => latestByType(t)?.status === 'APPROVED').length}/4{!resolutionValid ? ' · resolución no vigente' : ''})
+                  ({REQUIRED_DOCUMENT_TYPES.filter((t) => latestByType(t)?.status === 'APPROVED').length}/{REQUIRED_DOCUMENT_TYPES.length}{!resolutionValid ? ' · resolución no vigente' : ''})
                 </span>
               )}
             </Button>
@@ -328,7 +330,7 @@ export function CrmClientDetailView({ leadId, onBack }: Props) {
               Marcar como Listo para Facturar
               {!readyToConvert && (
                 <span className="text-[10px] opacity-80 ml-1">
-                  ({REQUIRED_DOCUMENT_TYPES.filter((t) => latestByType(t)?.status === 'APPROVED').length}/4{!resolutionValid ? ' · resolución no vigente' : ''})
+                  ({REQUIRED_DOCUMENT_TYPES.filter((t) => latestByType(t)?.status === 'APPROVED').length}/{REQUIRED_DOCUMENT_TYPES.length}{!resolutionValid ? ' · resolución no vigente' : ''})
                 </span>
               )}
             </Button>
@@ -341,7 +343,7 @@ export function CrmClientDetailView({ leadId, onBack }: Props) {
 
 // ─── Document card ────────────────────────────────────────────────────────
 
-function DocumentCard({ leadId, type, doc, disabled }: { leadId: number; type: DocumentType; doc?: LeadDocumentData; disabled?: boolean }) {
+function DocumentCard({ leadId, type, doc, disabled, optional }: { leadId: number; type: DocumentType; doc?: LeadDocumentData; disabled?: boolean; optional?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
@@ -389,7 +391,10 @@ function DocumentCard({ leadId, type, doc, disabled }: { leadId: number; type: D
   return (
     <div className="rounded-lg border border-dashed p-3 space-y-2 bg-muted/20">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold">{DOC_LABELS[type]}</p>
+        <p className="text-xs font-semibold flex items-center gap-1.5">
+          {DOC_LABELS[type]}
+          {optional && <Badge variant="outline" className="text-[8px] text-muted-foreground font-normal">Opcional</Badge>}
+        </p>
         {statusBadge}
       </div>
 

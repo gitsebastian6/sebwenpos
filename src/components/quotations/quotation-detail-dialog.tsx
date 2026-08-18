@@ -3,7 +3,7 @@
 import { useRef } from 'react'
 import { formatCOP } from '@/lib/format'
 import {
-  Printer, ArrowRightLeft, XCircle, Loader2, CalendarDays,
+  Printer, ArrowRightLeft, XCircle, Loader2, CalendarDays, Layers,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -178,6 +178,11 @@ export function QuotationDetailDialog({
                           <TableRow key={item.id} className="hover:bg-muted/30">
                             <TableCell className="text-sm">
                               {item.productName}
+                              {item.presentationName && (
+                                <span className="ml-1.5 inline-flex items-center gap-0.5 text-sky-600 dark:text-sky-400 text-xs">
+                                  <Layers className="h-3 w-3" />{item.presentationName}
+                                </span>
+                              )}
                               {item.notes && (
                                 <div className="text-xs text-muted-foreground mt-0.5">📝 {item.notes}</div>
                               )}
@@ -318,7 +323,7 @@ export function QuotationDetailDialog({
             <tbody>
               {detail.items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.productName}{item.notes ? ` — ${item.notes}` : ''}</td>
+                  <td>{item.productName}{item.presentationName ? ` — ${item.presentationName}` : ''}{item.notes ? ` — ${item.notes}` : ''}</td>
                   <td className="text-right">{item.quantity}</td>
                   <td className="text-right">{cop(item.unitPrice)}</td>
                   <td className="text-right">{cop(item.taxBase)}</td>

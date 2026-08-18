@@ -125,16 +125,16 @@
 
 @keyframes logo-float {
   0%, 100% {
-    transform: translateY(0px) rotate(0deg);
+    transform: translateY(0px) rotate(0deg) scale(1);
   }
   25% {
-    transform: translateY(-2px) rotate(1deg);
+    transform: translateY(-2px) rotate(1deg) scale(1.02);
   }
   50% {
-    transform: translateY(-3px) rotate(0deg);
+    transform: translateY(-3px) rotate(0deg) scale(1.04);
   }
   75% {
-    transform: translateY(-1.5px) rotate(-1deg);
+    transform: translateY(-1.5px) rotate(-1deg) scale(1.02);
   }
 }
 

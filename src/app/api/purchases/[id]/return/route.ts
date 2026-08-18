@@ -102,13 +102,16 @@ export async function POST(
 
     // Process return in transaction
     const results = await db.$transaction(async (tx) => {
-      // Validate sufficient stock before decrementing
+      // Validate sufficient stock before decrementing (in base units — a
+      // returned presentation line, e.g. Caja x24, removes unitsPerPack times
+      // as much from the shared stock pool as its own quantity)
       for (const reqItem of body.items) {
         const item = itemMap.get(reqItem.purchaseItemId)!
-        if (item.product && item.product.currentStock < reqItem.quantity) {
+        const baseUnits = reqItem.quantity * item.unitsPerPack
+        if (item.product && item.product.currentStock < baseUnits) {
           throw new Error(
             `Stock insuficiente para devolver "${item.product.name}". ` +
-            `Stock actual: ${item.product.currentStock}, cantidad a devolver: ${reqItem.quantity}`,
+            `Stock actual: ${item.product.currentStock}, cantidad a devolver: ${baseUnits} unidades base`,
           )
         }
       }
@@ -120,16 +123,18 @@ export async function POST(
       for (const reqItem of body.items) {
         const item = itemMap.get(reqItem.purchaseItemId)!
         const productName = item.product?.name || 'Producto'
+        const displayName = item.presentationName ? `${productName} — ${item.presentationName}` : productName
+        const baseUnits = reqItem.quantity * item.unitsPerPack
 
-        // Decrement product stock
+        // Decrement product stock (base units)
         await tx.product.update({
           where: { id: item.productId },
           data: {
-            currentStock: { decrement: reqItem.quantity },
+            currentStock: { decrement: baseUnits },
           },
         })
 
-        // Update returnedQuantity on the purchase item
+        // Update returnedQuantity on the purchase item (in the item's own unit)
         await tx.purchaseItem.update({
           where: { id: reqItem.purchaseItemId },
           data: {
@@ -137,21 +142,21 @@ export async function POST(
           },
         })
 
-        // Create inventory movement with type PURCHASE_RETURN
+        // Create inventory movement with type PURCHASE_RETURN (base units)
         await tx.inventoryMovement.create({
           data: {
             storeId: purchase.storeId,
             productId: item.productId,
-            quantity: -reqItem.quantity,
+            quantity: -baseUnits,
             movementType: 'PURCHASE_RETURN',
             referenceId: purchaseId,
-            notes: `Devolución compra ${purchase.consecutiveNumber ? purchase.consecutiveNumber : `#${purchaseId}`} — ${productName} x${reqItem.quantity}${body.reason ? ` — ${body.reason}` : ''}`,
+            notes: `Devolución compra ${purchase.consecutiveNumber ? purchase.consecutiveNumber : `#${purchaseId}`} — ${displayName} x${reqItem.quantity}${body.reason ? ` — ${body.reason}` : ''}`,
           },
         })
 
         totalReturned += reqItem.quantity
         totalReturnValue += item.unitCost * reqItem.quantity
-        returnedItems.push({ name: productName, quantity: reqItem.quantity, unitCost: item.unitCost })
+        returnedItems.push({ name: displayName, quantity: reqItem.quantity, unitCost: item.unitCost })
       }
 
       // Check if ALL items are now fully returned

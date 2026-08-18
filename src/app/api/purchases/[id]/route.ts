@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic'
 const editPurchaseItemSchema = z.object({
   id: z.number().int().positive().optional(), // Existing item id (for update)
   productId: z.number().int().positive().optional(), // For new items
+  presentationId: z.number().int().positive().optional(), // For new items only — existing lines keep their original presentation
   quantity: z.number().int().positive('La cantidad debe ser mayor a 0').optional(),
   unitCost: z.number().int().min(0, 'El costo unitario no puede ser negativo').optional(),
   ivaRate: z.number().int().min(0).max(100).optional(),
@@ -28,6 +29,7 @@ const editPurchaseSchema = z.object({
   providerId: z.number().int().positive().nullable().optional(),
   paymentTerms: z.enum(['CONTADO', 'CREDITO_30', 'CREDITO_60', 'CREDITO_90']).optional(),
   items: z.array(editPurchaseItemSchema).optional(), // null = no item changes, [] = remove all
+  consumptionTax: z.number().int().min(0).optional(),
 })
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -139,6 +141,7 @@ export async function GET(
       totalReteIca: purchase.totalReteIca,
       totalReteIva: purchase.totalReteIva,
       totalDiscount: purchase.totalDiscount,
+      totalConsumptionTax: purchase.totalConsumptionTax,
       notes: purchase.notes,
       total: purchase.total,
       status: purchase.status,
@@ -149,6 +152,9 @@ export async function GET(
         purchaseId: item.purchaseId,
         productId: item.productId,
         product: item.product,
+        presentationId: item.presentationId,
+        presentationName: item.presentationName,
+        unitsPerPack: item.unitsPerPack,
         quantity: item.quantity,
         returnedQuantity: item.returnedQuantity,
         unitCost: item.unitCost,
@@ -259,6 +265,22 @@ export async function PUT(
     const oldItemMap = new Map(purchase.purchaseItems.map((item) => [item.id, item]))
     const newItems = body.items
 
+    // Resolve presentations requested for NEW items (existing lines keep the
+    // presentation they were originally purchased under — never re-resolved here).
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitsPerPack: number }>()
+    if (newItems !== undefined) {
+      const newPresentationIds = newItems
+        .filter((i) => !i.id && i.presentationId)
+        .map((i) => i.presentationId!)
+      if (newPresentationIds.length > 0) {
+        const presentations = await db.productPresentation.findMany({
+          where: { id: { in: newPresentationIds }, isActive: true, product: { storeId: purchase.storeId } },
+          select: { id: true, productId: true, name: true, unitsPerPack: true },
+        })
+        for (const p of presentations) presentationMap.set(p.id, p)
+      }
+    }
+
     // Validate items if provided
     if (newItems !== undefined) {
       // Validate existing item IDs
@@ -275,6 +297,15 @@ export async function PUT(
             { error: 'Se requiere productId para nuevos items' },
             { status: 400 },
           )
+        }
+        if (!item.id && item.presentationId) {
+          const presentation = presentationMap.get(item.presentationId)
+          if (!presentation || presentation.productId !== item.productId) {
+            return NextResponse.json(
+              { error: 'La presentación seleccionada ya no existe o fue desactivada' },
+              { status: 400 },
+            )
+          }
         }
       }
 
@@ -322,20 +353,22 @@ export async function PUT(
         const newItemIds = new Set(newItems.filter((i) => i.id).map((i) => i.id!))
         const removedItems = purchase.purchaseItems.filter((i) => !newItemIds.has(i.id))
 
-        // Handle removed items: decrement stock
+        // Handle removed items: decrement stock (in base units — this item may
+        // have been a presentation, e.g. "Caja x24")
         for (const removed of removedItems) {
+          const removedBaseUnits = (removed.quantity - removed.returnedQuantity) * removed.unitsPerPack
           await tx.product.update({
             where: { id: removed.productId },
-            data: { currentStock: { decrement: removed.quantity - removed.returnedQuantity } },
+            data: { currentStock: { decrement: removedBaseUnits } },
           })
           await tx.inventoryMovement.create({
             data: {
               storeId: purchase.storeId,
               productId: removed.productId,
-              quantity: -(removed.quantity - removed.returnedQuantity),
+              quantity: -removedBaseUnits,
               movementType: 'ADJUSTMENT',
               referenceId: pid,
-              notes: `Eliminado de compra #${purchase.consecutiveNumber || pid} — ${removed.product?.name}`,
+              notes: `Eliminado de compra #${purchase.consecutiveNumber || pid} — ${removed.product?.name}${removed.presentationName ? ` — ${removed.presentationName}` : ''}`,
             },
           })
           // Delete the purchase item
@@ -362,60 +395,78 @@ export async function PUT(
             const ivaAmount = Math.round(newUnitCost * newQuantity * newIvaRate / 100)
             const total = Math.max(0, newUnitCost * newQuantity + ivaAmount - newDiscountAmount)
 
-            // Reconcile stock: only adjust the net difference (excluding returned)
-            const availableQty = oldItem.quantity - oldItem.returnedQuantity
-            const qtyDiff = newQuantity - availableQty
+            // Reconcile stock: the delta is against the line's own previous
+            // quantity, NOT its already-returned-adjusted "available" amount —
+            // a return already moved stock independently at return time, so
+            // re-deriving the diff from availableQty would re-apply it on
+            // every single edit that merely re-saves this line unchanged.
+            // In base units — this line's unitsPerPack never changes on edit.
+            const unitsPerPack = oldItem.unitsPerPack || 1
+            if (newQuantity < oldItem.returnedQuantity) {
+              throw new Error(`No se puede reducir la cantidad de "${oldItem.product?.name || 'este producto'}" por debajo de lo ya devuelto (${oldItem.returnedQuantity})`)
+            }
+            const qtyDiff = newQuantity - oldItem.quantity
+            const baseUnitsDiff = qtyDiff * unitsPerPack
 
             if (qtyDiff > 0) {
               // Adding more quantity
               await tx.product.update({
                 where: { id: oldItem.productId },
-                data: { currentStock: { increment: qtyDiff } },
+                data: { currentStock: { increment: baseUnitsDiff } },
               })
               await tx.inventoryMovement.create({
                 data: {
                   storeId: purchase.storeId,
                   productId: oldItem.productId,
-                  quantity: qtyDiff,
+                  quantity: baseUnitsDiff,
                   movementType: 'PURCHASE',
                   referenceId: pid,
-                  notes: `Ajuste compra #${purchase.consecutiveNumber || pid} — ${oldItem.product?.name} +${qtyDiff}`,
+                  notes: `Ajuste compra #${purchase.consecutiveNumber || pid} — ${oldItem.product?.name}${oldItem.presentationName ? ` — ${oldItem.presentationName}` : ''} +${qtyDiff}`,
                 },
               })
             } else if (qtyDiff < 0) {
               // Reducing quantity
               await tx.product.update({
                 where: { id: oldItem.productId },
-                data: { currentStock: { decrement: Math.abs(qtyDiff) } },
+                data: { currentStock: { decrement: Math.abs(baseUnitsDiff) } },
               })
               await tx.inventoryMovement.create({
                 data: {
                   storeId: purchase.storeId,
                   productId: oldItem.productId,
-                  quantity: qtyDiff,
+                  quantity: baseUnitsDiff,
                   movementType: 'ADJUSTMENT',
                   referenceId: pid,
-                  notes: `Ajuste compra #${purchase.consecutiveNumber || pid} — ${oldItem.product?.name} ${qtyDiff}`,
+                  notes: `Ajuste compra #${purchase.consecutiveNumber || pid} — ${oldItem.product?.name}${oldItem.presentationName ? ` — ${oldItem.presentationName}` : ''} ${qtyDiff}`,
                 },
               })
             }
 
-            // Update cost price if changed
+            // Update cost price if changed — newUnitCost is denominated in this
+            // line's own unit (e.g. cost per Caja x24), so it must be converted
+            // to a base-unit cost before overwriting product.costPrice.
             if (newUnitCost !== oldItem.unitCost && oldItem.product) {
+              const newBaseCostPrice = Math.round(newUnitCost / unitsPerPack)
               await tx.product.update({
                 where: { id: oldItem.productId },
-                data: { costPrice: newUnitCost },
+                data: { costPrice: newBaseCostPrice },
               })
               await tx.costHistory.create({
                 data: {
                   productId: oldItem.productId,
                   storeId: purchase.storeId,
                   previousCost: oldItem.product.costPrice,
-                  newCost: newUnitCost,
+                  newCost: newBaseCostPrice,
                   purchaseId: pid,
                   reason: 'ADJUSTMENT',
                 },
               })
+              if (oldItem.presentationId) {
+                await tx.productPresentation.update({
+                  where: { id: oldItem.presentationId },
+                  data: { costPrice: newUnitCost },
+                })
+              }
             }
 
             await tx.purchaseItem.update({
@@ -455,6 +506,9 @@ export async function PUT(
             const newLotNumber = item.lotNumber ?? null
             const newExpiryDate = item.expiryDate ? new Date(item.expiryDate) : null
             const newManufacturingDate = item.manufacturingDate ? new Date(item.manufacturingDate) : null
+            const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
+            const unitsPerPack = presentation ? presentation.unitsPerPack : 1
+            const baseUnits = newQuantity * unitsPerPack
 
             const ivaAmount = Math.round(newUnitCost * newQuantity * newIvaRate / 100)
             const total = Math.max(0, newUnitCost * newQuantity + ivaAmount - newDiscountAmount)
@@ -464,6 +518,9 @@ export async function PUT(
               data: {
                 purchaseId: pid,
                 productId: item.productId,
+                presentationId: presentation ? presentation.id : null,
+                presentationName: presentation ? presentation.name : null,
+                unitsPerPack,
                 quantity: newQuantity,
                 unitCost: newUnitCost,
                 ivaRate: newIvaRate,
@@ -478,33 +535,44 @@ export async function PUT(
 
             // Costo Promedio Ponderado (CPP) — same rule as a normal purchase: blend
             // with existing stock instead of overwriting with the latest unit cost.
+            // newQuantity*newUnitCost is this line's total cost regardless of
+            // denomination, so dividing by baseUnits correctly weights it per base unit.
             const productForCpp = await tx.product.findUnique({
               where: { id: item.productId },
               select: { costPrice: true, currentStock: true },
             })
             const existingStock = Math.max(0, productForCpp?.currentStock ?? 0)
-            const existingCost = productForCpp?.costPrice ?? newUnitCost
+            const existingCost = productForCpp?.costPrice ?? Math.round(newUnitCost / unitsPerPack)
             const newCostPrice = Math.round(
-              (existingStock * existingCost + newQuantity * newUnitCost) / (existingStock + newQuantity)
+              (existingStock * existingCost + newQuantity * newUnitCost) / (existingStock + baseUnits)
             )
 
-            // Increment stock
+            // Increment stock (in base units)
             await tx.product.update({
               where: { id: item.productId },
               data: {
-                currentStock: { increment: newQuantity },
+                currentStock: { increment: baseUnits },
                 costPrice: newCostPrice,
               },
             })
+
+            if (presentation) {
+              await tx.productPresentation.update({
+                where: { id: presentation.id },
+                data: { costPrice: newUnitCost },
+              })
+            }
 
             await tx.inventoryMovement.create({
               data: {
                 storeId: purchase.storeId,
                 productId: item.productId,
-                quantity: newQuantity,
+                quantity: baseUnits,
                 movementType: 'PURCHASE',
                 referenceId: pid,
-                notes: `Nuevo item compra #${purchase.consecutiveNumber || pid}`,
+                notes: presentation
+                  ? `Nuevo item compra #${purchase.consecutiveNumber || pid} — ${presentation.name} x${newQuantity} (${baseUnits} uds base)`
+                  : `Nuevo item compra #${purchase.consecutiveNumber || pid}`,
               },
             })
 
@@ -546,7 +614,8 @@ export async function PUT(
       const totalDiscount = recalculatedItems.reduce((sum, item) => sum + item.discountAmount, 0)
 
       const { totalReteFuente, totalReteIca, totalReteIva } = calculateRetenciones(subtotal, providerRegime)
-      const total = subtotal + totalIva - totalReteFuente - totalReteIca - totalReteIva - totalDiscount
+      const totalConsumptionTax = body.consumptionTax !== undefined ? body.consumptionTax : purchase.totalConsumptionTax
+      const total = subtotal + totalIva + totalConsumptionTax - totalReteFuente - totalReteIca - totalReteIva - totalDiscount
 
       // Payment terms & due date
       const effectivePaymentTerms = body.paymentTerms || purchase.paymentTerms
@@ -624,6 +693,7 @@ export async function PUT(
           totalReteIca,
           totalReteIva,
           totalDiscount,
+          totalConsumptionTax,
           notes: body.notes !== undefined ? body.notes : purchase.notes,
           total,
           providerId: newProviderId,
@@ -709,16 +779,17 @@ export async function DELETE(
         data: { status: 'CANCELLED' },
       })
 
-      // For each item: decrement stock and create adjustment movement
+      // For each item: decrement stock (in base units) and create adjustment movement
       for (const item of purchase.purchaseItems) {
         const availableQty = item.quantity - item.returnedQuantity
         if (availableQty <= 0) continue
+        const availableBaseUnits = availableQty * item.unitsPerPack
 
         // Decrement product stock
         await tx.product.update({
           where: { id: item.productId },
           data: {
-            currentStock: { decrement: availableQty },
+            currentStock: { decrement: availableBaseUnits },
           },
         })
 
@@ -727,10 +798,10 @@ export async function DELETE(
           data: {
             storeId: purchase.storeId,
             productId: item.productId,
-            quantity: -availableQty,
+            quantity: -availableBaseUnits,
             movementType: 'ADJUSTMENT',
             referenceId: pid,
-            notes: `Compra cancelada ${purchase.consecutiveNumber ? purchase.consecutiveNumber : `#${pid}`} — ${item.product?.name || 'Producto'} x${availableQty}`,
+            notes: `Compra cancelada ${purchase.consecutiveNumber ? purchase.consecutiveNumber : `#${pid}`} — ${item.product?.name || 'Producto'}${item.presentationName ? ` — ${item.presentationName}` : ''} x${availableQty}`,
           },
         })
       }

@@ -167,7 +167,24 @@ export async function PATCH(
     }
 
     const auth = getAuthUser(req)
-    const stageChanged = data.stage !== undefined && data.stage !== lead.stage
+
+    // Lead.status (legacy — used by the "Lista" tab) and Lead.stage (used by the
+    // Pipeline/Expediente Legal tab) are two independent fields with no automatic
+    // sync. Without this, rejecting a lead from one tab leaves the other tab
+    // showing it as if nothing happened. Keep the REJECTED terminal state in
+    // sync in both directions; other transitions still need to go through their
+    // own tab (Lista's NEW/CONTACTED/APPROVED funnel and the Pipeline's stage
+    // machine track genuinely different things).
+    let syncedStage = data.stage
+    let syncedStatus = data.status
+    if (data.status === 'REJECTED' && data.stage === undefined && lead.stage !== 'RECHAZADO') {
+      syncedStage = 'RECHAZADO'
+    }
+    if (data.stage === 'RECHAZADO' && data.status === undefined && lead.status !== 'REJECTED') {
+      syncedStatus = 'REJECTED'
+    }
+
+    const stageChanged = syncedStage !== undefined && syncedStage !== lead.stage
 
     const updated = await db.lead.update({
       where: { id: leadId },
@@ -198,7 +215,7 @@ export async function PATCH(
         camaraFileName,
         camaraFileType,
         // Pipeline CRM
-        ...(data.stage !== undefined ? { stage: data.stage } : {}),
+        ...(syncedStage !== undefined ? { stage: syncedStage } : {}),
         ...(data.assignedToId !== undefined ? { assignedToId: data.assignedToId } : {}),
         // Datos fiscales
         ...(data.taxRegime !== undefined ? { taxRegime: data.taxRegime } : {}),
@@ -211,11 +228,11 @@ export async function PATCH(
         ...(data.resolutionStartNumber !== undefined ? { resolutionStartNumber: data.resolutionStartNumber } : {}),
         ...(data.resolutionEndNumber !== undefined ? { resolutionEndNumber: data.resolutionEndNumber } : {}),
         // Status/notes/reviewer
-        ...(data.status ? { status: data.status } : {}),
+        ...(syncedStatus ? { status: syncedStatus } : {}),
         ...(data.notes !== undefined ? { notes: data.notes || null } : {}),
         ...(data.reviewedBy ? { reviewedBy: data.reviewedBy } : {}),
         // Auto-set reviewedAt when status or reviewedBy is provided
-        ...(data.status || data.reviewedBy ? { reviewedAt: new Date() } : {}),
+        ...(syncedStatus || data.reviewedBy ? { reviewedAt: new Date() } : {}),
       },
     })
 
@@ -226,11 +243,11 @@ export async function PATCH(
         data: {
           leadId,
           type: 'STAGE_CHANGE',
-          title: `Etapa: ${STAGE_LABELS[lead.stage] || lead.stage} → ${STAGE_LABELS[data.stage!] || data.stage}`,
+          title: `Etapa: ${STAGE_LABELS[lead.stage] || lead.stage} → ${STAGE_LABELS[syncedStage!] || syncedStage}`,
           createdById: auth?.userId ?? null,
         },
       })
-      if (data.stage === 'DOC_PENDIENTE') {
+      if (syncedStage === 'DOC_PENDIENTE') {
         await db.leadActivity.create({
           data: {
             leadId,

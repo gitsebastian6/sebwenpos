@@ -33,6 +33,7 @@ import {
   PackageSearch,
   AlertTriangle,
   Clock,
+  CalendarClock,
   Crown,
   X,
   Store,
@@ -56,6 +57,7 @@ const ProductsView = dynamic(() => import('@/components/products/products-view')
 const CustomersView = dynamic(() => import('@/components/customers/customers-view').then(m => ({ default: m.CustomersView })), { ssr: false })
 const OrdersView = dynamic(() => import('@/components/orders/orders-view').then(m => ({ default: m.OrdersView })), { ssr: false })
 const InventoryView = dynamic(() => import('@/components/inventory/inventory-view').then(m => ({ default: m.InventoryView })), { ssr: false })
+const ExpirationsView = dynamic(() => import('@/components/expirations/expirations-view').then(m => ({ default: m.ExpirationsView })), { ssr: false })
 const AccountingView = dynamic(() => import('@/components/accounting/accounting-view').then(m => ({ default: m.AccountingView })), { ssr: false })
 const ServicesView = dynamic(() => import('@/components/services/services-view').then(m => ({ default: m.ServicesView })), { ssr: false })
 const TablesView = dynamic(() => import('@/components/tables/tables-view').then(m => ({ default: m.TablesView })), { ssr: false })
@@ -108,6 +110,7 @@ const menuGroups: { title: string; items: MenuItem[] }[] = [
     title: 'Análisis',
     items: [
       { view: 'inventory', label: 'Inventario', icon: <Warehouse className="h-4 w-4" />, permission: 'inventory' },
+      { view: 'expirations', label: 'Vencimientos', icon: <CalendarClock className="h-4 w-4" />, permission: 'inventory' },
       { view: 'accounting', label: 'Contabilidad', icon: <Calculator className="h-4 w-4" />, permission: 'accounting' },
       { view: 'reports', label: 'Informes', icon: <FileBarChart className="h-4 w-4" />, permission: 'reports' },
     ],
@@ -134,7 +137,7 @@ export function AppShell() {
     const params = new URLSearchParams(window.location.search)
     const view = params.get('view')
     if (view) {
-      const validViews = ['dashboard', 'pos', 'tables', 'products', 'customers', 'providers', 'purchases', 'services', 'orders', 'invoices', 'quotations', 'inventory', 'accounting', 'reports', 'employees', 'roles', 'settings']
+      const validViews = ['dashboard', 'pos', 'tables', 'products', 'customers', 'providers', 'purchases', 'services', 'orders', 'invoices', 'quotations', 'inventory', 'expirations', 'accounting', 'reports', 'employees', 'roles', 'settings']
       if (validViews.includes(view)) {
         setView(view as AppView)
         // Clean URL
@@ -328,8 +331,8 @@ export function AppShell() {
         {/* ── Sidebar Header ── */}
         <SidebarHeader className="p-4 pb-2">
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-lg flex items-center justify-center shrink-0 overflow-hidden bg-background animate-[logo-pulse_3s_ease-in-out_infinite]">
-              <Image src="/logo.png" alt="Sebwen" width={44} height={44} className="object-contain animate-[logo-float_4s_ease-in-out_infinite,logo-glow_3s_ease-in-out_infinite]" />
+            <div className="h-11 w-11 rounded-lg flex items-center justify-center shrink-0 overflow-hidden bg-background animate-[logo-pulse_3s_ease-in-out_infinite,logo-float_4s_ease-in-out_infinite]">
+              <Image src="/logo.png" alt="Sebwen" width={44} height={44} className="object-contain animate-[logo-glow_3s_ease-in-out_infinite]" />
             </div>
             <div className="min-w-0 flex-1">
               {isOwner ? (
@@ -562,7 +565,18 @@ export function AppShell() {
           <h1 className="text-sm sm:text-base font-semibold tracking-tight">
             {headerTitle}
           </h1>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            {subStatus === 'TRIAL' && (
+              <Button
+                size="sm"
+                className="h-7 gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs px-2.5 sm:px-3 active:scale-[0.98] transition-all"
+                onClick={() => useAppStore.getState().goToSettingsTab('subscription')}
+              >
+                <Crown className="h-3 w-3" />
+                <span className="hidden sm:inline">Comprar plan</span>
+                <span className="sm:hidden">Plan</span>
+              </Button>
+            )}
             <OfflineIndicator />
           </div>
         </header>
@@ -593,6 +607,7 @@ function ViewRouter({ currentView }: { currentView: AppView }) {
     case 'invoices': return <ViewErrorBoundary viewName={label}><InvoicesView /></ViewErrorBoundary>
     case 'quotations': return <ViewErrorBoundary viewName={label}><QuotationsView /></ViewErrorBoundary>
     case 'inventory': return <ViewErrorBoundary viewName={label}><InventoryView /></ViewErrorBoundary>
+    case 'expirations': return <ViewErrorBoundary viewName={label}><ExpirationsView /></ViewErrorBoundary>
     case 'accounting': return <ViewErrorBoundary viewName={label}><AccountingView /></ViewErrorBoundary>
     case 'services': return <ViewErrorBoundary viewName={label}><ServicesView /></ViewErrorBoundary>
     case 'reports': return <ViewErrorBoundary viewName={label}><ReportsView /></ViewErrorBoundary>

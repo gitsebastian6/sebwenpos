@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/auth'
 import { withRateLimit, attachRateLimitHeaders } from '@/lib/rate-limiter'
 import { logger } from '@/lib/logger'
-import { saveReceiptFile } from '@/lib/file-storage'
+import { saveLeadDocumentFile } from '@/lib/file-storage'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -97,57 +97,12 @@ export async function POST(req: NextRequest) {
     // ─── Hash password (stored securely, only used when admin creates the account) ───
     const passwordHash = await hashPassword(data.ownerPassword)
 
-    // ─── Save uploaded files to disk (if provided) ───
-    let rutFilePath: string | null = null
-    let rutFileSize: number | null = null
-    let camaraFilePath: string | null = null
-    let camaraFileSize: number | null = null
-
-    if (data.rutFileBase64 && data.rutFileName && data.rutFileType) {
-      try {
-        rutFilePath = await saveReceiptFile({
-          base64Data: data.rutFileBase64,
-          fileName: data.rutFileName,
-          fileType: data.rutFileType,
-        })
-        // Calculate approximate file size from base64
-        rutFileSize = Math.floor((data.rutFileBase64.length * 3) / 4)
-        logger.info(`[TrialSignup] RUT file saved: ${rutFilePath} (${rutFileSize} bytes)`)
-      } catch (fileError) {
-        logger.error('[TrialSignup] Error saving RUT file:', fileError)
-        return NextResponse.json(
-          { error: 'Error al guardar el archivo RUT. Por favor intenta de nuevo.' },
-          { status: 500 },
-        )
-      }
-    }
-
-    if (data.camaraFileBase64 && data.camaraFileName && data.camaraFileType) {
-      try {
-        camaraFilePath = await saveReceiptFile({
-          base64Data: data.camaraFileBase64,
-          fileName: data.camaraFileName,
-          fileType: data.camaraFileType,
-        })
-        // Calculate approximate file size from base64
-        camaraFileSize = Math.floor((data.camaraFileBase64.length * 3) / 4)
-        logger.info(`[TrialSignup] Cámara file saved: ${camaraFilePath} (${camaraFileSize} bytes)`)
-      } catch (fileError) {
-        logger.error('[TrialSignup] Error saving Cámara file:', fileError)
-        // Clean up RUT file if it was already saved
-        if (rutFilePath) {
-          const { deleteReceiptFile } = await import('@/lib/file-storage')
-          deleteReceiptFile(rutFilePath).catch(() => {})
-        }
-        return NextResponse.json(
-          { error: 'Error al guardar el archivo de Cámara de Comercio. Por favor intenta de nuevo.' },
-          { status: 500 },
-        )
-      }
-    }
-
-    // ─── Create Lead record only (no User, no Store, no Subscription) ───
-    await db.lead.create({
+    // ─── Create Lead record first (no User, no Store, no Subscription) ───
+    // File uploads are attached afterward as LeadDocument rows (below) — that's
+    // the table the CRM's Pipeline/Expediente Legal view and the account-conversion
+    // gate actually read from. A file-save hiccup should never block the signup
+    // itself, so it's handled as best-effort after the lead already exists.
+    const lead = await db.lead.create({
       data: {
         ownerFullName: data.ownerFullName.trim(),
         ownerCedula: data.ownerCedula.trim(),
@@ -164,19 +119,43 @@ export async function POST(req: NextRequest) {
         address: data.address?.trim() || null,
         hasCamaraComercio: data.hasCamaraComercio ?? false,
         registrationNumber: data.registrationNumber?.trim() || null,
-        // ── File paths ──
-        rutFilePath,
-        rutFileName: data.rutFileName?.trim() || null,
-        rutFileSize,
-        rutFileType: data.rutFileType?.trim() || null,
-        camaraFilePath,
-        camaraFileName: data.camaraFileName?.trim() || null,
-        camaraFileSize,
-        camaraFileType: data.camaraFileType?.trim() || null,
         status: 'NEW',
         source: 'WEB',
       },
     })
+
+    // ─── Attach uploaded files as LeadDocument rows (also mirrored onto the
+    // legacy Lead.rutFilePath/camaraFilePath fields used by the simple Lista tab) ───
+    async function attachDocument(documentType: 'RUT' | 'CAMARA_COMERCIO', base64: string, fileName: string, fileType: string) {
+      try {
+        const filePath = await saveLeadDocumentFile({ base64Data: base64, fileName, fileType })
+        const rawBase64 = base64.replace(/^data:[^;]+;base64,/, '')
+        const fileSize = Math.floor(Buffer.byteLength(rawBase64, 'base64'))
+
+        await db.leadDocument.create({
+          data: { leadId: lead.id, documentType, filePath, fileName, fileSize, fileType, status: 'PENDING', version: 1 },
+        })
+        await db.leadActivity.create({
+          data: { leadId: lead.id, type: 'DOCUMENT_EVENT', title: `Documento subido por el cliente: ${documentType}`, createdById: null },
+        })
+
+        const legacyFields = documentType === 'RUT'
+          ? { rutFilePath: filePath, rutFileName: fileName, rutFileSize: fileSize, rutFileType: fileType }
+          : { camaraFilePath: filePath, camaraFileName: fileName, camaraFileSize: fileSize, camaraFileType: fileType }
+        await db.lead.update({ where: { id: lead.id }, data: legacyFields })
+
+        logger.info(`[TrialSignup] ${documentType} file attached to lead #${lead.id}: ${filePath} (${fileSize} bytes)`)
+      } catch (fileError) {
+        logger.error(`[TrialSignup] Error saving ${documentType} file for lead #${lead.id}:`, fileError)
+      }
+    }
+
+    if (data.rutFileBase64 && data.rutFileName && data.rutFileType) {
+      await attachDocument('RUT', data.rutFileBase64, data.rutFileName.trim(), data.rutFileType.trim())
+    }
+    if (data.camaraFileBase64 && data.camaraFileName && data.camaraFileType) {
+      await attachDocument('CAMARA_COMERCIO', data.camaraFileBase64, data.camaraFileName.trim(), data.camaraFileType.trim())
+    }
 
     logger.info(`[TrialSignup] New lead: ${data.storeName}, cedula=${data.ownerCedula}, nit=${data.nit}`)
 

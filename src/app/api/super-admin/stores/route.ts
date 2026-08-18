@@ -105,16 +105,22 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     })
 
-    // ── Origin: was this store validated through the CRM legal pipeline, or created directly? ──
+    // ── Origin: was this store's legal file (RUT/Cámara/cédula/Resolución DIAN)
+    // actually validated through the CRM pipeline, or is it still pending?
+    // A linked lead alone isn't enough — Quick Start links a lead to the store
+    // immediately (stage DOC_PENDIENTE) so the super admin can track it, but
+    // nothing has been reviewed yet at that point. Only stage CLIENTE_ACTIVO
+    // means the expediente legal was actually completed. ──
     const convertedLeads = await db.lead.findMany({
       where: { convertedStoreId: { in: stores.map((s) => s.id) } },
-      select: { id: true, convertedStoreId: true },
+      select: { id: true, convertedStoreId: true, stage: true },
     })
-    const leadIdByStoreId = new Map(convertedLeads.map((l) => [l.convertedStoreId, l.id]))
+    const leadByStoreId = new Map(convertedLeads.map((l) => [l.convertedStoreId, l]))
 
     // For branches without their own subscription, inherit parent's subscription
     const enrichedStores = stores.map(store => {
-      const withOrigin = { ...store, leadId: leadIdByStoreId.get(store.id) ?? null }
+      const lead = leadByStoreId.get(store.id)
+      const withOrigin = { ...store, leadId: lead?.id ?? null, leadValidated: lead ? lead.stage === 'CLIENTE_ACTIVO' : false }
       if (!store.subscription && store.parentStore?.subscription) {
         return {
           ...withOrigin,

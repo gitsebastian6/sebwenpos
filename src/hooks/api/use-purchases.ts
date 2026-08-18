@@ -19,15 +19,32 @@ export interface ProviderOption {
   totalDebt?: number
 }
 
+export interface ProductPresentationOption {
+  id: number
+  name: string
+  barcode?: string | null
+  sku?: string | null
+  unitsPerPack: number
+  salePrice: number
+  costPrice: number
+  isActive: boolean
+}
+
 export interface ProductOption {
   id: number
   name: string
   sku?: string | null
+  barcode?: string | null
   costPrice: number
+  salePrice: number
   currentStock: number
+  trackInventory?: boolean
+  trackExpiration?: boolean
   invima?: string | null
   isActive: boolean
   category?: { id: number; name: string } | null
+  taxRate?: { id: number; code: string; rate: number; rateType: string } | null
+  presentations?: ProductPresentationOption[]
 }
 
 export interface PurchaseItemData {
@@ -42,6 +59,9 @@ export interface PurchaseItemData {
     currentStock?: number
     category?: { id: number; name: string } | null
   } | null
+  presentationId?: number | null
+  presentationName?: string | null
+  unitsPerPack?: number
   quantity: number
   returnedQuantity: number
   unitCost: number
@@ -90,6 +110,7 @@ export interface Purchase {
   totalReteIca: number
   totalReteIva: number
   totalDiscount: number
+  totalConsumptionTax: number
   notes: string | null
   total: number
   status: string
@@ -388,30 +409,3 @@ export function usePurchaseReturn() {
   })
 }
 
-/**
- * Imports a purchase from an XML document (e.g. DIAN electronic invoice).
- *
- * @example
- * ```ts
- * const xmlImport = useXmlImportPurchase()
- * xmlImport.mutate({ body: { xmlContent: '...' } })
- * ```
- */
-export function useXmlImportPurchase() {
-  const queryClient = useQueryClient()
-
-  return useMutation<Purchase, Error, { body: Record<string, unknown> }>({
-    mutationFn: async ({ body }) => {
-      return throwIfNotOk(
-        await fetch('/api/purchases/xml-import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-      )
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchases'] })
-    },
-  })
-}

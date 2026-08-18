@@ -84,6 +84,7 @@ export async function GET(
       orderItems: order.orderItems.map((item) => ({
         id: item.id,
         productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
+        presentationName: item.presentationName ?? null,
         productId: item.productId,
         quantity: item.quantity,
         returnedQuantity: item.returnedQuantity ?? 0,

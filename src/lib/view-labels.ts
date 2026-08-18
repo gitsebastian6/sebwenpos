@@ -20,6 +20,7 @@ export const VIEW_LABELS: Record<string, string> = {
   invoices: 'Facturación Electrónica',
   quotations: 'Cotizaciones',
   inventory: 'Inventario',
+  expirations: 'Vencimientos',
   accounting: 'Contabilidad',
   reports: 'Informes',
   employees: 'Empleados',

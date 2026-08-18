@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { ProductImage } from '@/components/ui/product-image'
 import {
   Store, Phone, MapPin, ShoppingCart, MessageCircle,
   Plus, Minus, Trash2, Search, X, ArrowRight, Loader2,
@@ -275,11 +276,17 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
                       onClick={() => addToCart(product)}
                     >
                       <CardContent className="p-3">
-                        {product.imgUrl && (
-                          <div className="aspect-square rounded-lg bg-zinc-800 mb-2 overflow-hidden relative">
-                            <Image src={product.imgUrl} alt={product.name} fill className="object-cover" />
-                          </div>
-                        )}
+                        <div className="aspect-square rounded-lg bg-zinc-800 mb-2 overflow-hidden relative">
+                          <ProductImage
+                            src={product.imgUrl}
+                            alt={product.name}
+                            categoryName={category.name}
+                            categoryIcon={category.icon}
+                            className="absolute inset-0 w-full h-full object-cover"
+                            fallbackClassName="absolute inset-0 w-full h-full flex items-center justify-center bg-zinc-800"
+                            iconClassName="h-8 w-8 text-zinc-600"
+                          />
+                        </div>
                         <h3 className="text-sm font-medium text-zinc-200 line-clamp-2 min-h-[2.5rem]">
                           {product.name}
                         </h3>

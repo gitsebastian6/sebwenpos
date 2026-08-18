@@ -3,6 +3,25 @@
 // Centralized type definitions for all components and API routes
 // ============================================================
 
+// ---- Product Presentation ----
+// Extra presentation of a product beyond its base "Unidad" (which lives on
+// Product's own sku/barcode/salePrice/costPrice fields) — e.g. Six-pack,
+// Caja x24, Cajetilla. Stock is never separate: unitsPerPack converts sales/
+// purchases in this presentation into base-unit stock movements.
+export interface ProductPresentation {
+  id: number
+  productId: number
+  name: string
+  unitLabel: string
+  barcode: string | null
+  sku: string | null
+  unitsPerPack: number
+  salePrice: number
+  costPrice: number
+  isActive: boolean
+  sortOrder: number
+}
+
 // ---- Product ----
 export interface Product {
   id: number
@@ -12,6 +31,7 @@ export interface Product {
   taxRateId: number | null
   sku: string | null
   name: string
+  unitLabel: string
   description: string | null
   imgUrl: string | null
   invima: string | null
@@ -20,11 +40,14 @@ export interface Product {
   commission: number
   currentStock: number
   minStock: number
+  trackInventory: boolean
+  trackExpiration: boolean
   isActive: boolean
   barcode?: string | null
   category?: { id: number; name: string; icon: string | null } | null
   provider?: { id: number; name: string } | null
   taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
+  presentations?: ProductPresentation[]
   _count?: { orderItems: number }
 }
 
@@ -33,12 +56,15 @@ export interface ProductSummary {
   id: number
   name: string
   salePrice: number
+  unitLabel?: string
   currentStock?: number
+  trackInventory?: boolean
   imgUrl?: string | null
   sku?: string | null
   barcode?: string | null
-  category?: { id: number; name: string } | null
+  category?: { id: number; name: string; icon?: string | null } | null
   taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
+  presentations?: ProductPresentation[]
 }
 
 // ---- Customer ----
@@ -154,6 +180,7 @@ export interface OrderItemData {
   productId?: number | null
   serviceId?: number | null
   productName: string
+  presentationName?: string | null
   quantity: number
   unitPrice: number
   totalRow: number
@@ -208,6 +235,12 @@ export interface LastInvoiceData extends InvoiceData {
 export interface CartItem {
   productId: number | null
   serviceId: number | null
+  presentationId?: number | null
+  presentationName?: string | null
+  // Base units this line consumes per unit of quantity. 1 for the product's
+  // own "Unidad" (base) presentation; >1 when this line is a presentation
+  // (e.g. Six-pack = 6) — stock is a single shared pool in base units.
+  unitsPerPack?: number
   name: string
   salePrice: number
   quantity: number
@@ -302,6 +335,7 @@ export interface ReturnOrderDetail {
     id: number
     productId: number | null
     productName: string
+    presentationName?: string | null
     quantity: number
     returnedQuantity: number | null
     isService: boolean

@@ -123,16 +123,24 @@ export async function POST(
       for (const reqItem of body.items!) {
         const item = itemMap.get(reqItem.orderItemId)!
         const productName = item.product?.name || 'Producto'
+        const displayName = item.presentationName ? `${productName} — ${item.presentationName}` : productName
+        // Stock is a single shared pool in base units — returning N units of a
+        // presentation line (e.g. Six-pack) must put back N × unitsPerPack
+        // base units, not N, or the pool ends up short after every such return.
+        const unitsPerPack = item.unitsPerPack || 1
+        const baseUnitsReturned = reqItem.quantity * unitsPerPack
 
         // Increment product stock
         await tx.product.update({
           where: { id: item.productId! },
           data: {
-            currentStock: { increment: reqItem.quantity },
+            currentStock: { increment: baseUnitsReturned },
           },
         })
 
-        // Update returnedQuantity on the order item
+        // Update returnedQuantity on the order item (in the item's own unit —
+        // e.g. "2" Six-packs returned — so future partial-return math against
+        // item.quantity stays consistent)
         await tx.orderItem.update({
           where: { id: reqItem.orderItemId },
           data: {
@@ -140,20 +148,20 @@ export async function POST(
           },
         })
 
-        // Create inventory movement (RETURN type, positive = stock returned)
+        // Create inventory movement (RETURN type, positive = stock returned, always in base units)
         await tx.inventoryMovement.create({
           data: {
             storeId: order.storeId,
             productId: item.productId!,
-            quantity: reqItem.quantity,
+            quantity: baseUnitsReturned,
             movementType: 'RETURN',
             referenceId: orderId,
-            notes: `Devolución parcial venta #${order.orderNumber} — ${productName} x${reqItem.quantity}${body.reason ? ` — ${body.reason}` : ''}`,
+            notes: `Devolución parcial venta #${order.orderNumber} — ${displayName} x${reqItem.quantity}${body.reason ? ` — ${body.reason}` : ''}`,
           },
         })
 
         totalReturned += reqItem.quantity
-        returnedItems.push({ name: productName, quantity: reqItem.quantity })
+        returnedItems.push({ name: displayName, quantity: reqItem.quantity })
       }
 
       // If the order was CREDIT/FIADO, reduce customer's debt proportionally

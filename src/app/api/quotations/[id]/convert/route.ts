@@ -57,7 +57,9 @@ export async function POST(
     const productMap = new Map<number, typeof products[0]>()
     for (const p of products) productMap.set(p.id, p)
 
-    // Validate stock
+    // Validate stock — quantity is denominated in whatever presentation was
+    // quoted (e.g. "2 Cajas x24"), so it must convert to base units before
+    // comparing against currentStock (which is always tracked in base units).
     for (const item of quotation.items) {
       if (item.productId) {
         const product = productMap.get(item.productId)
@@ -67,9 +69,10 @@ export async function POST(
             { status: 400 },
           )
         }
-        if (product.currentStock < item.quantity) {
+        const baseUnitsNeeded = item.quantity * (item.unitsPerPack || 1)
+        if (product.currentStock < baseUnitsNeeded) {
           return NextResponse.json(
-            { error: `Stock insuficiente para "${item.productName}" (disponible: ${product.currentStock}, requerido: ${item.quantity})` },
+            { error: `Stock insuficiente para "${item.productName}" (disponible: ${product.currentStock}, requerido: ${baseUnitsNeeded})` },
             { status: 400 },
           )
         }
@@ -121,6 +124,9 @@ export async function POST(
       return {
         productId: item.productId,
         serviceId: null as number | null,
+        presentationId: item.presentationId,
+        presentationName: item.presentationName,
+        unitsPerPack: item.unitsPerPack,
         quantity: item.quantity,
         unitPrice,
         totalRow,
@@ -207,22 +213,25 @@ export async function POST(
         },
       })
 
-      // Create inventory movements and decrement stock
+      // Create inventory movements and decrement stock (always in base units)
       for (const item of quotation.items) {
         if (item.productId) {
+          const baseUnits = item.quantity * (item.unitsPerPack || 1)
           await tx.inventoryMovement.create({
             data: {
               storeId: data.storeId,
               productId: item.productId,
-              quantity: -item.quantity,
+              quantity: -baseUnits,
               movementType: 'SALE',
               referenceId: createdOrder.id,
-              notes: `Venta ${orderNumber} (desde cotización ${quotation.quotationNumber})`,
+              notes: item.presentationName
+                ? `Venta ${orderNumber} — ${item.presentationName} x${item.quantity} (${baseUnits} uds base) (desde cotización ${quotation.quotationNumber})`
+                : `Venta ${orderNumber} (desde cotización ${quotation.quotationNumber})`,
             },
           })
           await tx.product.update({
             where: { id: item.productId },
-            data: { currentStock: { decrement: item.quantity } },
+            data: { currentStock: { decrement: baseUnits } },
           })
         }
       }

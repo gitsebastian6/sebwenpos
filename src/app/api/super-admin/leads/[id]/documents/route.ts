@@ -7,10 +7,15 @@ import { getAuthUser } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
-export const REQUIRED_DOCUMENT_TYPES = ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REPRESENTANTE', 'RESOLUCION_DIAN'] as const
+// Todos los tipos de documento que se pueden subir en el expediente legal.
+export const ALL_DOCUMENT_TYPES = ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REPRESENTANTE', 'RESOLUCION_DIAN'] as const
+// Los únicos 3 que son obligatorios para aprobar el negocio y convertirlo en cuenta.
+// La Resolución DIAN es opcional — un negocio puede operar sin facturación
+// electrónica activada todavía y configurarla más adelante desde Configuración.
+export const REQUIRED_DOCUMENT_TYPES = ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REPRESENTANTE'] as const
 
 const uploadDocumentSchema = z.object({
-  documentType: z.enum(REQUIRED_DOCUMENT_TYPES),
+  documentType: z.enum(ALL_DOCUMENT_TYPES),
   fileBase64: z.string().min(1),
   fileName: z.string().max(300),
   fileType: z.string().max(80),

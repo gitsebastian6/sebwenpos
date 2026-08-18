@@ -10,8 +10,12 @@ import type { LeadData, LeadsStats, LeadDocumentData, LeadActivityData, LeadCont
 
 export const CRM_STAGES = ['LEAD', 'CONTACTADO', 'DOC_PENDIENTE', 'VALIDACION_LEGAL', 'CLIENTE_ACTIVO', 'RECHAZADO'] as const
 export type CrmStage = typeof CRM_STAGES[number]
-export const REQUIRED_DOCUMENT_TYPES = ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REPRESENTANTE', 'RESOLUCION_DIAN'] as const
-export type DocumentType = typeof REQUIRED_DOCUMENT_TYPES[number]
+// Todos los tipos de documento subibles en el expediente legal.
+export const ALL_DOCUMENT_TYPES = ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REPRESENTANTE', 'RESOLUCION_DIAN'] as const
+// Los 3 obligatorios para aprobar el negocio — la Resolución DIAN es opcional
+// (mantener en sync con REQUIRED_DOCUMENT_TYPES en documents/route.ts).
+export const REQUIRED_DOCUMENT_TYPES = ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REPRESENTANTE'] as const
+export type DocumentType = typeof ALL_DOCUMENT_TYPES[number]
 
 export interface LeadsListResponse {
   leads: LeadData[]

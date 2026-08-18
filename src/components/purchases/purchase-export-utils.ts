@@ -66,12 +66,14 @@ export function handlePrintPurchaseDetail(purchase: Purchase, currencyCode: stri
   lines.push({ left: '────────────────────────────────', separator: true as boolean | undefined })
   lines.push({ left: 'PRODUCTO', right: 'IVA', bold: true, separator: true as boolean | undefined })
   purchase.purchaseItems.forEach(item => {
-    const name = (item.product?.name || 'Producto').slice(0, 22)
+    const baseName = item.presentationName ? `${item.product?.name || 'Producto'} — ${item.presentationName}` : (item.product?.name || 'Producto')
+    const name = baseName.slice(0, 22)
     lines.push({ left: `${item.quantity}x ${name}`, right: `${formatCurrency(item.ivaAmount, currencyCode)}` })
   })
   lines.push({ left: '────────────────────────────────', separator: true as boolean | undefined })
   lines.push({ left: 'Subtotal:', right: formatCurrency(purchase.subtotal, currencyCode) })
   lines.push({ left: `IVA:`, right: formatCurrency(purchase.totalIva, currencyCode) })
+  if (purchase.totalConsumptionTax > 0) lines.push({ left: `IC:`, right: formatCurrency(purchase.totalConsumptionTax, currencyCode) })
   if (purchase.totalReteFuente > 0) lines.push({ left: `ReteFuente:`, right: formatCurrency(purchase.totalReteFuente, currencyCode) })
   if (purchase.totalReteIca > 0) lines.push({ left: `ReteICA:`, right: formatCurrency(purchase.totalReteIca, currencyCode) })
   if (purchase.totalDiscount > 0) lines.push({ left: `Descuento:`, right: formatCurrency(purchase.totalDiscount, currencyCode) })
@@ -92,12 +94,14 @@ export function handlePrintThermalDetail(purchase: Purchase, currencyCode: strin
   if (purchase.invoiceNumber) lines.push({ left: `Factura: ${purchase.invoiceNumber}` })
   lines.push({ left: '────────────────────────────────', separator: true as boolean | undefined })
   purchase.purchaseItems.forEach(item => {
-    const n = (item.product?.name || 'Prod').slice(0, 22)
+    const baseName = item.presentationName ? `${item.product?.name || 'Prod'} — ${item.presentationName}` : (item.product?.name || 'Prod')
+    const n = baseName.slice(0, 22)
     lines.push({ left: `${item.quantity}x ${n}`, right: formatCurrency(item.total, currencyCode) })
   })
   lines.push({ left: '────────────────────────────────' })
   lines.push({ left: 'Subtotal:', right: formatCurrency(purchase.subtotal, currencyCode) })
   lines.push({ left: 'IVA:', right: formatCurrency(purchase.totalIva, currencyCode) })
+  if (purchase.totalConsumptionTax > 0) lines.push({ left: 'IC:', right: formatCurrency(purchase.totalConsumptionTax, currencyCode) })
   if (purchase.totalReteFuente > 0) lines.push({ left: 'ReteFuente:', right: `-${formatCurrency(purchase.totalReteFuente, currencyCode)}` })
   if (purchase.totalReteIca > 0) lines.push({ left: 'ReteICA:', right: `-${formatCurrency(purchase.totalReteIca, currencyCode)}` })
   if (purchase.totalDiscount > 0) lines.push({ left: 'Desc:', right: `-${formatCurrency(purchase.totalDiscount, currencyCode)}` })
@@ -120,6 +124,7 @@ export function handleExportExcel(purchases: Purchase[], currencyCode: string) {
     'N° Productos': p.itemCount,
     'Subtotal': p.subtotal,
     'IVA': p.totalIva,
+    'IC': p.totalConsumptionTax,
     'ReteFuente': p.totalReteFuente,
     'ReteICA': p.totalReteIca,
     'Descuento': p.totalDiscount,

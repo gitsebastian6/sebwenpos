@@ -17,8 +17,10 @@ export interface StoreListItem {
   countryCode: string | null; createdAt: string; updatedAt: string
   parentStoreId: number | null; parentStore: { name: string } | null
   user: StoreOwner; _count: StoreCount
-  /** Lead ID this store was converted from via the CRM legal pipeline, or null if created directly. */
+  /** Lead ID linked to this store (Quick Start or CRM conversion), or null if created directly. */
   leadId: number | null
+  /** True only once that lead's expediente legal actually reached CLIENTE_ACTIVO — a linked lead alone doesn't mean it was validated (e.g. Quick Start links immediately, before any document review). */
+  leadValidated: boolean
 }
 
 export interface PlanData {

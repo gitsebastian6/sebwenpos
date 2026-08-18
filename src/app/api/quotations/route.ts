@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic'
 
 const quotationItemSchema = z.object({
   productId: z.number().int().positive(),
+  // Extra presentation being quoted (e.g. "Caja x24"). Omit for the
+  // product's own base "Unidad" — matches the same pattern as Compras/Órdenes.
+  presentationId: z.number().int().positive().optional(),
   quantity: z.number().int().min(1),
   notes: z.string().max(200).optional(),
 })
@@ -104,13 +107,38 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Resolve presentations (Caja x24, etc.) — always from the DB, and must
+    // actually belong to the product they're being quoted under.
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitsPerPack: number; salePrice: number }>()
+    const presentationIds = data.items.map((i) => i.presentationId).filter((id): id is number => !!id)
+    if (presentationIds.length > 0) {
+      const presentations = await db.productPresentation.findMany({
+        where: { id: { in: presentationIds }, isActive: true, product: { storeId: data.storeId } },
+        select: { id: true, productId: true, name: true, unitsPerPack: true, salePrice: true },
+      })
+      for (const p of presentations) presentationMap.set(p.id, p)
+    }
+    for (const item of data.items) {
+      if (!item.presentationId) continue
+      const presentation = presentationMap.get(item.presentationId)
+      if (!presentation || presentation.productId !== item.productId) {
+        const product = productMap.get(item.productId)
+        return NextResponse.json(
+          { error: `La presentación seleccionada para "${product?.name || item.productId}" ya no existe o fue desactivada` },
+          { status: 400 },
+        )
+      }
+    }
+
     // Tax breakdown accumulator
     const taxBreakdownMap: Record<string, { code: string; name: string; base: number; rate: number; amount: number }> = {}
     let totalTaxAmount = 0
 
     const quotationItemsData = data.items.map((item) => {
       const product = productMap.get(item.productId)!
-      const totalRow = product.salePrice * item.quantity
+      const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
+      const unitPrice = presentation ? presentation.salePrice : product.salePrice
+      const totalRow = unitPrice * item.quantity
       const effectiveTax = product.taxRate
         ? { code: product.taxRate.code, rate: product.taxRate.rate, rateType: product.taxRate.rateType }
         : defaultTaxRate
@@ -131,8 +159,11 @@ export async function POST(req: NextRequest) {
       return {
         productId: item.productId,
         productName: product.name,
+        presentationId: presentation ? presentation.id : null,
+        presentationName: presentation ? presentation.name : null,
+        unitsPerPack: presentation ? presentation.unitsPerPack : 1,
         quantity: item.quantity,
-        unitPrice: product.salePrice,
+        unitPrice,
         totalRow,
         taxCode: tax.taxCode,
         taxRate: tax.taxRate,
@@ -223,6 +254,9 @@ export async function POST(req: NextRequest) {
         id: item.id,
         productId: item.productId,
         productName: item.productName,
+        presentationId: item.presentationId,
+        presentationName: item.presentationName,
+        unitsPerPack: item.unitsPerPack,
         quantity: item.quantity,
         unitPrice: Number(item.unitPrice),
         totalRow: Number(item.totalRow),

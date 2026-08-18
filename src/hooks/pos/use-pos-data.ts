@@ -32,7 +32,7 @@ export interface RecentOrder {
   status: string
   total: number
   createdAt: string
-  orderItems: Array<{ productName: string; quantity: number; totalRow: number }>
+  orderItems: Array<{ productName: string; presentationName?: string | null; quantity: number; totalRow: number }>
 }
 
 // ─── Hook ──────────────────────────────────────────────

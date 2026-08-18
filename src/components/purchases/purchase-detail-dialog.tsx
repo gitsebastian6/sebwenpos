@@ -199,6 +199,7 @@ export function PurchaseDetailDialog({ open, onClose, purchaseId, currencyCode, 
                             <TableRow key={item.id}>
                               <TableCell className="text-xs">
                                 {item.product?.name || 'Producto eliminado'}
+                                {item.presentationName && <span className="text-muted-foreground"> — {item.presentationName}</span>}
                                 {item.lotNumber && <span className="text-[10px] text-muted-foreground block">Lote: {item.lotNumber}</span>}
                               </TableCell>
                               <TableCell className="text-xs text-center">
@@ -222,6 +223,7 @@ export function PurchaseDetailDialog({ open, onClose, purchaseId, currencyCode, 
                     <h4 className="text-sm font-semibold mb-2">Desglose de Impuestos</h4>
                     <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(purchase.subtotal, currencyCode)}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">IVA Descontable</span><span className="text-blue-600">{formatCurrency(purchase.totalIva, currencyCode)}</span></div>
+                    {purchase.totalConsumptionTax > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Impuesto al Consumo (IC)</span><span className="text-purple-600">{formatCurrency(purchase.totalConsumptionTax, currencyCode)}</span></div>}
                     <div className="flex justify-between"><span className="text-muted-foreground">Retención en la Fuente</span><span className="text-orange-600">-{formatCurrency(purchase.totalReteFuente, currencyCode)}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Retención ICA</span><span className="text-orange-600">-{formatCurrency(purchase.totalReteIca, currencyCode)}</span></div>
                     {purchase.totalReteIva > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Retención IVA</span><span className="text-orange-600">-{formatCurrency(purchase.totalReteIva, currencyCode)}</span></div>}
@@ -372,7 +374,10 @@ export function PurchaseDetailDialog({ open, onClose, purchaseId, currencyCode, 
                       <div className="flex items-center gap-2">
                         <input type="checkbox" checked={isSelected} onChange={() => toggleReturnItem(item.id, available)} className="rounded" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{item.product?.name || 'Producto'}</p>
+                          <p className="text-sm font-medium truncate">
+                            {item.product?.name || 'Producto'}
+                            {item.presentationName && <span className="text-muted-foreground"> — {item.presentationName}</span>}
+                          </p>
                           <p className="text-xs text-muted-foreground">Disponible: {available} · Costo: {formatCurrency(item.unitCost, currencyCode)} · IVA: {formatCurrency(item.ivaAmount, currencyCode)}</p>
                         </div>
                         {isSelected && (
