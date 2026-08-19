@@ -98,6 +98,7 @@ interface OrderDetail {
   orderItems: {
     id: number
     productName: string
+    presentationName?: string | null
     productId: number | null
     quantity: number
     returnedQuantity: number
@@ -173,7 +174,8 @@ export function OrdersView() {
   function handlePrintTicket(detail: OrderDetail) {
     if (!store) return
     const items: TicketItem[] = detail.orderItems.map(item => ({
-      name: item.productName, quantity: item.quantity,
+      name: item.presentationName ? `${item.productName} — ${item.presentationName}` : item.productName,
+      quantity: item.quantity,
       unitPrice: item.unitPrice, total: item.totalRow, isService: item.isService,
     }))
     printTicket({
@@ -556,6 +558,9 @@ export function OrdersView() {
                         <TableRow key={item.id} className="hover:bg-muted/30">
                           <TableCell className="font-medium text-sm">
                             {item.productName}
+                            {item.presentationName && (
+                              <span className="text-muted-foreground font-normal"> · {item.presentationName}</span>
+                            )}
                             {item.returnedQuantity > 0 && (
                               <Badge variant="outline" className="ml-2 text-xs text-amber-600 border-amber-300">
                                 Dev: {item.returnedQuantity}
@@ -704,7 +709,12 @@ export function OrdersView() {
                           className="h-4 w-4 rounded border-gray-300 text-destructive focus:ring-destructive"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{item.productName}</p>
+                          <p className="text-sm font-medium truncate">
+                            {item.productName}
+                            {item.presentationName && (
+                              <span className="text-muted-foreground font-normal"> · {item.presentationName}</span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             Vendido: {item.quantity}{item.returnedQuantity > 0 ? ` · Devuelto: ${item.returnedQuantity}` : ''} · Disponible: {available}
                           </p>

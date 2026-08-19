@@ -3,13 +3,15 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { getUnitOfMeasureLabel } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 
 const returnSchema = z.object({
   storeId: z.number().int().positive(),
   productId: z.number().int().positive(),
-  quantity: z.number().int().positive(),
+  presentationId: z.number().int().positive().optional(),
+  quantity: z.number().int().positive(), // always in BASE units
   notes: z.string().optional(),
 })
 
@@ -32,12 +34,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 })
     }
 
+    let presentationSnapshot: { name: string; unitsPerPack: number } | null = null
+    if (data.presentationId) {
+      const presentation = await db.productPresentation.findFirst({
+        where: { id: data.presentationId, productId: data.productId },
+      })
+      if (!presentation) {
+        return NextResponse.json({ error: 'Presentación no encontrada' }, { status: 404 })
+      }
+      presentationSnapshot = { name: getUnitOfMeasureLabel(presentation.unitLabel), unitsPerPack: presentation.unitsPerPack }
+    }
+
     // Create movement (positive quantity = stock going back in) and update stock
     const movement = await db.$transaction(async (tx) => {
       const mov = await tx.inventoryMovement.create({
         data: {
           storeId: data.storeId,
           productId: data.productId,
+          presentationId: data.presentationId,
+          presentationName: presentationSnapshot?.name,
+          unitsPerPack: presentationSnapshot?.unitsPerPack ?? 1,
           quantity: data.quantity, // positive: stock increases
           movementType: 'RETURN',
           notes: data.notes,
@@ -65,6 +81,8 @@ export async function POST(req: NextRequest) {
       id: movement.id,
       productId: movement.productId,
       productName: movement.product.name,
+      presentationName: movement.presentationName,
+      unitsPerPack: movement.unitsPerPack,
       quantity: movement.quantity,
       movementType: movement.movementType,
       notes: movement.notes,

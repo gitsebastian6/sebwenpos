@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
       id: m.id,
       productId: m.productId,
       productName: m.product.name,
+      presentationName: m.presentationName,
+      unitsPerPack: m.unitsPerPack,
       quantity: m.quantity,
       movementType: m.movementType,
       notes: m.notes,

@@ -27,6 +27,7 @@ import { useCategories } from '@/hooks/api/use-categories'
 import { useTaxes } from '@/hooks/api/use-taxes'
 import { useProviders as useFullProviders } from '@/hooks/api/use-providers'
 import { todayStr, PAYMENT_TERMS as PURCHASE_PAYMENT_TERMS, IVA_RATES } from './purchase-types'
+import { getUnitOfMeasureLabel } from '@/lib/constants'
 
 // ── XML Parsing ──────────────────────────────────────────────────────────
 
@@ -38,6 +39,11 @@ export interface ParsedXmlLine {
   unitCost: number
   ivaRate: number
   discountAmount: number
+  // Línea bonificada/gratis — PriceAmount=0, o un AllowanceCharge que cubre
+  // ~100% del valor de la línea (las dos formas comunes en que un proveedor
+  // colombiano representa un "regalo" en el XML). Puramente informativo:
+  // no cambia el cálculo de costo, solo se usa para etiquetar la línea.
+  isBonus: boolean
 }
 
 function getLocalName(el: Element): string {
@@ -112,7 +118,13 @@ export function parseXmlItems(xmlDoc: Document): ParsedXmlLine[] {
         'TaxTotal TaxSubtotal cbc\\:Percent', 'cac\\:TaxTotal cac\\:TaxSubtotal cbc\\:Percent', 'Percent',
       ]) || 19
       const discountAmount = Math.round(getLineDiscount(line))
-      if (name && qty > 0) items.push({ name, barcode, sellerSku, quantity: qty, unitCost: Math.round(price), ivaRate, discountAmount })
+      // Bonificado: precio literal $0, o un descuento que cubre ~100% del
+      // valor bruto de la línea (las dos formas comunes en que un proveedor
+      // colombiano representa un "regalo" en el XML, en vez de un precio $0).
+      const grossLineAmount = qty * price
+      const isFullyDiscounted = discountAmount > 0 && grossLineAmount > 0 && discountAmount >= Math.round(grossLineAmount * 0.99)
+      const isBonus = price === 0 || isFullyDiscounted
+      if (name && qty > 0) items.push({ name, barcode, sellerSku, quantity: qty, unitCost: Math.round(price), ivaRate, discountAmount, isBonus })
     })
   }
   // Strategy 2: FeCo
@@ -121,7 +133,7 @@ export function parseXmlItems(xmlDoc: Document): ParsedXmlLine[] {
       const name = getText(item, ['descripcion', 'nombre', 'name'])
       const qty = getNum(item, ['cantidad', 'quantity'])
       const price = getNum(item, ['precioUnitario', 'unitPrice', 'valor', 'precio'])
-      if (name && qty > 0) items.push({ name, barcode: '', sellerSku: '', quantity: qty, unitCost: Math.round(price), ivaRate: 19, discountAmount: 0 })
+      if (name && qty > 0) items.push({ name, barcode: '', sellerSku: '', quantity: qty, unitCost: Math.round(price), ivaRate: 19, discountAmount: 0, isBonus: price === 0 })
     })
   }
   // Strategy 3: generic
@@ -130,7 +142,7 @@ export function parseXmlItems(xmlDoc: Document): ParsedXmlLine[] {
       const name = getText(item, ['nombre', 'name', 'descripcion'])
       const qty = getNum(item, ['cantidad', 'quantity'])
       const price = getNum(item, ['precio', 'price', 'costo'])
-      if (name && qty > 0) items.push({ name, barcode: '', sellerSku: '', quantity: qty, unitCost: Math.round(price), ivaRate: 19, discountAmount: 0 })
+      if (name && qty > 0) items.push({ name, barcode: '', sellerSku: '', quantity: qty, unitCost: Math.round(price), ivaRate: 19, discountAmount: 0, isBonus: price === 0 })
     })
   }
   // Strategy 4: repeating element heuristic
@@ -151,7 +163,7 @@ export function parseXmlItems(xmlDoc: Document): ParsedXmlLine[] {
           if (/cant|qty|quantity|cantidad/.test(tag)) qty = parseFloat(val) || 0
           if (/prec|price|cost|valor|amount/.test(tag)) { const p = parseFloat(val) || 0; if (price === 0 || p < price) price = p }
         })
-        if (name && qty > 0) items.push({ name, barcode: '', sellerSku: '', quantity: qty, unitCost: Math.round(price), ivaRate: 19, discountAmount: 0 })
+        if (name && qty > 0) items.push({ name, barcode: '', sellerSku: '', quantity: qty, unitCost: Math.round(price), ivaRate: 19, discountAmount: 0, isBonus: price === 0 })
       })
     }
   }
@@ -242,7 +254,10 @@ function effectiveIvaRate(product: ProductOption | undefined, fallback: number):
   return product ? (product.taxRate?.rate ?? 0) : fallback
 }
 
-export function resolveXmlLine(line: ParsedXmlLine, products: ProductOption[]): XmlPreviewLine {
+/** Homologación guardada por proveedor: sellerSku (en minúsculas) -> a qué producto/presentación resolvió la última vez. */
+export type ProviderMappingLookup = Map<string, { productId: number; presentationId: number | null }>
+
+export function resolveXmlLine(line: ParsedXmlLine, products: ProductOption[], mappings?: ProviderMappingLookup): XmlPreviewLine {
   const barcode = line.barcode.trim().toLowerCase()
   const sellerSku = line.sellerSku.trim().toLowerCase()
   const base = {
@@ -250,20 +265,43 @@ export function resolveXmlLine(line: ParsedXmlLine, products: ProductOption[]): 
     discountAmount: line.discountAmount, lotNumber: '', expiryDate: '',
   }
 
-  if (barcode || sellerSku) {
+  // 1. Código de barras — identifica el bien físico, gana siempre sin
+  //    importar el proveedor. Nunca lo debe pisar una homologación ni un SKU.
+  if (barcode) {
     for (const p of products) {
-      if (barcode && (p.barcode || '').toLowerCase() === barcode) {
+      if ((p.barcode || '').toLowerCase() === barcode) {
         return { ...base, status: 'exact', productId: p.id, presentationId: null, matchLabel: `código de barras "${p.barcode}"`, ivaRate: effectiveIvaRate(p, line.ivaRate) }
       }
-      if (sellerSku && (p.sku || '').toLowerCase() === sellerSku) {
+      for (const pr of (p.presentations || []).filter(x => x.isActive)) {
+        if ((pr.barcode || '').toLowerCase() === barcode) {
+          return { ...base, status: 'exact', productId: p.id, presentationId: pr.id, matchLabel: `código de barras de "${p.name} — ${getUnitOfMeasureLabel(pr.unitLabel)}"`, ivaRate: effectiveIvaRate(p, line.ivaRate) }
+        }
+      }
+    }
+  }
+
+  // 2. Homologación guardada para ESTE proveedor + sellerSku exacto — gana
+  //    sobre el SKU genérico porque quedó confirmada por una resolución
+  //    humana anterior (o autocorregida si el usuario la cambió la última vez).
+  if (sellerSku && mappings?.has(sellerSku)) {
+    const m = mappings.get(sellerSku)!
+    const p = products.find(pp => pp.id === m.productId)
+    if (p) {
+      const pr = m.presentationId ? p.presentations?.find(x => x.id === m.presentationId) : undefined
+      return { ...base, status: 'exact', productId: p.id, presentationId: pr?.id ?? null, matchLabel: `homologación guardada — código "${line.sellerSku}"`, ivaRate: effectiveIvaRate(p, line.ivaRate) }
+    }
+  }
+
+  // 3. SKU genérico del producto/presentación (comportamiento legado — solo
+  //    puede recordar un proveedor a la vez, por eso queda debajo de #2).
+  if (sellerSku) {
+    for (const p of products) {
+      if ((p.sku || '').toLowerCase() === sellerSku) {
         return { ...base, status: 'exact', productId: p.id, presentationId: null, matchLabel: `SKU "${p.sku}"`, ivaRate: effectiveIvaRate(p, line.ivaRate) }
       }
       for (const pr of (p.presentations || []).filter(x => x.isActive)) {
-        if (barcode && (pr.barcode || '').toLowerCase() === barcode) {
-          return { ...base, status: 'exact', productId: p.id, presentationId: pr.id, matchLabel: `código de barras de "${pr.name}"`, ivaRate: effectiveIvaRate(p, line.ivaRate) }
-        }
-        if (sellerSku && (pr.sku || '').toLowerCase() === sellerSku) {
-          return { ...base, status: 'exact', productId: p.id, presentationId: pr.id, matchLabel: `SKU de "${pr.name}" (homologación)`, ivaRate: effectiveIvaRate(p, line.ivaRate) }
+        if ((pr.sku || '').toLowerCase() === sellerSku) {
+          return { ...base, status: 'exact', productId: p.id, presentationId: pr.id, matchLabel: `SKU de "${p.name} — ${getUnitOfMeasureLabel(pr.unitLabel)}" (homologación)`, ivaRate: effectiveIvaRate(p, line.ivaRate) }
         }
       }
     }
@@ -400,18 +438,32 @@ export function PurchaseXmlImport({
       const consumptionTax = parseDocumentLevelConsumptionTax(xmlDoc)
       if (rawItems.length === 0) { toast.error('No se pudieron extraer productos del XML.'); return }
 
-      const lines = rawItems.map(item => resolveXmlLine(item, products))
-
+      // Determinar el proveedor ANTES de resolver las líneas, para poder
+      // cargar sus homologaciones guardadas (código propio del proveedor ->
+      // producto/presentación) y que resolveXmlLine ya las tenga disponibles.
       // Auto-select provider only on an exact NIT match — a name-only match
       // is shown but left for the user to confirm via the dropdown below.
+      let matchedProviderId: number | null = null
       if (metadata.providerNit) {
         const nit = metadata.providerNit.replace(/[^0-9kK]/g, '').toLowerCase()
         const match = providersForMatch.find(p => (p.nit || '').replace(/[^0-9kK]/g, '').toLowerCase() === nit)
-        if (match) setXmlProviderId(String(match.id))
-        else setXmlProviderId('none')
-      } else {
-        setXmlProviderId('none')
+        matchedProviderId = match ? match.id : null
       }
+      setXmlProviderId(matchedProviderId ? String(matchedProviderId) : 'none')
+
+      let mappings: ProviderMappingLookup | undefined
+      if (matchedProviderId) {
+        try {
+          const res = await fetch(`/api/providers/${matchedProviderId}/product-mappings?storeId=${storeId}`)
+          if (res.ok) {
+            const { data } = await res.json() as { data: { sellerSku: string; productId: number; presentationId: number | null }[] }
+            mappings = new Map(data.map(r => [r.sellerSku.toLowerCase(), { productId: r.productId, presentationId: r.presentationId }]))
+          }
+        } catch { /* homologación no disponible — sigue resolviendo por código de barras/SKU/nombre */ }
+      }
+
+      const lines = rawItems.map(item => resolveXmlLine(item, products, mappings))
+
       setXmlPaymentTerms('CONTADO')
       setXmlConsumptionTax(consumptionTax > 0 ? String(consumptionTax) : '0')
 
@@ -449,7 +501,7 @@ export function PurchaseXmlImport({
     const presentation = presentationPart ? product?.presentations?.find(pr => pr.id === Number(presentationPart)) : undefined
     updateLine(line.key, {
       status: 'suggested', productId: product?.id ?? null, presentationId: presentation?.id ?? null,
-      matchLabel: presentation ? `seleccionado manualmente — ${presentation.name}` : 'seleccionado manualmente',
+      matchLabel: presentation ? `seleccionado manualmente — ${getUnitOfMeasureLabel(presentation.unitLabel)}` : 'seleccionado manualmente',
       ivaRate: effectiveIvaRate(product, line.raw.ivaRate),
     })
   }
@@ -518,6 +570,8 @@ export function PurchaseXmlImport({
           discountAmount: l.discountAmount || 0,
           lotNumber: l.lotNumber.trim() || undefined,
           expiryDate: l.expiryDate || undefined,
+          isBonus: l.raw.isBonus,
+          sellerSku: l.raw.sellerSku || undefined,
         })),
       },
     }, {
@@ -629,6 +683,11 @@ export function PurchaseXmlImport({
                                 {line.raw.barcode || line.raw.sellerSku}
                               </p>
                             )}
+                            {line.raw.isBonus && (
+                              <Badge variant="outline" className="text-[10px] mt-1 px-1.5 py-0 border-emerald-300 text-emerald-600 dark:text-emerald-400 dark:border-emerald-700">
+                                Bonificado
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-sm text-center align-top">{line.raw.quantity}</TableCell>
                           <TableCell className="text-sm text-right align-top">
@@ -687,10 +746,10 @@ export function PurchaseXmlImport({
                                 <SelectTrigger className="h-9 text-sm w-full bg-muted/50 border-muted-foreground/30"><SelectValue placeholder="Sin resolver" /></SelectTrigger>
                                 <SelectContent>
                                   {products.flatMap(p => [
-                                    <SelectItem key={p.id} value={String(p.id)}>{p.name} — Unidad</SelectItem>,
+                                    <SelectItem key={p.id} value={String(p.id)}>{p.name} — {getUnitOfMeasureLabel(p.unitLabel)}</SelectItem>,
                                     ...(p.presentations || []).filter(pr => pr.isActive).map(pr => (
                                       <SelectItem key={`${p.id}::${pr.id}`} value={`${p.id}::${pr.id}`}>
-                                        {p.name} — {pr.name} (x{pr.unitsPerPack})
+                                        {p.name} — {getUnitOfMeasureLabel(pr.unitLabel)} (x{pr.unitsPerPack})
                                       </SelectItem>
                                     )),
                                   ])}
@@ -707,7 +766,7 @@ export function PurchaseXmlImport({
                             )}
                             {resolvedPresentation && (
                               <p className="text-[10px] text-sky-600 dark:text-sky-400">
-                                Se registrará {line.raw.quantity} × {resolvedPresentation.name} = {line.raw.quantity * resolvedPresentation.unitsPerPack} unidades base
+                                Se registrará {line.raw.quantity} × {getUnitOfMeasureLabel(resolvedPresentation.unitLabel)} = {line.raw.quantity * resolvedPresentation.unitsPerPack} unidades base
                               </p>
                             )}
                             {!resolvedPresentation && line.productId && (

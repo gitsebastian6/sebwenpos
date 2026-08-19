@@ -194,6 +194,9 @@ export async function POST(
       return {
         productId: item.productId ?? null,
         serviceId: item.serviceId ?? null,
+        presentationId: item.presentationId ?? null,
+        presentationName: item.presentationName ?? null,
+        unitsPerPack: item.unitsPerPack,
         quantity: item.quantity,
         unitPrice: Number(item.unitPrice),
         totalRow,
@@ -298,12 +301,19 @@ export async function POST(
       })
 
       // 3. Create inventory movements and decrement stock (only for product items)
+      //    Deducted in base units: a presentation line (e.g. 1 Six-pack) removes
+      //    unitsPerPack base units from the single shared stock pool, not 1.
       for (const item of productComandaItems) {
+        const unitsPerPack = item.unitsPerPack || 1
+        const baseUnits = item.quantity * unitsPerPack
         await tx.inventoryMovement.create({
           data: {
             storeId: data.storeId,
             productId: item.productId,
-            quantity: -item.quantity,
+            presentationId: item.presentationId,
+            presentationName: item.presentationName,
+            unitsPerPack,
+            quantity: -baseUnits,
             movementType: 'SALE',
             referenceId: createdOrder.id,
             notes: `Venta ${orderNumber} - ${tableLabel}`,
@@ -311,7 +321,7 @@ export async function POST(
         })
         await tx.product.update({
           where: { id: item.productId },
-          data: { currentStock: { decrement: item.quantity } },
+          data: { currentStock: { decrement: baseUnits } },
         })
       }
 
@@ -527,6 +537,7 @@ export async function POST(
           id: item.id,
           productId: item.productId ?? null,
           serviceId: item.serviceId ?? null,
+          presentationName: item.presentationName ?? null,
           productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
           quantity: item.quantity,
           unitPrice: Number(item.unitPrice),

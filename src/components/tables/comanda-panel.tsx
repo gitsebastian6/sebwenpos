@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useComandaAddItem, useComandaUpdateItem } from '@/hooks/api/use-tables'
 import { formatCurrency } from '@/lib/auth'
 import { paymentMethodLabel } from '@/lib/format'
+import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { playAlert, playError } from '@/lib/pos-sounds'
 import { toast } from 'sonner'
 import type { OrderItemData } from '@/types'
@@ -145,7 +146,7 @@ export function ComandaPanel({
 
   // ─── Handlers ──────────────────────────────────────────────────────────
 
-  async function handleAddItem(productId: number | null, serviceId?: number | null) {
+  async function handleAddItem(productId: number | null, serviceId?: number | null, presentationId?: number | null) {
     if (!session) {
       toast.error('No hay sesión activa')
       return
@@ -164,6 +165,7 @@ export function ComandaPanel({
     try {
       const itemPayload: Record<string, unknown> = {
         ...(productId ? { productId } : { serviceId }),
+        ...(presentationId ? { presentationId } : {}),
         quantity: 1,
       }
       if (pendingItemNotes.trim()) {
@@ -465,6 +467,9 @@ export function ComandaPanel({
                                       }`}
                                     >
                                       {item.productName}
+                                      {item.presentationName && (
+                                        <span className="text-muted-foreground font-normal"> · {item.presentationName}</span>
+                                      )}
                                     </span>
                                 </div>
                                 <Badge
@@ -681,7 +686,7 @@ export function ComandaPanel({
                         className="mt-2 w-full gap-2 active:scale-[0.98] transition-all"
                         onClick={() => {
                           const items: TicketItem[] = (lastPaymentData.orderItems || []).map((item: OrderItemData) => ({
-                            name: item.productName,
+                            name: item.presentationName ? `${item.productName} — ${item.presentationName}` : item.productName,
                             quantity: item.quantity,
                             unitPrice: item.unitPrice,
                             total: item.totalRow,
@@ -822,29 +827,64 @@ export function ComandaPanel({
                   ) : (
                     <ScrollArea className="max-h-64">
                       <div className="space-y-1.5">
-                        {products.map((product) => (
-                          <div
-                            key={`p-${product.id}`}
-                            className="flex items-center justify-between rounded-lg border p-2.5 hover:bg-muted/50 active:bg-muted/70 transition-colors cursor-pointer"
-                            onClick={() => handleAddItem(product.id, null)}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{product.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {product.category?.name ?? 'Sin categoría'}
-                                {' · '}
-                                {formatCurrency(product.salePrice, store?.currencyCode)}
-                              </p>
+                        {products.map((product) => {
+                          const activePresentations = (product.presentations || []).filter((p) => p.isActive)
+                          const hasPresentations = activePresentations.length > 0
+                          const rowBody = (
+                            <div
+                              className="flex items-center justify-between rounded-lg border p-2.5 hover:bg-muted/50 active:bg-muted/70 transition-colors cursor-pointer"
+                              onClick={hasPresentations ? undefined : () => handleAddItem(product.id, null)}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{product.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {product.category?.name ?? 'Sin categoría'}
+                                  {' · '}
+                                  {formatCurrency(product.salePrice, store?.currencyCode)}
+                                </p>
+                              </div>
+                              <div className="shrink-0 ml-2">
+                                {addingItem === product.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                ) : (
+                                  <Plus className="h-4 w-4 text-primary" />
+                                )}
+                              </div>
                             </div>
-                            <div className="shrink-0 ml-2">
-                              {addingItem === product.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                              ) : (
-                                <Plus className="h-4 w-4 text-primary" />
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          )
+
+                          if (!hasPresentations) {
+                            return <div key={`p-${product.id}`}>{rowBody}</div>
+                          }
+
+                          return (
+                            <Popover key={`p-${product.id}`}>
+                              <PopoverTrigger asChild>{rowBody}</PopoverTrigger>
+                              <PopoverContent className="w-56 p-1.5" align="start">
+                                <p className="px-2 py-1 text-xs font-medium text-muted-foreground truncate">{product.name}</p>
+                                <button
+                                  type="button"
+                                  className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
+                                  onClick={() => handleAddItem(product.id, null, null)}
+                                >
+                                  <span>{getUnitOfMeasureLabel(product.unitLabel ?? 'UND')}</span>
+                                  <span className="font-medium tabular-nums">{formatCurrency(product.salePrice, store?.currencyCode)}</span>
+                                </button>
+                                {activePresentations.map((presentation) => (
+                                  <button
+                                    key={presentation.id}
+                                    type="button"
+                                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
+                                    onClick={() => handleAddItem(product.id, null, presentation.id)}
+                                  >
+                                    <span className="truncate" title={presentation.name}>{getUnitOfMeasureLabel(presentation.unitLabel)}</span>
+                                    <span className="font-medium tabular-nums shrink-0 ml-2">{formatCurrency(presentation.salePrice, store?.currencyCode)}</span>
+                                  </button>
+                                ))}
+                              </PopoverContent>
+                            </Popover>
+                          )
+                        })}
 
                         {/* Services section */}
                         {services.length > 0 && (

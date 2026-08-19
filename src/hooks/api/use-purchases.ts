@@ -22,6 +22,7 @@ export interface ProviderOption {
 export interface ProductPresentationOption {
   id: number
   name: string
+  unitLabel: string
   barcode?: string | null
   sku?: string | null
   unitsPerPack: number
@@ -33,6 +34,7 @@ export interface ProductPresentationOption {
 export interface ProductOption {
   id: number
   name: string
+  unitLabel: string
   sku?: string | null
   barcode?: string | null
   costPrice: number
@@ -71,6 +73,7 @@ export interface PurchaseItemData {
   lotNumber?: string | null
   expiryDate?: string | null
   manufacturingDate?: string | null
+  isBonus?: boolean
   total: number
 }
 

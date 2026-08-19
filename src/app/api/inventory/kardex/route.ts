@@ -67,6 +67,8 @@ export async function GET(request: NextRequest) {
         notes: true,
         createdAt: true,
         referenceId: true,
+        presentationName: true,
+        unitsPerPack: true,
       },
       orderBy: { createdAt: 'asc' },
     })
@@ -96,6 +98,8 @@ export async function GET(request: NextRequest) {
         balance: runningBalance,
         notes: m.notes || '',
         referenceId: m.referenceId,
+        presentationName: m.presentationName,
+        unitsPerPack: m.unitsPerPack,
       }
     })
 

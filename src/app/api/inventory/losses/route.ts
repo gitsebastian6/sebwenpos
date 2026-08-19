@@ -3,13 +3,15 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { getUnitOfMeasureLabel } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 
 const lossSchema = z.object({
   storeId: z.number().int().positive(),
   productId: z.number().int().positive(),
-  quantity: z.number().int().positive(),
+  presentationId: z.number().int().positive().optional(),
+  quantity: z.number().int().positive(), // always in BASE units
   reason: z.string().optional(),
   notes: z.string().optional(),
 })
@@ -33,6 +35,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 })
     }
 
+    let presentationSnapshot: { name: string; unitsPerPack: number } | null = null
+    if (data.presentationId) {
+      const presentation = await db.productPresentation.findFirst({
+        where: { id: data.presentationId, productId: data.productId },
+      })
+      if (!presentation) {
+        return NextResponse.json({ error: 'Presentación no encontrada' }, { status: 404 })
+      }
+      presentationSnapshot = { name: getUnitOfMeasureLabel(presentation.unitLabel), unitsPerPack: presentation.unitsPerPack }
+    }
+
     // Prevent stock from going below 0
     if (product.currentStock < data.quantity) {
       return NextResponse.json(
@@ -47,6 +60,9 @@ export async function POST(req: NextRequest) {
         data: {
           storeId: data.storeId,
           productId: data.productId,
+          presentationId: data.presentationId,
+          presentationName: presentationSnapshot?.name,
+          unitsPerPack: presentationSnapshot?.unitsPerPack ?? 1,
           quantity: -data.quantity, // negative: stock decreases
           movementType: 'LOSS',
           notes: [data.reason, data.notes].filter(Boolean).join(' — ') || null,
@@ -120,6 +136,8 @@ export async function POST(req: NextRequest) {
       id: movement.id,
       productId: movement.productId,
       productName: movement.product.name,
+      presentationName: movement.presentationName,
+      unitsPerPack: movement.unitsPerPack,
       quantity: movement.quantity,
       movementType: movement.movementType,
       notes: movement.notes,

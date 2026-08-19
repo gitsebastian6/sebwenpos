@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
       `),
       db.$queryRawUnsafe<Array<{ category: string; quantity: number | bigint; total: number | bigint }>>(`
         SELECT COALESCE(c.name, 'Sin Categoría') as category,
-               SUM(oi.quantity) as quantity, SUM(oi.total_row) as total
+               SUM(oi.quantity * oi.units_per_pack) as quantity, SUM(oi.total_row) as total
         FROM order_items oi
         JOIN orders o ON o.id = oi.order_id
         LEFT JOIN products p ON p.id = oi.product_id
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
       `),
       db.$queryRawUnsafe<Array<{ productId: number; name: string; quantity: number | bigint; total: number | bigint }>>(`
         SELECT oi.product_id as productId, COALESCE(p.name, 'Producto eliminado') as name,
-               SUM(oi.quantity) as quantity, SUM(oi.total_row) as total
+               SUM(oi.quantity * oi.units_per_pack) as quantity, SUM(oi.total_row) as total
         FROM order_items oi
         JOIN orders o ON o.id = oi.order_id
         LEFT JOIN products p ON p.id = oi.product_id
@@ -265,7 +265,7 @@ export async function GET(request: NextRequest) {
 
     // 13. Profit calculation — uses actual COGS from order items joined with products
     const cogsRaw = await db.$queryRawUnsafe<Array<{ total_cogs: number | bigint }>>(`
-      SELECT COALESCE(SUM(oi.quantity * p.cost_price), 0) as total_cogs
+      SELECT COALESCE(SUM(oi.quantity * oi.units_per_pack * p.cost_price), 0) as total_cogs
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
       LEFT JOIN products p ON p.id = oi.product_id
@@ -321,6 +321,7 @@ export async function GET(request: NextRequest) {
         tableName: o.tableSession ? `Mesa ${o.tableSession.barTable.number}${o.tableSession.barTable.name ? ` (${o.tableSession.barTable.name})` : ''}` : null,
         items: o.orderItems.map((item) => ({
           name: item.product?.name || 'Producto eliminado',
+          presentationName: item.presentationName ?? null,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           totalRow: item.totalRow,

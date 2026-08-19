@@ -21,6 +21,13 @@ const purchaseItemSchema = z.object({
   lotNumber: z.string().max(50).optional(),
   expiryDate: z.string().optional(),       // ISO date string
   manufacturingDate: z.string().optional(), // ISO date string
+  // Línea bonificada/gratis (detectada en el XML o marcada a mano) — solo
+  // informativa para reportes/Kardex, nunca cambia el cálculo de CPP.
+  isBonus: z.boolean().default(false),
+  // Código propio del proveedor para este producto (cac:SellersItemIdentification
+  // del XML) — si viene, se guarda/actualiza como homologación para que la
+  // próxima importación de este mismo proveedor resuelva sola.
+  sellerSku: z.string().max(100).optional(),
 })
 
 const createPurchaseSchema = z.object({
@@ -226,6 +233,7 @@ export async function GET(request: NextRequest) {
           lotNumber: item.lotNumber,
           expiryDate: item.expiryDate?.toISOString() || null,
           manufacturingDate: item.manufacturingDate?.toISOString() || null,
+          isBonus: item.isBonus,
           total: item.total,
         })),
         _payments: {
@@ -285,12 +293,12 @@ export async function POST(req: NextRequest) {
 
     // Resolve presentations (Caja x24, etc.) — always from the DB, and must
     // actually belong to the product they're being purchased under.
-    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitsPerPack: number }>()
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; unitsPerPack: number }>()
     const presentationIds = data.items.map((i) => i.presentationId).filter((id): id is number => !!id)
     if (presentationIds.length > 0) {
       const presentations = await db.productPresentation.findMany({
         where: { id: { in: presentationIds }, isActive: true, product: { storeId: data.storeId } },
-        select: { id: true, productId: true, name: true, unitsPerPack: true },
+        select: { id: true, productId: true, name: true, unitLabel: true, unitsPerPack: true },
       })
       for (const p of presentations) presentationMap.set(p.id, p)
     }
@@ -399,6 +407,7 @@ export async function POST(req: NextRequest) {
                 lotNumber: item.lotNumber || null,
                 expiryDate: parseOptionalDate(item.expiryDate),
                 manufacturingDate: parseOptionalDate(item.manufacturingDate),
+                isBonus: item.isBonus,
                 total: item.total,
               }
             }),
@@ -411,8 +420,8 @@ export async function POST(req: NextRequest) {
 
       // Update products: stock, cost, cost history, inventory movement
       for (const item of itemsWithCalculations) {
-        const product = products.find((p) => p.id === item.productId)
-        if (!product) continue
+        const productMeta = products.find((p) => p.id === item.productId) // solo para .name — nunca cambia durante la compra
+        if (!productMeta) continue
 
         const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
         const unitsPerPack = presentation ? presentation.unitsPerPack : 1
@@ -424,9 +433,21 @@ export async function POST(req: NextRequest) {
         // just came in. item.quantity*item.unitCost is the line's total cost
         // regardless of denomination, so dividing by baseUnits (not item.quantity)
         // correctly reduces it to a per-base-unit weighted average.
-        const existingStock = Math.max(0, product.currentStock)
+        //
+        // Lectura en vivo (no desde `products`, que se cargó una sola vez antes
+        // de esta transacción): esencial cuando el mismo producto aparece en más
+        // de una línea de esta compra (ej. una línea pagada + una bonificada del
+        // mismo producto) — sin esto, la segunda línea calcularía su CPP contra
+        // el stock/costo de ANTES de la compra, ignorando lo que la primera línea
+        // ya escribió, y su update sobrescribiría el resultado correcto.
+        const liveProduct = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { costPrice: true, currentStock: true },
+        })
+        const existingStock = Math.max(0, liveProduct?.currentStock ?? 0)
+        const existingCost = liveProduct?.costPrice ?? productMeta.costPrice
         const newCostPrice = Math.round(
-          (existingStock * product.costPrice + item.quantity * item.unitCost) / (existingStock + baseUnits)
+          (existingStock * existingCost + item.quantity * item.unitCost) / (existingStock + baseUnits)
         )
 
         // Update stock (in base units) and cost price
@@ -447,12 +468,12 @@ export async function POST(req: NextRequest) {
         }
 
         // Create CostHistory if cost changed
-        if (product.costPrice !== newCostPrice) {
+        if (existingCost !== newCostPrice) {
           await tx.costHistory.create({
             data: {
               productId: item.productId,
               storeId: data.storeId,
-              previousCost: product.costPrice,
+              previousCost: existingCost,
               newCost: newCostPrice,
               purchaseId: createdPurchase.id,
               reason: 'PURCHASE',
@@ -465,14 +486,39 @@ export async function POST(req: NextRequest) {
           data: {
             storeId: data.storeId,
             productId: item.productId,
+            presentationId: presentation ? presentation.id : null,
+            presentationName: presentation ? presentation.name : null,
+            unitsPerPack: presentation ? presentation.unitsPerPack : 1,
             quantity: baseUnits,
             movementType: 'PURCHASE',
             referenceId: createdPurchase.id,
             notes: presentation
-              ? `Compra ${consecutiveNumber} — ${product.name} — ${presentation.name} x${item.quantity} (${baseUnits} uds base)`
-              : `Compra ${consecutiveNumber} — ${product.name} x${item.quantity}`,
+              ? `Compra ${consecutiveNumber} — ${productMeta.name} — ${presentation.name} x${item.quantity} (${baseUnits} uds base)${item.isBonus ? ' (bonificado)' : ''}`
+              : `Compra ${consecutiveNumber} — ${productMeta.name} x${item.quantity}${item.isBonus ? ' (bonificado)' : ''}`,
           },
         })
+
+        // Homologación por proveedor: si esta línea trae el código propio del
+        // proveedor, se guarda/actualiza para que la próxima importación de este
+        // mismo proveedor resuelva sola. Corre para cualquier origen de la línea
+        // (código de barras, SKU, sugerencia por nombre o selección manual) —
+        // idempotente y autocorrectivo: si el usuario corrigió el producto de
+        // una línea mal resuelta antes de confirmar, esto sobrescribe la
+        // homologación guardada con la corrección.
+        if (data.providerId && item.sellerSku?.trim()) {
+          const sellerSkuNorm = item.sellerSku.trim().toLowerCase()
+          await tx.providerProductMapping.upsert({
+            where: { providerId_sellerSku: { providerId: data.providerId, sellerSku: sellerSkuNorm } },
+            update: { productId: item.productId, presentationId: presentation ? presentation.id : null },
+            create: {
+              storeId: data.storeId,
+              providerId: data.providerId,
+              sellerSku: sellerSkuNorm,
+              productId: item.productId,
+              presentationId: presentation ? presentation.id : null,
+            },
+          })
+        }
       }
 
       // Create initial payment for CONTADO

@@ -92,6 +92,14 @@ export const UNIT_OF_MEASURE_OPTIONS: UnitOfMeasureOption[] = [
   { value: 'M3', label: 'Metro cúbico' },
 ]
 
+// Traduce un código de UNIT_OF_MEASURE_OPTIONS (UND, CAJ, PACA, etc.) a su
+// etiqueta legible. Es el identificador visible de una presentación en toda
+// la app (Compras, Cotizaciones, POS, Tienda Virtual) — el campo `name` de
+// ProductPresentation es texto libre y no debe usarse como display principal.
+export function getUnitOfMeasureLabel(code: string): string {
+  return UNIT_OF_MEASURE_OPTIONS.find((u) => u.value === code)?.label || 'Unidad'
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Sebwen Business Constants
 // ═══════════════════════════════════════════════════════════════

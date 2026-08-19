@@ -8,18 +8,31 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ProductImage } from '@/components/ui/product-image'
+import { getUnitOfMeasureLabel as unitLabelText } from '@/lib/constants'
 import {
   Store, Phone, MapPin, ShoppingCart, MessageCircle,
   Plus, Minus, Trash2, Search, X, ArrowRight, Loader2,
 } from 'lucide-react'
 
+interface Presentation {
+  id: number
+  name: string
+  unitLabel: string
+  unitsPerPack: number
+  salePrice: number
+  barcode: string | null
+  sku: string | null
+}
+
 interface Product {
   id: number
   name: string
   salePrice: number
+  unitLabel: string
   description: string | null
   imgUrl: string | null
   sku: string | null
+  presentations?: Presentation[]
 }
 
 interface Category {
@@ -38,7 +51,14 @@ interface StoreInfo {
   currencyCode: string
 }
 
-interface CartItem extends Product {
+interface CartItem {
+  key: string
+  productId: number
+  presentationId: number | null
+  name: string
+  presentationLabel: string | null
+  price: number
+  imgUrl: string | null
   quantity: number
 }
 
@@ -70,28 +90,43 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
     loadStore()
   }, [storeId])
 
-  function addToCart(product: Product) {
+  function addToCart(product: Product, presentation: Presentation | null) {
+    const key = `${product.id}-${presentation?.id ?? 'base'}`
+    const price = presentation ? presentation.salePrice : product.salePrice
     setCart(prev => {
-      const existing = prev.find(item => item.id === product.id)
+      const existing = prev.find(item => item.key === key)
       if (existing) {
         return prev.map(item =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.key === key ? { ...item, quantity: item.quantity + 1 } : item
         )
       }
-      return [...prev, { ...product, quantity: 1 }]
+      const baseLabel = product.unitLabel !== 'UND' ? unitLabelText(product.unitLabel) : null
+      const presentationLabel = presentation
+        ? `${unitLabelText(presentation.unitLabel)} ×${presentation.unitsPerPack}`
+        : baseLabel
+      return [...prev, {
+        key,
+        productId: product.id,
+        presentationId: presentation?.id ?? null,
+        name: product.name,
+        presentationLabel,
+        price,
+        imgUrl: product.imgUrl,
+        quantity: 1,
+      }]
     })
   }
 
-  function updateQuantity(productId: number, delta: number) {
+  function updateQuantity(key: string, delta: number) {
     setCart(prev =>
       prev
-        .map(item => item.id === productId ? { ...item, quantity: item.quantity + delta } : item)
+        .map(item => item.key === key ? { ...item, quantity: item.quantity + delta } : item)
         .filter(item => item.quantity > 0)
     )
   }
 
-  function removeFromCart(productId: number) {
-    setCart(prev => prev.filter(item => item.id !== productId))
+  function removeFromCart(key: string) {
+    setCart(prev => prev.filter(item => item.key !== key))
   }
 
   function formatPrice(price: number) {
@@ -103,7 +138,7 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
   }
 
   function getCartTotal() {
-    return cart.reduce((sum, item) => sum + item.salePrice * item.quantity, 0)
+    return cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   }
 
   function getCartCount() {
@@ -117,7 +152,8 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
     message += `📋 *${store.name}*\n\n`
 
     cart.forEach(item => {
-      message += `• ${item.name} x${item.quantity} — ${formatPrice(item.salePrice * item.quantity)}\n`
+      const label = item.presentationLabel ? ` (${item.presentationLabel})` : ''
+      message += `• ${item.name}${label} x${item.quantity} — ${formatPrice(item.price * item.quantity)}\n`
     })
 
     message += `\n💰 *Total: ${formatPrice(getCartTotal())}*`
@@ -267,45 +303,16 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
             <div key={category.id} className="mb-6">
               <h2 className="text-sm font-semibold text-zinc-400 mb-3">{category.name}</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {category.products.map(product => {
-                  const inCart = cart.find(item => item.id === product.id)
-                  return (
-                    <Card
-                      key={product.id}
-                      className="bg-zinc-900/50 border-zinc-800/60 hover:border-zinc-700 transition-colors cursor-pointer"
-                      onClick={() => addToCart(product)}
-                    >
-                      <CardContent className="p-3">
-                        <div className="aspect-square rounded-lg bg-zinc-800 mb-2 overflow-hidden relative">
-                          <ProductImage
-                            src={product.imgUrl}
-                            alt={product.name}
-                            categoryName={category.name}
-                            categoryIcon={category.icon}
-                            className="absolute inset-0 w-full h-full object-cover"
-                            fallbackClassName="absolute inset-0 w-full h-full flex items-center justify-center bg-zinc-800"
-                            iconClassName="h-8 w-8 text-zinc-600"
-                          />
-                        </div>
-                        <h3 className="text-sm font-medium text-zinc-200 line-clamp-2 min-h-[2.5rem]">
-                          {product.name}
-                        </h3>
-                        <div className="flex items-center justify-between mt-1.5">
-                          <span className="text-sm font-bold text-emerald-400">
-                            {formatPrice(product.salePrice)}
-                          </span>
-                          {inCart ? (
-                            <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 text-[10px]">
-                              x{inCart.quantity}
-                            </Badge>
-                          ) : (
-                            <Plus className="h-4 w-4 text-zinc-600" />
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
+                {category.products.map(product => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    category={category}
+                    cart={cart}
+                    formatPrice={formatPrice}
+                    onAdd={addToCart}
+                  />
+                ))}
               </div>
             </div>
           ))
@@ -347,27 +354,32 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
 
             <div className="p-4 space-y-3">
               {cart.map(item => (
-                <div key={item.id} className="flex items-center gap-3 py-2 border-b border-zinc-800/40">
+                <div key={item.key} className="flex items-center gap-3 py-2 border-b border-zinc-800/40">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-zinc-200 truncate">{item.name}</p>
-                    <p className="text-xs text-zinc-500">{formatPrice(item.salePrice)} c/u</p>
+                    <p className="text-sm font-medium text-zinc-200 truncate">
+                      {item.name}
+                      {item.presentationLabel && (
+                        <span className="text-zinc-500 font-normal"> · {item.presentationLabel}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-zinc-500">{formatPrice(item.price)} c/u</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => updateQuantity(item.id, -1)}
+                      onClick={() => updateQuantity(item.key, -1)}
                       className="h-7 w-7 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700"
                     >
                       <Minus className="h-3 w-3" />
                     </button>
                     <span className="text-sm font-semibold w-5 text-center">{item.quantity}</span>
                     <button
-                      onClick={() => updateQuantity(item.id, 1)}
+                      onClick={() => updateQuantity(item.key, 1)}
                       className="h-7 w-7 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700"
                     >
                       <Plus className="h-3 w-3" />
                     </button>
                     <button
-                      onClick={() => removeFromCart(item.id)}
+                      onClick={() => removeFromCart(item.key)}
                       className="h-7 w-7 rounded-full flex items-center justify-center text-zinc-600 hover:text-red-400"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -398,5 +410,103 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
         </div>
       )}
     </div>
+  )
+}
+
+function ProductCard({
+  product,
+  category,
+  cart,
+  formatPrice,
+  onAdd,
+}: {
+  product: Product
+  category: Category
+  cart: CartItem[]
+  formatPrice: (price: number) => string
+  onAdd: (product: Product, presentation: Presentation | null) => void
+}) {
+  const presentations = product.presentations ?? []
+  const hasPresentations = presentations.length > 0
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+
+  const selectedPresentation = selectedId
+    ? presentations.find(p => p.id === selectedId) ?? null
+    : null
+  const price = selectedPresentation ? selectedPresentation.salePrice : product.salePrice
+  const key = `${product.id}-${selectedPresentation?.id ?? 'base'}`
+  const inCart = cart.find(item => item.key === key)
+
+  return (
+    <Card className="bg-zinc-900/50 border-zinc-800/60 hover:border-zinc-700 transition-colors">
+      <CardContent className="p-3">
+        <div
+          className="aspect-square rounded-lg bg-zinc-800 mb-2 overflow-hidden relative cursor-pointer"
+          onClick={() => onAdd(product, selectedPresentation)}
+        >
+          <ProductImage
+            src={product.imgUrl}
+            alt={product.name}
+            categoryName={category.name}
+            categoryIcon={category.icon}
+            className="absolute inset-0 w-full h-full object-cover"
+            fallbackClassName="absolute inset-0 w-full h-full flex items-center justify-center bg-zinc-800"
+            iconClassName="h-8 w-8 text-zinc-600"
+          />
+        </div>
+        <h3
+          className="text-sm font-medium text-zinc-200 line-clamp-2 min-h-[2.5rem] cursor-pointer"
+          onClick={() => onAdd(product, selectedPresentation)}
+        >
+          {product.name}
+        </h3>
+
+        {hasPresentations && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            <button
+              onClick={(e) => { e.stopPropagation(); setSelectedId(null) }}
+              title={unitLabelText(product.unitLabel)}
+              className={`max-w-full truncate whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded-full border transition-colors ${
+                selectedId === null
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                  : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {unitLabelText(product.unitLabel)}
+            </button>
+            {presentations.map(p => (
+              <button
+                key={p.id}
+                onClick={(e) => { e.stopPropagation(); setSelectedId(p.id) }}
+                title={p.name}
+                className={`max-w-full truncate whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded-full border transition-colors ${
+                  selectedId === p.id
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {unitLabelText(p.unitLabel)} ×{p.unitsPerPack}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div
+          className="flex items-center justify-between mt-1.5 cursor-pointer"
+          onClick={() => onAdd(product, selectedPresentation)}
+        >
+          <span className="text-sm font-bold text-emerald-400">
+            {formatPrice(price)}
+          </span>
+          {inCart ? (
+            <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 text-[10px]">
+              x{inCart.quantity}
+            </Badge>
+          ) : (
+            <Plus className="h-4 w-4 text-zinc-600" />
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

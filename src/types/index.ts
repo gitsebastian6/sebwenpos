@@ -302,6 +302,8 @@ export interface TraceMovement {
   notes: string | null
   referenceId?: string
   balance?: number
+  presentationName?: string | null
+  unitsPerPack?: number
 }
 
 // ---- Customer History ----

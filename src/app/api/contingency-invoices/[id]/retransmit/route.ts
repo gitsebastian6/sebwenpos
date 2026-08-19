@@ -136,7 +136,10 @@ export async function POST(
         const taxBreakdown = JSON.parse(invoice.taxBreakdown || '[]')
         const xmlItems = (invoice.order?.orderItems || []).map((item, idx) => ({
           lineNumber: idx + 1,
-          description: item.product?.name ?? item.service?.name ?? 'Eliminado',
+          description: (() => {
+            const baseName = item.product?.name ?? item.service?.name ?? 'Eliminado'
+            return item.presentationName ? `${baseName} — ${item.presentationName}` : baseName
+          })(),
           quantity: item.quantity,
           unitPrice: item.taxBase > 0 && item.quantity > 0
             ? Math.round(item.taxBase / item.quantity)

@@ -19,6 +19,7 @@ const editPurchaseItemSchema = z.object({
   lotNumber: z.string().max(50).nullable().optional(),
   expiryDate: z.string().nullable().optional(),
   manufacturingDate: z.string().nullable().optional(),
+  isBonus: z.boolean().optional(),
 })
 
 const editPurchaseSchema = z.object({
@@ -164,6 +165,7 @@ export async function GET(
         lotNumber: item.lotNumber,
         expiryDate: item.expiryDate?.toISOString() || null,
         manufacturingDate: item.manufacturingDate?.toISOString() || null,
+        isBonus: item.isBonus,
         total: item.total,
       })),
       purchasePayments: purchase.purchasePayments.map((pp) => ({
@@ -267,7 +269,7 @@ export async function PUT(
 
     // Resolve presentations requested for NEW items (existing lines keep the
     // presentation they were originally purchased under — never re-resolved here).
-    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitsPerPack: number }>()
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; unitsPerPack: number }>()
     if (newItems !== undefined) {
       const newPresentationIds = newItems
         .filter((i) => !i.id && i.presentationId)
@@ -275,7 +277,7 @@ export async function PUT(
       if (newPresentationIds.length > 0) {
         const presentations = await db.productPresentation.findMany({
           where: { id: { in: newPresentationIds }, isActive: true, product: { storeId: purchase.storeId } },
-          select: { id: true, productId: true, name: true, unitsPerPack: true },
+          select: { id: true, productId: true, name: true, unitLabel: true, unitsPerPack: true },
         })
         for (const p of presentations) presentationMap.set(p.id, p)
       }
@@ -365,6 +367,9 @@ export async function PUT(
             data: {
               storeId: purchase.storeId,
               productId: removed.productId,
+              presentationId: removed.presentationId,
+              presentationName: removed.presentationName,
+              unitsPerPack: removed.unitsPerPack,
               quantity: -removedBaseUnits,
               movementType: 'ADJUSTMENT',
               referenceId: pid,
@@ -384,6 +389,7 @@ export async function PUT(
             const newUnitCost = item.unitCost ?? oldItem.unitCost
             const newIvaRate = item.ivaRate ?? oldItem.ivaRate
             const newDiscountAmount = item.discountAmount ?? oldItem.discountAmount
+            const newIsBonus = item.isBonus ?? oldItem.isBonus
             const newLotNumber = item.lotNumber !== undefined ? item.lotNumber : oldItem.lotNumber
             const newExpiryDate = item.expiryDate !== undefined
               ? (item.expiryDate ? new Date(item.expiryDate) : null)
@@ -418,6 +424,9 @@ export async function PUT(
                 data: {
                   storeId: purchase.storeId,
                   productId: oldItem.productId,
+                  presentationId: oldItem.presentationId,
+                  presentationName: oldItem.presentationName,
+                  unitsPerPack: oldItem.unitsPerPack,
                   quantity: baseUnitsDiff,
                   movementType: 'PURCHASE',
                   referenceId: pid,
@@ -434,6 +443,9 @@ export async function PUT(
                 data: {
                   storeId: purchase.storeId,
                   productId: oldItem.productId,
+                  presentationId: oldItem.presentationId,
+                  presentationName: oldItem.presentationName,
+                  unitsPerPack: oldItem.unitsPerPack,
                   quantity: baseUnitsDiff,
                   movementType: 'ADJUSTMENT',
                   referenceId: pid,
@@ -477,6 +489,7 @@ export async function PUT(
                 ivaRate: newIvaRate,
                 ivaAmount,
                 discountAmount: newDiscountAmount,
+                isBonus: newIsBonus,
                 lotNumber: newLotNumber,
                 expiryDate: newExpiryDate,
                 manufacturingDate: newManufacturingDate,
@@ -503,6 +516,7 @@ export async function PUT(
             const newUnitCost = item.unitCost ?? 0
             const newIvaRate = item.ivaRate ?? 19
             const newDiscountAmount = item.discountAmount ?? 0
+            const newIsBonus = item.isBonus ?? false
             const newLotNumber = item.lotNumber ?? null
             const newExpiryDate = item.expiryDate ? new Date(item.expiryDate) : null
             const newManufacturingDate = item.manufacturingDate ? new Date(item.manufacturingDate) : null
@@ -526,6 +540,7 @@ export async function PUT(
                 ivaRate: newIvaRate,
                 ivaAmount,
                 discountAmount: newDiscountAmount,
+                isBonus: newIsBonus,
                 lotNumber: newLotNumber,
                 expiryDate: newExpiryDate,
                 manufacturingDate: newManufacturingDate,
@@ -567,6 +582,9 @@ export async function PUT(
               data: {
                 storeId: purchase.storeId,
                 productId: item.productId,
+                presentationId: presentation ? presentation.id : null,
+                presentationName: presentation ? presentation.name : null,
+                unitsPerPack,
                 quantity: baseUnits,
                 movementType: 'PURCHASE',
                 referenceId: pid,
@@ -798,6 +816,9 @@ export async function DELETE(
           data: {
             storeId: purchase.storeId,
             productId: item.productId,
+            presentationId: item.presentationId,
+            presentationName: item.presentationName,
+            unitsPerPack: item.unitsPerPack,
             quantity: -availableBaseUnits,
             movementType: 'ADJUSTMENT',
             referenceId: pid,

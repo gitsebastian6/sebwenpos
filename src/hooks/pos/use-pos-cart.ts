@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
-import { DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
+import { DIAN_CONSUMIDOR_FINAL_NIT, getUnitOfMeasureLabel } from '@/lib/constants'
 import { playCartAdd, playSaleSuccess, playError } from '@/lib/pos-sounds'
 import type { CartItem, PaymentMethod, InvoiceMode, LastOrderData, LastInvoiceData, CustomerSummary, Service, ProductPresentation } from '@/types'
 import type { Product, OpenCashRegister } from './use-pos-data'
@@ -167,7 +167,7 @@ export function usePosCart(deps: UsePosCartDeps) {
           .reduce((sum, item) => sum + item.quantity * (item.unitsPerPack || 1), 0)
         const wouldUseUnits = ((existing ? existing.quantity + 1 : 1) * presentation.unitsPerPack) + otherUsage
         if (product.trackInventory !== false && wouldUseUnits > product.currentStock) {
-          toast.warning(`Stock insuficiente para "${product.name} — ${presentation.name}"`)
+          toast.warning(`Stock insuficiente para "${product.name} — ${getUnitOfMeasureLabel(presentation.unitLabel)}"`)
           return prev
         }
         didAdd = true
@@ -179,7 +179,7 @@ export function usePosCart(deps: UsePosCartDeps) {
                 productId: product.id,
                 serviceId: null,
                 presentationId: presentation.id,
-                presentationName: presentation.name,
+                presentationName: getUnitOfMeasureLabel(presentation.unitLabel),
                 unitsPerPack: presentation.unitsPerPack,
                 name: product.name,
                 salePrice: presentation.salePrice,

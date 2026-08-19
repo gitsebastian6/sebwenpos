@@ -19,6 +19,7 @@ import {
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
 import { KPIBar } from '@/components/shared/kpi-bar'
 import { playError } from '@/lib/pos-sounds'
+import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { useBarcodeScanner } from '@/hooks/use-barcode-scanner'
 import type { OrderItemData, ProductPresentation } from '@/types'
 import { usePosData } from '@/hooks/pos/use-pos-data'
@@ -101,7 +102,7 @@ export function POSView() {
 
       if (matchedProduct && matchedPresentation) {
         cart.addPresentationToCart(matchedProduct, matchedPresentation)
-        toast.success(`Escaneado: ${matchedProduct.name} — ${matchedPresentation.name}`)
+        toast.success(`Escaneado: ${matchedProduct.name} — ${getUnitOfMeasureLabel(matchedPresentation.unitLabel)}`)
         setBarcodeFlash('success')
       } else if (matchedProduct) {
         cart.addToCart(matchedProduct)

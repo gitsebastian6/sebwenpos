@@ -94,12 +94,13 @@ export function InventoryView() {
       '#': i + 1,
       'Fecha': format(new Date(m.createdAt), 'yyyy-MM-dd HH:mm:ss'),
       'Producto': m.productName,
+      'Presentación': m.presentationName || '',
       'Tipo': MOVEMENT_TYPE_LABELS[m.movementType] || m.movementType,
       'Cantidad': m.quantity,
       'Notas': m.notes || '',
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
-    ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 30 }, { wch: 14 }, { wch: 10 }, { wch: 30 }]
+    ws['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 30 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 30 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Movimientos')
     const fileName = `Movimientos_${format(new Date(), 'yyyy-MM-dd')}.xlsx`

@@ -197,43 +197,44 @@ model Store {
   createdAt                  DateTime  @default(now()) @map("created_at")
   updatedAt                  DateTime  @updatedAt
 
-  user                  User                  @relation("UserStore", fields: [userId], references: [id], onDelete: Restrict)
-  parentStore           Store?                @relation("StoreBranches", fields: [parentStoreId], references: [id])
-  branches              Store[]               @relation("StoreBranches")
-  employees             Employee[]
-  roles                 Role[]
-  categories            Category[]
-  products              Product[]
-  inventoryMovements    InventoryMovement[]
-  customers             Customer[]
-  orders                Order[]
-  ledgerAccounts        LedgerAccount[]
-  journalEntries        JournalEntry[]
-  services              Service[]
-  serviceTransactions   ServiceTransaction[]
-  barTables             BarTable[]
-  tableSessions         TableSession[]
-  comandaItems          ComandaItem[]
-  providers             Provider[]
-  purchases             Purchase[]
-  cashRegisters         CashRegister[]
-  expenses              Expense[]
-  taxRates              TaxRate[]
-  invoices              Invoice[]
-  creditNotes           CreditNote[]
-  debitNotes            DebitNote[]
-  contingencyInvoices   ContingencyInvoice[]
-  quotations            Quotation[]
-  subscription          Subscription?
-  paymentReceipts       PaymentReceipt[]
-  subscriptionHistories SubscriptionHistory[]
-  billingRecords        BillingRecord[]
-  purchasePayments      PurchasePayment[]
-  costHistories         CostHistory[]
-  storeEventLogs        StoreEventLog[]
-  wompiTransactions     WompiTransaction[]
-  pushSubscriptions     PushSubscription[]
-  customerPayments      CustomerPayment[]
+  user                    User                     @relation("UserStore", fields: [userId], references: [id], onDelete: Restrict)
+  parentStore             Store?                   @relation("StoreBranches", fields: [parentStoreId], references: [id])
+  branches                Store[]                  @relation("StoreBranches")
+  employees               Employee[]
+  roles                   Role[]
+  categories              Category[]
+  products                Product[]
+  inventoryMovements      InventoryMovement[]
+  customers               Customer[]
+  orders                  Order[]
+  ledgerAccounts          LedgerAccount[]
+  journalEntries          JournalEntry[]
+  services                Service[]
+  serviceTransactions     ServiceTransaction[]
+  barTables               BarTable[]
+  tableSessions           TableSession[]
+  comandaItems            ComandaItem[]
+  providers               Provider[]
+  providerProductMappings ProviderProductMapping[]
+  purchases               Purchase[]
+  cashRegisters           CashRegister[]
+  expenses                Expense[]
+  taxRates                TaxRate[]
+  invoices                Invoice[]
+  creditNotes             CreditNote[]
+  debitNotes              DebitNote[]
+  contingencyInvoices     ContingencyInvoice[]
+  quotations              Quotation[]
+  subscription            Subscription?
+  paymentReceipts         PaymentReceipt[]
+  subscriptionHistories   SubscriptionHistory[]
+  billingRecords          BillingRecord[]
+  purchasePayments        PurchasePayment[]
+  costHistories           CostHistory[]
+  storeEventLogs          StoreEventLog[]
+  wompiTransactions       WompiTransaction[]
+  pushSubscriptions       PushSubscription[]
+  customerPayments        CustomerPayment[]
 
   @@map("stores")
 }
@@ -816,43 +817,43 @@ model Category {
 }
 
 model Product {
-  id             Int      @id @default(autoincrement())
-  storeId        Int      @map("store_id")
-  categoryId     Int?     @map("category_id")
-  providerId     Int?     @map("provider_id")
-  taxRateId      Int?     @map("tax_rate_id")
-  sku            String?
-  barcode        String?
-  name           String
+  id              Int      @id @default(autoincrement())
+  storeId         Int      @map("store_id")
+  categoryId      Int?     @map("category_id")
+  providerId      Int?     @map("provider_id")
+  taxRateId       Int?     @map("tax_rate_id")
+  sku             String?
+  barcode         String?
+  name            String
   // Unit-of-measure code for the base "Unidad" (UND, KG, L, etc.) — see
   // UNIT_OF_MEASURE_OPTIONS in src/lib/constants.ts. Purely a label for
   // display/reporting; conversions between presentations still run on
   // unitsPerPack regardless of what this says.
-  unitLabel      String   @default("UND") @map("unit_label")
-  description    String?
-  imgUrl         String?  @map("img_url")
-  invima         String?
-  costPrice      Int      @default(0) @map("cost_price")
-  salePrice      Int
-  commission     Int      @default(0) @map("commission")
-  currentStock   Int      @default(0) @map("current_stock")
-  minStock       Int      @default(5) @map("min_stock")
+  unitLabel       String   @default("UND") @map("unit_label")
+  description     String?
+  imgUrl          String?  @map("img_url")
+  invima          String?
+  costPrice       Int      @default(0) @map("cost_price")
+  salePrice       Int
+  commission      Int      @default(0) @map("commission")
+  currentStock    Int      @default(0) @map("current_stock")
+  minStock        Int      @default(5) @map("min_stock")
   // false = stock is never validated/blocked at sale time (e.g. items sold by
   // weight, made-to-order food, anything not counted unit by unit). Purchases
   // and inventory movements still record normally either way.
-  trackInventory Boolean  @default(true) @map("track_inventory")
+  trackInventory  Boolean  @default(true) @map("track_inventory")
   // Whether this product is expected to carry lote/fecha de vencimiento on purchases
   // (perishables, medicine, etc). Purely advisory today — used to prompt for those
   // fields in Compras; does not block a purchase if left empty.
-  trackExpiration Boolean @default(false) @map("track_expiration")
-  isActive       Boolean  @default(true) @map("is_active")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt
+  trackExpiration Boolean  @default(false) @map("track_expiration")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt
 
-  store              Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  category           Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  provider           Provider?             @relation(fields: [providerId], references: [id], onDelete: SetNull)
-  taxRate            TaxRate?              @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
+  store              Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category           Category?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  provider           Provider?                @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  taxRate            TaxRate?                 @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
   inventoryMovements InventoryMovement[]
   orderItems         OrderItem[]
   comandaItems       ComandaItem[]
@@ -860,6 +861,7 @@ model Product {
   quotationItems     QuotationItem[]
   costHistories      CostHistory[]
   presentations      ProductPresentation[]
+  providerMappings   ProviderProductMapping[]
 
   @@unique([storeId, name])
   @@index([categoryId])
@@ -893,10 +895,13 @@ model ProductPresentation {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt
 
-  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  orderItems     OrderItem[]
-  purchaseItems  PurchaseItem[]
-  quotationItems QuotationItem[]
+  product            Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems         OrderItem[]
+  purchaseItems      PurchaseItem[]
+  quotationItems     QuotationItem[]
+  inventoryMovements InventoryMovement[]
+  comandaItems       ComandaItem[]
+  providerMappings   ProviderProductMapping[]
 
   @@index([productId])
   @@index([barcode])
@@ -904,55 +909,64 @@ model ProductPresentation {
 }
 
 model InventoryMovement {
-  id           Int      @id @default(autoincrement())
-  storeId      Int      @map("store_id")
-  productId    Int      @map("product_id")
-  quantity     Int
-  movementType String   @map("movement_type")
+  id               Int      @id @default(autoincrement())
+  storeId          Int      @map("store_id")
+  productId        Int      @map("product_id")
+  presentationId   Int?     @map("presentation_id")
+  // Snapshot (survives presentation rename/delete). quantity below is always the
+  // BASE-unit delta applied to Product.currentStock — presentationName/unitsPerPack
+  // just record which presentation the user picked when entering the movement
+  // (e.g. "3 Cajas x24" → quantity = ±72, unitsPerPack = 24).
+  presentationName String?  @map("presentation_name")
+  unitsPerPack     Int      @default(1) @map("units_per_pack")
+  quantity         Int
+  movementType     String   @map("movement_type")
   // Polymorphic reference — an Order.id for SALE/RETURN, a Purchase.id for
   // PURCHASE/PURCHASE_RETURN/ADJUSTMENT, discriminated by movementType. Never
   // give this a real FK/@relation to just one of those tables — Postgres will
   // enforce it against that single table and reject every other movementType.
-  referenceId  Int?     @map("reference_id")
-  notes        String?
-  createdAt    DateTime @default(now()) @map("created_at")
+  referenceId      Int?     @map("reference_id")
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at")
 
-  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store        Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id], onDelete: SetNull)
 
   @@index([storeId, productId, createdAt])
   @@index([referenceId])
+  @@index([presentationId])
   @@map("inventory_movements")
 }
 
 model Purchase {
-  id                Int       @id @default(autoincrement())
-  storeId           Int       @map("store_id")
-  providerId        Int?      @map("provider_id")
-  invoiceNumber     String?   @map("invoice_number")
-  documentType      String    @default("FACTURA_COMPRA") @map("document_type") // FACTURA_COMPRA, NOTA_CREDITO, NOTA_DEBITO, RECIBO_CAJA, ORDEN_COMPRA
-  consecutiveNumber String?   @map("consecutive_number")
-  date              DateTime  @default(now())
-  dueDate           DateTime? @map("due_date")
-  paymentTerms      String    @default("CONTADO") @map("payment_terms") // CONTADO, CREDITO_30, CREDITO_60, CREDITO_90
-  paymentStatus     String    @default("PENDING") @map("payment_status") // PENDING, PARTIAL, PAID
-  amountPaid        Int       @default(0) @map("amount_paid")
-  subtotal          Int       @default(0)
-  totalIva          Int       @default(0) @map("total_iva")
-  totalReteFuente   Int       @default(0) @map("total_rete_fuente")
-  totalReteIca      Int       @default(0) @map("total_rete_ica")
-  totalReteIva      Int       @default(0) @map("total_rete_iva")
-  totalDiscount     Int       @default(0) @map("total_discount")
+  id                  Int       @id @default(autoincrement())
+  storeId             Int       @map("store_id")
+  providerId          Int?      @map("provider_id")
+  invoiceNumber       String?   @map("invoice_number")
+  documentType        String    @default("FACTURA_COMPRA") @map("document_type") // FACTURA_COMPRA, NOTA_CREDITO, NOTA_DEBITO, RECIBO_CAJA, ORDEN_COMPRA
+  consecutiveNumber   String?   @map("consecutive_number")
+  date                DateTime  @default(now())
+  dueDate             DateTime? @map("due_date")
+  paymentTerms        String    @default("CONTADO") @map("payment_terms") // CONTADO, CREDITO_30, CREDITO_60, CREDITO_90
+  paymentStatus       String    @default("PENDING") @map("payment_status") // PENDING, PARTIAL, PAID
+  amountPaid          Int       @default(0) @map("amount_paid")
+  subtotal            Int       @default(0)
+  totalIva            Int       @default(0) @map("total_iva")
+  totalReteFuente     Int       @default(0) @map("total_rete_fuente")
+  totalReteIca        Int       @default(0) @map("total_rete_ica")
+  totalReteIva        Int       @default(0) @map("total_rete_iva")
+  totalDiscount       Int       @default(0) @map("total_discount")
   // Impuesto al Consumo (IC) — e.g. on beer or bebidas azucaradas. Unlike IVA
   // it is not creditable/descontable, so it's kept as a document-level charge
   // that adds to the total owed and never touches product cost/CPP.
-  totalConsumptionTax Int     @default(0) @map("total_consumption_tax")
-  notes             String?
-  total             Int       @default(0)
-  status            String    @default("COMPLETED") // PENDING, APPROVED, RECEIVED, PARTIAL, COMPLETED, CANCELLED
-  createdById       Int?      @map("created_by_id")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt
+  totalConsumptionTax Int       @default(0) @map("total_consumption_tax")
+  notes               String?
+  total               Int       @default(0)
+  status              String    @default("COMPLETED") // PENDING, APPROVED, RECEIVED, PARTIAL, COMPLETED, CANCELLED
+  createdById         Int?      @map("created_by_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt
 
   store              Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
   provider           Provider?         @relation(fields: [providerId], references: [id], onDelete: SetNull)
@@ -987,6 +1001,12 @@ model PurchaseItem {
   lotNumber         String?   @map("lot_number")
   expiryDate        DateTime? @map("expiry_date")
   manufacturingDate DateTime? @map("manufacturing_date")
+  // True cuando la línea se detectó/marcó como bonificada o gratis (PriceAmount=0
+  // en el XML, un AllowanceCharge que cubre ~100% del valor, o el checkbox
+  // "Bonificado" en captura manual). Solo informativo para reportes/Kardex —
+  // nunca cambia el cálculo de CPP (unitCost=0 ya fluye correctamente por la
+  // fórmula de costo promedio ponderado existente).
+  isBonus           Boolean   @default(false) @map("is_bonus")
   total             Int // unitCost * quantity + ivaAmount - discountAmount
 
   purchase     Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
@@ -1021,13 +1041,42 @@ model Provider {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt
 
-  store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  products  Product[]
-  purchases Purchase[]
+  store           Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products        Product[]
+  purchases       Purchase[]
+  productMappings ProviderProductMapping[]
 
   @@unique([storeId, name])
   @@index([storeId, nit])
   @@map("providers")
+}
+
+// Homologación por proveedor: recuerda a qué producto/presentación
+// corresponde el código propio de CADA proveedor (cac:SellersItemIdentification
+// del XML), para que la siguiente factura del mismo proveedor con ese mismo
+// código resuelva sola, sin volver a preguntar. El código de barras NO pasa
+// por aquí — es universal y ya se resuelve directo contra
+// Product.barcode/ProductPresentation.barcode; esta tabla es específicamente
+// para los códigos internos que varían de proveedor a proveedor.
+model ProviderProductMapping {
+  id             Int      @id @default(autoincrement())
+  storeId        Int      @map("store_id")
+  providerId     Int      @map("provider_id")
+  sellerSku      String   @map("seller_sku") // siempre recortado + en minúsculas
+  productId      Int      @map("product_id")
+  presentationId Int?     @map("presentation_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt
+
+  store        Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  provider     Provider             @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id], onDelete: SetNull)
+
+  @@unique([providerId, sellerSku])
+  @@index([storeId])
+  @@index([productId])
+  @@map("provider_product_mappings")
 }
 
 // ----------------------------------------------
@@ -1229,28 +1278,37 @@ model TableSession {
 }
 
 model ComandaItem {
-  id             Int      @id @default(autoincrement())
-  storeId        Int      @map("store_id")
-  tableSessionId Int      @map("table_session_id")
-  productId      Int?     @map("product_id")
-  serviceId      Int?     @map("service_id")
-  productName    String   @map("product_name")
-  quantity       Int
-  unitPrice      Int      @map("unit_price")
-  total          Int
-  notes          String?
-  status         String   @default("PENDING")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id               Int      @id @default(autoincrement())
+  storeId          Int      @map("store_id")
+  tableSessionId   Int      @map("table_session_id")
+  productId        Int?     @map("product_id")
+  serviceId        Int?     @map("service_id")
+  presentationId   Int?     @map("presentation_id")
+  // Snapshot (survives presentation rename/delete). unitPrice/total above are
+  // always denominated in THIS presentation's own unit (e.g. "2 Cajas x24"),
+  // and unitsPerPack is what converts them into base-unit stock movements
+  // when the session is paid (see tables/sessions/[id]/pay).
+  presentationName String?  @map("presentation_name")
+  unitsPerPack     Int      @default(1) @map("units_per_pack")
+  productName      String   @map("product_name")
+  quantity         Int
+  unitPrice        Int      @map("unit_price")
+  total            Int
+  notes            String?
+  status           String   @default("PENDING")
+  createdAt        DateTime @default(now()) @map("created_at")
 
-  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  tableSession TableSession @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
-  product      Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
-  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  store        Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  tableSession TableSession         @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  product      Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)
+  service      Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id], onDelete: SetNull)
 
   @@index([storeId])
   @@index([tableSessionId])
   @@index([productId])
   @@index([serviceId])
+  @@index([presentationId])
   @@map("comanda_items")
 }
 
@@ -1509,22 +1567,22 @@ model Quotation {
 }
 
 model QuotationItem {
-  id             Int     @id @default(autoincrement())
-  quotationId    Int     @map("quotation_id")
-  productId      Int?    @map("product_id")
-  productName    String  @map("product_name")
-  presentationId Int?    @map("presentation_id")
+  id               Int     @id @default(autoincrement())
+  quotationId      Int     @map("quotation_id")
+  productId        Int?    @map("product_id")
+  productName      String  @map("product_name")
+  presentationId   Int?    @map("presentation_id")
   // Snapshot (survives presentation rename/delete) — mirrors OrderItem/PurchaseItem.
   presentationName String? @map("presentation_name")
   unitsPerPack     Int     @default(1) @map("units_per_pack")
-  quantity    Int
-  unitPrice   Int     @map("unit_price")
-  totalRow    Int     @map("total_row")
-  taxCode     String? @map("tax_code")
-  taxRate     Int     @default(0) @map("tax_rate")
-  taxAmount   Int     @default(0) @map("tax_amount")
-  taxBase     Int     @default(0) @map("tax_base")
-  notes       String?
+  quantity         Int
+  unitPrice        Int     @map("unit_price")
+  totalRow         Int     @map("total_row")
+  taxCode          String? @map("tax_code")
+  taxRate          Int     @default(0) @map("tax_rate")
+  taxAmount        Int     @default(0) @map("tax_amount")
+  taxBase          Int     @default(0) @map("tax_base")
+  notes            String?
 
   quotation    Quotation            @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   product      Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)

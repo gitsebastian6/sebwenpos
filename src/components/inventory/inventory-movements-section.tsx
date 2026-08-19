@@ -140,6 +140,11 @@ export function InventoryMovementsSection({
                       </TableCell>
                       <TableCell className="font-medium text-xs">
                         <span className="truncate max-w-[120px] block" title={m.productName}>{m.productName}</span>
+                        {m.presentationName && (
+                          <span className="truncate max-w-[120px] block text-[10px] font-normal text-muted-foreground">
+                            {m.presentationName}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="gap-1.5 text-xs capitalize">

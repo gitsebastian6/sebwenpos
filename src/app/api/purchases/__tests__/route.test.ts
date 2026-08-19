@@ -31,6 +31,9 @@ const mockDb = vi.hoisted(() => ({
   purchasePayment: {
     create: vi.fn(),
   },
+  providerProductMapping: {
+    upsert: vi.fn(),
+  },
   $transaction: vi.fn(),
 }))
 
@@ -74,12 +77,16 @@ describe('POST /api/purchases', () => {
     mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
       const mockTx = {
         purchase: { create: vi.fn().mockResolvedValue({ id: 1, consecutiveNumber: 'PC-0001' }), findFirst: vi.fn().mockResolvedValue(null) },
-        product: { update: vi.fn((args: any) => { capturedProductUpdate = args; return Promise.resolve({}) }) },
+        product: {
+          findUnique: vi.fn().mockResolvedValue({ costPrice: mockProduct.costPrice, currentStock: mockProduct.currentStock }),
+          update: vi.fn((args: any) => { capturedProductUpdate = args; return Promise.resolve({}) }),
+        },
         productPresentation: { update: vi.fn() },
         costHistory: { create: vi.fn() },
         inventoryMovement: { create: vi.fn() },
         purchasePayment: { create: vi.fn() },
         provider: { update: vi.fn() },
+        providerProductMapping: { upsert: vi.fn() },
       }
       return cb(mockTx)
     })
@@ -104,12 +111,16 @@ describe('POST /api/purchases', () => {
     mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
       const mockTx = {
         purchase: { create: vi.fn((args: any) => { capturedPurchaseCreate = args; return Promise.resolve({ id: 1, consecutiveNumber: 'PC-0001' }) }), findFirst: vi.fn().mockResolvedValue(null) },
-        product: { update: vi.fn((args: any) => { capturedProductUpdate = args; return Promise.resolve({}) }) },
+        product: {
+          findUnique: vi.fn().mockResolvedValue({ costPrice: mockProduct.costPrice, currentStock: mockProduct.currentStock }),
+          update: vi.fn((args: any) => { capturedProductUpdate = args; return Promise.resolve({}) }),
+        },
         productPresentation: { update: vi.fn((args: any) => { capturedPresentationUpdate = args; return Promise.resolve({}) }) },
         costHistory: { create: vi.fn() },
         inventoryMovement: { create: vi.fn((args: any) => { capturedMovement = args; return Promise.resolve({}) }) },
         purchasePayment: { create: vi.fn() },
         provider: { update: vi.fn() },
+        providerProductMapping: { upsert: vi.fn() },
       }
       return cb(mockTx)
     })
@@ -177,5 +188,116 @@ describe('POST /api/purchases', () => {
 
     expect(status).toBe(500)
     expect(body.error).toBeTruthy()
+  })
+
+  it('compounds CPP correctly across two lines of the SAME product in one purchase (paid line + $0 bonus line) — regression test for the stale-snapshot bug', async () => {
+    // Simulates a real DB row: findUnique always returns whatever the last
+    // update() actually wrote, proving the fix reads live state, not the
+    // stale `products` array fetched once before the transaction.
+    let liveProduct = { costPrice: mockProduct.costPrice, currentStock: mockProduct.currentStock }
+    const capturedUpdates: any[] = []
+    const capturedCostHistory: any[] = []
+    mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
+      const mockTx = {
+        purchase: { create: vi.fn().mockResolvedValue({ id: 1, consecutiveNumber: 'PC-0001' }), findFirst: vi.fn().mockResolvedValue(null) },
+        product: {
+          findUnique: vi.fn(() => Promise.resolve({ ...liveProduct })),
+          update: vi.fn((args: any) => {
+            capturedUpdates.push(args)
+            if (args.data.currentStock?.increment) liveProduct.currentStock += args.data.currentStock.increment
+            if (typeof args.data.costPrice === 'number') liveProduct.costPrice = args.data.costPrice
+            return Promise.resolve({})
+          }),
+        },
+        productPresentation: { update: vi.fn() },
+        costHistory: { create: vi.fn((args: any) => { capturedCostHistory.push(args); return Promise.resolve({}) }) },
+        inventoryMovement: { create: vi.fn() },
+        purchasePayment: { create: vi.fn() },
+        provider: { update: vi.fn() },
+        providerProductMapping: { upsert: vi.fn() },
+      }
+      return cb(mockTx)
+    })
+
+    // Line 1: 10 units paid at 5000. Line 2: 10 "bonus" units of the SAME
+    // product at 0 — the exact scenario the stale-snapshot bug corrupted.
+    const body = {
+      ...validPurchaseBody,
+      items: [
+        { productId: 1, quantity: 10, unitCost: 5000, ivaRate: 19 },
+        { productId: 1, quantity: 10, unitCost: 0, ivaRate: 19, isBonus: true },
+      ],
+    }
+    const response = await POST(mockPostRequest(body) as any)
+    const { status } = await parseResponse(response)
+    expect(status).toBe(201)
+
+    // Manually pre-merged equivalent: qty=20, cost=only the paid amount (5000*10=50000)
+    // CPP = (10*4000 + 50000) / (10+20) = 90000/30 = 3000
+    expect(capturedUpdates[capturedUpdates.length - 1].data.costPrice).toBe(3000)
+    expect(liveProduct.currentStock).toBe(30) // 10 existing + 10 + 10
+
+    // The second costHistory entry must use the cost the FIRST line just wrote
+    // (4444, from (10*4000+10*5000)/20), not the stale original 4000 — proof
+    // the fix reads live state between lines, not the pre-transaction snapshot.
+    expect(capturedCostHistory).toHaveLength(2)
+    expect(capturedCostHistory[0].data.previousCost).toBe(4000)
+    expect(capturedCostHistory[1].data.previousCost).toBe(capturedUpdates[0].data.costPrice)
+  })
+
+  it('flows isBonus through to the created purchase item', async () => {
+    let capturedPurchaseCreate: any = null
+    mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
+      const mockTx = {
+        purchase: { create: vi.fn((args: any) => { capturedPurchaseCreate = args; return Promise.resolve({ id: 1, consecutiveNumber: 'PC-0001' }) }), findFirst: vi.fn().mockResolvedValue(null) },
+        product: {
+          findUnique: vi.fn().mockResolvedValue({ costPrice: mockProduct.costPrice, currentStock: mockProduct.currentStock }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        productPresentation: { update: vi.fn() },
+        costHistory: { create: vi.fn() },
+        inventoryMovement: { create: vi.fn() },
+        purchasePayment: { create: vi.fn() },
+        provider: { update: vi.fn() },
+        providerProductMapping: { upsert: vi.fn() },
+      }
+      return cb(mockTx)
+    })
+
+    const body = { ...validPurchaseBody, items: [{ productId: 1, quantity: 2, unitCost: 0, ivaRate: 19, isBonus: true }] }
+    const response = await POST(mockPostRequest(body) as any)
+    expect((await parseResponse(response)).status).toBe(201)
+    expect(capturedPurchaseCreate.data.purchaseItems.create[0].isBonus).toBe(true)
+  })
+
+  it('saves a provider product mapping (homologación) when the line carries a sellerSku and a providerId', async () => {
+    mockDb.provider.findFirst.mockResolvedValue({ id: 5, regime: 'NO_RESPONSABLE' })
+    let capturedUpsert: any = null
+    mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
+      const mockTx = {
+        purchase: { create: vi.fn().mockResolvedValue({ id: 1, consecutiveNumber: 'PC-0001' }), findFirst: vi.fn().mockResolvedValue(null) },
+        product: {
+          findUnique: vi.fn().mockResolvedValue({ costPrice: mockProduct.costPrice, currentStock: mockProduct.currentStock }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        productPresentation: { update: vi.fn() },
+        costHistory: { create: vi.fn() },
+        inventoryMovement: { create: vi.fn() },
+        purchasePayment: { create: vi.fn() },
+        provider: { update: vi.fn() },
+        providerProductMapping: { upsert: vi.fn((args: any) => { capturedUpsert = args; return Promise.resolve({}) }) },
+      }
+      return cb(mockTx)
+    })
+
+    const body = {
+      ...validPurchaseBody,
+      providerId: 5,
+      items: [{ productId: 1, quantity: 2, unitCost: 5000, ivaRate: 19, sellerSku: 'PROV-CODE-9' }],
+    }
+    const response = await POST(mockPostRequest(body) as any)
+    expect((await parseResponse(response)).status).toBe(201)
+    expect(capturedUpsert.where.providerId_sellerSku).toEqual({ providerId: 5, sellerSku: 'prov-code-9' })
+    expect(capturedUpsert.create.productId).toBe(1)
   })
 })

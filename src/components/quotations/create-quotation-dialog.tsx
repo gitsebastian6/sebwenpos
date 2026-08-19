@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
+import { DIAN_CONSUMIDOR_FINAL_NIT, getUnitOfMeasureLabel } from '@/lib/constants'
 import { useCreateQuotation } from '@/hooks/api/use-quotations'
 import { usePurchaseProducts, type ProductOption, type ProductPresentationOption } from '@/hooks/api/use-purchases'
 import { buildProductSearchOptions } from '@/lib/product-search'
@@ -89,7 +89,7 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
         productId: product.id,
         productName: product.name,
         presentationId: presentation?.id ?? null,
-        presentationName: presentation?.name ?? null,
+        presentationName: presentation ? getUnitOfMeasureLabel(presentation.unitLabel) : null,
         unitsPerPack: presentation?.unitsPerPack ?? 1,
         unitPrice: presentation ? presentation.salePrice : product.salePrice,
         quantity: 1,
@@ -332,8 +332,8 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
                           <div className="font-medium text-sm truncate flex items-center gap-1.5">
                             {opt.product.name}
                             {opt.presentation && (
-                              <span className="inline-flex items-center gap-0.5 text-sky-600 dark:text-sky-400 text-xs font-normal shrink-0">
-                                <Layers className="h-3 w-3" />{opt.presentation.name} (×{opt.presentation.unitsPerPack})
+                              <span className="inline-flex items-center gap-0.5 text-sky-600 dark:text-sky-400 text-xs font-normal shrink-0" title={opt.presentation.name}>
+                                <Layers className="h-3 w-3" />{getUnitOfMeasureLabel(opt.presentation.unitLabel)} (×{opt.presentation.unitsPerPack})
                               </span>
                             )}
                           </div>

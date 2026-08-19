@@ -78,12 +78,12 @@ export async function POST(req: NextRequest) {
     // conversion always come from the DB, never trusted from the client.
     // Tax rate is NOT resolved per-presentation: it's inherited from the
     // parent product (same product, same tax treatment regardless of packaging).
-    const presentationMap = new Map<number, { id: number; productId: number; name: string; salePrice: number; unitsPerPack: number }>()
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; salePrice: number; unitsPerPack: number }>()
     const presentationIds = productItems.map((i) => i.presentationId).filter((id): id is number => !!id)
     if (presentationIds.length > 0) {
       const presentations = await db.productPresentation.findMany({
         where: { id: { in: presentationIds }, isActive: true, product: { storeId: data.storeId } },
-        select: { id: true, productId: true, name: true, salePrice: true, unitsPerPack: true },
+        select: { id: true, productId: true, name: true, unitLabel: true, salePrice: true, unitsPerPack: true },
       })
       for (const p of presentations) presentationMap.set(p.id, p)
     }
@@ -442,6 +442,9 @@ export async function POST(req: NextRequest) {
           data: {
             storeId: data.storeId,
             productId: item.productId,
+            presentationId: presentation ? presentation.id : null,
+            presentationName: presentation ? presentation.name : null,
+            unitsPerPack,
             quantity: -baseUnits, // negative for sale, always in base units
             movementType: 'SALE',
             referenceId: createdOrder.id,

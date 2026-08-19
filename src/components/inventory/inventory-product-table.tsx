@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatCurrency } from '@/lib/auth'
+import { getUnitOfMeasureLabel } from '@/lib/constants'
 import type { Product } from './inventory-types'
 
 interface InventoryProductTableProps {
@@ -122,11 +123,26 @@ export function InventoryProductTable({
                       <span className={product.currentStock <= product.minStock ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>
                         {product.currentStock}
                       </span>
+                      <span className="text-[10px] text-muted-foreground ml-1">{getUnitOfMeasureLabel(product.unitLabel)}</span>
                       {product.currentStock <= product.minStock && product.currentStock > 0 && (
                         <AlertTriangle className="inline-block h-3 w-3 ml-1 text-amber-500" />
                       )}
                       {product.currentStock === 0 && (
                         <AlertTriangle className="inline-block h-3 w-3 ml-1 text-red-500" />
+                      )}
+                      {product.presentations && product.presentations.filter((p) => p.isActive).length > 0 && (
+                        <p
+                          className="text-[10px] text-muted-foreground"
+                          title={product.presentations
+                            .filter((p) => p.isActive)
+                            .map((p) => `${Math.floor(product.currentStock / p.unitsPerPack)} ${getUnitOfMeasureLabel(p.unitLabel)} (×${p.unitsPerPack})`)
+                            .join(' · ')}
+                        >
+                          {product.presentations
+                            .filter((p) => p.isActive)
+                            .map((p) => `${Math.floor(product.currentStock / p.unitsPerPack)} ${getUnitOfMeasureLabel(p.unitLabel)}`)
+                            .join(' · ')}
+                        </p>
                       )}
                     </TableCell>
                     <TableCell className="text-right text-xs">

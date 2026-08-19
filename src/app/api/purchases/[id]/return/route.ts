@@ -147,6 +147,9 @@ export async function POST(
           data: {
             storeId: purchase.storeId,
             productId: item.productId,
+            presentationId: item.presentationId,
+            presentationName: item.presentationName,
+            unitsPerPack: item.unitsPerPack,
             quantity: -baseUnits,
             movementType: 'PURCHASE_RETURN',
             referenceId: purchaseId,

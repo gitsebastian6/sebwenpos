@@ -313,7 +313,8 @@ export async function POST(
 
     for (const reqItem of body.items) {
       const item = itemMap.get(reqItem.orderItemId)!
-      const productName = item.product?.name ?? item.service?.name ?? 'Eliminado'
+      const baseName = item.product?.name ?? item.service?.name ?? 'Eliminado'
+      const productName = item.presentationName ? `${baseName} — ${item.presentationName}` : baseName
 
       // Proportional calculation: returned qty / original qty
       const ratio = reqItem.quantity / item.quantity
@@ -471,25 +472,35 @@ export async function POST(
       }
 
       // 10. Create InventoryMovement entries (RETURN type) for product items
+      //     Stock is a single shared pool in base units — crediting N units of a
+      //     presentation line (e.g. Six-pack) must put back N × unitsPerPack base
+      //     units, not N, or the pool ends up short after every such credit note.
       for (const reqItem of body.items) {
         const item = itemMap.get(reqItem.orderItemId)!
         if (item.productId) {
+          const unitsPerPack = item.unitsPerPack || 1
+          const baseUnits = reqItem.quantity * unitsPerPack
+
           // Increment product stock
           await tx.product.update({
             where: { id: item.productId },
-            data: { currentStock: { increment: reqItem.quantity } },
+            data: { currentStock: { increment: baseUnits } },
           })
 
           // Create inventory movement
           const productName = item.product?.name ?? 'Producto'
+          const displayName = item.presentationName ? `${productName} — ${item.presentationName}` : productName
           await tx.inventoryMovement.create({
             data: {
               storeId,
               productId: item.productId,
-              quantity: reqItem.quantity,
+              presentationId: item.presentationId,
+              presentationName: item.presentationName,
+              unitsPerPack,
+              quantity: baseUnits,
               movementType: 'RETURN',
               referenceId: order.id,
-              notes: `Nota Crédito NC-${String(consecResult.consecutive).padStart(8, '0')} — ${productName} x${reqItem.quantity}`,
+              notes: `Nota Crédito NC-${String(consecResult.consecutive).padStart(8, '0')} — ${displayName} x${reqItem.quantity}`,
             },
           })
         }

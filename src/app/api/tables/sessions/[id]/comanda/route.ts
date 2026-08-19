@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { emitComandaItemsAdded, emitComandaItemsUpdated, emitComandaItemsRemoved } from '@/lib/tables-sync'
+import { getUnitOfMeasureLabel } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,12 +13,17 @@ export const dynamic = 'force-dynamic'
 const comandaItemSchema = z.object({
   productId: z.number().int().positive().optional(),
   serviceId: z.number().int().positive().optional(),
+  // Extra presentation of the product (e.g. Six-pack, Caja x24). Omit for
+  // the product's own "Unidad" (base) presentation.
+  presentationId: z.number().int().positive().optional(),
   quantity: z.number().int().min(1),
   notes: z.string().max(200).optional(),
 }).refine((d) => d.productId || d.serviceId, {
   message: 'Debe especificar productId o serviceId',
 }).refine((d) => !(d.productId && d.serviceId), {
   message: 'Solo puede especificar productId o serviceId, no ambos',
+}).refine((d) => !d.presentationId || d.productId, {
+  message: 'presentationId solo aplica a productos',
 })
 
 const addComandaItemsSchema = z.object({
@@ -81,6 +87,9 @@ export async function GET(
       tableSessionId: item.tableSessionId,
       productId: item.productId ?? null,
       serviceId: item.serviceId ?? null,
+      presentationId: item.presentationId ?? null,
+      presentationName: item.presentationName ?? null,
+      unitsPerPack: item.unitsPerPack,
       productName: item.productName,
       product: item.product ?? null,
       service: item.service ?? null,
@@ -153,6 +162,18 @@ export async function POST(
       }
     }
 
+    // Resolve presentations (Six-pack, Caja x24, etc.) — price and unitsPerPack
+    // conversion always come from the DB, never trusted from the client.
+    const presentationMap = new Map<number, { id: number; productId: number; unitLabel: string; salePrice: number; unitsPerPack: number }>()
+    const presentationIds = productItems.map((i) => i.presentationId).filter((pid): pid is number => !!pid)
+    if (presentationIds.length > 0) {
+      const presentations = await db.productPresentation.findMany({
+        where: { id: { in: presentationIds }, isActive: true, product: { storeId: data.storeId } },
+        select: { id: true, productId: true, unitLabel: true, salePrice: true, unitsPerPack: true },
+      })
+      for (const p of presentations) presentationMap.set(p.id, p)
+    }
+
     // Resolve services
     const serviceMap = new Map<number, { id: number; name: string; price: number }>()
     if (serviceItems.length > 0) {
@@ -175,6 +196,15 @@ export async function POST(
           { status: 400 },
         )
       }
+      if (item.presentationId) {
+        const presentation = presentationMap.get(item.presentationId)
+        if (!presentation || presentation.productId !== item.productId) {
+          return NextResponse.json(
+            { error: `Presentación con ID ${item.presentationId} no encontrada para este producto` },
+            { status: 400 },
+          )
+        }
+      }
     }
 
     for (const item of serviceItems) {
@@ -194,6 +224,9 @@ export async function POST(
       tableSessionId: number
       productId: number | null
       serviceId: number | null
+      presentationId: number | null
+      presentationName: string | null
+      unitsPerPack: number
       productName: string
       quantity: number
       unitPrice: number
@@ -205,6 +238,7 @@ export async function POST(
     for (const item of data.items) {
       const itemNotes = item.notes || null
       const itemId = item.productId || item.serviceId!
+      const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
 
       // Build where clause for duplicate detection
       const duplicateWhere: Record<string, unknown> = {
@@ -215,6 +249,7 @@ export async function POST(
       if (item.productId) {
         duplicateWhere.productId = item.productId
         duplicateWhere.serviceId = null
+        duplicateWhere.presentationId = presentation?.id ?? null
       } else {
         duplicateWhere.serviceId = item.serviceId
         duplicateWhere.productId = null
@@ -244,15 +279,19 @@ export async function POST(
       } else {
         if (item.productId) {
           const product = productMap.get(item.productId)!
+          const unitPrice = presentation ? presentation.salePrice : product.salePrice
           itemsToCreate.push({
             storeId: data.storeId,
             tableSessionId: sid,
             productId: item.productId,
             serviceId: null,
+            presentationId: presentation ? presentation.id : null,
+            presentationName: presentation ? getUnitOfMeasureLabel(presentation.unitLabel) : null,
+            unitsPerPack: presentation ? presentation.unitsPerPack : 1,
             productName: product.name,
             quantity: item.quantity,
-            unitPrice: product.salePrice,
-            total: product.salePrice * item.quantity,
+            unitPrice,
+            total: unitPrice * item.quantity,
             notes: item.notes || null,
             status: 'PENDING',
           })
@@ -263,6 +302,9 @@ export async function POST(
             tableSessionId: sid,
             productId: null,
             serviceId: item.serviceId,
+            presentationId: null,
+            presentationName: null,
+            unitsPerPack: 1,
             productName: service.name,
             quantity: item.quantity,
             unitPrice: service.price,

@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       // 3. Top products
       db.$queryRawUnsafe<Array<{ productId: number; name: string; quantity: number; total: number }>>(`
         SELECT oi.product_id as productId, COALESCE(p.name, 'Eliminado') as name,
-               CAST(SUM(oi.quantity) AS INTEGER) as quantity,
+               CAST(SUM(oi.quantity * oi.units_per_pack) AS INTEGER) as quantity,
                CAST(SUM(oi.total_row) AS INTEGER) as total
         FROM order_items oi
         JOIN orders o ON o.id = oi.order_id

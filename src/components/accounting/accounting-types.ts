@@ -74,7 +74,7 @@ export interface ReportData {
     status: string
     source: string
     tableName: string | null
-    items: Array<{ name: string; quantity: number; unitPrice: number; totalRow: number }>
+    items: Array<{ name: string; presentationName?: string | null; quantity: number; unitPrice: number; totalRow: number }>
     createdAt: string
   }>
 }

@@ -59,6 +59,7 @@ export interface ComandaItem {
   id: number
   productId: number
   productName: string
+  presentationName?: string | null
   quantity: number
   unitPrice: number
   total: number

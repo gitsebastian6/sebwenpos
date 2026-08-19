@@ -845,11 +845,18 @@ export function ProductFormDialog({
                 {presentations.map((p, idx) => {
                   const unitsPerPack = Number(p.unitsPerPack) || 0
                   const baseCost = Number(productForm.costPrice) || 0
-                  const baseSale = Number(productForm.salePrice) || 0
                   const suggestedCostFromBase = unitsPerPack > 0 && baseCost > 0 ? Math.round(baseCost * unitsPerPack) : null
-                  const suggestedSaleFromBase = unitsPerPack > 0 && baseSale > 0 ? Math.round(baseSale * unitsPerPack) : null
                   const impliedBaseCost = unitsPerPack > 0 && Number(p.costPrice) > 0 ? Math.round(Number(p.costPrice) / unitsPerPack) : null
                   const impliedBaseSale = unitsPerPack > 0 && Number(p.salePrice) > 0 ? Math.round(Number(p.salePrice) / unitsPerPack) : null
+                  // Rentabilidad entre niveles: la venta sugerida de esta presentación
+                  // sale de SU PROPIO costo (ya esté en la fila porque se aplicó el
+                  // "Usar" del costo sugerido, o porque se tecleó directo) multiplicado
+                  // por el mismo margen % que ya usa la Unidad — así Unidad, Intermedia
+                  // y Global quedan con la misma rentabilidad, sin importar de dónde
+                  // salió el costo de cada una.
+                  const rowCost = Number(p.costPrice) || 0
+                  const commissionPct = Number(productForm.commission) || 0
+                  const suggestedSaleFromMargin = rowCost > 0 && commissionPct > 0 ? Math.round(rowCost * (1 + commissionPct / 100)) : null
                   return (
                   <div key={p.key} className="rounded-md border p-3 space-y-3 bg-muted/20">
                     <div className="flex items-center justify-between">
@@ -953,7 +960,7 @@ export function ProductFormDialog({
                         </div>
                       </div>
                     </div>
-                    {(suggestedCostFromBase !== null || suggestedSaleFromBase !== null || impliedBaseCost !== null || impliedBaseSale !== null) && (
+                    {(suggestedCostFromBase !== null || suggestedSaleFromMargin !== null || impliedBaseCost !== null || impliedBaseSale !== null) && (
                       <div className="rounded border border-dashed bg-background/60 px-2.5 py-1.5 space-y-0.5">
                         {suggestedCostFromBase !== null && Number(p.costPrice) !== suggestedCostFromBase && (
                           <div className="flex items-center justify-between gap-2 text-[11px]">
@@ -963,12 +970,12 @@ export function ProductFormDialog({
                             <button type="button" className="text-primary hover:underline shrink-0" onClick={() => updatePresentation(p.key, 'costPrice', String(suggestedCostFromBase))}>Usar</button>
                           </div>
                         )}
-                        {suggestedSaleFromBase !== null && Number(p.salePrice) !== suggestedSaleFromBase && (
+                        {suggestedSaleFromMargin !== null && Number(p.salePrice) !== suggestedSaleFromMargin && (
                           <div className="flex items-center justify-between gap-2 text-[11px]">
                             <span className="text-muted-foreground">
-                              Venta sugerido: Unidad × {unitsPerPack} = <span className="font-medium text-foreground">{formatCurrency(suggestedSaleFromBase, store?.currencyCode)}</span>
+                              Venta sugerida ({commissionPct}% margen): <span className="font-medium text-foreground">{formatCurrency(suggestedSaleFromMargin, store?.currencyCode)}</span>
                             </span>
-                            <button type="button" className="text-primary hover:underline shrink-0" onClick={() => updatePresentation(p.key, 'salePrice', String(suggestedSaleFromBase))}>Usar</button>
+                            <button type="button" className="text-primary hover:underline shrink-0" onClick={() => updatePresentation(p.key, 'salePrice', String(suggestedSaleFromMargin))}>Usar</button>
                           </div>
                         )}
                         {(impliedBaseCost !== null || impliedBaseSale !== null) && (

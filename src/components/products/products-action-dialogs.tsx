@@ -576,6 +576,12 @@ export function TraceDialog({
                       >
                         {MOV_TYPE_LABELS[mov.type] || mov.type}
                       </Badge>
+                      {mov.presentationName && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {mov.presentationName}
+                          {mov.unitsPerPack && mov.unitsPerPack > 1 ? ` (×${mov.unitsPerPack})` : ''}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell className="text-right text-sm font-medium">
                       <span className={

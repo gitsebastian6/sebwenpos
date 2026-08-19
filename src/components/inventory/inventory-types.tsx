@@ -10,21 +10,35 @@ import {
 
 // ─── Interfaces ──────────────────────────────────────────────
 
+export interface ProductPresentationOption {
+  id: number
+  name: string
+  unitLabel: string
+  unitsPerPack: number
+  salePrice: number
+  costPrice: number
+  isActive: boolean
+}
+
 export interface Product {
   id: number
   name: string
   sku: string | null
+  unitLabel: string
   currentStock: number
   minStock: number
   salePrice: number
   costPrice: number
   category: { id: number; name: string } | null
+  presentations?: ProductPresentationOption[]
 }
 
 export interface InventoryMovement {
   id: number
   productId: number
   productName: string
+  presentationName?: string | null
+  unitsPerPack?: number
   quantity: number
   movementType: string
   notes: string | null

@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
         FROM products WHERE store_id = ${storeId} AND is_active = ${sql.bool(true)}
       `)),
       safe('inv-avg-cogs', () => db.$queryRawUnsafe(`
-        SELECT COALESCE(SUM(p.cost_price * oi.quantity) / MAX(days), 0) as "avgDailyCOGS",
+        SELECT COALESCE(SUM(p.cost_price * oi.quantity * oi.units_per_pack) / MAX(days), 0) as "avgDailyCOGS",
                MAX(days) as "days"
         FROM order_items oi
         JOIN products p ON p.id = oi.product_id
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
         const pLte = dateFilter?.lte || todayEnd
         return db.$queryRawUnsafe(`
           SELECT COALESCE(SUM(o.subtotal), 0) as "revenue",
-                 COALESCE(SUM(p.cost_price * oi.quantity), 0) as "cogs",
+                 COALESCE(SUM(p.cost_price * oi.quantity * oi.units_per_pack), 0) as "cogs",
                  COALESCE(SUM(o.discount_amount), 0) as "discounts",
                  COALESCE(SUM(o.tip_amount), 0) as "tips"
           FROM orders o
@@ -120,9 +120,9 @@ export async function GET(request: NextRequest) {
         const [agg, byPayment, byCategory, bySource, topProds, ordersList] = await Promise.all([
           db.$queryRawUnsafe(`SELECT COALESCE(SUM(o.total),0) as total, COUNT(*) as count FROM orders o WHERE ${sBase}`),
           db.$queryRawUnsafe(`SELECT o.payment_method as method, COUNT(*) as count, SUM(o.total) as total FROM orders o WHERE ${sBase} GROUP BY o.payment_method`),
-          db.$queryRawUnsafe(`SELECT COALESCE(c.name, 'Sin categoría') as category, SUM(oi.quantity) as qty, SUM(oi.total_row) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN products p ON p.id = oi.product_id LEFT JOIN categories c ON c.id = p.category_id WHERE ${sBase} GROUP BY c.name`),
+          db.$queryRawUnsafe(`SELECT COALESCE(c.name, 'Sin categoría') as category, SUM(oi.quantity * oi.units_per_pack) as qty, SUM(oi.total_row) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN products p ON p.id = oi.product_id LEFT JOIN categories c ON c.id = p.category_id WHERE ${sBase} GROUP BY c.name`),
           db.$queryRawUnsafe(`SELECT CASE WHEN o.table_session_id IS NOT NULL THEN 'MESA' ELSE 'POS' END as source, COUNT(*) as count, SUM(o.total) as total FROM orders o WHERE ${sBase} GROUP BY CASE WHEN o.table_session_id IS NOT NULL THEN 'MESA' ELSE 'POS' END`),
-          db.$queryRawUnsafe(`SELECT oi.product_id as productId, COALESCE(p.name, 'Eliminado') as name, SUM(oi.quantity) as qty, SUM(oi.total_row) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN products p ON p.id = oi.product_id WHERE ${sBase} AND oi.product_id IS NOT NULL GROUP BY oi.product_id ORDER BY total DESC LIMIT 20`),
+          db.$queryRawUnsafe(`SELECT oi.product_id as productId, COALESCE(p.name, 'Eliminado') as name, SUM(oi.quantity * oi.units_per_pack) as qty, SUM(oi.total_row) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN products p ON p.id = oi.product_id WHERE ${sBase} AND oi.product_id IS NOT NULL GROUP BY oi.product_id ORDER BY total DESC LIMIT 20`),
           db.order.findMany({
             where: { storeId, status: { in: ['COMPLETED', 'CREDIT'] }, ...(dateFilter ? { createdAt: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }) },
             include: {
@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
                CASE WHEN v.total_qty > 0 THEN ROUND(v.total_qty / 30.0, 1) ELSE 0 END as "avgDaily"
         FROM products p
         LEFT JOIN (
-          SELECT oi.product_id, SUM(oi.quantity) as "total_qty"
+          SELECT oi.product_id, SUM(oi.quantity * oi.units_per_pack) as "total_qty"
           FROM order_items oi JOIN orders o ON o.id = oi.order_id
           WHERE o.store_id = ${storeId} AND o.status = 'COMPLETED'
           AND o.created_at >= ${sql.timestamp(now.getTime() - 30 * 86400000)}

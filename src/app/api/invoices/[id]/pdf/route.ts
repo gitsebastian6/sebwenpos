@@ -77,7 +77,10 @@ export async function GET(
     // Items de la orden
     const items = (order?.orderItems || []).map((item, idx) => ({
       lineNumber: idx + 1,
-      description: item.product?.name ?? item.service?.name ?? 'Eliminado',
+      description: (() => {
+        const baseName = item.product?.name ?? item.service?.name ?? 'Eliminado'
+        return item.presentationName ? `${baseName} — ${item.presentationName}` : baseName
+      })(),
       quantity: item.quantity,
       unitPrice: Number(item.unitPrice),
       totalRow: Number(item.totalRow),

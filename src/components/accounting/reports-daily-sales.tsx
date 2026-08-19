@@ -180,6 +180,7 @@ export function SalesDetailCard({ reportData, currencyCode, storeName }: SalesDe
                         {order.items.slice(0, 3).map((item, idx) => (
                           <div key={idx} className="text-xs text-muted-foreground truncate">
                             {item.quantity}x {item.name}
+                            {item.presentationName && ` — ${item.presentationName}`}
                             <span className="text-[10px] ml-1 opacity-60">
                               ({formatCurrency(item.totalRow, currencyCode)})
                             </span>
@@ -199,7 +200,7 @@ export function SalesDetailCard({ reportData, currencyCode, storeName }: SalesDe
                         title="Imprimir factura"
                         onClick={() => {
                           const items: TicketItem[] = order.items.map((item) => ({
-                            name: item.name,
+                            name: item.presentationName ? `${item.name} — ${item.presentationName}` : item.name,
                             quantity: item.quantity,
                             unitPrice: item.unitPrice,
                             total: item.totalRow,

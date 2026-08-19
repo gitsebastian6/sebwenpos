@@ -11,6 +11,8 @@ export interface InventoryMovement {
   id: number
   productId: number
   productName: string
+  presentationName?: string | null
+  unitsPerPack?: number
   quantity: number
   movementType: string
   notes: string | null
@@ -25,6 +27,8 @@ export interface KardexMovement {
   balance: number
   notes: string
   referenceId?: string | null
+  presentationName?: string | null
+  unitsPerPack?: number
 }
 
 interface KardexResponse {

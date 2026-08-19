@@ -21,6 +21,9 @@ export interface PurchaseItemRow {
   lotNumber: string
   expiryDate: string
   manufacturingDate: string
+  // Línea bonificada/gratis marcada a mano — mismo campo que usa la
+  // importación XML para detectarla; fija unitCost en 0 al activarse.
+  isBonus: boolean
 }
 
 // ── Constants ──
@@ -99,6 +102,7 @@ export const EMPTY_ITEM = (): PurchaseItemRow => ({
   lotNumber: '',
   expiryDate: '',
   manufacturingDate: '',
+  isBonus: false,
 })
 
 // ── Line calculations ──

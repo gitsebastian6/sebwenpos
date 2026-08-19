@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -25,6 +26,7 @@ import {
   type Purchase, type ProviderOption, type ProductPresentationOption,
 } from '@/hooks/api/use-purchases'
 import { buildProductSearchOptions } from '@/lib/product-search'
+import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { useCategories } from '@/hooks/api/use-categories'
 import { useTaxes } from '@/hooks/api/use-taxes'
 import { useCreateProduct } from '@/hooks/api/use-products'
@@ -142,7 +144,7 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
     setPurchaseItems(prev => prev.filter(item => item.id !== itemId))
   }
 
-  function updateItem(itemId: string, field: keyof PurchaseItemRow, value: string | number) {
+  function updateItem(itemId: string, field: keyof PurchaseItemRow, value: string | number | boolean) {
     setPurchaseItems(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item))
   }
 
@@ -157,7 +159,7 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
         ...item,
         productId: String(product.id),
         presentationId: presentation ? String(presentation.id) : '',
-        presentationName: presentation ? presentation.name : '',
+        presentationName: presentation ? getUnitOfMeasureLabel(presentation.unitLabel) : '',
         unitsPerPack: presentation ? presentation.unitsPerPack : 1,
         unitCost: String(suggestedCost || item.unitCost),
       }
@@ -245,6 +247,7 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
         presentationName: item.presentationName || '',
         unitsPerPack: item.unitsPerPack || 1,
         ivaRate: item.ivaRate || 19, discountAmount: String(item.discountAmount || 0),
+        isBonus: item.isBonus || false,
         lotNumber: item.lotNumber || '',
         expiryDate: item.expiryDate ? format(parseISO(item.expiryDate), 'yyyy-MM-dd') : '',
         manufacturingDate: item.manufacturingDate ? format(parseISO(item.manufacturingDate), 'yyyy-MM-dd') : '',
@@ -274,10 +277,13 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
   async function handleSave() {
     const validItems = purchaseItems.filter(item => item.productId && Number(item.quantity) > 0 && Number(item.unitCost) >= 0)
     if (validItems.length === 0) { toast.error('Debe agregar al menos un producto con cantidad y costo'); return }
-    // A product can appear more than once (its Unidad + a presentation), but
-    // never the exact same product+presentation combination twice.
-    const lineKeys = validItems.map(item => `${item.productId}:${item.presentationId || ''}`)
-    if (new Set(lineKeys).size !== lineKeys.length) { toast.error('No puede agregar la misma presentación del mismo producto más de una vez'); return }
+    // A product can appear more than once (its Unidad + a presentation), and a
+    // bonificada line may legitimately repeat the same product+presentation as
+    // its paid counterpart (ej. "10 cajas pagadas + 2 cajas de regalo") — solo
+    // se bloquean duplicados entre líneas NO bonificadas, que casi siempre son
+    // un error de captura (doble clic, copiar/pegar).
+    const nonBonusKeys = validItems.filter(item => !item.isBonus).map(item => `${item.productId}:${item.presentationId || ''}`)
+    if (new Set(nonBonusKeys).size !== nonBonusKeys.length) { toast.error('No puede agregar la misma presentación del mismo producto más de una vez (salvo como bonificado)'); return }
 
     const mapItems = (items: PurchaseItemRow[], forUpdate = false) => items.map(item => ({
       productId: Number(item.productId),
@@ -286,6 +292,7 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
       unitCost: Math.round(Number(item.unitCost)),
       ivaRate: item.ivaRate,
       discountAmount: Number(item.discountAmount) || 0,
+      isBonus: item.isBonus,
       lotNumber: forUpdate ? item.lotNumber.trim() || null : item.lotNumber.trim() || undefined,
       expiryDate: forUpdate ? (item.expiryDate || null) : (item.expiryDate || undefined),
       manufacturingDate: forUpdate ? (item.manufacturingDate || null) : (item.manufacturingDate || undefined),
@@ -495,8 +502,8 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
                                   >
                                     <span className="font-medium">{opt.product.name}</span>
                                     {opt.presentation && (
-                                      <span className="inline-flex items-center gap-0.5 ml-1 text-sky-600 dark:text-sky-400">
-                                        <Layers className="h-2.5 w-2.5" />{opt.presentation.name} (×{opt.presentation.unitsPerPack})
+                                      <span className="inline-flex items-center gap-0.5 ml-1 text-sky-600 dark:text-sky-400" title={opt.presentation.name}>
+                                        <Layers className="h-2.5 w-2.5" />{getUnitOfMeasureLabel(opt.presentation.unitLabel)} (×{opt.presentation.unitsPerPack})
                                       </span>
                                     )}
                                     {(opt.presentation ? opt.presentation.sku || opt.presentation.barcode : opt.product.sku || opt.product.barcode) && (
@@ -528,12 +535,27 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
                           <Input type="number" min="1" className="h-9 text-sm text-foreground bg-muted/50 border-muted-foreground/30" value={item.quantity} onChange={e => updateItem(item.id, 'quantity', e.target.value)} />
                         </TableCell>
                         <TableCell className="align-top">
-                          <Input type="number" min="0" className="h-9 text-sm text-foreground bg-muted/50 border-muted-foreground/30" value={item.unitCost} onChange={e => updateItem(item.id, 'unitCost', e.target.value)} placeholder="0" />
+                          <Input
+                            type="number" min="0" className="h-9 text-sm text-foreground bg-muted/50 border-muted-foreground/30"
+                            value={item.unitCost} disabled={item.isBonus}
+                            onChange={e => updateItem(item.id, 'unitCost', e.target.value)} placeholder="0"
+                          />
                           {item.unitsPerPack > 1 && Number(item.unitCost) > 0 && (
                             <p className="text-[10px] text-sky-600 dark:text-sky-400 mt-0.5">
                               ≈ {formatCurrency(Math.round(Number(item.unitCost) / item.unitsPerPack), currencyCode)}/unidad base
                             </p>
                           )}
+                          <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
+                            <Checkbox
+                              className="h-3.5 w-3.5"
+                              checked={item.isBonus}
+                              onCheckedChange={checked => {
+                                updateItem(item.id, 'isBonus', !!checked)
+                                if (checked) updateItem(item.id, 'unitCost', '0')
+                              }}
+                            />
+                            <span className="text-[10px] text-muted-foreground">Bonificado</span>
+                          </label>
                         </TableCell>
                         <TableCell className="align-top">
                           <Select value={String(item.ivaRate)} onValueChange={v => updateItem(item.id, 'ivaRate', Number(v))}>

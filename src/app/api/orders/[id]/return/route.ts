@@ -153,6 +153,9 @@ export async function POST(
           data: {
             storeId: order.storeId,
             productId: item.productId!,
+            presentationId: item.presentationId,
+            presentationName: item.presentationName,
+            unitsPerPack: item.unitsPerPack,
             quantity: baseUnitsReturned,
             movementType: 'RETURN',
             referenceId: orderId,
@@ -283,9 +286,12 @@ export async function POST(
           ncTotalTax += taxAmount
           ncGrandTotal += totalRow
 
+          const ncDisplayName = item.presentationName
+            ? `${item.product?.name || 'Producto'} — ${item.presentationName}`
+            : (item.product?.name || 'Producto')
           ncItems.push({
-            productName: item.product?.name || 'Producto',
-            description: `Devolución: ${item.product?.name || 'Producto'}`,
+            productName: ncDisplayName,
+            description: `Devolución: ${ncDisplayName}`,
             quantity: reqItem.quantity,
             unitPrice,
             taxAmount: Math.round(taxAmount),

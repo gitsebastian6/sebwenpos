@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/auth'
+import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { useInventoryAdjustment, useInventoryReturn, useInventoryLoss } from '@/hooks/api/use-inventory'
 import type { ActionType, Product } from './inventory-types'
 import { LOSS_REASONS } from './inventory-types'
@@ -93,6 +94,11 @@ export function InventoryActionDialog({
   // Internal state (reset on every open via key prop from parent)
   const [dialogProductSearch, setDialogProductSearch] = useState('')
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [selectedPresentationId, setSelectedPresentationId] = useState<number | null>(null)
+
+  const selectedPresentation = selectedProduct?.presentations?.find((p) => p.id === selectedPresentationId) ?? null
+  const unitsPerPack = selectedPresentation?.unitsPerPack ?? 1
+  const maxInPresentation = selectedProduct ? Math.floor(selectedProduct.currentStock / unitsPerPack) : 0
 
   // Adjust form
   const [adjustMode, setAdjustMode] = useState<'set' | 'add'>('set')
@@ -133,6 +139,7 @@ export function InventoryActionDialog({
 
   function selectProductForAction(product: Product) {
     setSelectedProduct(product)
+    setSelectedPresentationId(null)
     setDialogProductSearch('')
     if (actionType === 'adjust') {
       setAdjustQuantity(String(product.currentStock))
@@ -141,6 +148,23 @@ export function InventoryActionDialog({
 
   function clearSelectedProduct() {
     setSelectedProduct(null)
+    setSelectedPresentationId(null)
+  }
+
+  // Switching presentation changes what a "unit" means (e.g. Unidad → Caja x24),
+  // so any quantity already typed is stale — reset it rather than silently
+  // reinterpreting it in the new unit.
+  function handlePresentationChange(id: number | null) {
+    setSelectedPresentationId(id)
+    if (!selectedProduct) return
+    const upp = id ? (selectedProduct.presentations?.find((p) => p.id === id)?.unitsPerPack ?? 1) : 1
+    if (actionType === 'adjust' && adjustMode === 'set') {
+      setAdjustQuantity(String(Math.floor(selectedProduct.currentStock / upp)))
+    } else {
+      setAdjustQuantity('')
+      setReturnQuantity('')
+      setLossQuantity('')
+    }
   }
 
   // ─── Submit handlers ──────────────────────────────────
@@ -156,9 +180,9 @@ export function InventoryActionDialog({
     const currentStock = selectedProduct.currentStock
     let finalQuantity: number
     if (adjustMode === 'set') {
-      finalQuantity = qty - currentStock
+      finalQuantity = (qty * unitsPerPack) - currentStock
     } else {
-      finalQuantity = qty
+      finalQuantity = qty * unitsPerPack
     }
 
     if (finalQuantity === 0) {
@@ -171,6 +195,7 @@ export function InventoryActionDialog({
         body: {
           storeId,
           productId: selectedProduct.id,
+          presentationId: selectedPresentation?.id,
           quantity: finalQuantity,
           notes: adjustNotes || undefined,
         },
@@ -196,7 +221,8 @@ export function InventoryActionDialog({
         body: {
           storeId,
           productId: selectedProduct.id,
-          quantity: qty,
+          presentationId: selectedPresentation?.id,
+          quantity: qty * unitsPerPack,
           notes: returnNotes || undefined,
         },
       })
@@ -225,7 +251,8 @@ export function InventoryActionDialog({
         body: {
           storeId,
           productId: selectedProduct.id,
-          quantity: qty,
+          presentationId: selectedPresentation?.id,
+          quantity: qty * unitsPerPack,
           reason: lossReason,
           notes: lossNotes || undefined,
         },
@@ -340,7 +367,9 @@ export function InventoryActionDialog({
                   <div>
                     <p className="text-sm font-semibold">{selectedProduct.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {selectedProduct.category?.name || 'Sin categoría'} &middot; Stock actual: <span className="font-semibold text-foreground">{selectedProduct.currentStock} uds</span>
+                      {selectedProduct.category?.name || 'Sin categoría'} &middot; Stock actual: <span className="font-semibold text-foreground">
+                        {selectedPresentation ? `${maxInPresentation} ${getUnitOfMeasureLabel(selectedPresentation.unitLabel)}(s)` : `${selectedProduct.currentStock} uds`}
+                      </span>
                     </p>
                   </div>
                   <Button
@@ -354,6 +383,34 @@ export function InventoryActionDialog({
                 </div>
               </div>
 
+              {/* Presentation selector — only shown when the product has extra presentations */}
+              {(selectedProduct.presentations?.filter((p) => p.isActive).length ?? 0) > 0 && (
+                <div className="space-y-2">
+                  <Label>Presentación</Label>
+                  <Select
+                    value={selectedPresentationId === null ? 'base' : String(selectedPresentationId)}
+                    onValueChange={(v) => handlePresentationChange(v === 'base' ? null : Number(v))}
+                  >
+                    <SelectTrigger className="h-9 focus-visible:ring-primary/20 focus-visible:border-primary/40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="base">{getUnitOfMeasureLabel(selectedProduct.unitLabel)}</SelectItem>
+                      {selectedProduct.presentations!.filter((p) => p.isActive).map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {getUnitOfMeasureLabel(p.unitLabel)} ×{p.unitsPerPack}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedPresentation && (
+                    <p className="text-xs text-muted-foreground">
+                      1 {getUnitOfMeasureLabel(selectedPresentation.unitLabel)} = {selectedPresentation.unitsPerPack} unidades base &middot; disponibles: {maxInPresentation}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* ─── LOSS FORM ──────────────────────────────── */}
               {actionType === 'loss' && (
                 <>
@@ -363,13 +420,13 @@ export function InventoryActionDialog({
                       id="loss-qty"
                       type="number"
                       min="1"
-                      max={selectedProduct.currentStock}
+                      max={maxInPresentation}
                       placeholder="Ej: 3"
                       value={lossQuantity}
                       onChange={(e) => setLossQuantity(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Máximo disponible: {selectedProduct.currentStock} unidades
+                      Máximo disponible: {maxInPresentation} {selectedPresentation ? `${getUnitOfMeasureLabel(selectedPresentation.unitLabel)}(s)` : 'unidades'}
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -414,7 +471,9 @@ export function InventoryActionDialog({
                       onChange={(e) => setReturnQuantity(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Estas unidades se SUMARÁN al stock actual ({selectedProduct.currentStock})
+                      {selectedPresentation
+                        ? `Estas ${getUnitOfMeasureLabel(selectedPresentation.unitLabel)}(s) se SUMARÁN al stock actual (${selectedProduct.currentStock} unidades base)`
+                        : `Estas unidades se SUMARÁN al stock actual (${selectedProduct.currentStock})`}
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -438,7 +497,7 @@ export function InventoryActionDialog({
                     <Select value={adjustMode} onValueChange={(v: 'set' | 'add') => {
                       setAdjustMode(v)
                       if (v === 'set') {
-                        setAdjustQuantity(String(selectedProduct.currentStock))
+                        setAdjustQuantity(String(maxInPresentation))
                       } else {
                         setAdjustQuantity('')
                       }
@@ -454,7 +513,8 @@ export function InventoryActionDialog({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="adjust-qty">
-                      {adjustMode === 'set' ? 'Nueva cantidad total' : 'Cantidad a agregar o quitar'} *
+                      {adjustMode === 'set' ? 'Nueva cantidad total' : 'Cantidad a agregar o quitar'}
+                      {selectedPresentation ? ` (en ${getUnitOfMeasureLabel(selectedPresentation.unitLabel)})` : ''} *
                     </Label>
                     <Input
                       id="adjust-qty"
@@ -464,17 +524,18 @@ export function InventoryActionDialog({
                       value={adjustQuantity}
                       onChange={(e) => setAdjustQuantity(e.target.value)}
                     />
-                    {adjustMode === 'set' && adjustQuantity && (
+                    {adjustMode === 'set' && adjustQuantity && !isNaN(parseInt(adjustQuantity)) && (
                       <p className="text-xs text-muted-foreground">
-                        Cambio: <span className={parseInt(adjustQuantity) - selectedProduct.currentStock >= 0 ? 'text-emerald-600' : 'text-red-600'}>
-                          {parseInt(adjustQuantity) - selectedProduct.currentStock >= 0 ? '+' : ''}
-                          {parseInt(adjustQuantity) - selectedProduct.currentStock} unidades
+                        Cambio: <span className={(parseInt(adjustQuantity) * unitsPerPack) - selectedProduct.currentStock >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                          {(parseInt(adjustQuantity) * unitsPerPack) - selectedProduct.currentStock >= 0 ? '+' : ''}
+                          {(parseInt(adjustQuantity) * unitsPerPack) - selectedProduct.currentStock} unidades base
                         </span>
                       </p>
                     )}
                     {adjustMode === 'add' && (
                       <p className="text-xs text-muted-foreground">
                         Usa valores positivos para agregar o negativos para quitar
+                        {selectedPresentation ? ` (en ${getUnitOfMeasureLabel(selectedPresentation.unitLabel)})` : ''}
                       </p>
                     )}
                   </div>

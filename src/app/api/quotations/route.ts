@@ -109,12 +109,12 @@ export async function POST(req: NextRequest) {
 
     // Resolve presentations (Caja x24, etc.) — always from the DB, and must
     // actually belong to the product they're being quoted under.
-    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitsPerPack: number; salePrice: number }>()
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; unitsPerPack: number; salePrice: number }>()
     const presentationIds = data.items.map((i) => i.presentationId).filter((id): id is number => !!id)
     if (presentationIds.length > 0) {
       const presentations = await db.productPresentation.findMany({
         where: { id: { in: presentationIds }, isActive: true, product: { storeId: data.storeId } },
-        select: { id: true, productId: true, name: true, unitsPerPack: true, salePrice: true },
+        select: { id: true, productId: true, name: true, unitLabel: true, unitsPerPack: true, salePrice: true },
       })
       for (const p of presentations) presentationMap.set(p.id, p)
     }

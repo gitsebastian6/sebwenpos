@@ -221,6 +221,9 @@ export async function POST(
             data: {
               storeId: data.storeId,
               productId: item.productId,
+              presentationId: item.presentationId,
+              presentationName: item.presentationName,
+              unitsPerPack: item.unitsPerPack,
               quantity: -baseUnits,
               movementType: 'SALE',
               referenceId: createdOrder.id,

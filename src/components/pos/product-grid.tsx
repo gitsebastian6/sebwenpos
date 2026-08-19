@@ -201,7 +201,7 @@ function ProductCard({ product, currencyCode, cart, onAddToCart, onAddPresentati
             className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
             onClick={() => { onAddPresentation?.(product, presentation); setPickerOpen(false) }}
           >
-            <span className="truncate">{presentation.name}</span>
+            <span className="truncate" title={presentation.name}>{unitOfMeasureLabel(presentation.unitLabel)}</span>
             <span className="font-medium tabular-nums shrink-0 ml-2">{formatCurrency(presentation.salePrice, currencyCode)}</span>
           </button>
         ))}
