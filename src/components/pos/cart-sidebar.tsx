@@ -147,6 +147,7 @@ export interface CartSidebarProps {
   // Callbacks
   printLastOrderTicket: () => void
   returnDialogRef: React.RefObject<POSReturnDialogRef | null>
+  onOpenCashRegister?: () => void
 }
 
 // ─── Cart item key helper ──────────────────────────────
@@ -203,6 +204,7 @@ export function CartSidebar({
   storeId,
   printLastOrderTicket,
   returnDialogRef,
+  onOpenCashRegister,
 }: CartSidebarProps) {
   // ── Wompi POS dialog state ──
   const [posWompiDialogOpen, setPosWompiDialogOpen] = useState(false)
@@ -231,7 +233,7 @@ export function CartSidebar({
   return (
     <>
     <Sheet open={cartSheetOpen} onOpenChange={setCartSheetOpen}>
-      <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0">
+      <SheetContent side="right" className="w-full sm:max-w-md md:max-w-lg flex flex-col p-0">
         <SheetHeader className="px-4 pt-4 pb-3 shrink-0 border-b border-border/40">
           <div className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5 text-emerald-600" />
@@ -272,8 +274,11 @@ export function CartSidebar({
                     >
                       {/* Item info */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-[15px] font-semibold truncate">
+                        <div className="flex items-start gap-1.5">
+                          {/* Nombre completo, sin truncar — antes se cortaba con "..." a una
+                              sola línea; ahora envuelve en varias líneas si hace falta para
+                              mostrar el nombre exacto completo del producto/presentación elegida. */}
+                          <p className="text-[15px] font-semibold leading-snug break-words">
                             {item.name}
                             {item.presentationName && (
                               <span className="text-muted-foreground font-normal"> — {item.presentationName}</span>
@@ -691,7 +696,16 @@ export function CartSidebar({
                   {openCashRegisters.length === 0 ? (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 text-xs">
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                      No hay cajas abiertas. Abre una en Contabilidad → Caja.
+                      <span className="flex-1">No hay cajas abiertas.</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-[11px] px-2 border-amber-400 text-amber-700 dark:text-amber-300 shrink-0"
+                        onClick={onOpenCashRegister}
+                      >
+                        Abrir caja ahora
+                      </Button>
                     </div>
                   ) : (
                     <Select value={selectedCashRegisterId} onValueChange={setSelectedCashRegisterId}>

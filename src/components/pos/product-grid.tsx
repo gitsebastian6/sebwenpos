@@ -90,6 +90,12 @@ interface ProductCardProps {
 
 function ProductCard({ product, currencyCode, cart, onAddToCart, onAddPresentation }: ProductCardProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
+  // Nombre mostrado en el encabezado del menú de presentaciones — cambia con
+  // el mouse (hover) para reflejar la presentación que se está mirando (ej.
+  // "AGUA CRISTAL... X 24" al pasar por la fila de la Paca). Solo aplica con
+  // mouse: en táctil no hay hover, así que se queda en product.name durante
+  // toda la interacción — un toque sigue agregando de inmediato sin cambios.
+  const [previewName, setPreviewName] = useState(product.name)
   const isOutOfStock = product.trackInventory !== false && product.currentStock <= 0
   // Sum every line of this product in the cart (Unidad + any presentations) —
   // a product can now be in the cart as several simultaneous lines.
@@ -180,15 +186,16 @@ function ProductCard({ product, currencyCode, cart, onAddToCart, onAddPresentati
 
   // Has active presentations: clicking opens a small picker (Unidad + each presentation).
   return (
-    <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+    <Popover open={pickerOpen} onOpenChange={(open) => { setPickerOpen(open); if (open) setPreviewName(product.name) }}>
       <PopoverTrigger asChild>
         <Card className={cardClassName}>{cardBody}</Card>
       </PopoverTrigger>
       <PopoverContent className="w-56 p-1.5" align="start">
-        <p className="px-2 py-1 text-xs font-medium text-muted-foreground truncate">{product.name}</p>
+        <p className="px-2 py-1 text-xs font-medium text-muted-foreground truncate">{previewName}</p>
         <button
           type="button"
           className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
+          onMouseEnter={() => setPreviewName(product.name)}
           onClick={() => { onAddToCart?.(product); setPickerOpen(false) }}
         >
           <span>{unitOfMeasureLabel(product.unitLabel)}</span>
@@ -199,6 +206,7 @@ function ProductCard({ product, currencyCode, cart, onAddToCart, onAddPresentati
             key={presentation.id}
             type="button"
             className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
+            onMouseEnter={() => setPreviewName(presentation.name)}
             onClick={() => { onAddPresentation?.(product, presentation); setPickerOpen(false) }}
           >
             <span className="truncate" title={presentation.name}>{unitOfMeasureLabel(presentation.unitLabel)}</span>

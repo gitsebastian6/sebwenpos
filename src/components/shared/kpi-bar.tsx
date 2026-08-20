@@ -48,9 +48,9 @@ export function KPIBar({ context }: { context?: KPIContext }) {
         {items.map((item, i) => (
           <div key={i} className="flex items-center gap-1.5">
             {i > 0 && <Separator orientation="vertical" className="h-4 hidden sm:block" />}
-            <item.icon className={`h-3.5 w-3.5 shrink-0 ${item.color || 'text-muted-foreground'}`} />
+            <item.icon className={`h-4 w-4 shrink-0 ${item.color || 'text-foreground/60'}`} />
             <span className="text-muted-foreground text-xs">{item.label}:</span>
-            <span className={`font-semibold text-xs ${item.color || ''}`}>{item.value}</span>
+            <span className={`font-semibold text-sm ${item.color || ''}`}>{item.value}</span>
           </div>
         ))}
       </div>

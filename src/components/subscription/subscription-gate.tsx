@@ -7,15 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   ShieldX,
-  AlertTriangle,
   Crown,
   Settings,
   Lock,
-  X,
   MessageCircle,
   Phone,
 } from 'lucide-react'
-import { useState } from 'react'
 
 // ── Support contact info (same as subscription-info-card) ──
 const SEBWEN_SUPPORT_PHONE = '573012695457'
@@ -38,7 +35,6 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
   const status = subscription?.subscriptionStatus
   const planName = subscription?.planName
   const graceDaysRemaining = subscription?.graceDaysRemaining
-  const daysRemaining = subscription?.daysRemaining
 
   // ── No subscription at all ──
   if (!hasSubscription) {
@@ -91,38 +87,10 @@ export function SubscriptionGate({ children }: SubscriptionGateProps) {
     )
   }
 
-  // ── PAST_DUE: Warning banner + children ──
-  if (status === 'PAST_DUE') {
-    return (
-      <div className="flex flex-col h-full">
-        <PastDueBanner
-          planName={planName}
-          graceDaysRemaining={graceDaysRemaining}
-          onGoToSettings={() => setView('settings')}
-        />
-        <div className="flex-1 min-h-0">
-          {children}
-        </div>
-      </div>
-    )
-  }
-
-  // ── TRIAL: show a conversion nudge banner in the last 3 days ──
-  if (status === 'TRIAL' && daysRemaining !== null && daysRemaining <= 3) {
-    return (
-      <div className="flex flex-col h-full">
-        <TrialEndingBanner
-          daysRemaining={daysRemaining}
-          onGoToSettings={() => setView('settings')}
-        />
-        <div className="flex-1 min-h-0">
-          {children}
-        </div>
-      </div>
-    )
-  }
-
-  // ── TRIAL (early) or ACTIVE: Render children normally ──
+  // ── PAST_DUE and TRIAL-ending-soon: no banner here — app-shell.tsx already
+  // renders a global top banner for these exact statuses on every view,
+  // including POS. Rendering another one here just duplicated it. This gate
+  // only needs to keep its actual blocking behavior (above).
   return <>{children}</>
 }
 
@@ -216,125 +184,6 @@ function SubscriptionBlockedOverlay({ status, planName, graceDaysRemaining, onGo
   )
 }
 
-// ── TRIAL Ending Banner (conversion nudge, last 3 days) ──
-
-interface TrialEndingBannerProps {
-  daysRemaining: number
-  onGoToSettings: () => void
-}
-
-function TrialEndingBanner({ daysRemaining, onGoToSettings }: TrialEndingBannerProps) {
-  // Banner is persistent — dismissible but shows again on refresh (no localStorage persistence)
-  const [dismissed, setDismissed] = useState(false)
-
-  if (dismissed) return null
-
-  const isLastDay = daysRemaining <= 1
-
-  return (
-    <div className="border-b bg-amber-500/5 border-amber-500/20 dark:bg-amber-500/8 dark:border-amber-500/15">
-      <div className="flex items-center gap-3 px-4 sm:px-6 py-2.5">
-        <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-500/15 flex items-center justify-center shrink-0">
-          <Crown className="h-4 w-4 text-amber-500" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-              Prueba Gratuita por Terminar
-            </p>
-            <Badge
-              variant="outline"
-              className="text-[10px] px-1.5 py-0 h-4 font-semibold shrink-0 border-amber-400 text-amber-600 dark:text-amber-400"
-            >
-              {daysRemaining}d restante{daysRemaining !== 1 ? 's' : ''}
-            </Badge>
-          </div>
-          <p className="text-[11px] text-amber-600/80 dark:text-amber-300/70 mt-0.5">
-            {isLastDay
-              ? 'Tu prueba gratuita termina mañana. Elige un plan para no perder acceso al POS.'
-              : `Te quedan ${daysRemaining} días de prueba gratuita. Elige un plan cuando quieras para seguir sin interrupciones.`
-            }
-          </p>
-        </div>
-        <Button
-          size="sm"
-          className="shrink-0 h-7 text-[11px] bg-amber-600 hover:bg-amber-700 text-white"
-          onClick={onGoToSettings}
-        >
-          Ver Planes
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 shrink-0 hover:bg-transparent text-amber-400 hover:text-amber-300"
-          onClick={() => setDismissed(true)}
-          aria-label="Cerrar aviso"
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-// ── PAST_DUE Warning Banner ──
-
-interface PastDueBannerProps {
-  planName: string | null
-  graceDaysRemaining: number | null
-  onGoToSettings: () => void
-}
-
-function PastDueBanner({ planName, graceDaysRemaining, onGoToSettings }: PastDueBannerProps) {
-  // Banner is persistent — dismissible but shows again on refresh (no localStorage persistence)
-  const [dismissed, setDismissed] = useState(false)
-
-  if (dismissed) return null
-
-  return (
-    <div className="border-b bg-red-500/5 border-red-500/20 dark:bg-red-500/8 dark:border-red-500/15">
-      <div className="flex items-center gap-3 px-4 sm:px-6 py-2.5">
-        <div className="h-8 w-8 rounded-lg bg-red-100 dark:bg-red-500/15 flex items-center justify-center shrink-0">
-          <AlertTriangle className="h-4 w-4 text-red-500" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-xs font-semibold text-red-600 dark:text-red-400">
-              Suscripción Vencida
-            </p>
-            {graceDaysRemaining != null && (
-              <Badge
-                variant="destructive"
-                className="text-[10px] px-1.5 py-0 h-4 font-semibold shrink-0"
-              >
-                {graceDaysRemaining}d de gracia
-              </Badge>
-            )}
-          </div>
-          <p className="text-[11px] text-red-500/80 dark:text-red-300/70 mt-0.5">
-            {graceDaysRemaining != null && graceDaysRemaining > 0
-              ? `Tienes ${graceDaysRemaining} día${graceDaysRemaining !== 1 ? 's' : ''} de gracia para renovar tu plan ${planName || ''}. Después, el acceso al POS será bloqueado.`
-              : 'Tu período de gracia está por terminar. Renueva tu plan para evitar la pérdida de acceso.'
-            }
-          </p>
-        </div>
-        <Button
-          size="sm"
-          className="shrink-0 h-7 text-[11px] bg-red-600 hover:bg-red-700 text-white"
-          onClick={onGoToSettings}
-        >
-          Renovar Plan
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 shrink-0 hover:bg-transparent text-red-400 hover:text-red-300"
-          onClick={() => setDismissed(true)}
-          aria-label="Cerrar aviso"
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div>
-  )
-}
+// TrialEndingBanner and PastDueBanner were removed — app-shell.tsx's global
+// top banner already covers these exact statuses on every view, including
+// POS, so keeping these here just duplicated the same message.

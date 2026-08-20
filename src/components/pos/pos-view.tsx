@@ -29,6 +29,8 @@ import { POSRecentSales } from '@/components/pos/pos-recent-sales'
 import { ProductGrid } from '@/components/pos/product-grid'
 import { CartSidebar } from '@/components/pos/cart-sidebar'
 import { PaymentDialog } from '@/components/pos/payment-dialog'
+import { OpenCashDialog } from '@/components/accounting/dialogs/open-cash-dialog'
+import { useCashRegisterOperations } from '@/hooks/accounting/use-cash-register-operations'
 
 // ─── Main Component ─────────────────────────────────────
 
@@ -63,6 +65,10 @@ export function POSView() {
     customers,
     fetchOpenCashRegisters,
   })
+
+  // ─── Open cash register (reused from Contabilidad → Caja) ──────────
+  const { handleOpenShift, isSavingShift } = useCashRegisterOperations(currencyCode)
+  const [showOpenCashDialog, setShowOpenCashDialog] = useState(false)
 
   // ─── UI states ───────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
@@ -451,6 +457,19 @@ export function POSView() {
         storeId={storeId}
         printLastOrderTicket={printLastOrderTicket}
         returnDialogRef={returnDialogRef}
+        onOpenCashRegister={() => setShowOpenCashDialog(true)}
+      />
+
+      {/* ═══ ABRIR CAJA (sin salir del POS) ═══════════ */}
+      <OpenCashDialog
+        open={showOpenCashDialog}
+        onOpenChange={setShowOpenCashDialog}
+        onOpen={async (balance, notes) => {
+          await handleOpenShift(balance, notes)
+          setShowOpenCashDialog(false)
+          fetchOpenCashRegisters()
+        }}
+        isPending={isSavingShift}
       />
 
       {/* ═══ CHARGE CONFIRMATION DIALOG ═══════════════ */}
