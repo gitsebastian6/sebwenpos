@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 
 export const dynamic = 'force-dynamic'
@@ -88,7 +88,8 @@ function parseRow(raw: Record<string, unknown>): ExcelRow | null {
     } else if (['costPrice', 'salePrice', 'commission', 'currentStock', 'minStock'].includes(field)) {
       const numVal = parseFloat(strVal.replace(/[,$\s]/g, ''))
       if (!isNaN(numVal)) {
-        ;(mapped as Record<string, unknown>)[field] = Math.round(numVal * 100) / 100
+        // Precisión QTY_PRECISION=3 (0.001) para stock/cantidades; precios se redondean a COP entero al crear
+        ;(mapped as Record<string, unknown>)[field] = Math.round(numVal * 1000) / 1000
       }
     } else {
       if (strVal) {
@@ -324,8 +325,8 @@ export async function POST(req: NextRequest) {
             costPrice: Math.round(row.costPrice || 0),
             salePrice: Math.round(row.salePrice || 0),
             commission: Math.round(row.commission || 0),
-            currentStock: Math.round(row.currentStock || 0),
-            minStock: Math.round(row.minStock ?? 5),
+            currentStock: row.currentStock || 0,
+            minStock: row.minStock ?? 5,
             isActive,
           },
         })

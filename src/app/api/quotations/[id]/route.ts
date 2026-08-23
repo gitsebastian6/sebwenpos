@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +12,7 @@ const updateItemSchema = z.object({
   id: z.number().int().positive().optional(),
   productId: z.number().int().positive().optional(),
   productName: z.string().max(200).optional(),
-  quantity: z.number().int().min(1).optional(),
+  quantity: z.number().min(0.001).optional(),
   unitPrice: z.number().int().min(0).optional(),
   notes: z.string().max(200).nullable().optional(),
 })

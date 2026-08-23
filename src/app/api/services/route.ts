@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/api-auth'
-import { z } from 'zod'
+import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { roundQty, toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,9 +21,11 @@ const createServiceSchema = z.object({
 const createTransactionSchema = z.object({
   storeId: z.number().int().positive(),
   serviceId: z.number().int().positive(),
-  quantity: z.number().int().min(1).default(1),
+  // Decimal (QTY_PRECISION=3): los servicios también pueden venderse
+  // fraccionados (ej. 1.5 horas). El total SIEMPRE se recalcula server-side
+  // y se redondea a COP entero.
+  quantity: z.number().positive('La cantidad debe ser mayor a 0').default(1),
   unitPrice: z.number().int().min(0),
-  totalAmount: z.number().int().min(0),
   notes: z.string().max(500).optional().nullable(),
 })
 
@@ -76,7 +79,10 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const { storeId, serviceId, quantity, unitPrice, totalAmount, notes } = parsed.data
+      const { storeId, serviceId, quantity, unitPrice, notes } = parsed.data
+      // Total recalculado en el servidor (nunca confiado del cliente) y
+      // redondeado a COP entero — la cantidad puede ser decimal (1.5 h).
+      const totalAmount = Math.round(toNum(roundQty(quantity)) * unitPrice)
 
       // Auth: verify user has access to this store
       const transactionStoreAccessError = requireStoreAccess(request, storeId)

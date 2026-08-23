@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/api-auth'
-import { z } from 'zod'
+import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { Prisma } from '@prisma/client'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +14,7 @@ const quotationItemSchema = z.object({
   // Extra presentation being quoted (e.g. "Caja x24"). Omit for the
   // product's own base "Unidad" — matches the same pattern as Compras/Órdenes.
   presentationId: z.number().int().positive().optional(),
-  quantity: z.number().int().min(1),
+  quantity: z.number().min(0.001),
   notes: z.string().max(200).optional(),
 })
 
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest) {
 
     // Resolve presentations (Caja x24, etc.) — always from the DB, and must
     // actually belong to the product they're being quoted under.
-    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; unitsPerPack: number; salePrice: number }>()
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; unitsPerPack: Prisma.Decimal; salePrice: number }>()
     const presentationIds = data.items.map((i) => i.presentationId).filter((id): id is number => !!id)
     if (presentationIds.length > 0) {
       const presentations = await db.productPresentation.findMany({
@@ -138,7 +139,8 @@ export async function POST(req: NextRequest) {
       const product = productMap.get(item.productId)!
       const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
       const unitPrice = presentation ? presentation.salePrice : product.salePrice
-      const totalRow = unitPrice * item.quantity
+      // Redondear a COP entero (quantity puede ser decimal; totalRow es Int)
+      const totalRow = Math.round(unitPrice * item.quantity)
       const effectiveTax = product.taxRate
         ? { code: product.taxRate.code, rate: product.taxRate.rate, rateType: product.taxRate.rateType }
         : defaultTaxRate

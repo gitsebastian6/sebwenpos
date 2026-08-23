@@ -1,13 +1,14 @@
+import { requireStoreAccess } from '@/lib/api-auth'
+import { DIAN_CONSUMIDOR_FINAL_NIT, getSoftwareName, getSoftwareProviderNIT, unitCodeFor } from '@/lib/constants'
+import { db } from '@/lib/db'
+import { formatInvoiceNumber } from '@/lib/invoice-utils'
+import { signXMLForDIAN } from '@/lib/invoicing/certificate'
+import { pollForStatus, sendBillAsync } from '@/lib/invoicing/soap-client'
+import { generateUBL21XML } from '@/lib/invoicing/xml-generator'
+import { logger } from '@/lib/logger'
+import { toNum } from '@/lib/stock-math'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { db } from '@/lib/db'
-import { generateUBL21XML } from '@/lib/invoicing/xml-generator'
-import { signXMLForDIAN } from '@/lib/invoicing/certificate'
-import { sendBillAsync, pollForStatus } from '@/lib/invoicing/soap-client'
-import { formatInvoiceNumber } from '@/lib/invoice-utils'
-import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
-import { getSoftwareProviderNIT, getSoftwareName, DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +45,8 @@ export async function POST(
           include: {
             orderItems: {
               include: {
-                product: { select: { name: true } },
+                product: { select: { name: true, unitLabel: true } },
+                presentation: { select: { unitLabel: true } },
                 service: { select: { name: true } },
               },
             },
@@ -105,10 +107,12 @@ export async function POST(
     const xmlItems = (invoice.order?.orderItems || []).map((item, idx) => ({
       lineNumber: idx + 1,
       description: item.product?.name ?? item.service?.name ?? 'Eliminado',
-      quantity: item.quantity,
-      unitPrice: item.taxBase > 0 && item.quantity > 0
-        ? Math.round(item.taxBase / item.quantity)
-        : (Number(item.unitPrice) - (item.taxAmount > 0 ? Math.round(item.taxAmount / Math.max(item.quantity, 1)) : 0)),
+      quantity: toNum(item.quantity),
+      // Código UN/ECE rec20 según la unidad de la línea (KG→KGM, L→LTR…)
+      unitCode: unitCodeFor(item.presentation?.unitLabel ?? item.product?.unitLabel),
+      unitPrice: item.taxBase > 0 && toNum(item.quantity) > 0
+        ? Math.round(item.taxBase / toNum(item.quantity))
+        : (Number(item.unitPrice) - (item.taxAmount > 0 ? Math.round(item.taxAmount / Math.max(toNum(item.quantity), 1)) : 0)),
       lineExtensionAmount: Number(item.totalRow) - Number(item.taxAmount),
       taxCode: item.taxCode || '01',
       taxRate: item.taxRate || 0,

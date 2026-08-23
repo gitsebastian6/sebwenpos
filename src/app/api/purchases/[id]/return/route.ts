@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { add, gt, gte, lt, lte, mul, sub, toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic'
 
 const returnItemSchema = z.object({
   purchaseItemId: z.number().int().positive(),
-  quantity: z.number().int().min(1),
+  quantity: z.number().min(0.001),
 })
 
 const returnSchema = z.object({
@@ -85,16 +86,16 @@ export async function POST(
           { status: 400 },
         )
       }
-      const available = item.quantity - (item.returnedQuantity ?? 0)
-      if (available <= 0) {
+      const available = sub(item.quantity, item.returnedQuantity ?? 0)
+      if (lte(available, 0)) {
         return NextResponse.json(
           { error: `"${item.product?.name || 'Producto'}" ya fue devuelto completamente` },
           { status: 400 },
         )
       }
-      if (reqItem.quantity > available) {
+      if (gt(reqItem.quantity, available)) {
         return NextResponse.json(
-          { error: `Solo se pueden devolver ${available} unidad(es) de "${item.product?.name || 'Producto'}". Ya se devolvieron ${item.returnedQuantity ?? 0}.` },
+          { error: `Solo se pueden devolver ${toNum(available)} unidad(es) de "${item.product?.name || 'Producto'}". Ya se devolvieron ${toNum(item.returnedQuantity ?? 0)}.` },
           { status: 400 },
         )
       }
@@ -107,11 +108,11 @@ export async function POST(
       // as much from the shared stock pool as its own quantity)
       for (const reqItem of body.items) {
         const item = itemMap.get(reqItem.purchaseItemId)!
-        const baseUnits = reqItem.quantity * item.unitsPerPack
-        if (item.product && item.product.currentStock < baseUnits) {
+        const baseUnits = mul(reqItem.quantity, item.unitsPerPack)
+        if (item.product && lt(item.product.currentStock, baseUnits)) {
           throw new Error(
             `Stock insuficiente para devolver "${item.product.name}". ` +
-            `Stock actual: ${item.product.currentStock}, cantidad a devolver: ${baseUnits} unidades base`,
+            `Stock actual: ${toNum(item.product.currentStock)}, cantidad a devolver: ${toNum(baseUnits)} unidades base`,
           )
         }
       }
@@ -124,7 +125,7 @@ export async function POST(
         const item = itemMap.get(reqItem.purchaseItemId)!
         const productName = item.product?.name || 'Producto'
         const displayName = item.presentationName ? `${productName} — ${item.presentationName}` : productName
-        const baseUnits = reqItem.quantity * item.unitsPerPack
+        const baseUnits = mul(reqItem.quantity, item.unitsPerPack)
 
         // Decrement product stock (base units)
         await tx.product.update({
@@ -150,7 +151,7 @@ export async function POST(
             presentationId: item.presentationId,
             presentationName: item.presentationName,
             unitsPerPack: item.unitsPerPack,
-            quantity: -baseUnits,
+            quantity: baseUnits.negated(),
             movementType: 'PURCHASE_RETURN',
             referenceId: purchaseId,
             notes: `Devolución compra ${purchase.consecutiveNumber ? purchase.consecutiveNumber : `#${purchaseId}`} — ${displayName} x${reqItem.quantity}${body.reason ? ` — ${body.reason}` : ''}`,
@@ -165,7 +166,7 @@ export async function POST(
       // Check if ALL items are now fully returned
       const allFullyReturned = purchase.purchaseItems.every((item) => {
         const returnedForThis = body.items.find((r) => r.purchaseItemId === item.id)?.quantity || 0
-        return (item.returnedQuantity ?? 0) + returnedForThis >= item.quantity
+        return gte(add(item.returnedQuantity ?? 0, returnedForThis), item.quantity)
       })
 
       // Update purchase status

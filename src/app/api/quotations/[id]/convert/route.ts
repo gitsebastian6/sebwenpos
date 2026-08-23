@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { lt, mul, toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,10 +70,10 @@ export async function POST(
             { status: 400 },
           )
         }
-        const baseUnitsNeeded = item.quantity * (item.unitsPerPack || 1)
-        if (product.currentStock < baseUnitsNeeded) {
+        const baseUnitsNeeded = mul(item.quantity, item.unitsPerPack || 1)
+        if (lt(product.currentStock, baseUnitsNeeded)) {
           return NextResponse.json(
-            { error: `Stock insuficiente para "${item.productName}" (disponible: ${product.currentStock}, requerido: ${baseUnitsNeeded})` },
+            { error: `Stock insuficiente para "${item.productName}" (disponible: ${toNum(product.currentStock)}, requerido: ${toNum(baseUnitsNeeded)})` },
             { status: 400 },
           )
         }
@@ -216,7 +217,7 @@ export async function POST(
       // Create inventory movements and decrement stock (always in base units)
       for (const item of quotation.items) {
         if (item.productId) {
-          const baseUnits = item.quantity * (item.unitsPerPack || 1)
+          const baseUnits = mul(item.quantity, item.unitsPerPack || 1)
           await tx.inventoryMovement.create({
             data: {
               storeId: data.storeId,
@@ -224,11 +225,11 @@ export async function POST(
               presentationId: item.presentationId,
               presentationName: item.presentationName,
               unitsPerPack: item.unitsPerPack,
-              quantity: -baseUnits,
+              quantity: baseUnits.negated(),
               movementType: 'SALE',
               referenceId: createdOrder.id,
               notes: item.presentationName
-                ? `Venta ${orderNumber} — ${item.presentationName} x${item.quantity} (${baseUnits} uds base) (desde cotización ${quotation.quotationNumber})`
+                ? `Venta ${orderNumber} — ${item.presentationName} x${item.quantity} (${toNum(baseUnits)} uds base) (desde cotización ${quotation.quotationNumber})`
                 : `Venta ${orderNumber} (desde cotización ${quotation.quotationNumber})`,
             },
           })

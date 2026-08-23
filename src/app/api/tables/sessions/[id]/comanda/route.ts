@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
-import { emitComandaItemsAdded, emitComandaItemsUpdated, emitComandaItemsRemoved } from '@/lib/tables-sync'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { add, toNum } from '@/lib/stock-math'
+import { emitComandaItemsAdded, emitComandaItemsRemoved, emitComandaItemsUpdated } from '@/lib/tables-sync'
+import { Prisma } from '@prisma/client'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +18,7 @@ const comandaItemSchema = z.object({
   // Extra presentation of the product (e.g. Six-pack, Caja x24). Omit for
   // the product's own "Unidad" (base) presentation.
   presentationId: z.number().int().positive().optional(),
-  quantity: z.number().int().min(1),
+  quantity: z.number().min(0.001),
   notes: z.string().max(200).optional(),
 }).refine((d) => d.productId || d.serviceId, {
   message: 'Debe especificar productId o serviceId',
@@ -36,7 +38,7 @@ const addComandaItemsSchema = z.object({
 const updateComandaItemsSchema = z.object({
   itemIds: z.array(z.number().int().positive()).min(1, 'Debe seleccionar al menos un item'),
   status: z.enum(['SERVED', 'PAID', 'CANCELLED']).optional(),
-  quantity: z.number().int().min(1).optional(),
+  quantity: z.number().min(0.001).optional(),
   notes: z.string().max(200).optional(),
 }).refine(d => d.status || d.quantity !== undefined || d.notes !== undefined, {
   message: 'Debe especificar al menos un campo para actualizar (status, quantity o notes)',
@@ -150,7 +152,7 @@ export async function POST(
     const serviceItems = data.items.filter((i) => i.serviceId)
 
     // Resolve products
-    const productMap = new Map<number, { id: number; name: string; salePrice: number; currentStock: number }>()
+    const productMap = new Map<number, { id: number; name: string; salePrice: number; currentStock: Prisma.Decimal }>()
     if (productItems.length > 0) {
       const productIds = productItems.map((i) => i.productId!)
       const products = await db.product.findMany({
@@ -164,7 +166,7 @@ export async function POST(
 
     // Resolve presentations (Six-pack, Caja x24, etc.) — price and unitsPerPack
     // conversion always come from the DB, never trusted from the client.
-    const presentationMap = new Map<number, { id: number; productId: number; unitLabel: string; salePrice: number; unitsPerPack: number }>()
+    const presentationMap = new Map<number, { id: number; productId: number; unitLabel: string; salePrice: number; unitsPerPack: Prisma.Decimal }>()
     const presentationIds = productItems.map((i) => i.presentationId).filter((pid): pid is number => !!pid)
     if (presentationIds.length > 0) {
       const presentations = await db.productPresentation.findMany({
@@ -226,7 +228,7 @@ export async function POST(
       serviceId: number | null
       presentationId: number | null
       presentationName: string | null
-      unitsPerPack: number
+      unitsPerPack: Prisma.Decimal | number
       productName: string
       quantity: number
       unitPrice: number
@@ -266,13 +268,13 @@ export async function POST(
       })
 
       if (existingItem) {
-        const newQuantity = existingItem.quantity + item.quantity
+        const newQuantity = add(existingItem.quantity, item.quantity)
         const unitPrice = Number(existingItem.unitPrice)
         await db.comandaItem.update({
           where: { id: existingItem.id },
           data: {
             quantity: newQuantity,
-            total: unitPrice * newQuantity,
+            total: Math.round(unitPrice * toNum(newQuantity)),
           },
         })
         mergeResults.push({ merged: true, itemId: existingItem.id })
@@ -291,7 +293,7 @@ export async function POST(
             productName: product.name,
             quantity: item.quantity,
             unitPrice,
-            total: unitPrice * item.quantity,
+            total: Math.round(unitPrice * toNum(item.quantity)),
             notes: item.notes || null,
             status: 'PENDING',
           })

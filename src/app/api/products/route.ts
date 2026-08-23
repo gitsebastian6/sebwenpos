@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/api-auth'
-import { z } from 'zod'
+import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +13,7 @@ const presentationSchema = z.object({
   unitLabel: z.string().max(10).default('UND'),
   barcode: z.string().max(100).optional().or(z.literal('')),
   sku: z.string().max(100).optional().or(z.literal('')),
-  unitsPerPack: z.number().int().min(1, 'Debe equivaler a 1 o más unidades base'),
+  unitsPerPack: z.number().min(0.001, 'Debe equivaler a 0.001 o más unidades base'),
   salePrice: z.number().int().min(1, 'El precio de venta debe ser mayor a 0'),
   costPrice: z.number().int().min(0).default(0),
   isActive: z.boolean().default(true),
@@ -33,7 +33,7 @@ const createProductSchema = z.object({
   invima: z.string().max(100).nullable().optional(),
   costPrice: z.number().int().min(0).default(0),
   salePrice: z.number().int().min(1, 'El precio de venta debe ser mayor a 0'),
-  minStock: z.number().int().min(0).default(5),
+  minStock: z.number().min(0).default(5),
   trackInventory: z.boolean().default(true),
   trackExpiration: z.boolean().default(false),
   isActive: z.boolean().default(true),

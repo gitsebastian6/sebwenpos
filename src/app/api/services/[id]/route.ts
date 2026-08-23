@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,9 +20,9 @@ const updateServiceSchema = z.object({
 
 const updateTransactionSchema = z.object({
   serviceId: z.number().int().positive().optional(),
-  quantity: z.number().int().min(1).optional(),
+  // Decimal (QTY_PRECISION=3): cantidades fraccionadas permitidas (ej. 1.5 h).
+  quantity: z.number().positive('La cantidad debe ser mayor a 0').optional(),
   unitPrice: z.number().int().min(0).optional(),
-  totalAmount: z.number().int().min(0).optional(),
   notes: z.string().max(500).optional().nullable(),
   status: z.enum(['COMPLETED', 'CANCELLED']).optional(),
 })

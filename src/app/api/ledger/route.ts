@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
@@ -42,13 +43,22 @@ export async function GET(request: NextRequest) {
         ],
       })
 
-      // Calculate balance for each account — single GROUP BY query instead of N+1
-      const balances = await db.$queryRaw<Array<{ ledgerAccountId: number; balance: number }>>`
+      // Calculate balance for each account — single GROUP BY query instead of N+1.
+      // Empty store → skip the raw query entirely (`IN ()` es sintaxis inválida).
+      if (accounts.length === 0) {
+        return NextResponse.json({ accounts: [] })
+      }
+
+      // Prisma.join(ids) expande a placeholders seguros ($1,$2,...). Interpolar un
+      // string "1,2,3" dentro de $queryRaw lo bind-ea como UN parámetro de texto,
+      // lo que en PostgreSQL lanza error de tipos (500) y en SQLite no matcheaba nada.
+      const accountIds = accounts.map(a => a.id)
+      const balances = await db.$queryRaw<Array<{ ledgerAccountId: number; balance: number | string | bigint }>>`
         SELECT 
           journal_entries.ledger_account_id AS "ledgerAccountId",
           SUM(CASE WHEN journal_entries.direction = 'DEBIT' THEN journal_entries.amount ELSE -journal_entries.amount END) AS balance
         FROM journal_entries
-        WHERE journal_entries.ledger_account_id IN (${accounts.map(a => a.id).join(',')})
+        WHERE journal_entries.ledger_account_id IN (${Prisma.join(accountIds)})
         GROUP BY journal_entries.ledger_account_id
       `
 

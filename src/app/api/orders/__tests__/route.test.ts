@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ─── Hoisted mocks ─────────────────────────────────────────────────────────
 
@@ -62,8 +62,8 @@ vi.mock('@/lib/auth', () => ({
   sanitizeUser: vi.fn(),
 }))
 
-import { POST, GET } from '../route'
 import { mockPostRequest, parseResponse } from '@/lib/__tests__/test-helpers'
+import { GET, POST } from '../route'
 
 // ─── Test data ─────────────────────────────────────────────────────────────
 
@@ -254,12 +254,12 @@ describe('POST /api/orders', () => {
     expect(createdItem.presentationName).toBe('Six-pack')
     expect(createdItem.unitsPerPack).toBe(6)
     // Stock/Kardex move in base units: 1 Six-pack = 6 base units, not 1
-    expect(inventoryMovementCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ quantity: -6, movementType: 'SALE' }) })
-    )
-    expect(productUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { currentStock: { decrement: 6 } } })
-    )
+    // (quantity/decrement llegan como Prisma.Decimal — comparar con Number)
+    const movementCall = inventoryMovementCreate.mock.calls[0][0]
+    expect(Number(movementCall.data.quantity)).toBe(-6)
+    expect(movementCall.data.movementType).toBe('SALE')
+    const productCall = productUpdate.mock.calls[0][0]
+    expect(Number(productCall.data.currentStock.decrement)).toBe(6)
   })
 
   it('rejects a presentationId that does not belong to the given product (400)', async () => {

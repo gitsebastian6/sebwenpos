@@ -1,11 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { generateInvoicePDF, type InvoicePDFData } from '@/lib/invoicing/pdf-generator'
-import { sendInvoiceEmail } from '@/lib/invoicing/email-sender'
-import { formatInvoiceNumber } from '@/lib/invoice-utils'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
+import { formatInvoiceNumber } from '@/lib/invoice-utils'
+import { sendInvoiceEmail } from '@/lib/invoicing/email-sender'
+import { generateInvoicePDF, type InvoicePDFData } from '@/lib/invoicing/pdf-generator'
+import { logger } from '@/lib/logger'
+import { toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -95,7 +96,7 @@ export async function POST(
     const items = (order?.orderItems || []).map((item, idx) => ({
       lineNumber: idx + 1,
       description: item.product?.name ?? item.service?.name ?? 'Eliminado',
-      quantity: item.quantity,
+      quantity: toNum(item.quantity),
       unitPrice: Number(item.unitPrice),
       totalRow: Number(item.totalRow),
       taxCode: item.taxCode || undefined,

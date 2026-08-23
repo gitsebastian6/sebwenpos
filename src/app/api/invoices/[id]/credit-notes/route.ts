@@ -1,14 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
 import {
-  formatInvoiceNumber,
-  generateCUFE,
-  generateQRCodeURL,
-  getAppBaseUrl,
-  type TaxBreakdownItem,
+    formatInvoiceNumber,
+    generateCUFE,
+    generateQRCodeURL,
+    getAppBaseUrl,
+    type TaxBreakdownItem,
 } from '@/lib/invoice-utils'
+import { div, gt, lte, mul, sub, toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +22,7 @@ const RETURN_CODE_LABELS: Record<string, string> = {
 
 const creditNoteItemSchema = z.object({
   orderItemId: z.number().int().positive(),
-  quantity: z.number().int().min(1),
+  quantity: z.number().min(0.001),
 })
 
 const createCreditNoteSchema = z.object({
@@ -273,20 +274,20 @@ export async function POST(
           { status: 400 },
         )
       }
-      const available = item.quantity - (item.returnedQuantity ?? 0)
-      if (available <= 0) {
+      const available = sub(item.quantity, item.returnedQuantity ?? 0)
+      if (lte(available, 0)) {
         const name = item.product?.name ?? item.service?.name ?? 'Producto'
         return NextResponse.json(
           { error: `"${name}" ya fue devuelto completamente` },
           { status: 400 },
         )
       }
-      if (reqItem.quantity > available) {
+      if (gt(reqItem.quantity, available)) {
         const name = item.product?.name ?? item.service?.name ?? 'Producto'
         return NextResponse.json(
           {
-            error: `Solo se pueden devolver ${available} unidad(es) de "${name}". ` +
-              `Ya se devolvieron ${item.returnedQuantity ?? 0} de ${item.quantity} original(es).`,
+            error: `Solo se pueden devolver ${toNum(available)} unidad(es) de "${name}". ` +
+              `Ya se devolvieron ${toNum(item.returnedQuantity ?? 0)} de ${toNum(item.quantity)} original(es).`,
           },
           { status: 400 },
         )
@@ -317,10 +318,10 @@ export async function POST(
       const productName = item.presentationName ? `${baseName} — ${item.presentationName}` : baseName
 
       // Proportional calculation: returned qty / original qty
-      const ratio = reqItem.quantity / item.quantity
-      const returnedTotal = Math.round(item.totalRow * ratio)
-      const returnedTaxBase = Math.round((item.taxBase || 0) * ratio)
-      const returnedTaxAmount = Math.round((item.taxAmount || 0) * ratio)
+      const ratio = div(reqItem.quantity, item.quantity)
+      const returnedTotal = Math.round(item.totalRow * toNum(ratio))
+      const returnedTaxBase = Math.round((item.taxBase || 0) * toNum(ratio))
+      const returnedTaxAmount = Math.round((item.taxAmount || 0) * toNum(ratio))
 
       returnedItemsData.push({
         orderItemId: item.id,
@@ -479,7 +480,7 @@ export async function POST(
         const item = itemMap.get(reqItem.orderItemId)!
         if (item.productId) {
           const unitsPerPack = item.unitsPerPack || 1
-          const baseUnits = reqItem.quantity * unitsPerPack
+          const baseUnits = mul(reqItem.quantity, unitsPerPack)
 
           // Increment product stock
           await tx.product.update({

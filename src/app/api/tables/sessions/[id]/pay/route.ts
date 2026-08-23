@@ -1,11 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
 import { generateOrderNumber } from '@/lib/auth'
-import { z } from 'zod'
+import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess, getAuthUser } from '@/lib/api-auth'
+import { mul, toNum } from '@/lib/stock-math'
 import { isSubscriptionActive } from '@/lib/subscription-helpers'
-import { emitPaymentProcessed, emitComandaItemsUpdated } from '@/lib/tables-sync'
+import { emitComandaItemsUpdated, emitPaymentProcessed } from '@/lib/tables-sync'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -305,7 +306,7 @@ export async function POST(
       //    unitsPerPack base units from the single shared stock pool, not 1.
       for (const item of productComandaItems) {
         const unitsPerPack = item.unitsPerPack || 1
-        const baseUnits = item.quantity * unitsPerPack
+        const baseUnits = mul(item.quantity, unitsPerPack)
         await tx.inventoryMovement.create({
           data: {
             storeId: data.storeId,
@@ -313,7 +314,7 @@ export async function POST(
             presentationId: item.presentationId,
             presentationName: item.presentationName,
             unitsPerPack,
-            quantity: -baseUnits,
+            quantity: baseUnits.negated(),
             movementType: 'SALE',
             referenceId: createdOrder.id,
             notes: `Venta ${orderNumber} - ${tableLabel}`,
@@ -331,7 +332,7 @@ export async function POST(
           data: {
             storeId: data.storeId,
             serviceId: item.serviceId,
-            quantity: item.quantity,
+            quantity: toNum(item.quantity),
             unitPrice: Number(item.unitPrice),
             totalAmount: Number(item.total),
             notes: `Venta ${orderNumber} - ${tableLabel}`,
@@ -502,12 +503,12 @@ export async function POST(
     // Calculate profitability (only for product items — services have no costPrice)
     const profitability = productComandaItems.map((item) => ({
       productName: item.productName,
-      quantity: item.quantity,
+      quantity: toNum(item.quantity),
       unitPrice: Number(item.unitPrice),
       costPrice: Number(item.product?.costPrice ?? 0),
       revenue: Number(item.total),
-      cogs: Number(item.product?.costPrice ?? 0) * item.quantity,
-      grossProfit: (Number(item.unitPrice) - Number(item.product?.costPrice ?? 0)) * item.quantity,
+      cogs: Number(item.product?.costPrice ?? 0) * toNum(item.quantity),
+      grossProfit: (Number(item.unitPrice) - Number(item.product?.costPrice ?? 0)) * toNum(item.quantity),
     }))
 
     const totalCogs = profitability.reduce((sum, p) => sum + p.cogs, 0)

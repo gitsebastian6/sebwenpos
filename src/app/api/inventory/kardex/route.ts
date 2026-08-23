@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
+import { requireStoreAccess } from '@/lib/api-auth'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
+import { toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,22 +85,22 @@ export async function GET(request: NextRequest) {
         where: { productId, createdAt: { lt: beforeDate } },
         select: { quantity: true },
       })
-      runningBalance = prevMovements.reduce((s, m) => s + m.quantity, 0)
+      runningBalance = prevMovements.reduce((s, m) => s + toNum(m.quantity), 0)
     }
 
     // Calculate running balance
     const kardexMovements = movements.map((m) => {
-      runningBalance += m.quantity
+      runningBalance += toNum(m.quantity)
       return {
         id: m.id,
         date: m.createdAt.toISOString(),
         type: m.movementType,
-        quantity: m.quantity,
+        quantity: toNum(m.quantity),
         balance: runningBalance,
         notes: m.notes || '',
         referenceId: m.referenceId,
         presentationName: m.presentationName,
-        unitsPerPack: m.unitsPerPack,
+        unitsPerPack: toNum(m.unitsPerPack),
       }
     })
 

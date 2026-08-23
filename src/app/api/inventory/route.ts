@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,7 +67,7 @@ const createMovementSchema = z.object({
   storeId: z.number().int().positive(),
   productId: z.number().int().positive(),
   movementType: z.enum(['PURCHASE', 'ADJUSTMENT', 'RETURN', 'SALE']),
-  quantity: z.number().int(),
+  quantity: z.number(),
   notes: z.string().optional(),
   referenceId: z.number().int().optional(),
 })

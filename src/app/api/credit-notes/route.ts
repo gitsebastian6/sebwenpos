@@ -1,17 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/api-auth'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
+import { DIAN_CONSUMIDOR_FINAL_NIT, getSoftwareProviderNIT } from '@/lib/constants'
+import { db } from '@/lib/db'
+import { decryptField } from '@/lib/field-encryption'
 import {
-  generateCUDFE,
-  generateQRCodeURL,
-  formatInvoiceNumber,
-  validateNITDV,
+    formatInvoiceNumber,
+    generateCUDFE,
+    generateQRCodeURL,
+    validateNITDV,
 } from '@/lib/invoice-utils'
 import { getNextCreditNoteConsecutive } from '@/lib/invoicing/credit-note-counter'
-import { decryptField } from '@/lib/field-encryption'
-import { getSoftwareProviderNIT, DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
+import { logger } from '@/lib/logger'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic'
 
 const creditNoteItemSchema = z.object({
   description: z.string().max(500),
-  quantity: z.number().int().positive(),
+  quantity: z.number().positive(),
   unitPrice: z.number().int().min(0),
   taxCode: z.string().max(10).optional().default('01'),
   taxRate: z.number().int().min(0).max(100).optional().default(0),

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { formatInvoiceNumber, getAppBaseUrl } from '@/lib/invoice-utils'
+import { formatQty } from '@/lib/format'
 import QRCode from 'qrcode'
 
 export const dynamic = 'force-dynamic'
@@ -164,7 +165,7 @@ tr:nth-child(even) td{background:#fafbfc}
     <div class="section-body" style="padding:0">
       <table>
         <thead><tr><th>#</th><th>Descripción</th><th class="text-center">Cant.</th><th class="text-right">P. Unitario</th><th class="text-right">Total</th></tr></thead>
-        <tbody>${items.map((i, idx) => `<tr><td>${idx + 1}</td><td>${i.productName || 'Producto'}</td><td class="text-center">${i.quantity}</td><td class="text-right">${fmt(i.unitPrice)}</td><td class="text-right">${fmt(i.unitPrice * i.quantity)}</td></tr>`).join('')}</tbody>
+        <tbody>${items.map((i, idx) => `<tr><td>${idx + 1}</td><td>${i.productName || 'Producto'}</td><td class="text-center">${formatQty(i.quantity)}</td><td class="text-right">${fmt(i.unitPrice)}</td><td class="text-right">${fmt(i.unitPrice * i.quantity)}</td></tr>`).join('')}</tbody>
       </table>
     </div>
   </div>

@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const totalUnitsReset = productsWithStock.reduce((sum, p) => sum + p.currentStock, 0)
+    const totalUnitsReset = productsWithStock.reduce((sum, p) => sum + toNum(p.currentStock), 0)
 
     await db.$transaction(async (tx) => {
       // 1. Reset all product stock to 0

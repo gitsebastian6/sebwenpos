@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { lt, sub, toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,22 +57,22 @@ export async function GET(req: NextRequest) {
 
     // A lot that was returned to the supplier in full is no longer on hand.
     const result = items
-      .filter((item) => item.returnedQuantity < item.quantity)
+      .filter((item) => lt(item.returnedQuantity, item.quantity))
       .map((item) => ({
         id: item.id,
         productId: item.product.id,
         productName: item.product.name,
         productSku: item.product.sku,
         productBarcode: item.product.barcode,
-        productCurrentStock: item.product.currentStock,
+        productCurrentStock: toNum(item.product.currentStock),
         productIsActive: item.product.isActive,
         presentationName: item.presentationName,
         lotNumber: item.lotNumber,
         expiryDate: item.expiryDate!.toISOString(),
         manufacturingDate: item.manufacturingDate?.toISOString() || null,
-        quantityReceived: item.quantity,
-        returnedQuantity: item.returnedQuantity,
-        remainingInLot: item.quantity - item.returnedQuantity,
+        quantityReceived: toNum(item.quantity),
+        returnedQuantity: toNum(item.returnedQuantity),
+        remainingInLot: toNum(sub(item.quantity, item.returnedQuantity)),
         purchaseId: item.purchase.id,
         purchaseConsecutive: item.purchase.consecutiveNumber,
         purchaseDate: item.purchase.date.toISOString(),

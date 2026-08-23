@@ -1,11 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { generateOrderNumber } from '@/lib/auth'
-import { requireStoreAccess, getAuthUser } from '@/lib/api-auth'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
+import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
 import { auditLogFromRequest } from '@/lib/audit-logger'
+import { generateOrderNumber } from '@/lib/auth'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { add, lt, mul, toNum } from '@/lib/stock-math'
 import { isSubscriptionActive } from '@/lib/subscription-helpers'
+import { Prisma } from '@prisma/client'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +19,7 @@ const orderItemSchema = z.object({
   // Extra presentation of the product (e.g. Six-pack, Caja x24). Omit for
   // the product's own "Unidad" (base) presentation.
   presentationId: z.number().int().positive().optional(),
-  quantity: z.number().int().min(1),
+  quantity: z.number().min(0.001),
   notes: z.string().max(200).optional(),
 }).refine((d) => d.productId || d.serviceId, {
   message: 'Debe especificar productId o serviceId',
@@ -64,7 +66,7 @@ export async function POST(req: NextRequest) {
     const serviceItems = data.items.filter((i) => i.serviceId)
 
     // Resolve product info (including tax rate)
-    const productMap = new Map<number, { id: number; name: string; salePrice: number; currentStock: number; trackInventory: boolean; taxRate: { id: number; code: string; rate: number; rateType: string; applyTo: string } | null }>()
+    const productMap = new Map<number, { id: number; name: string; salePrice: number; currentStock: Prisma.Decimal; trackInventory: boolean; taxRate: { id: number; code: string; rate: number; rateType: string; applyTo: string } | null }>()
     if (productItems.length > 0) {
       const productIds = productItems.map((i) => i.productId!)
       const products = await db.product.findMany({
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest) {
     // conversion always come from the DB, never trusted from the client.
     // Tax rate is NOT resolved per-presentation: it's inherited from the
     // parent product (same product, same tax treatment regardless of packaging).
-    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; salePrice: number; unitsPerPack: number }>()
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; salePrice: number; unitsPerPack: Prisma.Decimal }>()
     const presentationIds = productItems.map((i) => i.presentationId).filter((id): id is number => !!id)
     if (presentationIds.length > 0) {
       const presentations = await db.productPresentation.findMany({
@@ -134,17 +136,17 @@ export async function POST(req: NextRequest) {
     // product — a product's stock is a single shared pool, so e.g. "1
     // Six-pack + 2 unidades sueltas" of the same product must be checked
     // together (6 + 2 = 8 base units), not as two independent lines.
-    const baseUnitsByProduct = new Map<number, number>()
+    const baseUnitsByProduct = new Map<number, Prisma.Decimal>()
     for (const item of productItems) {
       const unitsPerPack = item.presentationId ? presentationMap.get(item.presentationId)!.unitsPerPack : 1
-      baseUnitsByProduct.set(item.productId!, (baseUnitsByProduct.get(item.productId!) ?? 0) + item.quantity * unitsPerPack)
+      baseUnitsByProduct.set(item.productId!, add(baseUnitsByProduct.get(item.productId!) ?? 0, mul(item.quantity, unitsPerPack)))
     }
     for (const [productId, baseUnits] of baseUnitsByProduct) {
       const product = productMap.get(productId)!
       if (product.trackInventory === false) continue // no stock control — always sellable
-      if (product.currentStock < baseUnits) {
+      if (lt(product.currentStock, baseUnits)) {
         return NextResponse.json(
-          { error: `Stock insuficiente para "${product.name}" (disponible: ${product.currentStock} unidades)` },
+          { error: `Stock insuficiente para "${product.name}" (disponible: ${toNum(product.currentStock)} unidades)` },
           { status: 400 },
         )
       }
@@ -194,7 +196,9 @@ export async function POST(req: NextRequest) {
         const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
         const unitPrice = presentation ? presentation.salePrice : product.salePrice
         const unitsPerPack = presentation ? presentation.unitsPerPack : 1
-        const totalRow = unitPrice * item.quantity
+        // Redondear a COP entero: quantity puede ser decimal (0.333 KG × $10,000 = 3330.0000000000005)
+        // y totalRow es Int en el schema (Postgres rechaza floats en INTEGER)
+        const totalRow = Math.round(unitPrice * item.quantity)
         // Determine tax rate: product's own rate > store default > none
         // (presentations don't carry their own tax rate — same product, same tax treatment)
         const effectiveTax = product.taxRate
@@ -230,7 +234,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         const service = serviceMap.get(item.serviceId!)!
-        const totalRow = service.price * item.quantity
+        const totalRow = Math.round(service.price * item.quantity)
         // Services use fallback service tax rate (store default for services)
         const effectiveTax = fallbackServiceTaxRate
           ? { code: fallbackServiceTaxRate.code, rate: fallbackServiceTaxRate.rate, rateType: fallbackServiceTaxRate.rateType }
@@ -421,7 +425,7 @@ export async function POST(req: NextRequest) {
       for (const item of productItems) {
         const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
         const unitsPerPack = presentation ? presentation.unitsPerPack : 1
-        const baseUnits = item.quantity * unitsPerPack
+        const baseUnits = mul(item.quantity, unitsPerPack)
         const trackInventory = productMap.get(item.productId!)!.trackInventory
 
         // Re-validate stock inside transaction to prevent race condition.
@@ -434,8 +438,8 @@ export async function POST(req: NextRequest) {
         if (!freshProduct) {
           throw new Error('Producto no encontrado. Intenta de nuevo.')
         }
-        if (trackInventory !== false && freshProduct.currentStock < baseUnits) {
-          throw new Error(`Stock insuficiente para "${freshProduct.name}" (disponible: ${freshProduct.currentStock}). Intenta de nuevo.`)
+        if (trackInventory !== false && lt(freshProduct.currentStock, baseUnits)) {
+          throw new Error(`Stock insuficiente para "${freshProduct.name}" (disponible: ${toNum(freshProduct.currentStock)}). Intenta de nuevo.`)
         }
 
         await tx.inventoryMovement.create({
@@ -445,11 +449,11 @@ export async function POST(req: NextRequest) {
             presentationId: presentation ? presentation.id : null,
             presentationName: presentation ? presentation.name : null,
             unitsPerPack,
-            quantity: -baseUnits, // negative for sale, always in base units
+            quantity: baseUnits.negated(), // negative for sale, always in base units
             movementType: 'SALE',
             referenceId: createdOrder.id,
             notes: presentation
-              ? `Venta ${orderNumber} — ${presentation.name} x${item.quantity} (${baseUnits} uds base)`
+              ? `Venta ${orderNumber} — ${presentation.name} x${item.quantity} (${toNum(baseUnits)} uds base)`
               : `Venta ${orderNumber}`,
           },
         })

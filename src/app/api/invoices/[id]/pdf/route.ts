@@ -1,10 +1,11 @@
+import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
+import { formatInvoiceNumber } from '@/lib/invoice-utils'
+import { generateInvoicePDF, type InvoicePDFData } from '@/lib/invoicing/pdf-generator'
+import { logger } from '@/lib/logger'
+import { toNum } from '@/lib/stock-math'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { db } from '@/lib/db'
-import { generateInvoicePDF, type InvoicePDFData } from '@/lib/invoicing/pdf-generator'
-import { formatInvoiceNumber } from '@/lib/invoice-utils'
-import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,7 +82,7 @@ export async function GET(
         const baseName = item.product?.name ?? item.service?.name ?? 'Eliminado'
         return item.presentationName ? `${baseName} — ${item.presentationName}` : baseName
       })(),
-      quantity: item.quantity,
+      quantity: toNum(item.quantity),
       unitPrice: Number(item.unitPrice),
       totalRow: Number(item.totalRow),
       taxCode: item.taxCode || undefined,

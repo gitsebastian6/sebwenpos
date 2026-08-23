@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ─── Hoisted mocks ─────────────────────────────────────────────────────────
 
@@ -42,8 +42,8 @@ vi.mock('@/lib/db', () => ({ db: mockDb }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }))
 vi.mock('@/lib/api-auth', () => mockApiAuth)
 
-import { PUT } from '../route'
 import { mockPostRequest, parseResponse } from '@/lib/__tests__/test-helpers'
+import { PUT } from '../route'
 
 // A purchase with one item: originally bought 3 (of a Caja x24 presentation,
 // unitsPerPack=24), 2 already returned — so only 1 is still "available" in stock.
@@ -119,7 +119,8 @@ describe('PUT /api/purchases/[id]', () => {
 
     expect(status).toBe(200)
     // qtyDiff = 4 - 3 (original) = 1 -> 1 * unitsPerPack(24) = 24 base units
-    expect(getCapturedProductUpdate().data.currentStock).toEqual({ increment: 24 })
+    // (increment llega como Prisma.Decimal — comparar con Number)
+    expect(Number(getCapturedProductUpdate().data.currentStock.increment)).toBe(24)
   })
 
   it('rejects reducing the purchased quantity below what has already been returned', async () => {

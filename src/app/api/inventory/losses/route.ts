@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { lt } from '@/lib/stock-math'
+import { Prisma } from '@prisma/client'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +13,7 @@ const lossSchema = z.object({
   storeId: z.number().int().positive(),
   productId: z.number().int().positive(),
   presentationId: z.number().int().positive().optional(),
-  quantity: z.number().int().positive(), // always in BASE units
+  quantity: z.number().positive(), // always in BASE units
   reason: z.string().optional(),
   notes: z.string().optional(),
 })
@@ -35,7 +37,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 })
     }
 
-    let presentationSnapshot: { name: string; unitsPerPack: number } | null = null
+    let presentationSnapshot: { name: string; unitsPerPack: Prisma.Decimal | number } | null = null
     if (data.presentationId) {
       const presentation = await db.productPresentation.findFirst({
         where: { id: data.presentationId, productId: data.productId },
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Prevent stock from going below 0
-    if (product.currentStock < data.quantity) {
+    if (lt(product.currentStock, data.quantity)) {
       return NextResponse.json(
         { error: 'Stock insuficiente. No se puede registrar más pérdidas que el stock disponible.' },
         { status: 400 }

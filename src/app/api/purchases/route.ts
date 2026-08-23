@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
 import { db } from '@/lib/db'
-import { requireStoreAccess, getAuthUser } from '@/lib/api-auth'
-import { z } from 'zod'
 import { logger } from '@/lib/logger'
+import { add, div, mul, toDec, toNum } from '@/lib/stock-math'
+import { Prisma } from '@prisma/client'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +16,7 @@ const purchaseItemSchema = z.object({
   // product's own base "Unidad" — quantity/unitCost are always denominated
   // in whichever of the two this is; stock/CPP convert to base units below.
   presentationId: z.number().int().positive().optional(),
-  quantity: z.number().int().positive('La cantidad debe ser mayor a 0'),
+  quantity: z.number().positive('La cantidad debe ser mayor a 0'),
   unitCost: z.number().int().min(0, 'El costo unitario no puede ser negativo'),
   ivaRate: z.number().int().min(0).max(100).default(19),
   discountAmount: z.number().int().min(0).default(0),
@@ -293,7 +295,7 @@ export async function POST(req: NextRequest) {
 
     // Resolve presentations (Caja x24, etc.) — always from the DB, and must
     // actually belong to the product they're being purchased under.
-    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; unitsPerPack: number }>()
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; unitsPerPack: Prisma.Decimal }>()
     const presentationIds = data.items.map((i) => i.presentationId).filter((id): id is number => !!id)
     if (presentationIds.length > 0) {
       const presentations = await db.productPresentation.findMany({
@@ -329,7 +331,8 @@ export async function POST(req: NextRequest) {
     // Build items with calculated fields
     const itemsWithCalculations = data.items.map((item) => {
       const ivaAmount = Math.round(item.unitCost * item.quantity * item.ivaRate / 100)
-      const total = item.unitCost * item.quantity + ivaAmount - item.discountAmount
+      // Redondear a COP entero (quantity puede ser decimal; total es Int)
+      const total = Math.round(item.unitCost * item.quantity) + ivaAmount - item.discountAmount
       return {
         ...item,
         ivaAmount,
@@ -337,8 +340,8 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    // Calculate purchase totals
-    const subtotal = itemsWithCalculations.reduce((sum, item) => sum + item.unitCost * item.quantity, 0)
+    // Calculate purchase totals (redondear a COP entero — quantity puede ser decimal)
+    const subtotal = itemsWithCalculations.reduce((sum, item) => sum + Math.round(item.unitCost * item.quantity), 0)
     const totalIva = itemsWithCalculations.reduce((sum, item) => sum + item.ivaAmount, 0)
     const totalDiscount = itemsWithCalculations.reduce((sum, item) => sum + item.discountAmount, 0)
 
@@ -425,7 +428,7 @@ export async function POST(req: NextRequest) {
 
         const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
         const unitsPerPack = presentation ? presentation.unitsPerPack : 1
-        const baseUnits = item.quantity * unitsPerPack
+        const baseUnits = mul(item.quantity, unitsPerPack)
 
         // Costo Promedio Ponderado (CPP): never overwrite with the latest purchase
         // price alone — that inflates/deflates margin on existing stock. The new
@@ -444,11 +447,19 @@ export async function POST(req: NextRequest) {
           where: { id: item.productId },
           select: { costPrice: true, currentStock: true },
         })
-        const existingStock = Math.max(0, liveProduct?.currentStock ?? 0)
+        // Stock nunca negativo para el CPP (Math.max(0, ...) con Decimal)
+        const existingStock = toDec(liveProduct?.currentStock).isNegative()
+          ? new Prisma.Decimal(0)
+          : toDec(liveProduct?.currentStock)
         const existingCost = liveProduct?.costPrice ?? productMeta.costPrice
-        const newCostPrice = Math.round(
-          (existingStock * existingCost + item.quantity * item.unitCost) / (existingStock + baseUnits)
-        )
+        // CPP = (stockActual × costoActual + cantidad × costoNuevo) / (stockActual + unidadesBase)
+        // Guard de división por cero: si no hay stock previo ni unidades entrantes,
+        // el nuevo costo es simplemente el costo de la línea (evita Infinity/NaN).
+        const totalCost = add(mul(existingStock, existingCost), mul(item.quantity, item.unitCost))
+        const totalUnits = add(existingStock, baseUnits)
+        const newCostPrice = totalUnits.isZero()
+          ? item.unitCost
+          : Math.round(toNum(div(totalCost, totalUnits)))
 
         // Update stock (in base units) and cost price
         await tx.product.update({

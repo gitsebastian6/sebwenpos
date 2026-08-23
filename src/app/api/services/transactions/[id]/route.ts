@@ -1,15 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { roundQty, toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
 const updateTransactionSchema = z.object({
-  quantity: z.number().int().min(1).optional(),
+  // Decimal (QTY_PRECISION=3): cantidades fraccionadas permitidas (ej. 1.5 h).
+  // El total se recalcula server-side si cambia quantity o unitPrice.
+  quantity: z.number().positive('La cantidad debe ser mayor a 0').optional(),
   unitPrice: z.number().int().min(0).optional(),
-  totalAmount: z.number().int().min(0).optional(),
   notes: z.string().max(500).optional().nullable(),
   status: z.enum(['COMPLETED', 'CANCELLED']).optional(),
 })
@@ -40,12 +42,18 @@ export async function PUT(
     const storeAccessErr = requireStoreAccess(req, existing.service.storeId)
     if (storeAccessErr) return storeAccessErr
 
+    // Si cambia la cantidad o el precio unitario, el total se recalcula aquí
+    // (nunca confiado del cliente) y se redondea a COP entero.
+    const newQuantity = data.quantity !== undefined ? roundQty(data.quantity) : existing.quantity
+    const newUnitPrice = data.unitPrice !== undefined ? data.unitPrice : existing.unitPrice
+    const newTotalAmount = Math.round(toNum(newQuantity) * newUnitPrice)
+
     const updated = await db.serviceTransaction.update({
       where: { id: sid },
       data: {
         ...(data.quantity !== undefined && { quantity: data.quantity }),
         ...(data.unitPrice !== undefined && { unitPrice: data.unitPrice }),
-        ...(data.totalAmount !== undefined && { totalAmount: data.totalAmount }),
+        totalAmount: newTotalAmount,
         ...(data.notes !== undefined && { notes: data.notes }),
         ...(data.status !== undefined && { status: data.status }),
       },
@@ -55,7 +63,7 @@ export async function PUT(
     return NextResponse.json({
       id: updated.id,
       serviceId: updated.serviceId,
-      quantity: updated.quantity,
+      quantity: toNum(updated.quantity),
       unitPrice: Number(updated.unitPrice),
       totalAmount: Number(updated.totalAmount),
       notes: updated.notes,

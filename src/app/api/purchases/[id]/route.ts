@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess, getAuthUser } from '@/lib/api-auth'
+import { add, div, gt, lt, lte, mul, sub, toDec, toNum } from '@/lib/stock-math'
+import { Prisma } from '@prisma/client'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +14,7 @@ const editPurchaseItemSchema = z.object({
   id: z.number().int().positive().optional(), // Existing item id (for update)
   productId: z.number().int().positive().optional(), // For new items
   presentationId: z.number().int().positive().optional(), // For new items only — existing lines keep their original presentation
-  quantity: z.number().int().positive('La cantidad debe ser mayor a 0').optional(),
+  quantity: z.number().positive('La cantidad debe ser mayor a 0').optional(),
   unitCost: z.number().int().min(0, 'El costo unitario no puede ser negativo').optional(),
   ivaRate: z.number().int().min(0).max(100).optional(),
   discountAmount: z.number().int().min(0).optional(),
@@ -269,7 +271,7 @@ export async function PUT(
 
     // Resolve presentations requested for NEW items (existing lines keep the
     // presentation they were originally purchased under — never re-resolved here).
-    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; unitsPerPack: number }>()
+    const presentationMap = new Map<number, { id: number; productId: number; name: string; unitLabel: string; unitsPerPack: Prisma.Decimal }>()
     if (newItems !== undefined) {
       const newPresentationIds = newItems
         .filter((i) => !i.id && i.presentationId)
@@ -316,8 +318,8 @@ export async function PUT(
         if (item.id) {
           // Existing item being updated
           const oldItem = oldItemMap.get(item.id)!
-          const qtyIncrease = (item.quantity || oldItem.quantity) - oldItem.quantity
-          if (qtyIncrease > 0 && oldItem.product) {
+          const qtyIncrease = sub(item.quantity || oldItem.quantity, oldItem.quantity)
+          if (gt(qtyIncrease, 0) && oldItem.product) {
             // No stock check needed for increases — they're from purchases
           }
         }
@@ -358,7 +360,7 @@ export async function PUT(
         // Handle removed items: decrement stock (in base units — this item may
         // have been a presentation, e.g. "Caja x24")
         for (const removed of removedItems) {
-          const removedBaseUnits = (removed.quantity - removed.returnedQuantity) * removed.unitsPerPack
+          const removedBaseUnits = mul(sub(removed.quantity, removed.returnedQuantity), removed.unitsPerPack)
           await tx.product.update({
             where: { id: removed.productId },
             data: { currentStock: { decrement: removedBaseUnits } },
@@ -370,7 +372,7 @@ export async function PUT(
               presentationId: removed.presentationId,
               presentationName: removed.presentationName,
               unitsPerPack: removed.unitsPerPack,
-              quantity: -removedBaseUnits,
+              quantity: removedBaseUnits.negated(),
               movementType: 'ADJUSTMENT',
               referenceId: pid,
               notes: `Eliminado de compra #${purchase.consecutiveNumber || pid} — ${removed.product?.name}${removed.presentationName ? ` — ${removed.presentationName}` : ''}`,
@@ -398,8 +400,9 @@ export async function PUT(
               ? (item.manufacturingDate ? new Date(item.manufacturingDate) : null)
               : oldItem.manufacturingDate
 
-            const ivaAmount = Math.round(newUnitCost * newQuantity * newIvaRate / 100)
-            const total = Math.max(0, newUnitCost * newQuantity + ivaAmount - newDiscountAmount)
+            const ivaAmount = Math.round(toNum(newUnitCost) * toNum(newQuantity) * newIvaRate / 100)
+            // Redondear a COP entero (quantity puede ser decimal; total es Int)
+            const total = Math.max(0, Math.round(toNum(newUnitCost) * toNum(newQuantity)) + ivaAmount - newDiscountAmount)
 
             // Reconcile stock: the delta is against the line's own previous
             // quantity, NOT its already-returned-adjusted "available" amount —
@@ -408,13 +411,13 @@ export async function PUT(
             // every single edit that merely re-saves this line unchanged.
             // In base units — this line's unitsPerPack never changes on edit.
             const unitsPerPack = oldItem.unitsPerPack || 1
-            if (newQuantity < oldItem.returnedQuantity) {
-              throw new Error(`No se puede reducir la cantidad de "${oldItem.product?.name || 'este producto'}" por debajo de lo ya devuelto (${oldItem.returnedQuantity})`)
+            if (lt(newQuantity, oldItem.returnedQuantity)) {
+              throw new Error(`No se puede reducir la cantidad de "${oldItem.product?.name || 'este producto'}" por debajo de lo ya devuelto (${toNum(oldItem.returnedQuantity)})`)
             }
-            const qtyDiff = newQuantity - oldItem.quantity
-            const baseUnitsDiff = qtyDiff * unitsPerPack
+            const qtyDiff = sub(newQuantity, oldItem.quantity)
+            const baseUnitsDiff = mul(qtyDiff, unitsPerPack)
 
-            if (qtyDiff > 0) {
+            if (gt(qtyDiff, 0)) {
               // Adding more quantity
               await tx.product.update({
                 where: { id: oldItem.productId },
@@ -430,14 +433,14 @@ export async function PUT(
                   quantity: baseUnitsDiff,
                   movementType: 'PURCHASE',
                   referenceId: pid,
-                  notes: `Ajuste compra #${purchase.consecutiveNumber || pid} — ${oldItem.product?.name}${oldItem.presentationName ? ` — ${oldItem.presentationName}` : ''} +${qtyDiff}`,
+                  notes: `Ajuste compra #${purchase.consecutiveNumber || pid} — ${oldItem.product?.name}${oldItem.presentationName ? ` — ${oldItem.presentationName}` : ''} +${toNum(qtyDiff)}`,
                 },
               })
-            } else if (qtyDiff < 0) {
+            } else if (lt(qtyDiff, 0)) {
               // Reducing quantity
               await tx.product.update({
                 where: { id: oldItem.productId },
-                data: { currentStock: { decrement: Math.abs(baseUnitsDiff) } },
+                data: { currentStock: { decrement: baseUnitsDiff.abs() } },
               })
               await tx.inventoryMovement.create({
                 data: {
@@ -449,7 +452,7 @@ export async function PUT(
                   quantity: baseUnitsDiff,
                   movementType: 'ADJUSTMENT',
                   referenceId: pid,
-                  notes: `Ajuste compra #${purchase.consecutiveNumber || pid} — ${oldItem.product?.name}${oldItem.presentationName ? ` — ${oldItem.presentationName}` : ''} ${qtyDiff}`,
+                  notes: `Ajuste compra #${purchase.consecutiveNumber || pid} — ${oldItem.product?.name}${oldItem.presentationName ? ` — ${oldItem.presentationName}` : ''} ${toNum(qtyDiff)}`,
                 },
               })
             }
@@ -458,7 +461,7 @@ export async function PUT(
             // line's own unit (e.g. cost per Caja x24), so it must be converted
             // to a base-unit cost before overwriting product.costPrice.
             if (newUnitCost !== oldItem.unitCost && oldItem.product) {
-              const newBaseCostPrice = Math.round(newUnitCost / unitsPerPack)
+              const newBaseCostPrice = Math.round(toNum(div(newUnitCost, unitsPerPack)))
               await tx.product.update({
                 where: { id: oldItem.productId },
                 data: { costPrice: newBaseCostPrice },
@@ -500,7 +503,7 @@ export async function PUT(
             recalculatedItems.push({
               id: item.id,
               productId: oldItem.productId,
-              quantity: newQuantity,
+              quantity: toNum(newQuantity),
               unitCost: newUnitCost,
               ivaRate: newIvaRate,
               ivaAmount,
@@ -522,7 +525,7 @@ export async function PUT(
             const newManufacturingDate = item.manufacturingDate ? new Date(item.manufacturingDate) : null
             const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
             const unitsPerPack = presentation ? presentation.unitsPerPack : 1
-            const baseUnits = newQuantity * unitsPerPack
+            const baseUnits = mul(newQuantity, unitsPerPack)
 
             const ivaAmount = Math.round(newUnitCost * newQuantity * newIvaRate / 100)
             const total = Math.max(0, newUnitCost * newQuantity + ivaAmount - newDiscountAmount)
@@ -556,11 +559,18 @@ export async function PUT(
               where: { id: item.productId },
               select: { costPrice: true, currentStock: true },
             })
-            const existingStock = Math.max(0, productForCpp?.currentStock ?? 0)
-            const existingCost = productForCpp?.costPrice ?? Math.round(newUnitCost / unitsPerPack)
-            const newCostPrice = Math.round(
-              (existingStock * existingCost + newQuantity * newUnitCost) / (existingStock + baseUnits)
-            )
+            // Stock nunca negativo para el CPP (Math.max(0, ...) con Decimal)
+            const existingStock = toDec(productForCpp?.currentStock).isNegative()
+              ? new Prisma.Decimal(0)
+              : toDec(productForCpp?.currentStock)
+            const existingCost = productForCpp?.costPrice ?? Math.round(toNum(div(newUnitCost, unitsPerPack)))
+            // Guard de división por cero: si no hay stock previo ni unidades entrantes,
+            // el nuevo costo es el costo de la línea (evita Infinity/NaN).
+            const totalCost = add(mul(existingStock, existingCost), mul(newQuantity, newUnitCost))
+            const totalUnits = add(existingStock, baseUnits)
+            const newCostPrice = totalUnits.isZero()
+              ? newUnitCost
+              : Math.round(toNum(div(totalCost, totalUnits)))
 
             // Increment stock (in base units)
             await tx.product.update({
@@ -614,7 +624,7 @@ export async function PUT(
         recalculatedItems = purchase.purchaseItems.map((item) => ({
           id: item.id,
           productId: item.productId,
-          quantity: item.quantity,
+          quantity: toNum(item.quantity),
           unitCost: item.unitCost,
           ivaRate: item.ivaRate,
           ivaAmount: item.ivaAmount,
@@ -626,8 +636,8 @@ export async function PUT(
         }))
       }
 
-      // ─── Recalculate purchase totals ─────────────────────────────────
-      const subtotal = recalculatedItems.reduce((sum, item) => sum + item.unitCost * item.quantity, 0)
+      // ─── Recalculate purchase totals (redondear a COP entero) ─────────
+      const subtotal = recalculatedItems.reduce((sum, item) => sum + Math.round(item.unitCost * item.quantity), 0)
       const totalIva = recalculatedItems.reduce((sum, item) => sum + item.ivaAmount, 0)
       const totalDiscount = recalculatedItems.reduce((sum, item) => sum + item.discountAmount, 0)
 
@@ -799,9 +809,9 @@ export async function DELETE(
 
       // For each item: decrement stock (in base units) and create adjustment movement
       for (const item of purchase.purchaseItems) {
-        const availableQty = item.quantity - item.returnedQuantity
-        if (availableQty <= 0) continue
-        const availableBaseUnits = availableQty * item.unitsPerPack
+        const availableQty = sub(item.quantity, item.returnedQuantity)
+        if (lte(availableQty, 0)) continue
+        const availableBaseUnits = mul(availableQty, item.unitsPerPack)
 
         // Decrement product stock
         await tx.product.update({
@@ -819,10 +829,10 @@ export async function DELETE(
             presentationId: item.presentationId,
             presentationName: item.presentationName,
             unitsPerPack: item.unitsPerPack,
-            quantity: -availableBaseUnits,
+            quantity: availableBaseUnits.negated(),
             movementType: 'ADJUSTMENT',
             referenceId: pid,
-            notes: `Compra cancelada ${purchase.consecutiveNumber ? purchase.consecutiveNumber : `#${pid}`} — ${item.product?.name || 'Producto'}${item.presentationName ? ` — ${item.presentationName}` : ''} x${availableQty}`,
+            notes: `Compra cancelada ${purchase.consecutiveNumber ? purchase.consecutiveNumber : `#${pid}`} — ${item.product?.name || 'Producto'}${item.presentationName ? ` — ${item.presentationName}` : ''} x${toNum(availableQty)}`,
           },
         })
       }

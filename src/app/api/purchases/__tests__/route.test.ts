@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ─── Hoisted mocks ─────────────────────────────────────────────────────────
 
@@ -46,8 +46,8 @@ vi.mock('@/lib/db', () => ({ db: mockDb }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }))
 vi.mock('@/lib/api-auth', () => mockApiAuth)
 
-import { POST } from '../route'
 import { mockPostRequest, parseResponse } from '@/lib/__tests__/test-helpers'
+import { POST } from '../route'
 
 // ─── Test data ─────────────────────────────────────────────────────────────
 
@@ -97,7 +97,8 @@ describe('POST /api/purchases', () => {
 
     expect(status).toBe(201)
     // Stock: existing 10 + 2 (quantity, unitsPerPack=1) = increment by 2
-    expect(capturedProductUpdate.data.currentStock).toEqual({ increment: 2 })
+    // (increment llega como Prisma.Decimal — comparar con Number)
+    expect(Number(capturedProductUpdate.data.currentStock.increment)).toBe(2)
     // CPP: (10*4000 + 2*5000) / (10+2) = 50000/12 = 4166.67 -> 4167
     expect(capturedProductUpdate.data.costPrice).toBe(4167)
   })
@@ -136,14 +137,14 @@ describe('POST /api/purchases', () => {
 
     expect(status).toBe(201)
     // Base units = 1 * 24 = 24 -> stock increments by 24, not 1
-    expect(capturedProductUpdate.data.currentStock).toEqual({ increment: 24 })
+    expect(Number(capturedProductUpdate.data.currentStock.increment)).toBe(24)
     // CPP: (10*4000 + 1*96000) / (10+24) = 136000/34 = 4000 exactly
     expect(capturedProductUpdate.data.costPrice).toBe(4000)
     // The presentation's own displayed cost is synced to what was just paid
     expect(capturedPresentationUpdate.where.id).toBe(7)
     expect(capturedPresentationUpdate.data.costPrice).toBe(96000)
     // Inventory movement is always in base units
-    expect(capturedMovement.data.quantity).toBe(24)
+    expect(Number(capturedMovement.data.quantity)).toBe(24)
     expect(capturedMovement.data.movementType).toBe('PURCHASE')
     // The created purchase item snapshots the presentation
     const createdItem = capturedPurchaseCreate.data.purchaseItems.create[0]
@@ -204,7 +205,9 @@ describe('POST /api/purchases', () => {
           findUnique: vi.fn(() => Promise.resolve({ ...liveProduct })),
           update: vi.fn((args: any) => {
             capturedUpdates.push(args)
-            if (args.data.currentStock?.increment) liveProduct.currentStock += args.data.currentStock.increment
+            // increment llega como Prisma.Decimal — convertir a number para
+            // simular la lectura en vivo del stock (evita concatenación de string)
+            if (args.data.currentStock?.increment) liveProduct.currentStock += Number(args.data.currentStock.increment)
             if (typeof args.data.costPrice === 'number') liveProduct.costPrice = args.data.costPrice
             return Promise.resolve({})
           }),

@@ -1,23 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { requireStoreAccess } from '@/lib/api-auth'
+import { auditLogFromRequest } from '@/lib/audit-logger'
+import { DIAN_CONSUMIDOR_FINAL_NIT, getSoftwareProviderNIT } from '@/lib/constants'
 import { db } from '@/lib/db'
-import { z } from 'zod'
+import { decryptField } from '@/lib/field-encryption'
 import {
-  generateCUDFE,
-  generateQRCodeURL,
-  formatInvoiceNumber,
+    formatInvoiceNumber,
+    generateCUDFE,
+    generateQRCodeURL,
 } from '@/lib/invoice-utils'
 import { getNextCreditNoteConsecutive } from '@/lib/invoicing/credit-note-counter'
-import { decryptField } from '@/lib/field-encryption'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
-import { getSoftwareProviderNIT, DIAN_CONSUMIDOR_FINAL_NIT } from '@/lib/constants'
-import { auditLogFromRequest } from '@/lib/audit-logger'
+import { add, gt, gte, lte, mul, sub, toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
 const returnItemSchema = z.object({
   orderItemId: z.number().int().positive(),
-  quantity: z.number().int().min(1),
+  quantity: z.number().min(0.001),
 })
 
 const returnSchema = z.object({
@@ -108,12 +109,12 @@ export async function POST(
         if (!freshItem) {
           throw new Error(`Item #${reqItem.orderItemId} no encontrado`)
         }
-        const available = freshItem.quantity - (freshItem.returnedQuantity ?? 0)
-        if (available <= 0) {
+        const available = sub(freshItem.quantity, freshItem.returnedQuantity ?? 0)
+        if (lte(available, 0)) {
           throw new Error(`"${itemMap.get(reqItem.orderItemId)?.product?.name || 'Producto'}" ya fue devuelto completamente`)
         }
-        if (reqItem.quantity > available) {
-          throw new Error(`Solo se pueden devolver ${available} unidad(es) de "${itemMap.get(reqItem.orderItemId)?.product?.name || 'Producto'}". Ya se devolvieron ${freshItem.returnedQuantity ?? 0}.`)
+        if (gt(reqItem.quantity, available)) {
+          throw new Error(`Solo se pueden devolver ${toNum(available)} unidad(es) de "${itemMap.get(reqItem.orderItemId)?.product?.name || 'Producto'}". Ya se devolvieron ${toNum(freshItem.returnedQuantity ?? 0)}.`)
         }
       }
 
@@ -128,7 +129,7 @@ export async function POST(
         // presentation line (e.g. Six-pack) must put back N × unitsPerPack
         // base units, not N, or the pool ends up short after every such return.
         const unitsPerPack = item.unitsPerPack || 1
-        const baseUnitsReturned = reqItem.quantity * unitsPerPack
+        const baseUnitsReturned = mul(reqItem.quantity, unitsPerPack)
 
         // Increment product stock
         await tx.product.update({
@@ -207,7 +208,7 @@ export async function POST(
 
       // Check if ALL items are now fully returned
       const allFullyReturned = order.orderItems.every(
-        (item) => (item.returnedQuantity ?? 0) + (body.items!.find((r) => r.orderItemId === item.id)?.quantity || 0) >= item.quantity
+        (item) => gte(add(item.returnedQuantity ?? 0, body.items!.find((r) => r.orderItemId === item.id)?.quantity || 0), item.quantity)
       )
 
       // Update order status

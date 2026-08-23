@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { z } from 'zod'
-import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { db } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -106,7 +107,7 @@ export async function GET(
             isService: item.serviceId !== null,
           }
         }
-        productAggregation[key].quantity += item.quantity
+        productAggregation[key].quantity += toNum(item.quantity)
         productAggregation[key].total += item.totalRow
       }
     }
