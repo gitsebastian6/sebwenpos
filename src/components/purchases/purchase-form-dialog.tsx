@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
+import { parseQtyInput } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -288,7 +289,7 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
     const mapItems = (items: PurchaseItemRow[], forUpdate = false) => items.map(item => ({
       productId: Number(item.productId),
       ...(item.presentationId ? { presentationId: Number(item.presentationId) } : {}),
-      quantity: Number(item.quantity),
+      quantity: parseQtyInput(String(item.quantity)),
       unitCost: Math.round(Number(item.unitCost)),
       ivaRate: item.ivaRate,
       discountAmount: Number(item.discountAmount) || 0,
@@ -532,7 +533,7 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
                           </div>
                         </TableCell>
                         <TableCell className="align-top">
-                          <Input type="number" min="1" className="h-9 text-sm text-foreground bg-muted/50 border-muted-foreground/30" value={item.quantity} onChange={e => updateItem(item.id, 'quantity', e.target.value)} />
+                          <Input type="number" min="0.001" step="0.001" className="h-9 text-sm text-foreground bg-muted/50 border-muted-foreground/30" value={item.quantity} onChange={e => updateItem(item.id, 'quantity', e.target.value)} />
                         </TableCell>
                         <TableCell className="align-top">
                           <Input

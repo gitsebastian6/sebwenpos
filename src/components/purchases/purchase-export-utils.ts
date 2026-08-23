@@ -2,6 +2,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import * as XLSX from 'xlsx'
 import { formatCurrency } from '@/lib/auth'
+import { formatQty } from '@/lib/format'
 import { printReport, printThermal80mm } from '@/lib/print-report'
 import type { Purchase, StatusFilter } from '@/hooks/api/use-purchases'
 import { getDocBadge } from './purchase-types'
@@ -68,7 +69,7 @@ export function handlePrintPurchaseDetail(purchase: Purchase, currencyCode: stri
   purchase.purchaseItems.forEach(item => {
     const baseName = item.presentationName ? `${item.product?.name || 'Producto'} — ${item.presentationName}` : (item.product?.name || 'Producto')
     const name = baseName.slice(0, 22)
-    lines.push({ left: `${item.quantity}x ${name}`, right: `${formatCurrency(item.ivaAmount, currencyCode)}` })
+    lines.push({ left: `${formatQty(item.quantity)}x ${name}`, right: `${formatCurrency(item.ivaAmount, currencyCode)}` })
   })
   lines.push({ left: '────────────────────────────────', separator: true as boolean | undefined })
   lines.push({ left: 'Subtotal:', right: formatCurrency(purchase.subtotal, currencyCode) })
@@ -96,7 +97,7 @@ export function handlePrintThermalDetail(purchase: Purchase, currencyCode: strin
   purchase.purchaseItems.forEach(item => {
     const baseName = item.presentationName ? `${item.product?.name || 'Prod'} — ${item.presentationName}` : (item.product?.name || 'Prod')
     const n = baseName.slice(0, 22)
-    lines.push({ left: `${item.quantity}x ${n}`, right: formatCurrency(item.total, currencyCode) })
+    lines.push({ left: `${formatQty(item.quantity)}x ${n}`, right: formatCurrency(item.total, currencyCode) })
   })
   lines.push({ left: '────────────────────────────────' })
   lines.push({ left: 'Subtotal:', right: formatCurrency(purchase.subtotal, currencyCode) })

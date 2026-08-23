@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { formatCurrency } from '@/lib/auth'
+import { formatQty, clampQty, parseQtyInput } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -97,8 +98,8 @@ export function PurchaseDetailDialog({ open, onClose, purchaseId, currencyCode, 
     })
   }
 
-  function setReturnItemQty(itemId: number, qty: number, _maxQty: number) {
-    setReturnItems(prev => { const next = new Map(prev); next.set(itemId, Math.max(1, qty)); return next })
+  function setReturnItemQty(itemId: number, qty: number, maxQty: number) {
+    setReturnItems(prev => { const next = new Map(prev); next.set(itemId, clampQty(qty, 0.001, maxQty)); return next })
   }
 
   function handlePayment() {
@@ -203,8 +204,8 @@ export function PurchaseDetailDialog({ open, onClose, purchaseId, currencyCode, 
                                 {item.lotNumber && <span className="text-[10px] text-muted-foreground block">Lote: {item.lotNumber}</span>}
                               </TableCell>
                               <TableCell className="text-xs text-center">
-                                {item.quantity}
-                                {item.returnedQuantity > 0 && <span className="text-red-500 text-[10px] block">- {item.returnedQuantity} dev.</span>}
+                                {formatQty(item.quantity)}
+                                {item.returnedQuantity > 0 && <span className="text-red-500 text-[10px] block">- {formatQty(item.returnedQuantity)} dev.</span>}
                               </TableCell>
                               <TableCell className="text-xs text-right">{formatCurrency(item.unitCost, currencyCode)}</TableCell>
                               <TableCell className="text-xs text-center">{item.ivaRate}%</TableCell>
@@ -378,10 +379,10 @@ export function PurchaseDetailDialog({ open, onClose, purchaseId, currencyCode, 
                             {item.product?.name || 'Producto'}
                             {item.presentationName && <span className="text-muted-foreground"> — {item.presentationName}</span>}
                           </p>
-                          <p className="text-xs text-muted-foreground">Disponible: {available} · Costo: {formatCurrency(item.unitCost, currencyCode)} · IVA: {formatCurrency(item.ivaAmount, currencyCode)}</p>
+                          <p className="text-xs text-muted-foreground">Disponible: {formatQty(available)} · Costo: {formatCurrency(item.unitCost, currencyCode)} · IVA: {formatCurrency(item.ivaAmount, currencyCode)}</p>
                         </div>
                         {isSelected && (
-                          <Input type="number" min="1" max={available} className="w-20 h-8 text-sm text-right" value={qty} onChange={e => setReturnItemQty(item.id, Number(e.target.value) || 1, available)} />
+                          <Input type="number" min={0.001} max={available} step="0.001" className="w-20 h-8 text-sm text-right" value={qty} onChange={e => setReturnItemQty(item.id, parseQtyInput(e.target.value), available)} />
                         )}
                       </div>
                     </Card>
