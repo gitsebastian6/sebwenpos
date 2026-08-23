@@ -5,6 +5,7 @@
 import type { TicketData } from './print-ticket-types'
 import { PAYMENT_LABELS } from './print-ticket-types'
 import { fmt, fmtDate, truncate } from './print-ticket-helpers'
+import { formatQty } from './format'
 
 // ─── Re-exports for backward compatibility ─────────────────────────────────
 export type { TicketItem, TicketData, CashRegisterCloseData, DailySummaryData, ProductCatalogData, KardexData } from './print-ticket-types'
@@ -82,7 +83,7 @@ export function printTicket(data: TicketData) {
       const isSvc = item.isService ? ' *' : ''
       return `
         <tr>
-          <td class="item-name">${item.quantity} ${name}${isSvc}</td>
+          <td class="item-name">${formatQty(item.quantity)} ${name}${isSvc}</td>
           <td class="item-total">${fmt(item.total, data.currencyCode)}</td>
         </tr>
         <tr>

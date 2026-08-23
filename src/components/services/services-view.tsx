@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useServices, useCreateService, useUpdateService, useDeleteService, useUpdateServiceTransaction, useDeleteServiceTransaction } from '@/hooks/api/use-services'
 import { formatCurrency } from '@/lib/auth'
+import { formatQty, parseQtyInput } from '@/lib/format'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -335,9 +336,9 @@ export function ServicesView() {
       toast.error('Completa todos los campos')
       return
     }
-    const qty = parseInt(txQuantity)
+    const qty = parseQtyInput(txQuantity)
     const price = Math.round(parseFloat(txUnitPrice))
-    if (isNaN(qty) || qty < 1 || isNaN(price) || price < 0) {
+    if (qty <= 0 || isNaN(price) || price < 0) {
       toast.error('Valores inválidos')
       return
     }
@@ -373,9 +374,9 @@ export function ServicesView() {
 
   async function handleSaveTx() {
     if (!editingTx) return
-    const qty = parseInt(editTxQuantity)
+    const qty = parseQtyInput(editTxQuantity)
     const price = Math.round(parseFloat(editTxUnitPrice))
-    if (isNaN(qty) || isNaN(price)) return
+    if (qty <= 0 || isNaN(price)) return
     setIsSavingTx(true)
     try {
       await updateTxMut.mutateAsync({
@@ -643,7 +644,7 @@ export function ServicesView() {
                             </div>
                           </TableCell>
                           <TableCell className="text-center text-sm">
-                            {tx.quantity} {tx.service?.unit || ''}
+                            {formatQty(tx.quantity)} {tx.service?.unit || ''}
                           </TableCell>
                           <TableCell className="text-right text-sm">
                             {formatCurrency(tx.unitPrice, currencyCode)}
@@ -710,7 +711,7 @@ export function ServicesView() {
                           </div>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{tx.quantity} {tx.service?.unit || 'servicio'} × {formatCurrency(tx.unitPrice, currencyCode)}</span>
+                          <span>{formatQty(tx.quantity)} {tx.service?.unit || 'servicio'} × {formatCurrency(tx.unitPrice, currencyCode)}</span>
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" className="h-6 w-6 active:scale-[0.98] transition-all" onClick={() => openEditTx(tx)} aria-label="Editar registro">
                               <Pencil className="h-3 w-3" />
@@ -806,7 +807,7 @@ export function ServicesView() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Cantidad *</Label>
-                <Input type="number" min="1" value={txQuantity} onChange={(e) => setTxQuantity(e.target.value)} />
+                <Input type="number" min="0.001" step="0.001" value={txQuantity} onChange={(e) => setTxQuantity(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Precio Unit. (COP)</Label>
@@ -816,11 +817,11 @@ export function ServicesView() {
                 </div>
               </div>
             </div>
-            {txQuantity && txUnitPrice && !isNaN(parseFloat(txQuantity)) && !isNaN(parseFloat(txUnitPrice)) && (
+            {txQuantity && txUnitPrice && parseQtyInput(txQuantity) > 0 && !isNaN(parseFloat(txUnitPrice)) && (
               <div className="rounded-lg bg-muted/50 p-3 text-center">
                 <span className="text-sm text-muted-foreground">Total: </span>
                 <span className="text-lg font-bold">
-                  {formatCurrency(Math.round(parseFloat(txQuantity) * parseFloat(txUnitPrice)), currencyCode)}
+                  {formatCurrency(Math.round(parseQtyInput(txQuantity) * parseFloat(txUnitPrice)), currencyCode)}
                 </span>
               </div>
             )}
@@ -909,7 +910,7 @@ export function ServicesView() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Cantidad *</Label>
-                <Input type="number" min="1" value={editTxQuantity} onChange={(e) => setEditTxQuantity(e.target.value)} />
+                <Input type="number" min="0.001" step="0.001" value={editTxQuantity} onChange={(e) => setEditTxQuantity(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Precio Unit. (COP)</Label>

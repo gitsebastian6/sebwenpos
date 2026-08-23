@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { formatCOP } from '@/lib/format'
+import { formatCOP, formatQty } from '@/lib/format'
 import { toast } from 'sonner'
 import {
   FileText, Receipt, QrCode, AlertTriangle, Check, Hash,
@@ -290,7 +290,7 @@ export function ConvertDialog({
               {detail.items.map((item) => (
                 <div key={item.id} className="flex justify-between">
                   <span className="truncate mr-2">
-                    {item.productName} ×{item.quantity}
+                    {item.productName} ×{formatQty(item.quantity)}
                   </span>
                   <span className="shrink-0">{cop(item.totalRow)}</span>
                 </div>

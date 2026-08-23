@@ -1,61 +1,62 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { formatCurrency } from '@/lib/auth'
-import type { DiscountType } from '@/hooks/pos/use-pos-cart'
-import type { OpenCashRegister } from '@/hooks/pos/use-pos-data'
-import type { CustomerSummary, PaymentMethod } from '@/types'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
-import { Textarea } from '@/components/ui/textarea'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import {
-  ShoppingCart,
-  Plus,
-  Minus,
-  Trash2,
-  CreditCard,
-  ArrowRightLeft,
-  StickyNote,
-  X,
-  Users,
-  Heart,
-  Printer,
-  AlertTriangle,
-  Wallet,
-  Percent,
-  Tag,
-  MessageSquare,
-  Pencil,
-  RotateCcw,
-  Banknote,
-  Smartphone,
-  Shield,
-} from 'lucide-react'
 import type { POSReturnDialogRef } from '@/components/pos/pos-return-dialog'
 import { PosWompiDialog } from '@/components/pos/pos-wompi-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle,
+} from '@/components/ui/sheet'
+import { Textarea } from '@/components/ui/textarea'
+import type { DiscountType } from '@/hooks/pos/use-pos-cart'
+import type { OpenCashRegister } from '@/hooks/pos/use-pos-data'
+import { formatCurrency } from '@/lib/auth'
+import { parseQtyInput, qtyStepFor, roundQty } from '@/lib/format'
+import type { CustomerSummary, PaymentMethod } from '@/types'
+import {
+    AlertTriangle,
+    ArrowRightLeft,
+    Banknote,
+    CreditCard,
+    Heart,
+    MessageSquare,
+    Minus,
+    Pencil,
+    Percent,
+    Plus,
+    Printer,
+    RotateCcw,
+    Shield,
+    ShoppingCart,
+    Smartphone,
+    StickyNote,
+    Tag,
+    Trash2,
+    Users,
+    Wallet,
+    X,
+} from 'lucide-react'
+import { useCallback, useState } from 'react'
 
 // ─── Payment method labels ──────────────────────────────
 
@@ -78,6 +79,7 @@ export interface CartSidebarProps {
     serviceId: number | null
     presentationId?: number | null
     presentationName?: string | null
+    unitLabel?: string
     unitsPerPack?: number
     name: string
     salePrice: number
@@ -95,6 +97,7 @@ export interface CartSidebarProps {
 
   // Cart operations
   updateQuantity: (itemId: number, delta: number, isService: boolean, presentationId?: number | null) => void
+  setQuantity: (itemId: number, value: number, isService: boolean, presentationId?: number | null) => void
   removeFromCart: (itemId: number, isService: boolean, presentationId?: number | null) => void
   updateItemNotes: (itemId: number, isService: boolean, notes: string, presentationId?: number | null) => void
   clearCart: () => void
@@ -166,6 +169,7 @@ export function CartSidebar({
   discountAmount,
   total,
   updateQuantity,
+  setQuantity,
   removeFromCart,
   updateItemNotes,
   clearCart,
@@ -270,46 +274,100 @@ export function CartSidebar({
                   return (
                     <div
                       key={cartItemKey(item)}
-                      className="flex items-center gap-2.5 py-3.5 border-b border-border/40 last:border-b-0 hover:bg-muted/40 rounded-lg px-2 -mx-2 transition-colors duration-150"
+                      className="flex flex-col gap-1.5 py-3 border-b border-border/40 last:border-b-0 hover:bg-muted/40 rounded-lg px-2 -mx-2 transition-colors duration-150"
                     >
-                      {/* Item info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start gap-1.5">
-                          {/* Nombre completo, sin truncar — antes se cortaba con "..." a una
-                              sola línea; ahora envuelve en varias líneas si hace falta para
-                              mostrar el nombre exacto completo del producto/presentación elegida. */}
-                          <p className="text-[15px] font-semibold leading-snug break-words">
-                            {item.name}
-                            {item.presentationName && (
-                              <span className="text-muted-foreground font-normal"> — {item.presentationName}</span>
-                            )}
-                          </p>
+                      {/* ── Fila 1: stepper de cantidad + nombre del producto ── */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-0.5 shrink-0 bg-muted/50 rounded-lg p-0.5">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 rounded-md active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
+                            onClick={() => updateQuantity(itemId, -qtyStepFor(item.unitLabel, item.isService ? 0.5 : 1), item.isService, item.presentationId)}
+                            disabled={item.quantity <= qtyStepFor(item.unitLabel, item.isService ? 0.5 : 1)}
+                            aria-label="Reducir cantidad"
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <Input
+                            type="number"
+                            step="0.001"
+                            min="0.001"
+                            value={item.quantity}
+                            onChange={(e) => setQuantity(itemId, parseQtyInput(e.target.value), item.isService, item.presentationId)}
+                            className="w-10 h-6 p-0 text-center text-sm font-bold tabular-nums text-foreground bg-transparent border-0 focus-visible:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            aria-label="Cantidad"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 rounded-md active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
+                            onClick={() => updateQuantity(itemId, qtyStepFor(item.unitLabel, item.isService ? 0.5 : 1), item.isService, item.presentationId)}
+                            disabled={!item.isService && item.quantity >= item.maxStock}
+                            aria-label="Aumentar cantidad"
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {/* Nombre completo — envuelve en varias líneas si hace falta */}
+                        <p className="flex-1 min-w-0 text-sm font-bold leading-snug break-words">
+                          {item.name}
+                          {item.presentationName && (
+                            <span className="text-muted-foreground font-medium"> — {item.presentationName}</span>
+                          )}
+                        </p>
+                      </div>
+
+                      {/* ── Fila 2: estado/nota (izquierda) · acciones (derecha) ── */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-1.5 py-0 shrink-0 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30"
+                          >
+                            Pendiente
+                          </Badge>
                           {item.isService && (
                             <Badge variant="secondary" className="text-[10px] px-1 py-0 shrink-0 bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-300">
                               Svc
                             </Badge>
                           )}
-                          {/* Per-item notes indicator */}
                           {item.notes && (
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="shrink-0 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 transition-colors p-0.5"
-                                  title={item.notes}
-                                >
-                                  <MessageSquare className="h-3.5 w-3.5" />
-                                </button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-64 p-3" align="start">
-                                <p className="text-xs font-medium text-muted-foreground mb-1">Nota del artículo</p>
-                                <Textarea
-                                  value={item.notes}
-                                  onChange={(e) => updateItemNotes(itemId, item.isService, e.target.value, item.presentationId)}
-                                  placeholder="Ej: sin hielo, extra limón..."
-                                  className="min-h-[60px] resize-none text-sm"
-                                  rows={2}
-                                />
+                            <span className="text-[11px] text-amber-600 dark:text-amber-400 truncate min-w-0" title={item.notes}>
+                              {item.notes}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          {item.notes && (
+                            <span className="text-amber-600 dark:text-amber-400 p-1" title={item.notes}>
+                              <MessageSquare className="h-3.5 w-3.5" />
+                            </span>
+                          )}
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className={`h-7 w-7 shrink-0 active:scale-90 transition-all duration-150 ${item.notes ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'} hover:text-amber-600 dark:hover:text-amber-400`}
+                                title={item.notes ? 'Editar nota' : 'Agregar nota'}
+                                aria-label={item.notes ? 'Editar nota' : 'Agregar nota'}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64 p-3" align="end">
+                              <p className="text-xs font-medium text-muted-foreground mb-1">Nota del artículo</p>
+                              <Textarea
+                                value={item.notes || ''}
+                                onChange={(e) => updateItemNotes(itemId, item.isService, e.target.value, item.presentationId)}
+                                placeholder="Ej: sin hielo, extra limón..."
+                                className="min-h-[60px] resize-none text-sm"
+                                rows={2}
+                                autoFocus
+                              />
+                              {item.notes && (
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -320,90 +378,30 @@ export function CartSidebar({
                                   <X className="h-3 w-3 mr-1" />
                                   Quitar nota
                                 </Button>
-                              </PopoverContent>
-                            </Popover>
-                          )}
+                              )}
+                            </PopoverContent>
+                          </Popover>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 active:scale-90 transition-all duration-150"
+                            onClick={() => removeFromCart(itemId, item.isService, item.presentationId)}
+                            title="Eliminar producto"
+                            aria-label="Eliminar producto del carrito"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatCurrency(item.salePrice, currencyCode)} c/u
-                        </p>
-                        {item.notes && (
-                          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 truncate">{item.notes}</p>
-                        )}
                       </div>
 
-                      {/* Per-item notes button (when no notes yet) */}
-                      {!item.notes && (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-amber-600 shrink-0"
-                              title="Agregar nota"
-                              aria-label="Agregar nota"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-64 p-3" align="end">
-                            <p className="text-xs font-medium text-muted-foreground mb-1">Nota del artículo</p>
-                            <Textarea
-                              value={item.notes || ''}
-                              onChange={(e) => updateItemNotes(itemId, item.isService, e.target.value)}
-                              placeholder="Ej: sin hielo, extra limón..."
-                              className="min-h-[60px] resize-none text-sm"
-                              rows={2}
-                              autoFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      )}
-
-                      {/* Quantity controls */}
-                      <div className="flex items-center gap-1 shrink-0 bg-muted/50 rounded-lg p-0.5">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 rounded-md active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
-                          onClick={() => updateQuantity(itemId, -1, item.isService, item.presentationId)}
-                          disabled={item.quantity <= 1}
-                          aria-label="Reducir cantidad"
-                        >
-                          <Minus className="h-4 w-4" />
-                        </Button>
-                        <span className="w-9 text-center text-base font-bold tabular-nums text-foreground">
-                          {item.quantity}
+                      {/* ── Fila 3: precio unitario · total de línea ── */}
+                      <p className="text-xs text-muted-foreground pl-0.5">
+                        {formatCurrency(item.salePrice, currencyCode)} c/u
+                        <span className="mx-1.5">·</span>
+                        <span className="font-semibold text-foreground tabular-nums">
+                          {formatCurrency(roundQty(item.salePrice * item.quantity), currencyCode)}
                         </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 rounded-md active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
-                          onClick={() => updateQuantity(itemId, 1, item.isService, item.presentationId)}
-                          disabled={!item.isService && item.quantity >= item.maxStock}
-                          aria-label="Aumentar cantidad"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      {/* Line total */}
-                      <p className="text-[15px] font-bold tabular-nums min-w-[92px] text-right shrink-0 text-foreground">
-                        {formatCurrency(item.salePrice * item.quantity, currencyCode)}
                       </p>
-
-                      {/* Remove button */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 active:scale-90 transition-all duration-150"
-                        onClick={() => removeFromCart(itemId, item.isService, item.presentationId)}
-                        title="Eliminar producto"
-                        aria-label="Eliminar producto del carrito"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
                     </div>
                   )
                 })}

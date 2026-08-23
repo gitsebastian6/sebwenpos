@@ -1,51 +1,52 @@
 'use client'
 
-import { useState } from 'react'
-import type { Product, Category, TraceMovement } from '@/types'
-import { toast } from 'sonner'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CategoryIconPicker } from '@/components/ui/category-icon-picker'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Textarea } from '@/components/ui/textarea'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '@/components/ui/select'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
 } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
+import { parseQtyInput, roundQty } from '@/lib/format'
+import type { Category, Product, TraceMovement } from '@/types'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { CategoryIconPicker, getCategoryIconByName } from '@/components/ui/category-icon-picker'
-import {
-  Route,
-  Loader2,
+    Loader2,
+    Route,
 } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -255,12 +256,12 @@ export function AdjustStockDialog({
   }
 
   async function handleSubmit() {
-    const parsed = parseInt(newStock, 10)
+    const parsed = parseQtyInput(newStock)
     if (isNaN(parsed) || parsed < 0) {
       toast.error('Cantidad inválida')
       return
     }
-    const diff = parsed - currentStock
+    const diff = roundQty(parsed - currentStock)
     if (diff === 0) {
       toast.info('Sin cambios')
       return
@@ -357,7 +358,7 @@ export function LossDialog({
   }
 
   async function handleSubmit() {
-    const qty = parseInt(quantity, 10)
+    const qty = parseQtyInput(quantity)
     if (isNaN(qty) || qty <= 0) {
       toast.error('Cantidad inválida')
       return
@@ -451,7 +452,7 @@ export function ReturnDialog({
   }
 
   async function handleSubmit() {
-    const qty = parseInt(quantity, 10)
+    const qty = parseQtyInput(quantity)
     if (isNaN(qty) || qty <= 0) {
       toast.error('Cantidad inválida')
       return
@@ -476,8 +477,9 @@ export function ReturnDialog({
             <Input
               id="return-quantity"
               type="number"
-              min="1"
-              placeholder="0"
+              min="0.001"
+              step="0.001"
+              placeholder="Ej: 2 o 0,5"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               autoFocus

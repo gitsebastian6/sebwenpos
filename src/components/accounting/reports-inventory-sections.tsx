@@ -19,6 +19,7 @@ import {
   formatBalance,
   getBalanceColor,
 } from './accounting-types'
+import { formatQty } from '@/lib/format'
 
 interface CuentasPorCobrarCardProps {
   reportData: ReportData
@@ -149,12 +150,12 @@ export function LowStockProductsCard({ reportData, currencyCode }: InventorySect
                             0
                           </span>
                         ) : (
-                          p.currentStock
+                          formatQty(p.currentStock)
                         )}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center text-xs text-muted-foreground">
-                      {p.minStock}
+                      {formatQty(p.minStock)}
                     </TableCell>
                     <TableCell className="text-right text-sm tabular-nums">
                       {formatCurrency(p.salePrice, currencyCode)}

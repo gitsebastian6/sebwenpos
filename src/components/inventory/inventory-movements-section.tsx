@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { MOVEMENT_TYPE_LABELS, MOVEMENT_TYPE_ICONS } from './inventory-types'
+import { formatQty } from '@/lib/format'
 import type { InventoryMovement, Product } from './inventory-types'
 
 interface InventoryMovementsSectionProps {
@@ -154,7 +155,7 @@ export function InventoryMovementsSection({
                       </TableCell>
                       <TableCell className="text-right">
                         <span className={`text-xs font-semibold ${m.quantity > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                          {m.quantity > 0 ? '+' : ''}{m.quantity}
+                          {m.quantity > 0 ? '+' : ''}{formatQty(m.quantity)}
                         </span>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate" title={m.notes || ''}>

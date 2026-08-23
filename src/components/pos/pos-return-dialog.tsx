@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import type { ReturnOrderDetail } from '@/types'
 import { useOrderDetail, useReturnOrder } from '@/hooks/api/use-orders'
+import { formatQty, clampQty, parseQtyInput } from '@/lib/format'
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -84,7 +85,8 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
     function setReturnItemQty(itemId: number, qty: number, maxQty: number) {
       setReturnItems(prev => {
         const next = new Map(prev)
-        const clamped = Math.max(1, Math.min(qty, maxQty))
+        // Mínimo 0.001 (no 1): permite devolver fracciones de productos por peso.
+        const clamped = clampQty(qty, 0.001, maxQty)
         next.set(itemId, clamped)
         return next
       })
@@ -182,7 +184,7 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            Vendido: {item.quantity}{item.returnedQuantity > 0 ? ` · Devuelto: ${item.returnedQuantity}` : ''} · Disponible: {available}
+                            Vendido: {formatQty(item.quantity)}{item.returnedQuantity > 0 ? ` · Devuelto: ${formatQty(item.returnedQuantity)}` : ''} · Disponible: {formatQty(available)}
                           </p>
                         </div>
                         {isSelected && (
@@ -197,10 +199,11 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
                             </button>
                             <Input
                               type="number"
-                              min={1}
+                              min={0.001}
                               max={available}
+                              step="0.001"
                               value={returnQty}
-                              onChange={(e) => setReturnItemQty(item.id, Number(e.target.value) || 1, available)}
+                              onChange={(e) => setReturnItemQty(item.id, parseQtyInput(e.target.value), available)}
                               className="h-7 w-14 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <button

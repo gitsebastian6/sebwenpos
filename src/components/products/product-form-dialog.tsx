@@ -1,46 +1,47 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { useAuthStore } from '@/stores/auth-store'
-import { formatCurrency } from '@/lib/auth'
-import type { Product, Category, Provider, TaxRate } from '@/types'
 import { UnitOfMeasureSelect } from '@/components/products/unit-of-measure-select'
-import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProductImage } from '@/components/ui/product-image'
 import {
-  Percent,
-  Shield,
-  X,
-  Calculator,
-  TrendingUp,
-  Upload,
-  Loader2,
-  Link2,
-  Layers,
-  Plus,
-  Trash2,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { formatCurrency } from '@/lib/auth'
+import { formatQty } from '@/lib/format'
+import { useAuthStore } from '@/stores/auth-store'
+import type { Category, Product, Provider, TaxRate } from '@/types'
+import {
+    Calculator,
+    Layers,
+    Link2,
+    Loader2,
+    Percent,
+    Plus,
+    Shield,
+    Trash2,
+    TrendingUp,
+    Upload,
+    X,
 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -263,7 +264,7 @@ export function ProductFormDialog({
     }
     for (const p of presentations) {
       if (!p.name.trim()) { toast.error('Cada presentación necesita un nombre (ej: Six-pack, Caja x24)'); return }
-      if (!p.unitsPerPack || Number(p.unitsPerPack) < 1) { toast.error(`"${p.name}": debe equivaler a 1 o más unidades base`); return }
+      if (!p.unitsPerPack || Number(p.unitsPerPack) < 0.001) { toast.error(`"${p.name}": debe equivaler a 0.001 o más unidades base`); return }
       if (!p.salePrice || Number(p.salePrice) <= 0) { toast.error(`"${p.name}": el precio de venta debe ser mayor a 0`); return }
     }
     const barcodes = [productForm.barcode.trim(), ...presentations.map((p) => p.barcode.trim())].filter(Boolean)
@@ -298,7 +299,7 @@ export function ProductFormDialog({
           unitLabel: p.unitLabel,
           barcode: p.barcode.trim() || undefined,
           sku: p.sku.trim() || undefined,
-          unitsPerPack: Math.round(Number(p.unitsPerPack)),
+          unitsPerPack: Number(p.unitsPerPack),
           salePrice: Math.round(Number(p.salePrice)),
           costPrice: p.costPrice ? Math.round(Number(p.costPrice)) : 0,
           isActive: p.isActive,
@@ -786,11 +787,7 @@ export function ProductFormDialog({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="prod-minstock">Stock Mínimo</Label>
-                <Input
-                  id="prod-minstock"
-                  type="number"
-                  min="0"
-                  placeholder="5"
+                <Input type="number" id="prod-minstock" min="0" step="0.001" placeholder="5"
                   value={productForm.minStock}
                   onChange={(e) => setProductForm({ ...productForm, minStock: e.target.value })}
                 />
@@ -807,7 +804,7 @@ export function ProductFormDialog({
               <Label>Stock Actual</Label>
               <div className="flex items-center h-9 px-3 rounded-md border bg-muted text-sm font-medium w-fit">
                 <span className={editingProduct.currentStock <= editingProduct.minStock ? 'text-red-600 dark:text-red-400' : ''}>
-                  {editingProduct.currentStock} unidades
+                  {formatQty(editingProduct.currentStock)} unidades
                 </span>
               </div>
             </div>
@@ -901,8 +898,9 @@ export function ProductFormDialog({
                         </Label>
                         <Input
                           type="number"
-                          min="1"
-                          placeholder="Ej: 6"
+                          min="0.001"
+                          step="0.001"
+                          placeholder="Ej: 24 o 0,5"
                           value={p.unitsPerPack}
                           onChange={(e) => updatePresentation(p.key, 'unitsPerPack', e.target.value)}
                           className="h-8 text-sm"

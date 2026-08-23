@@ -1,14 +1,15 @@
 'use client'
 
-import { AlertTriangle, PackageSearch, RotateCcw, Search, X } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatCurrency } from '@/lib/auth'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
+import { floorQty, formatQty, isFractionalUnit } from '@/lib/format'
+import { AlertTriangle, PackageSearch, RotateCcw, Search, X } from 'lucide-react'
 import type { Product } from './inventory-types'
 
 interface InventoryProductTableProps {
@@ -121,7 +122,7 @@ export function InventoryProductTable({
                     </TableCell>
                     <TableCell className="text-right">
                       <span className={product.currentStock <= product.minStock ? 'text-red-600 dark:text-red-400 font-semibold' : ''}>
-                        {product.currentStock}
+                        {isFractionalUnit(product.unitLabel) ? formatQty(product.currentStock) : Math.floor(product.currentStock)}
                       </span>
                       <span className="text-[10px] text-muted-foreground ml-1">{getUnitOfMeasureLabel(product.unitLabel)}</span>
                       {product.currentStock <= product.minStock && product.currentStock > 0 && (
@@ -135,12 +136,12 @@ export function InventoryProductTable({
                           className="text-[10px] text-muted-foreground"
                           title={product.presentations
                             .filter((p) => p.isActive)
-                            .map((p) => `${Math.floor(product.currentStock / p.unitsPerPack)} ${getUnitOfMeasureLabel(p.unitLabel)} (×${p.unitsPerPack})`)
+                            .map((p) => `${isFractionalUnit(p.unitLabel) ? formatQty(floorQty(product.currentStock / p.unitsPerPack)) : Math.floor(floorQty(product.currentStock / p.unitsPerPack))} ${getUnitOfMeasureLabel(p.unitLabel)} (×${p.unitsPerPack})`)
                             .join(' · ')}
                         >
                           {product.presentations
                             .filter((p) => p.isActive)
-                            .map((p) => `${Math.floor(product.currentStock / p.unitsPerPack)} ${getUnitOfMeasureLabel(p.unitLabel)}`)
+                            .map((p) => `${isFractionalUnit(p.unitLabel) ? formatQty(floorQty(product.currentStock / p.unitsPerPack)) : Math.floor(floorQty(product.currentStock / p.unitsPerPack))} ${getUnitOfMeasureLabel(p.unitLabel)}`)
                             .join(' · ')}
                         </p>
                       )}

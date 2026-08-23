@@ -14,6 +14,7 @@ import {
 import { Search, CalendarClock, AlertTriangle, CheckCircle2, PackageX, Info } from 'lucide-react'
 import { format, differenceInCalendarDays, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { formatQty } from '@/lib/format'
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -190,8 +191,8 @@ export function ExpirationsView() {
                       </TableCell>
                       <TableCell className="text-sm font-mono">{lot.lotNumber || '—'}</TableCell>
                       <TableCell className="text-center text-sm">
-                        {lot.remainingInLot}
-                        {lot.returnedQuantity > 0 && <span className="text-xs text-muted-foreground block">de {lot.quantityReceived}</span>}
+                        {formatQty(lot.remainingInLot)}
+                        {lot.returnedQuantity > 0 && <span className="text-xs text-muted-foreground block">de {formatQty(lot.quantityReceived)}</span>}
                       </TableCell>
                       <TableCell className="text-sm">{format(parseISO(lot.expiryDate), 'd MMM yyyy', { locale: es })}</TableCell>
                       <TableCell><StatusBadge status={lot.status} days={lot.days} /></TableCell>

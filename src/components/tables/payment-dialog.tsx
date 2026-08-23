@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
-import { paymentMethodLabel } from '@/lib/format'
+import { paymentMethodLabel, formatQty } from '@/lib/format'
 import { playSaleSuccess, playError } from '@/lib/pos-sounds'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -375,7 +375,7 @@ export function PaymentDialog({
                   .map((item) => (
                     <div key={item.id} className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">
-                        {item.quantity}x {item.productName}
+                        {formatQty(item.quantity)}x {item.productName}
                       </span>
                       <span className="font-medium">
                         {formatCurrency(item.total, store?.currencyCode)}

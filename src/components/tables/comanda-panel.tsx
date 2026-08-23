@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useComandaAddItem, useComandaUpdateItem } from '@/hooks/api/use-tables'
 import { formatCurrency } from '@/lib/auth'
-import { paymentMethodLabel } from '@/lib/format'
+import { paymentMethodLabel, formatQty } from '@/lib/format'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { playAlert, playError } from '@/lib/pos-sounds'
 import { toast } from 'sonner'
@@ -246,7 +246,7 @@ export function ComandaPanel({
   }
 
   async function handleUpdateItemQuantity(itemId: number, newQuantity: number) {
-    if (!session || newQuantity < 1) return
+    if (!session || newQuantity < 0.001) return
     setUpdatingQtyItemId(itemId)
     try {
       await comandaUpdateItem.mutateAsync({
@@ -459,7 +459,7 @@ export function ComandaPanel({
                                         </button>
                                       </>
                                     ) : (
-                                      <span className="text-sm font-medium tabular-nums">{item.quantity}x</span>
+                                      <span className="text-sm font-medium tabular-nums">{formatQty(item.quantity)}x</span>
                                     )}
                                     <span
                                       className={`text-sm font-medium truncate ${

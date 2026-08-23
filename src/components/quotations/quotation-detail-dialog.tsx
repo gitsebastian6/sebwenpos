@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
-import { formatCOP } from '@/lib/format'
+import { formatCOP, formatQty } from '@/lib/format'
 import {
   Printer, ArrowRightLeft, XCircle, Loader2, CalendarDays, Layers,
 } from 'lucide-react'
@@ -187,7 +187,7 @@ export function QuotationDetailDialog({
                                 <div className="text-xs text-muted-foreground mt-0.5">📝 {item.notes}</div>
                               )}
                             </TableCell>
-                            <TableCell className="text-center">{item.quantity}</TableCell>
+                            <TableCell className="text-center">{formatQty(item.quantity)}</TableCell>
                             <TableCell className="text-right text-sm">{cop(item.unitPrice)}</TableCell>
                             <TableCell className="text-right text-sm hidden sm:table-cell">{cop(item.taxBase)}</TableCell>
                             <TableCell className="text-right text-sm hidden sm:table-cell text-muted-foreground">
@@ -324,7 +324,7 @@ export function QuotationDetailDialog({
               {detail.items.map((item) => (
                 <tr key={item.id}>
                   <td>{item.productName}{item.presentationName ? ` — ${item.presentationName}` : ''}{item.notes ? ` — ${item.notes}` : ''}</td>
-                  <td className="text-right">{item.quantity}</td>
+                  <td className="text-right">{formatQty(item.quantity)}</td>
                   <td className="text-right">{cop(item.unitPrice)}</td>
                   <td className="text-right">{cop(item.taxBase)}</td>
                   <td className="text-right">{item.taxCode ? `${item.taxRate}%` : '—'}</td>

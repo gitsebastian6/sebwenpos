@@ -1,38 +1,39 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '@/components/ui/select'
-import {
-  AlertTriangle,
-  RotateCcw,
-  SlidersHorizontal,
-  Search,
-  X,
-  Loader2,
-} from 'lucide-react'
-import { toast } from 'sonner'
+import { Textarea } from '@/components/ui/textarea'
+import { useInventoryAdjustment, useInventoryLoss, useInventoryReturn } from '@/hooks/api/use-inventory'
 import { formatCurrency } from '@/lib/auth'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
-import { useInventoryAdjustment, useInventoryReturn, useInventoryLoss } from '@/hooks/api/use-inventory'
+import { floorQty, formatQty, parseQtyInput, roundQty } from '@/lib/format'
+import { useQueryClient } from '@tanstack/react-query'
+import {
+    AlertTriangle,
+    Loader2,
+    RotateCcw,
+    Search,
+    SlidersHorizontal,
+    X,
+} from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import type { ActionType, Product } from './inventory-types'
 import { LOSS_REASONS } from './inventory-types'
 
@@ -98,7 +99,9 @@ export function InventoryActionDialog({
 
   const selectedPresentation = selectedProduct?.presentations?.find((p) => p.id === selectedPresentationId) ?? null
   const unitsPerPack = selectedPresentation?.unitsPerPack ?? 1
-  const maxInPresentation = selectedProduct ? Math.floor(selectedProduct.currentStock / unitsPerPack) : 0
+  // floorQty: piso a 3 decimales (no a entero) — un producto con 0.5 KG de
+  // stock en presentación UND no debe mostrar "0".
+  const maxInPresentation = selectedProduct ? floorQty(selectedProduct.currentStock / unitsPerPack) : 0
 
   // Adjust form
   const [adjustMode, setAdjustMode] = useState<'set' | 'add'>('set')
@@ -159,7 +162,7 @@ export function InventoryActionDialog({
     if (!selectedProduct) return
     const upp = id ? (selectedProduct.presentations?.find((p) => p.id === id)?.unitsPerPack ?? 1) : 1
     if (actionType === 'adjust' && adjustMode === 'set') {
-      setAdjustQuantity(String(Math.floor(selectedProduct.currentStock / upp)))
+      setAdjustQuantity(String(floorQty(selectedProduct.currentStock / upp)))
     } else {
       setAdjustQuantity('')
       setReturnQuantity('')
@@ -171,7 +174,7 @@ export function InventoryActionDialog({
 
   async function handleAdjustStock() {
     if (!storeId || !selectedProduct) return
-    const qty = parseInt(adjustQuantity, 10)
+    const qty = parseQtyInput(adjustQuantity)
     if (isNaN(qty) || qty < 0) {
       toast.error('La cantidad debe ser un número positivo')
       return
@@ -180,9 +183,9 @@ export function InventoryActionDialog({
     const currentStock = selectedProduct.currentStock
     let finalQuantity: number
     if (adjustMode === 'set') {
-      finalQuantity = (qty * unitsPerPack) - currentStock
+      finalQuantity = roundQty((qty * unitsPerPack) - currentStock)
     } else {
-      finalQuantity = qty * unitsPerPack
+      finalQuantity = roundQty(qty * unitsPerPack)
     }
 
     if (finalQuantity === 0) {
@@ -210,7 +213,7 @@ export function InventoryActionDialog({
 
   async function handleReturn() {
     if (!storeId || !selectedProduct) return
-    const qty = parseInt(returnQuantity, 10)
+    const qty = parseQtyInput(returnQuantity)
     if (isNaN(qty) || qty <= 0) {
       toast.error('La cantidad debe ser mayor a 0')
       return
@@ -222,7 +225,7 @@ export function InventoryActionDialog({
           storeId,
           productId: selectedProduct.id,
           presentationId: selectedPresentation?.id,
-          quantity: qty * unitsPerPack,
+          quantity: roundQty(qty * unitsPerPack),
           notes: returnNotes || undefined,
         },
       })
@@ -236,7 +239,7 @@ export function InventoryActionDialog({
 
   async function handleLoss() {
     if (!storeId || !selectedProduct) return
-    const qty = parseInt(lossQuantity, 10)
+    const qty = parseQtyInput(lossQuantity)
     if (isNaN(qty) || qty <= 0) {
       toast.error('La cantidad debe ser mayor a 0')
       return
@@ -346,7 +349,7 @@ export function InventoryActionDialog({
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           {product.category && <span>{product.category.name}</span>}
                           <span className={product.currentStock <= product.minStock ? 'text-red-500 font-medium' : ''}>
-                            Stock: {product.currentStock}
+                            Stock: {formatQty(product.currentStock)}
                           </span>
                         </div>
                       </div>
@@ -420,6 +423,7 @@ export function InventoryActionDialog({
                       id="loss-qty"
                       type="number"
                       min="1"
+                      step="0.001"
                       max={maxInPresentation}
                       placeholder="Ej: 3"
                       value={lossQuantity}
@@ -466,6 +470,7 @@ export function InventoryActionDialog({
                       id="return-qty"
                       type="number"
                       min="1"
+                      step="0.001"
                       placeholder="Ej: 5"
                       value={returnQuantity}
                       onChange={(e) => setReturnQuantity(e.target.value)}
@@ -520,15 +525,16 @@ export function InventoryActionDialog({
                       id="adjust-qty"
                       type="number"
                       min={adjustMode === 'set' ? '0' : undefined}
+                      step="0.001"
                       placeholder={adjustMode === 'set' ? 'Ej: 50' : 'Ej: 10 para agregar, -5 para quitar'}
                       value={adjustQuantity}
                       onChange={(e) => setAdjustQuantity(e.target.value)}
                     />
-                    {adjustMode === 'set' && adjustQuantity && !isNaN(parseInt(adjustQuantity)) && (
+                    {adjustMode === 'set' && adjustQuantity && !isNaN(parseQtyInput(adjustQuantity)) && (
                       <p className="text-xs text-muted-foreground">
-                        Cambio: <span className={(parseInt(adjustQuantity) * unitsPerPack) - selectedProduct.currentStock >= 0 ? 'text-emerald-600' : 'text-red-600'}>
-                          {(parseInt(adjustQuantity) * unitsPerPack) - selectedProduct.currentStock >= 0 ? '+' : ''}
-                          {(parseInt(adjustQuantity) * unitsPerPack) - selectedProduct.currentStock} unidades base
+                        Cambio: <span className={roundQty((parseQtyInput(adjustQuantity) * unitsPerPack) - selectedProduct.currentStock) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                          {roundQty((parseQtyInput(adjustQuantity) * unitsPerPack) - selectedProduct.currentStock) >= 0 ? '+' : ''}
+                          {roundQty((parseQtyInput(adjustQuantity) * unitsPerPack) - selectedProduct.currentStock)} unidades base
                         </span>
                       </p>
                     )}

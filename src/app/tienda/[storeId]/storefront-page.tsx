@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ProductImage } from '@/components/ui/product-image'
 import { getUnitOfMeasureLabel as unitLabelText } from '@/lib/constants'
+import { parseQtyInput, qtyStepFor, roundQty, formatQty, clampQty } from '@/lib/format'
 import {
   Store, Phone, MapPin, ShoppingCart, MessageCircle,
   Plus, Minus, Trash2, Search, X, ArrowRight, Loader2,
@@ -55,6 +56,7 @@ interface CartItem {
   key: string
   productId: number
   presentationId: number | null
+  unitLabel?: string
   name: string
   presentationLabel: string | null
   price: number
@@ -108,6 +110,7 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
         key,
         productId: product.id,
         presentationId: presentation?.id ?? null,
+        unitLabel: presentation ? presentation.unitLabel : product.unitLabel,
         name: product.name,
         presentationLabel,
         price,
@@ -120,8 +123,15 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
   function updateQuantity(key: string, delta: number) {
     setCart(prev =>
       prev
-        .map(item => item.key === key ? { ...item, quantity: item.quantity + delta } : item)
-        .filter(item => item.quantity > 0)
+        .map(item => item.key === key ? { ...item, quantity: roundQty(item.quantity + delta) } : item)
+        .filter(item => roundQty(item.quantity) > 0)
+    )
+  }
+
+  function setCartQty(key: string, value: number) {
+    setCart(prev =>
+      prev
+        .map(item => item.key === key ? { ...item, quantity: clampQty(value, 0.001) } : item)
     )
   }
 
@@ -153,7 +163,7 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
 
     cart.forEach(item => {
       const label = item.presentationLabel ? ` (${item.presentationLabel})` : ''
-      message += `• ${item.name}${label} x${item.quantity} — ${formatPrice(item.price * item.quantity)}\n`
+      message += `• ${item.name}${label} x${formatQty(item.quantity)} — ${formatPrice(item.price * item.quantity)}\n`
     })
 
     message += `\n💰 *Total: ${formatPrice(getCartTotal())}*`
@@ -366,14 +376,23 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => updateQuantity(item.key, -1)}
+                      onClick={() => updateQuantity(item.key, -qtyStepFor(item.unitLabel))}
                       className="h-7 w-7 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700"
+                      disabled={item.quantity <= qtyStepFor(item.unitLabel)}
                     >
                       <Minus className="h-3 w-3" />
                     </button>
-                    <span className="text-sm font-semibold w-5 text-center">{item.quantity}</span>
+                    <Input
+                      type="number"
+                      min="0.001"
+                      step="0.001"
+                      value={item.quantity}
+                      onChange={(e) => setCartQty(item.key, parseQtyInput(e.target.value))}
+                      className="w-14 h-7 bg-zinc-800 border-zinc-700 text-center text-sm font-semibold text-zinc-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      aria-label="Cantidad"
+                    />
                     <button
-                      onClick={() => updateQuantity(item.key, 1)}
+                      onClick={() => updateQuantity(item.key, qtyStepFor(item.unitLabel))}
                       className="h-7 w-7 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700"
                     >
                       <Plus className="h-3 w-3" />

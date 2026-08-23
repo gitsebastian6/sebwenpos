@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit'
 import QRCode from 'qrcode'
+import { formatQty } from '../format'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -568,7 +569,7 @@ export async function generateInvoicePDF(data: InvoicePDFData): Promise<Buffer> 
             ? `${item.description} (${item.notes})`
             : item.description,
         },
-        { text: String(item.quantity) },
+        { text: formatQty(item.quantity) },
         { text: formatCOP(item.unitPrice) },
       ]
 

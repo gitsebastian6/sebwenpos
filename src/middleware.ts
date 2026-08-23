@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken, extractTokenFromRequest, isPublicPath, isSuperAdminPath, isInternalPath, isTokenRevoked } from '@/lib/auth-helpers'
 import { getInternalSecret } from '@/lib/env'
 import { rateLimit, getClientIp, type RateLimitConfig } from '@/lib/rate-limiter'
-import { isSubscriptionBlocked } from '@/lib/subscription-cache'
+import { isSubscriptionBlocked, getCachedSubscriptionStatus } from '@/lib/subscription-cache'
 import { safeStringEqual } from '@/lib/crypto-utils'
 
 // ---------------------------------------------------------------------------
@@ -107,6 +107,24 @@ const SUBSCRIPTION_EXEMPT_PATHS = [
 
 function isSubscriptionExemptPath(pathname: string): boolean {
   return SUBSCRIPTION_EXEMPT_PATHS.some(p => pathname.startsWith(p))
+}
+
+// ---------------------------------------------------------------------------
+// PAST_DUE (gracia de pago): endpoints de VENTA bloqueados server-side.
+// La gracia permite entrar a consultar/cobrar deudas y renovar, pero NO
+// registrar ventas nuevas. Coincide con el flag permissions.pos=false que
+// el login ya aplicaba — esto lo hace cumplir en el servidor.
+// ---------------------------------------------------------------------------
+const PAST_DUE_WRITE_PREFIXES = [
+  '/api/orders',   // crear órdenes / devoluciones de venta
+  '/api/tables',   // comandas y pagos de mesa
+]
+
+function isPastDueRestrictedWrite(method: string, pathname: string): boolean {
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return false
+  // Facturación nueva (POST /api/invoices) también es "venta nueva".
+  if (method === 'POST' && pathname.startsWith('/api/invoices')) return true
+  return PAST_DUE_WRITE_PREFIXES.some(p => pathname.startsWith(p))
 }
 
 function checkRouteRateLimit(request: NextRequest, pathname: string): NextResponse | null {
@@ -214,6 +232,17 @@ export async function middleware(request: NextRequest) {
     if (blocked === true) {
       return corsError(
         'Suscripción expirada o cancelada. Renueva tu plan para continuar.',
+        403,
+      )
+    }
+
+    // 8b. PAST_DUE (gracia de pago): solo lectura + gestión de suscripción.
+    //     Bloquea ventas nuevas server-side (POS/Mesas/Facturación) — antes
+    //     esta restricción solo existía como flag en la respuesta del login.
+    const cachedStatus = getCachedSubscriptionStatus(payload.storeId)
+    if (cachedStatus === 'PAST_DUE' && isPastDueRestrictedWrite(request.method, pathname)) {
+      return corsError(
+        'Suscripción en mora (PAST_DUE): no se pueden registrar ventas nuevas. Renueva tu plan para reactivar el POS.',
         403,
       )
     }

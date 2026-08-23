@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useOrders, useOrderDetail, useReturnOrder } from '@/hooks/api/use-orders'
 import { useCreateInvoice } from '@/hooks/api/use-invoices'
 import { formatCurrency } from '@/lib/auth'
+import { formatQty, clampQty, parseQtyInput } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -221,7 +222,8 @@ export function OrdersView() {
   function setReturnItemQty(itemId: number, qty: number, maxQty: number) {
     setReturnItems(prev => {
       const next = new Map(prev)
-      next.set(itemId, Math.max(1, Math.min(qty, maxQty)))
+      // Mínimo 0.001 (no 1): permite devolver fracciones de productos por peso.
+      next.set(itemId, clampQty(qty, 0.001, maxQty))
       return next
     })
   }
@@ -563,11 +565,11 @@ export function OrdersView() {
                             )}
                             {item.returnedQuantity > 0 && (
                               <Badge variant="outline" className="ml-2 text-xs text-amber-600 border-amber-300">
-                                Dev: {item.returnedQuantity}
+                                Dev: {formatQty(item.returnedQuantity)}
                               </Badge>
                             )}
                           </TableCell>
-                          <TableCell className="text-center text-sm">{item.quantity}</TableCell>
+                          <TableCell className="text-center text-sm">{formatQty(item.quantity)}</TableCell>
                           <TableCell className="text-right text-xs text-muted-foreground">
                             {formatCurrency(item.unitPrice, store?.currencyCode)}
                           </TableCell>
@@ -716,7 +718,7 @@ export function OrdersView() {
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            Vendido: {item.quantity}{item.returnedQuantity > 0 ? ` · Devuelto: ${item.returnedQuantity}` : ''} · Disponible: {available}
+                            Vendido: {formatQty(item.quantity)}{item.returnedQuantity > 0 ? ` · Devuelto: ${formatQty(item.returnedQuantity)}` : ''} · Disponible: {formatQty(available)}
                           </p>
                         </div>
                         {isSelected && (
@@ -724,8 +726,8 @@ export function OrdersView() {
                             <button type="button" onClick={() => setReturnItemQty(item.id, returnQty - 1, available)}
                               disabled={returnQty <= 1}
                               className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50">−</button>
-                            <Input type="number" min={1} max={available} value={returnQty}
-                              onChange={(e) => setReturnItemQty(item.id, Number(e.target.value) || 1, available)}
+                            <Input type="number" min={0.001} max={available} step="0.001" value={returnQty}
+                              onChange={(e) => setReturnItemQty(item.id, parseQtyInput(e.target.value), available)}
                               className="h-7 w-14 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance:none [&::-webkit-inner-spin-button]:appearance-none" />
                             <button type="button" onClick={() => setReturnItemQty(item.id, returnQty + 1, available)}
                               disabled={returnQty >= available}

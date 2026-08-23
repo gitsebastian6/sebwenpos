@@ -1,36 +1,36 @@
 'use client'
 
-import { useState, useCallback, useMemo, useRef } from 'react'
-import { useAuthStore } from '@/stores/auth-store'
-import { formatCurrency } from '@/lib/auth'
-import { toast } from 'sonner'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import {
-  Search,
-  ShoppingCart,
-  Star,
-  Printer,
-  RotateCcw,
-  Clock,
-  ScanBarcode,
-} from 'lucide-react'
-import { printTicket, type TicketItem } from '@/lib/print-ticket'
-import { KPIBar } from '@/components/shared/kpi-bar'
-import { playError } from '@/lib/pos-sounds'
-import { getUnitOfMeasureLabel } from '@/lib/constants'
-import { useBarcodeScanner } from '@/hooks/use-barcode-scanner'
-import type { OrderItemData, ProductPresentation } from '@/types'
-import { usePosData } from '@/hooks/pos/use-pos-data'
-import { usePosCart } from '@/hooks/pos/use-pos-cart'
-import { POSReturnDialog, type POSReturnDialogRef } from '@/components/pos/pos-return-dialog'
-import { POSRecentSales } from '@/components/pos/pos-recent-sales'
-import { ProductGrid } from '@/components/pos/product-grid'
+import { OpenCashDialog } from '@/components/accounting/dialogs/open-cash-dialog'
 import { CartSidebar } from '@/components/pos/cart-sidebar'
 import { PaymentDialog } from '@/components/pos/payment-dialog'
-import { OpenCashDialog } from '@/components/accounting/dialogs/open-cash-dialog'
+import { POSRecentSales } from '@/components/pos/pos-recent-sales'
+import { POSReturnDialog, type POSReturnDialogRef } from '@/components/pos/pos-return-dialog'
+import { ProductGrid } from '@/components/pos/product-grid'
+import { KPIBar } from '@/components/shared/kpi-bar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useCashRegisterOperations } from '@/hooks/accounting/use-cash-register-operations'
+import { usePosCart } from '@/hooks/pos/use-pos-cart'
+import { usePosData } from '@/hooks/pos/use-pos-data'
+import { useBarcodeScanner } from '@/hooks/use-barcode-scanner'
+import { formatCurrency } from '@/lib/auth'
+import { getUnitOfMeasureLabel } from '@/lib/constants'
+import { playError } from '@/lib/pos-sounds'
+import { printTicket, type TicketItem } from '@/lib/print-ticket'
+import { useAuthStore } from '@/stores/auth-store'
+import type { OrderItemData, ProductPresentation } from '@/types'
+import {
+    Clock,
+    Printer,
+    RotateCcw,
+    ScanBarcode,
+    Search,
+    ShoppingCart,
+    Star,
+} from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 // ─── Main Component ─────────────────────────────────────
 
@@ -419,6 +419,7 @@ export function POSView() {
         discountAmount={cart.discountAmount}
         total={cart.total}
         updateQuantity={cart.updateQuantity}
+        setQuantity={cart.setQuantity}
         removeFromCart={cart.removeFromCart}
         updateItemNotes={cart.updateItemNotes}
         clearCart={cart.clearCart}

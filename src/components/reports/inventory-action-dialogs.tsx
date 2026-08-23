@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import { RotateCcw, SlidersHorizontal, AlertTriangle, Loader2 } from 'lucide-react'
 import type { ReportProduct } from './reports-export'
 import { useInventoryReturn, useInventoryAdjustment, useInventoryLoss } from '@/hooks/api/use-inventory'
+import { formatQty, parseQtyInput } from '@/lib/format'
 
 // ── Loss Reasons ──
 export const LOSS_REASONS: Record<string, string> = {
@@ -56,7 +57,7 @@ function ProductSearchSelect({
                 <span className="font-medium">{p.name}</span>
                 {p.sku && <span className="text-muted-foreground font-mono text-[10px]">{p.sku}</span>}
               </div>
-              <span className="text-muted-foreground">Stock: {p.currentStock ?? 0}</span>
+              <span className="text-muted-foreground">Stock: {formatQty(p.currentStock ?? 0)}</span>
             </button>
           ))
         )}
@@ -119,12 +120,13 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
 
     // ── Submit handlers ──
     const handleSubmitReturn = async () => {
-      if (!returnForm.productId || !returnForm.quantity || Number(returnForm.quantity) <= 0) {
+      const qty = parseQtyInput(returnForm.quantity)
+      if (!returnForm.productId || qty <= 0) {
         toast.error('Selecciona un producto y una cantidad válida')
         return
       }
       try {
-        await returnMut.mutateAsync({ body: { storeId, productId: returnForm.productId, quantity: Number(returnForm.quantity), notes: returnForm.notes } })
+        await returnMut.mutateAsync({ body: { storeId, productId: returnForm.productId, quantity: qty, notes: returnForm.notes } })
         toast.success('Devolución registrada correctamente')
         setShowReturnDialog(false)
         onSuccess()
@@ -134,7 +136,8 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
     }
 
     const handleSubmitAdjust = async () => {
-      if (!adjustForm.productId || !adjustForm.quantity || Number(adjustForm.quantity) === 0) {
+      const qty = parseQtyInput(adjustForm.quantity)
+      if (!adjustForm.productId || qty === 0) {
         toast.error('Selecciona un producto y una cantidad')
         return
       }
@@ -143,7 +146,7 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
         return
       }
       try {
-        await adjustMut.mutateAsync({ body: { storeId, productId: adjustForm.productId, quantity: Number(adjustForm.quantity), mode: adjustForm.mode, notes: adjustForm.notes } })
+        await adjustMut.mutateAsync({ body: { storeId, productId: adjustForm.productId, quantity: qty, mode: adjustForm.mode, notes: adjustForm.notes } })
         toast.success('Ajuste registrado correctamente')
         setShowAdjustDialog(false)
         onSuccess()
@@ -153,12 +156,13 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
     }
 
     const handleSubmitLoss = async () => {
-      if (!lossForm.productId || !lossForm.quantity || Number(lossForm.quantity) <= 0) {
+      const qty = parseQtyInput(lossForm.quantity)
+      if (!lossForm.productId || qty <= 0) {
         toast.error('Selecciona un producto y una cantidad válida')
         return
       }
       try {
-        await lossMut.mutateAsync({ body: { storeId, productId: lossForm.productId, quantity: Number(lossForm.quantity), reason: lossForm.reason, notes: lossForm.notes } })
+        await lossMut.mutateAsync({ body: { storeId, productId: lossForm.productId, quantity: qty, reason: lossForm.reason, notes: lossForm.notes } })
         toast.success('Pérdida registrada correctamente')
         setShowLossDialog(false)
         onSuccess()
@@ -194,8 +198,9 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
                 <Label className="text-xs font-medium">Cantidad</Label>
                 <Input
                   type="number"
-                  min="1"
-                  placeholder="Cantidad devuelta"
+                  min="0.001"
+                  step="0.001"
+                  placeholder="Cantidad devuelta (ej: 2 o 0,5)"
                   value={returnForm.quantity}
                   onChange={(e) => setReturnForm(f => ({ ...f, quantity: e.target.value }))}
                   className="h-9 text-xs"
@@ -268,6 +273,7 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
                 </Label>
                 <Input
                   type="number"
+                  step="0.001"
                   placeholder={adjustForm.mode === 'set' ? 'Nueva cantidad total' : 'Ej: +5 o -3'}
                   value={adjustForm.quantity}
                   onChange={(e) => setAdjustForm(f => ({ ...f, quantity: e.target.value }))}
@@ -319,8 +325,9 @@ export const InventoryActionDialogs = forwardRef<InventoryDialogsHandle, Invento
                 <Label className="text-xs font-medium">Cantidad</Label>
                 <Input
                   type="number"
-                  min="1"
-                  placeholder="Cantidad perdida"
+                  min="0.001"
+                  step="0.001"
+                  placeholder="Cantidad perdida (ej: 2 o 0,5)"
                   value={lossForm.quantity}
                   onChange={(e) => setLossForm(f => ({ ...f, quantity: e.target.value }))}
                   className="h-9 text-xs"

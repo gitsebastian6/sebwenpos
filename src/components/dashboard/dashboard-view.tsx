@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useDashboard } from '@/hooks/api/use-dashboard'
 import type { OpenTable } from '@/types'
 import { formatCurrency } from '@/lib/auth'
+import { formatQty } from '@/lib/format'
 import {
   Card,
   CardContent,
@@ -547,7 +548,7 @@ export function DashboardView() {
                         {data.lowStockProducts.slice(0, 8).map(p => (
                           <div key={p.id} className="flex justify-between text-xs">
                             <span className="truncate">{p.name}</span>
-                            <span className={p.currentStock === 0 ? 'text-red-600 font-semibold' : 'text-amber-600'}>{p.currentStock}/{p.minStock}</span>
+                            <span className={p.currentStock === 0 ? 'text-red-600 font-semibold' : 'text-amber-600'}>{formatQty(p.currentStock)}/{formatQty(p.minStock)}</span>
                           </div>
                         ))}
                       </div>

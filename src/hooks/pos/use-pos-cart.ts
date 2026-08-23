@@ -1,15 +1,16 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
-import { useAuthStore } from '@/stores/auth-store'
-import { toast } from 'sonner'
+import { useCreateInvoice, useCreateOrder } from '@/hooks/api/use-pos'
 import { DIAN_CONSUMIDOR_FINAL_NIT, getUnitOfMeasureLabel } from '@/lib/constants'
-import { playCartAdd, playSaleSuccess, playError } from '@/lib/pos-sounds'
-import type { CartItem, PaymentMethod, InvoiceMode, LastOrderData, LastInvoiceData, CustomerSummary, Service, ProductPresentation } from '@/types'
-import type { Product, OpenCashRegister } from './use-pos-data'
-import { useCreateOrder, useCreateInvoice } from '@/hooks/api/use-pos'
+import { floorQty, isFractionalUnit, roundQty } from '@/lib/format'
 import { useOffline } from '@/lib/offline/offline-provider'
-import { enqueuePendingOrder, processPendingOrders } from '@/lib/offline/sync'
+import { enqueuePendingOrder } from '@/lib/offline/sync'
+import { playCartAdd, playError, playSaleSuccess } from '@/lib/pos-sounds'
+import { useAuthStore } from '@/stores/auth-store'
+import type { CartItem, CustomerSummary, InvoiceMode, LastInvoiceData, LastOrderData, PaymentMethod, ProductPresentation, Service } from '@/types'
+import { useCallback, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import type { OpenCashRegister, Product } from './use-pos-data'
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -58,7 +59,12 @@ function recomputeMaxStock(items: CartItem[], products: Product[]): CartItem[] {
     const ownUsage = item.quantity * unitsPerPack
     const otherUsage = (baseUnitsByProduct.get(item.productId) ?? 0) - ownUsage
     const remaining = Math.max(0, currentStock - otherUsage)
-    return { ...item, maxStock: Math.floor(remaining / unitsPerPack) }
+    // maxStock es en unidades de ESTA línea. Líneas fraccionables (KG/L/M)
+    // conservan 3 decimales (0.5 KG); líneas discretas se redondean a entero
+    // (no tiene sentido vender 0.104 "Cajas x24").
+    const lineMax = remaining / unitsPerPack
+    const maxStock = isFractionalUnit(item.unitLabel) ? floorQty(lineMax) : Math.floor(floorQty(lineMax))
+    return { ...item, maxStock }
   })
 }
 
@@ -120,13 +126,14 @@ export function usePosCart(deps: UsePosCartDeps) {
           .filter((item) => !item.isService && item.productId === product.id && item !== existing)
           .reduce((sum, item) => sum + item.quantity * (item.unitsPerPack || 1), 0)
         const wouldUse = (existing ? existing.quantity + 1 : 1) + otherUsage
-        if (product.trackInventory !== false && wouldUse > product.currentStock) {
+        // roundQty evita 0.1+0.2=0.30000000000000004 en la comparación
+        if (product.trackInventory !== false && roundQty(wouldUse) > roundQty(product.currentStock)) {
           toast.warning(existing ? `Stock insuficiente para "${product.name}"` : `Sin stock para "${product.name}"`)
           return prev
         }
         didAdd = true
         const next = existing
-          ? prev.map((item) => (item === existing ? { ...item, quantity: item.quantity + 1 } : item))
+          ? prev.map((item) => (item === existing ? { ...item, quantity: roundQty(item.quantity + 1) } : item))
           : [
               ...prev,
               {
@@ -134,11 +141,12 @@ export function usePosCart(deps: UsePosCartDeps) {
                 serviceId: null,
                 presentationId: null,
                 presentationName: null,
+                unitLabel: product.unitLabel,
                 unitsPerPack: 1,
                 name: product.name,
                 salePrice: product.salePrice,
                 quantity: 1,
-                maxStock: product.trackInventory === false ? UNLIMITED_STOCK : product.currentStock,
+                maxStock: product.trackInventory === false ? UNLIMITED_STOCK : floorQty(product.currentStock),
                 isService: false,
                 taxRate: product.taxRate || undefined,
               },
@@ -166,13 +174,13 @@ export function usePosCart(deps: UsePosCartDeps) {
           .filter((item) => !item.isService && item.productId === product.id && item !== existing)
           .reduce((sum, item) => sum + item.quantity * (item.unitsPerPack || 1), 0)
         const wouldUseUnits = ((existing ? existing.quantity + 1 : 1) * presentation.unitsPerPack) + otherUsage
-        if (product.trackInventory !== false && wouldUseUnits > product.currentStock) {
+        if (product.trackInventory !== false && roundQty(wouldUseUnits) > roundQty(product.currentStock)) {
           toast.warning(`Stock insuficiente para "${product.name} — ${getUnitOfMeasureLabel(presentation.unitLabel)}"`)
           return prev
         }
         didAdd = true
         const next = existing
-          ? prev.map((item) => (item === existing ? { ...item, quantity: item.quantity + 1 } : item))
+          ? prev.map((item) => (item === existing ? { ...item, quantity: roundQty(item.quantity + 1) } : item))
           : [
               ...prev,
               {
@@ -180,11 +188,12 @@ export function usePosCart(deps: UsePosCartDeps) {
                 serviceId: null,
                 presentationId: presentation.id,
                 presentationName: getUnitOfMeasureLabel(presentation.unitLabel),
+                unitLabel: presentation.unitLabel,
                 unitsPerPack: presentation.unitsPerPack,
                 name: product.name,
                 salePrice: presentation.salePrice,
                 quantity: 1,
-                maxStock: product.trackInventory === false ? UNLIMITED_STOCK : Math.floor(product.currentStock / presentation.unitsPerPack),
+                maxStock: product.trackInventory === false ? UNLIMITED_STOCK : floorQty(product.currentStock / presentation.unitsPerPack),
                 isService: false,
                 taxRate: product.taxRate || undefined,
               },
@@ -248,11 +257,41 @@ export function usePosCart(deps: UsePosCartDeps) {
               ? item.serviceId === itemId
               : isSameLine(item, itemId, presentationId)
             if (!match) return item
-            const newQty = item.quantity + delta
+            const newQty = roundQty(item.quantity + delta)
             if (newQty <= 0) return null
             if (!item.isService && newQty > item.maxStock) {
               toast.warning('Stock insuficiente')
               return item
+            }
+            return { ...item, quantity: newQty }
+          })
+          .filter(Boolean) as CartItem[]
+        return recomputeMaxStock(next, deps.products)
+      })
+    },
+    [deps.products]
+  )
+
+  /**
+   * Setea la cantidad EXACTA de una línea (usado por el input editable del
+   * POS). Normaliza coma decimal y redondea a QTY_PRECISION. Si supera el
+   * stock disponible (maxStock), se ajusta y advierte.
+   */
+  const setQuantity = useCallback(
+    (itemId: number, value: number, isService: boolean, presentationId: number | null = null) => {
+      setCart((prev) => {
+        const next = prev
+          .map((item) => {
+            const match = isService
+              ? item.serviceId === itemId
+              : isSameLine(item, itemId, presentationId)
+            if (!match) return item
+            const newQty = roundQty(value)
+            if (newQty <= 0) return null
+            // No dejar pasar el stock disponible (maxStock) para productos con tracking
+            if (!item.isService && newQty > item.maxStock) {
+              toast.warning(`Stock insuficiente (máx. ${item.maxStock})`)
+              return { ...item, quantity: item.maxStock }
             }
             return { ...item, quantity: newQty }
           })
@@ -509,6 +548,7 @@ export function usePosCart(deps: UsePosCartDeps) {
     addPresentationToCart,
     addServiceToCart,
     updateQuantity,
+    setQuantity,
     removeFromCart,
     updateItemNotes,
     clearCart,

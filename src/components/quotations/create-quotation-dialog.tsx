@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { formatCOP } from '@/lib/format'
+import { formatCOP, formatQty, roundQty, clampQty, parseQtyInput } from '@/lib/format'
 import { toast } from 'sonner'
 import {
   Plus, Search, ChevronRight, ChevronLeft, Minus, Trash2, User,
@@ -103,8 +103,18 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
     const key = cartItemKey(productId, presentationId)
     setCart(cart.map((c) => {
       if (cartItemKey(c.productId, c.presentationId) === key) {
-        const newQty = Math.max(1, c.quantity + delta)
-        return { ...c, quantity: newQty }
+        const newQty = roundQty(c.quantity + delta)
+        return { ...c, quantity: Math.max(0.001, newQty) }
+      }
+      return c
+    }))
+  }
+
+  const setCartQty = (productId: number, presentationId: number | null, value: number) => {
+    const key = cartItemKey(productId, presentationId)
+    setCart(cart.map((c) => {
+      if (cartItemKey(c.productId, c.presentationId) === key) {
+        return { ...c, quantity: clampQty(value, 0.001) }
       }
       return c
     }))
@@ -340,14 +350,14 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
                           <div className="text-xs text-muted-foreground">
                             {opt.product.category?.name}
                             {opt.product.currentStock <= 5 && (
-                              <span className="ml-2 text-amber-600">Stock: {opt.product.currentStock}</span>
+                              <span className="ml-2 text-amber-600">Stock: {formatQty(opt.product.currentStock)}</span>
                             )}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
                           <div className="font-medium text-sm">{cop(price)}</div>
                           {inCart && (
-                            <div className="text-xs text-emerald-600">×{inCart.quantity} en lista</div>
+                            <div className="text-xs text-emerald-600">×{formatQty(inCart.quantity)} en lista</div>
                           )}
                         </div>
                       </button>
@@ -398,7 +408,15 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
                               <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateCartQty(item.productId, item.presentationId, -1)} aria-label="Reducir cantidad">
                                 <Minus className="h-3 w-3" />
                               </Button>
-                              <span className="w-8 text-center font-mono text-sm font-medium">{item.quantity}</span>
+                              <Input
+                                type="number"
+                                min="0.001"
+                                step="0.001"
+                                value={item.quantity}
+                                onChange={(e) => setCartQty(item.productId, item.presentationId, parseQtyInput(e.target.value))}
+                                className="w-16 h-7 text-center font-mono text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                aria-label="Cantidad"
+                              />
                               <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateCartQty(item.productId, item.presentationId, 1)} aria-label="Aumentar cantidad">
                                 <Plus className="h-3 w-3" />
                               </Button>
@@ -486,7 +504,7 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
                             <div className="text-xs text-muted-foreground mt-0.5">📝 {item.notes}</div>
                           )}
                         </TableCell>
-                        <TableCell className="text-center">{item.quantity}</TableCell>
+                        <TableCell className="text-center">{formatQty(item.quantity)}</TableCell>
                         <TableCell className="text-right text-sm">{cop(item.unitPrice)}</TableCell>
                         <TableCell className="text-right font-medium">{cop(item.unitPrice * item.quantity)}</TableCell>
                       </TableRow>
