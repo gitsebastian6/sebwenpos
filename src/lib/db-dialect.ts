@@ -49,12 +49,16 @@ export const sql = {
 
   /**
    * SQL expression to extract DATE from a timestamp column.
-   * - PostgreSQL: DATE(created_at)
-   * - SQLite: date(created_at / 1000, 'unixepoch')
+   * IMPORTANT: must return TEXT ('YYYY-MM-DD') in BOTH dialects —
+   * PostgreSQL's DATE(col) returns the `date` type which node-pg converts
+   * to a JS Date object (breaks .split('T') consumers), while
+   * TO_CHAR(...) returns a plain string like SQLite's date(...).
+   * - PostgreSQL: TO_CHAR(col, 'YYYY-MM-DD')
+   * - SQLite: date(col / 1000, 'unixepoch')
    */
   dateCol(column: string): string {
     if (dialect === 'postgresql') {
-      return `DATE(${column})`
+      return `TO_CHAR(${column}, 'YYYY-MM-DD')`
     }
     return `date(${column} / 1000, 'unixepoch')`
   },

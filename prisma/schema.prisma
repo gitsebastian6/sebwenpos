@@ -836,8 +836,10 @@ model Product {
   costPrice       Int      @default(0) @map("cost_price")
   salePrice       Int
   commission      Int      @default(0) @map("commission")
-  currentStock    Int      @default(0) @map("current_stock")
-  minStock        Int      @default(5) @map("min_stock")
+  // Stock/cantidades en Decimal (precisión QTY_PRECISION=3) para soportar
+  // productos por peso/volumen (KG, L, ML). Los precios siguen en Int (COP).
+  currentStock    Decimal  @default(0) @map("current_stock")
+  minStock        Decimal  @default(5) @map("min_stock")
   // false = stock is never validated/blocked at sale time (e.g. items sold by
   // weight, made-to-order food, anything not counted unit by unit). Purchases
   // and inventory movements still record normally either way.
@@ -887,7 +889,7 @@ model ProductPresentation {
   unitLabel    String   @default("UND") @map("unit_label") // ver UNIT_OF_MEASURE_OPTIONS — ej. "CAJ" para "Caja x24"
   barcode      String?  @map("barcode")
   sku          String?  @map("sku") // código/referencia del proveedor para esta presentación (homologación)
-  unitsPerPack Int      @map("units_per_pack") // cuántas unidades base equivale esta presentación
+  unitsPerPack Decimal  @map("units_per_pack") // cuántas unidades base equivale esta presentación
   salePrice    Int      @map("sale_price")
   costPrice    Int      @default(0) @map("cost_price")
   isActive     Boolean  @default(true) @map("is_active")
@@ -918,8 +920,8 @@ model InventoryMovement {
   // just record which presentation the user picked when entering the movement
   // (e.g. "3 Cajas x24" → quantity = ±72, unitsPerPack = 24).
   presentationName String?  @map("presentation_name")
-  unitsPerPack     Int      @default(1) @map("units_per_pack")
-  quantity         Int
+  unitsPerPack     Decimal  @default(1) @map("units_per_pack")
+  quantity         Decimal
   movementType     String   @map("movement_type")
   // Polymorphic reference — an Order.id for SALE/RETURN, a Purchase.id for
   // PURCHASE/PURCHASE_RETURN/ADJUSTMENT, discriminated by movementType. Never
@@ -991,9 +993,9 @@ model PurchaseItem {
   // always denominated in THIS presentation's own unit (e.g. "5 cajas x24"), and
   // unitsPerPack is what converts them into base-unit stock movements.
   presentationName  String?   @map("presentation_name")
-  unitsPerPack      Int       @default(1) @map("units_per_pack")
-  quantity          Int
-  returnedQuantity  Int       @default(0) @map("returned_quantity")
+  unitsPerPack      Decimal   @default(1) @map("units_per_pack")
+  quantity          Decimal
+  returnedQuantity  Decimal   @default(0) @map("returned_quantity")
   unitCost          Int       @map("unit_cost")
   ivaRate           Int       @default(0) @map("iva_rate") // IVA % for this item (0 = exento, 19, 5, etc.)
   ivaAmount         Int       @default(0) @map("iva_amount")
@@ -1209,9 +1211,9 @@ model OrderItem {
   // must keep showing what was actually sold, and stock must keep restoring
   // at the right base-unit ratio, regardless of later product edits.
   presentationName String? @map("presentation_name")
-  unitsPerPack     Int     @default(1) @map("units_per_pack")
-  quantity         Int
-  returnedQuantity Int     @default(0) @map("returned_quantity")
+  unitsPerPack     Decimal @default(1) @map("units_per_pack")
+  quantity         Decimal
+  returnedQuantity Decimal @default(0) @map("returned_quantity")
   unitPrice        Int     @map("unit_price")
   totalRow         Int     @map("total_row")
   taxCode          String? @map("tax_code")
@@ -1289,9 +1291,9 @@ model ComandaItem {
   // and unitsPerPack is what converts them into base-unit stock movements
   // when the session is paid (see tables/sessions/[id]/pay).
   presentationName String?  @map("presentation_name")
-  unitsPerPack     Int      @default(1) @map("units_per_pack")
+  unitsPerPack     Decimal  @default(1) @map("units_per_pack")
   productName      String   @map("product_name")
-  quantity         Int
+  quantity         Decimal
   unitPrice        Int      @map("unit_price")
   total            Int
   notes            String?
@@ -1382,7 +1384,9 @@ model ServiceTransaction {
   id          Int      @id @default(autoincrement())
   storeId     Int      @map("store_id")
   serviceId   Int      @map("service_id")
-  quantity    Int      @default(1)
+  // Decimal (QTY_PRECISION=3) para consistencia con el resto de cantidades
+  // (ej. 1.5 horas de consultoría). Precios siguen en Int (COP).
+  quantity    Decimal  @default(1)
   unitPrice   Int      @map("unit_price")
   totalAmount Int      @map("total_amount")
   notes       String?
@@ -1574,8 +1578,8 @@ model QuotationItem {
   presentationId   Int?    @map("presentation_id")
   // Snapshot (survives presentation rename/delete) — mirrors OrderItem/PurchaseItem.
   presentationName String? @map("presentation_name")
-  unitsPerPack     Int     @default(1) @map("units_per_pack")
-  quantity         Int
+  unitsPerPack     Decimal @default(1) @map("units_per_pack")
+  quantity         Decimal
   unitPrice        Int     @map("unit_price")
   totalRow         Int     @map("total_row")
   taxCode          String? @map("tax_code")

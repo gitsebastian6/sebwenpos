@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { registerDecimalSerialization } from './stock-math'
 
 /**
  * Sebwen POS — Database Client (SQLite)
@@ -6,6 +7,11 @@ import { PrismaClient } from '@prisma/client'
  * Development: SQLite (file-based, zero config)
  * Production:  Change provider in schema.prisma + DATABASE_URL in .env
  */
+
+// Serializa Prisma.Decimal → number en NextResponse.json() para TODAS las
+// rutas API que importan `db` (idempotente). Sin esto, los campos Decimal
+// se serializarían como string y romperían el frontend.
+registerDecimalSerialization()
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
