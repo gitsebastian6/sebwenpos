@@ -237,6 +237,9 @@ export interface CartItem {
   serviceId: number | null
   presentationId?: number | null
   presentationName?: string | null
+  // Unidad de medida DE ESTA LÍNEA (producto base o presentación). Decide el
+  // paso del stepper (+/−) y si la línea es fraccionable (KG/L/M) o discreta.
+  unitLabel?: string
   // Base units this line consumes per unit of quantity. 1 for the product's
   // own "Unidad" (base) presentation; >1 when this line is a presentation
   // (e.g. Six-pack = 6) — stock is a single shared pool in base units.

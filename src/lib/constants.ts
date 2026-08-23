@@ -21,6 +21,13 @@ export const DIAN_CONSUMIDOR_FINAL_NIT_DV = '222222222222'
 /** Default currency for Colombian commerce */
 export const DEFAULT_CURRENCY = 'COP'
 
+/**
+ * Precisión (decimales) para campos de stock/cantidad.
+ * 3 = suficiente para gramos sobre KG (0.001). Usado por stock-math (server)
+ * y format.ts (client) para redondeos consistentes.
+ */
+export const QTY_PRECISION = 3
+
 /** Invoice type code for standard invoices (DIAN UBL 2.1) */
 export const DIAN_INVOICE_TYPE = '01'
 
@@ -98,6 +105,34 @@ export const UNIT_OF_MEASURE_OPTIONS: UnitOfMeasureOption[] = [
 // ProductPresentation es texto libre y no debe usarse como display principal.
 export function getUnitOfMeasureLabel(code: string): string {
   return UNIT_OF_MEASURE_OPTIONS.find((u) => u.value === code)?.label || 'Unidad'
+}
+
+// ─── Códigos de unidad UN/ECE rec20 para el XML DIAN ────────────────────────
+// El XML UBL 2.1 exige un unitCode estándar por línea (cbc:InvoicedQuantity).
+// Sin este mapeo toda factura saldría "NIU" (unidad) aunque el producto se
+// venda por peso/volumen/medida. Códigos según UN/ECE Recommendation 20:
+const DIAN_UNIT_CODES: Record<string, string> = {
+  KG: 'KGM',   // kilogramo
+  G: 'GRM',    // gramo
+  MG: 'MGM',   // miligramo
+  L: 'LTR',    // litro
+  ML: 'MLT',   // mililitro
+  M: 'MTR',    // metro
+  CM: 'CMT',   // centímetro
+  M2: 'MTK',   // metro cuadrado
+  M3: 'MTQ',   // metro cúbico
+  OZ: 'ONZ',   // onza
+  LB: 'LBR',   // libra
+}
+
+/**
+ * Código UN/ECE rec20 para el atributo unitCode del XML DIAN.
+ * Unidades discretas (UND, CAJ, PAQ…) → 'NIU' (unidad/pieza).
+ * Acepta undefined/null (producto/servicio eliminado o sin unidad) → 'NIU'.
+ */
+export function unitCodeFor(unitLabel?: string | null): string {
+  if (!unitLabel) return 'NIU'
+  return DIAN_UNIT_CODES[unitLabel] || 'NIU'
 }
 
 // ═══════════════════════════════════════════════════════════════

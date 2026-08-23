@@ -40,10 +40,16 @@ export async function transitionOverdueSubscriptions() {
   }
 
   // ── Step 2a: TRIAL → EXPIRED directly (no grace period) ──
+  // Cubre también trials cuyo endDate es null y solo tienen trialEndDate
+  // (misma semántica que transitionSingleSubscription: fecha efectiva =
+  // trialEndDate para TRIAL).
   await db.subscription.updateMany({
     where: {
-      endDate: { lt: now },
       status: 'TRIAL',
+      OR: [
+        { endDate: { lt: now } },
+        { endDate: null, trialEndDate: { lt: now } },
+      ],
     },
     data: { status: 'EXPIRED' },
   })
