@@ -31,6 +31,10 @@ services:
     container_name: sebwenpos-db
     restart: unless-stopped
     environment:
+      TZ: America/Bogota
+      # PGTZ: timezone de sesión por defecto — coherente con la app para que
+      # NOW()/to_timestamp() y las comparaciones de fechas usen la misma zona.
+      PGTZ: America/Bogota
       POSTGRES_USER: sebwenpos
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sebwenpos_secret_2025}
       POSTGRES_DB: sebwenpos
@@ -73,6 +77,8 @@ services:
       dockerfile: mini-services/tables-sync/Dockerfile
     container_name: sebwenpos-tables-sync
     restart: unless-stopped
+    environment:
+      TZ: America/Bogota
     ports:
       - "3005:3005"
     healthcheck:
@@ -92,6 +98,10 @@ services:
     ports:
       - "3000:3000"
     environment:
+      # ── Timezone: los rangos de fecha de la UI (informes, cierres, ledger)
+      # se parsean en la zona del server — sin esto, el contenedor en UTC
+      # movía las ventas de la noche al día siguiente y las excluía. ──
+      TZ: America/Bogota
       # ── Database (PostgreSQL) ──
       DATABASE_URL: postgresql://sebwenpos:${POSTGRES_PASSWORD:-sebwenpos_secret_2025}@postgres:5432/sebwenpos?schema=public
       # ── Auth ──
@@ -162,6 +172,7 @@ services:
     container_name: sebwenpos-subscription-cron
     restart: unless-stopped
     environment:
+      TZ: America/Bogota
       INTERNAL_SECRET: ${INTERNAL_SECRET:-sebwen-internal-secret-2025}
       APP_BASE_URL: http://app:3000
       ALERT_API_BASE: http://app:3000/api/subscription/alerts

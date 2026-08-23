@@ -120,6 +120,12 @@ COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 RUN mkdir -p /app/uploads/receipts && \
     chown -R nextjs:nodejs /app/uploads
 
+# Create the Next.js cache directory with ownership for the non-root user —
+# otherwise the image optimizer fails at runtime with
+# EACCES: permission denied, mkdir '/app/.next/cache'
+RUN mkdir -p /app/.next/cache && \
+    chown -R nextjs:nodejs /app/.next
+
 # Copy startup script and ensure LF line endings + executable
 COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && \

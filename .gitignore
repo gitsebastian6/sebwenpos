@@ -72,5 +72,12 @@ worklog.md
 *.bak
 *.backup.*
 
+# Kilo CLI (agent tooling + node_modules) — not source code
+/.kilo/
+
 # Auto-push protection active
 mini-services/ai-chat-service/log.txt
+
+# Local DB backups and Windows reserved-name artifact — never commit
+/backups/
+/nul
