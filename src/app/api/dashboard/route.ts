@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
+import { requireStoreAccess } from '@/lib/api-auth'
 import { db } from '@/lib/db'
 import { sql } from '@/lib/db-dialect'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -76,15 +76,21 @@ export async function GET(request: NextRequest) {
       runSafe('profitToday', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(oi.total_row),0) as "totalRevenue", COALESCE(SUM(p.cost_price * oi.quantity * oi.units_per_pack),0) as "totalCOGS", COUNT(DISTINCT oi.order_id) as "totalOrders", CASE WHEN COUNT(DISTINCT oi.order_id) > 0 THEN SUM(oi.total_row) / COUNT(DISTINCT oi.order_id) ELSE 0 END as "avgTicket" FROM order_items oi JOIN products p ON p.id = oi.product_id JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(today.getTime())} AND o.created_at <= ${sql.timestamp(todayEnd.getTime())}`)),
       runSafe('profitMonth', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(o.subtotal),0) as "totalRevenue", COALESCE(SUM(p.cost_price * oi.quantity * oi.units_per_pack),0) as "totalCOGS", COALESCE(SUM(o.discount_amount),0) as "totalDiscounts", COALESCE(SUM(o.tip_amount),0) as "totalTips" FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(monthStart.getTime())} AND o.created_at <= ${sql.timestamp(todayEnd.getTime())}`)),
       runSafe('profitYear', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(o.subtotal),0) as "totalRevenue", COALESCE(SUM(p.cost_price * oi.quantity * oi.units_per_pack),0) as "totalCOGS" FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(yearStart.getTime())} AND o.created_at <= ${sql.timestamp(todayEnd.getTime())}`)),
-      runSafe('inventoryCost', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(cost_price * current_stock), 0) as "totalCost" FROM products WHERE store_id = ${storeIdNum} AND is_active = ${sql.bool(true)} AND current_stock > 0`)),
-      // Use o.created_at / 86400000 to get day-level granularity without date() function (avoids ambiguous column in multi-table join)
-      runSafe('avgDailyCOGS', () => db.$queryRawUnsafe(`SELECT CASE WHEN COUNT(DISTINCT (o.created_at / 86400000)) > 0 THEN SUM(p.cost_price * oi.quantity * oi.units_per_pack) / COUNT(DISTINCT (o.created_at / 86400000)) ELSE 0 END as "avgDailyCOGS" FROM order_items oi JOIN products p ON p.id = oi.product_id JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(new Date(now.getTime() - 30 * 86400000).getTime())} AND oi.product_id IS NOT NULL`)),
+      // CAST(... AS REAL): current_stock es Decimal (QTY_PRECISION=3) — la
+      // comparación/comparación de columnas debe ser numérica explícita para
+      // no depender de cómo SQLite almacene el decimal.
+      runSafe('inventoryCost', () => db.$queryRawUnsafe(`SELECT COALESCE(SUM(cost_price * CAST(current_stock AS REAL)), 0) as "totalCost" FROM products WHERE store_id = ${storeIdNum} AND is_active = ${sql.bool(true)} AND CAST(current_stock AS REAL) > 0`)),
+      // sql.dateCol('o.created_at') buckets orders per day as TEXT ('YYYY-MM-DD') in BOTH
+      // dialects — PostgreSQL: TO_CHAR(col,'YYYY-MM-DD'), SQLite: date(col/1000,'unixepoch').
+      // The old `o.created_at / 86400000` division only worked on SQLite; on PostgreSQL it
+      // fails with `operator does not exist: timestamp without time zone / integer` (42883).
+      runSafe('avgDailyCOGS', () => db.$queryRawUnsafe(`SELECT CASE WHEN COUNT(DISTINCT ${sql.dateCol('o.created_at')}) > 0 THEN SUM(p.cost_price * oi.quantity * oi.units_per_pack) / COUNT(DISTINCT ${sql.dateCol('o.created_at')}) ELSE 0 END as "avgDailyCOGS" FROM order_items oi JOIN products p ON p.id = oi.product_id JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(new Date(now.getTime() - 30 * 86400000).getTime())} AND oi.product_id IS NOT NULL`)),
       runSafe('outOfStockCount', () => db.product.count({ where: { storeId: storeIdNum, isActive: true, currentStock: 0 } })),
-      runSafe('outOfStock', () => db.$queryRawUnsafe(`SELECT id, name, "salePrice" as "salePrice" FROM products WHERE store_id = ${storeIdNum} AND is_active = ${sql.bool(true)} AND current_stock = 0 ORDER BY name ASC LIMIT 50`)),
+      runSafe('outOfStock', () => db.$queryRawUnsafe(`SELECT id, name, "salePrice" as "salePrice" FROM products WHERE store_id = ${storeIdNum} AND is_active = ${sql.bool(true)} AND CAST(current_stock AS REAL) = 0 ORDER BY name ASC LIMIT 50`)),
       runSafe('velocity', () => db.$queryRawUnsafe(`SELECT oi.product_id as "productId", SUM(oi.quantity * oi.units_per_pack) as "totalQty" FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.store_id = ${storeIdNum} AND o.status = 'COMPLETED' AND o.created_at >= ${sql.timestamp(new Date(now.getTime() - 30 * 86400000).getTime())} AND oi.product_id IS NOT NULL GROUP BY oi.product_id`)),
       runSafe('totalDebt', () => db.customer.aggregate({ where: { storeId: storeIdNum }, _sum: { totalDebt: true } })),
       runSafe('openTables', () => db.tableSession.findMany({ where: { storeId: storeIdNum, status: 'OPEN' }, include: { barTable: { select: { number: true, name: true, zone: true } }, customer: { select: { name: true } }, _count: { select: { comandaItems: true, orders: true } } }, orderBy: { startedAt: 'asc' } })),
-      runSafe('lowStock', () => db.$queryRawUnsafe(`SELECT id, name, current_stock as "currentStock", min_stock as "minStock" FROM products WHERE store_id = ${storeIdNum} AND is_active = ${sql.bool(true)} AND current_stock <= min_stock ORDER BY current_stock ASC LIMIT 20`)),
+      runSafe('lowStock', () => db.$queryRawUnsafe(`SELECT id, name, CAST(current_stock AS REAL) as "currentStock", CAST(min_stock AS REAL) as "minStock" FROM products WHERE store_id = ${storeIdNum} AND is_active = ${sql.bool(true)} AND CAST(current_stock AS REAL) <= CAST(min_stock AS REAL) ORDER BY "currentStock" ASC LIMIT 20`)),
       runSafe('recentOrders', () => db.order.findMany({ where: { storeId: storeIdNum }, include: { customer: { select: { id: true, name: true } }, tableSession: { select: { id: true, barTable: { select: { number: true, name: true } } } } }, orderBy: { createdAt: 'desc' }, take: 10 })),
       // Raw SQL (not orderItem.groupBy) because quantity must be scaled by units_per_pack —
       // Prisma's groupBy can't express a computed sum like SUM(quantity * units_per_pack).
@@ -213,10 +219,15 @@ export async function GET(request: NextRequest) {
     // ───────────────────────────────────────────────────
 
     const safeSalesByDay = Array.isArray(salesByDayResult) ? salesByDayResult : []
+    // El tipo de `day` depende del dialecto: SQLite devuelve TEXT 'YYYY-MM-DD'
+    // y PostgreSQL (antes de TO_CHAR) podía entregar un objeto Date. Esta
+    // normalización defensiva acepta ambos y siempre produce 'YYYY-MM-DD'.
+    const toDayKey = (v: unknown): string =>
+      v instanceof Date ? v.toISOString().slice(0, 10) : String(v).split('T')[0]
     const salesByDayMap = new Map(
       safeSalesByDay
         .filter((row) => row.day)
-        .map((row) => [row.day.split('T')[0], Number(row.total ?? 0)])
+        .map((row) => [toDayKey(row.day), Number(row.total ?? 0)])
     )
     const salesByDay: Array<{ date: string; total: number }> = []
     for (let i = 6; i >= 0; i--) {

@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
+import { requireStoreAccess } from '@/lib/api-auth'
 import { db } from '@/lib/db'
 import { sql } from '@/lib/db-dialect'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
+import { toNum } from '@/lib/stock-math'
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -122,7 +123,12 @@ export async function GET(request: NextRequest) {
           db.$queryRawUnsafe(`SELECT o.payment_method as method, COUNT(*) as count, SUM(o.total) as total FROM orders o WHERE ${sBase} GROUP BY o.payment_method`),
           db.$queryRawUnsafe(`SELECT COALESCE(c.name, 'Sin categoría') as category, SUM(oi.quantity * oi.units_per_pack) as qty, SUM(oi.total_row) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN products p ON p.id = oi.product_id LEFT JOIN categories c ON c.id = p.category_id WHERE ${sBase} GROUP BY c.name`),
           db.$queryRawUnsafe(`SELECT CASE WHEN o.table_session_id IS NOT NULL THEN 'MESA' ELSE 'POS' END as source, COUNT(*) as count, SUM(o.total) as total FROM orders o WHERE ${sBase} GROUP BY CASE WHEN o.table_session_id IS NOT NULL THEN 'MESA' ELSE 'POS' END`),
-          db.$queryRawUnsafe(`SELECT oi.product_id as productId, COALESCE(p.name, 'Eliminado') as name, SUM(oi.quantity * oi.units_per_pack) as qty, SUM(oi.total_row) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN products p ON p.id = oi.product_id WHERE ${sBase} AND oi.product_id IS NOT NULL GROUP BY oi.product_id ORDER BY total DESC LIMIT 20`),
+          // PostgreSQL requires every non-aggregated SELECT column in GROUP BY:
+          // grouping only by product_id made `p.name` invalid (error 42803) and,
+          // because this whole block shares one safe() wrapper, it nulled the
+          // ENTIRE sales-data section of Informes. p.name is functionally
+          // dependent on the products PK so results are identical in SQLite.
+          db.$queryRawUnsafe(`SELECT oi.product_id as productId, COALESCE(p.name, 'Eliminado') as name, SUM(oi.quantity * oi.units_per_pack) as qty, SUM(oi.total_row) as total FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN products p ON p.id = oi.product_id WHERE ${sBase} AND oi.product_id IS NOT NULL GROUP BY oi.product_id, p.name ORDER BY total DESC LIMIT 20`),
           db.order.findMany({
             where: { storeId, status: { in: ['COMPLETED', 'CREDIT'] }, ...(dateFilter ? { createdAt: dateFilter } : { createdAt: { gte: monthStart, lte: todayEnd } }) },
             include: {
@@ -366,7 +372,7 @@ export async function GET(request: NextRequest) {
     // Devoluciones — computed up front so Ventas/Rentabilidad can be reported net
     // of returns ("Venta Neta = Venta Bruta - Descuentos - Devoluciones").
     const returns = Array.isArray(results[12]) ? results[12] : []
-    const returnsTotalValue = returns.reduce((s, r) => s + r.quantity * (r.product?.salePrice || 0), 0)
+    const returnsTotalValue = returns.reduce((s, r) => s + toNum(r.quantity) * (r.product?.salePrice || 0), 0)
 
     // ── 1. TU LOCAL EN CIFRAS ──
     const todaySales = results[0]
