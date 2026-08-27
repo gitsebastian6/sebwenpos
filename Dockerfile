@@ -6,9 +6,7 @@
 #   Stage 2 (builder): Build the Next.js app (generates standalone output)
 #   Stage 3 (runner):  Minimal runtime image with standalone server
 #
-# NOTE: This Dockerfile switches Prisma from SQLite to PostgreSQL during build.
-#       The local dev environment still uses SQLite. The switch happens ONLY
-#       inside Docker via a sed command in the builder stage.
+# NOTE: Prisma uses PostgreSQL everywhere (dev + prod) — no provider swap.
 #
 # Usage:
 #   docker compose up --build          (with docker-compose.yml)
@@ -34,10 +32,6 @@ COPY prisma ./prisma/
 # Copy migration script
 COPY scripts/docker-migrate.sh /app/docker-migrate.sh
 RUN sed -i 's/\r$//' /app/docker-migrate.sh && chmod +x /app/docker-migrate.sh
-
-# ── Switch Prisma provider from SQLite to PostgreSQL ──
-# Local dev uses SQLite, Docker/production uses PostgreSQL
-RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
 
 # Install ALL dependencies (needed for build step)
 RUN npm ci
@@ -66,9 +60,6 @@ COPY --from=deps /app/prisma ./prisma
 # Copy source code
 COPY . .
 
-# ── Switch Prisma provider from SQLite to PostgreSQL ──
-RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
-
 # Build-time environment variables (dummy values for build validation)
 # Real values come from the runtime environment (.env or docker env)
 ENV AUTH_SECRET=build-placeholder
@@ -78,6 +69,7 @@ ENV SMTP_FROM=build@placeholder.com
 ENV ALERT_API_BASE=http://localhost
 # PostgreSQL URL for build — Prisma needs a valid URL format to generate client
 ENV DATABASE_URL=postgresql://placeholder:placeholder@placeholder:5432/placeholder
+ENV DIRECT_URL=postgresql://placeholder:placeholder@placeholder:5432/placeholder
 
 # Generate Prisma client (ensure it's fresh with PostgreSQL provider)
 RUN npx prisma generate

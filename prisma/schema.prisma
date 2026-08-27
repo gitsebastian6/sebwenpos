@@ -3,25 +3,27 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled connection (Neon `-pooler` host with ?pgbouncer=true, or a local/VPS Postgres).
+  url       = env("DATABASE_URL")
+  // Unpooled connection used by `prisma migrate` / `db push`. On a self-hosted
+  // Postgres this is the same value as DATABASE_URL; on Neon it is the direct
+  // (non-pooler) connection string.
+  directUrl = env("DIRECT_URL")
 }
 
 // ╔══════════════════════════════════════════════════════════════════╗
-// ║  SEBWEN POS — Hybrid Schema (SQLite dev / PostgreSQL prod)    ║
+// ║  SEBWEN POS — PostgreSQL (dev + prod)                            ║
 // ║  ─────────────────────────────────────────────────────────────  ║
-// ║  DEVELOPMENT: SQLite (file:./db/custom.db) — zero config        ║
-// ║  PRODUCTION:  PostgreSQL — change provider + DATABASE_URL       ║
+// ║  DEV:  local Postgres — `docker compose up -d postgres`         ║
+// ║        DATABASE_URL = DIRECT_URL = the local container URL      ║
+// ║  PROD: Neon (managed) now, self-hosted VPS Postgres later.      ║
+// ║        Neon → DATABASE_URL = pooled, DIRECT_URL = direct.       ║
+// ║        VPS  → both URLs identical.                              ║
 // ║                                                                  ║
-// ║  To migrate to PostgreSQL:                                      ║
-// ║    1. Change provider below to "postgresql"                     ║
-// ║    2. Change DATABASE_URL in .env to postgresql://...           ║
-// ║    3. Run: bunx prisma generate && bunx prisma db push          ║
-// ║    4. Run: bun prisma/migrate-sqlite-to-pg.ts                   ║
-// ║    5. Update src/lib/db.ts to use PrismaPg adapter              ║
-// ║                                                                  ║
-// ║  All raw SQL queries use src/lib/db-dialect.ts helper which      ║
-// ║  auto-detects the dialect from DATABASE_URL.                    ║
+// ║  Schema changes: `npm run db:migrate` (dev) generates a         ║
+// ║  migration in prisma/migrations/; `prisma migrate deploy`        ║
+// ║  applies them in CI/prod. Do NOT use `db push` against prod.    ║
 // ╚══════════════════════════════════════════════════════════════════╝
 
 // ----------------------------------------------

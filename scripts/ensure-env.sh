@@ -19,11 +19,17 @@ if [ ! -f "$ENV_FILE" ]; then
   echo "[ensure-env] Created .env file"
 fi
 
-# Ensure DATABASE_URL — relative path (resolved by Prisma relative to
-# prisma/schema.prisma), so it works regardless of where the repo is checked out.
+# Ensure DATABASE_URL / DIRECT_URL — local Postgres from docker-compose
+# (`docker compose up -d postgres`). Both point at the same local container.
+LOCAL_PG_URL='postgresql://sebwenpos:sebwenpos_secret_2025@localhost:5432/sebwenpos?schema=public'
 if ! grep -q '^DATABASE_URL=' "$ENV_FILE"; then
-  echo 'DATABASE_URL="file:../db/custom.db"' >> "$ENV_FILE"
-  echo "[ensure-env] Added DATABASE_URL"
+  echo "DATABASE_URL=\"$LOCAL_PG_URL\"" >> "$ENV_FILE"
+  echo "[ensure-env] Added DATABASE_URL (local Postgres)"
+  NEEDS_WRITE=true
+fi
+if ! grep -q '^DIRECT_URL=' "$ENV_FILE"; then
+  echo "DIRECT_URL=\"$LOCAL_PG_URL\"" >> "$ENV_FILE"
+  echo "[ensure-env] Added DIRECT_URL (local Postgres)"
   NEEDS_WRITE=true
 fi
 
@@ -47,9 +53,6 @@ if ! grep -q '^AI_CHAT_MODEL=' "$ENV_FILE"; then
   echo "[ensure-env] Added AI_CHAT_MODEL (free tier)"
   NEEDS_WRITE=true
 fi
-
-# Ensure db directory exists
-mkdir -p "$PROJECT_ROOT/db"
 
 if [ "$NEEDS_WRITE" = false ]; then
   echo "[ensure-env] All secrets present — ready to start"

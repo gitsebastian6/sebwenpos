@@ -2,10 +2,13 @@ import { PrismaClient } from '@prisma/client'
 import { registerDecimalSerialization } from './stock-math'
 
 /**
- * Sebwen POS — Database Client (SQLite)
+ * Sebwen POS — Database Client (PostgreSQL)
  * ─────────────────────────────────────────────────────────
- * Development: SQLite (file-based, zero config)
- * Production:  Change provider in schema.prisma + DATABASE_URL in .env
+ * Dev:  local Postgres (`docker compose up -d postgres`)
+ * Prod: Neon (managed) now, self-hosted VPS Postgres later.
+ * Connection comes from DATABASE_URL. Prisma's built-in engine connects
+ * directly; no driver adapter is wired (the app is a long-lived Node
+ * server, not an edge/serverless runtime).
  */
 
 // Serializa Prisma.Decimal → number en NextResponse.json() para TODAS las
