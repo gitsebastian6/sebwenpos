@@ -9,17 +9,18 @@
 #   docker compose down -v           → Stop and DELETE all data (volumes)
 #
 # After first boot:
-#   1. The migrate container runs prisma db push (creates tables)
-#   2. The app container auto-seeds data on first run
+#   1. The migrate container runs `prisma migrate deploy` (applies migrations)
+#   2. The app container auto-seeds plans + super-admin on first run
 #   3. Open http://localhost:3000
 #
 # pgAdmin (database GUI):
 #   docker compose --profile tools up -d
 #   http://localhost:5050  →  admin@sebwenpos.com / admin
 #
-# To migrate existing SQLite data:
-#   1. Copy db/custom.db into the container
-#   2. Run: docker compose exec app bun run prisma/migrate-sqlite-to-pg.ts
+# External database (Neon / managed Postgres):
+#   Set DATABASE_URL and DIRECT_URL in .env.docker. The local `postgres`
+#   service is then unused (leave it, or `docker compose up app migrate
+#   tables-sync subscription-cron`).
 # ---------------------------------------------------------------------------
 
 name: sebwenpos
@@ -50,8 +51,8 @@ services:
 
   # ── Database Migration (one-shot init container) ────────────────────────
   # Uses the "deps" build stage which has full node_modules (including
-  # the prisma CLI and all its transitive dependencies like "effect").
-  # Runs prisma db push, then exits. The app waits for this to succeed.
+  # the prisma CLI). Runs `prisma migrate deploy`, then exits. The app
+  # waits for this to succeed.
   migrate:
     build:
       context: .
@@ -62,8 +63,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+        required: false
     environment:
-      DATABASE_URL: postgresql://sebwenpos:${POSTGRES_PASSWORD:-sebwenpos_secret_2025}@postgres:5432/sebwenpos?schema=public
+      DATABASE_URL: ${DATABASE_URL:-postgresql://sebwenpos:${POSTGRES_PASSWORD:-sebwenpos_secret_2025}@postgres:5432/sebwenpos?schema=public}
+      DIRECT_URL: ${DIRECT_URL:-postgresql://sebwenpos:${POSTGRES_PASSWORD:-sebwenpos_secret_2025}@postgres:5432/sebwenpos?schema=public}
     command: ["/bin/bash", "/app/docker-migrate.sh"]
 
   # ── Tables Real-Time Sync (Socket.IO) ───────────────────────────────────
@@ -102,8 +105,10 @@ services:
       # se parsean en la zona del server — sin esto, el contenedor en UTC
       # movía las ventas de la noche al día siguiente y las excluía. ──
       TZ: America/Bogota
-      # ── Database (PostgreSQL) ──
-      DATABASE_URL: postgresql://sebwenpos:${POSTGRES_PASSWORD:-sebwenpos_secret_2025}@postgres:5432/sebwenpos?schema=public
+      # ── Database (PostgreSQL) — override DATABASE_URL/DIRECT_URL in
+      #    .env.docker to point at Neon or another managed Postgres. ──
+      DATABASE_URL: ${DATABASE_URL:-postgresql://sebwenpos:${POSTGRES_PASSWORD:-sebwenpos_secret_2025}@postgres:5432/sebwenpos?schema=public}
+      DIRECT_URL: ${DIRECT_URL:-postgresql://sebwenpos:${POSTGRES_PASSWORD:-sebwenpos_secret_2025}@postgres:5432/sebwenpos?schema=public}
       # ── Auth (no fallback on purpose — a shared/guessable secret is a
       #    security hole; compose aborts if these are not provided) ──
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required — set it in .env.docker (openssl rand -base64 32)}

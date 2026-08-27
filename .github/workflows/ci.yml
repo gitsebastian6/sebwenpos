@@ -51,7 +51,9 @@ env:
   NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
   SMTP_FROM: ${{ secrets.SMTP_FROM }}
   ALERT_API_BASE: ${{ secrets.ALERT_API_BASE }}
-  DATABASE_URL: file:./ci-test.db
+  # CI Postgres service (see build-and-test.services.postgres)
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sebwenpos_ci
+  DIRECT_URL: postgresql://postgres:postgres@localhost:5432/sebwenpos_ci
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -64,6 +66,21 @@ jobs:
     strategy:
       matrix:
         node-version: [20]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sebwenpos_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout repository
@@ -78,13 +95,22 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libsqlite3-dev build-essential
+          sudo apt-get install -y -qq build-essential
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
       - name: Generate Prisma client
         run: npx prisma generate
+
+      - name: Apply migrations to CI database
+        run: npx prisma migrate deploy
+
+      - name: Check migrations are in sync with schema
+        run: npx prisma migrate status
 
       - name: Build Next.js
         run: npm run build
@@ -240,11 +266,15 @@ jobs:
           docker tag ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:latest
           docker stop sebwenpos 2>/dev/null || true
           docker rm sebwenpos 2>/dev/null || true
+          # DB is external (Neon / self-hosted Postgres) — the app container is
+          # stateless, no volume. DATABASE_URL / DIRECT_URL come from the env file.
+          # Schema migrations are applied out-of-band (`prisma migrate deploy`
+          # against DIRECT_URL) before this deploy — the runtime image does not
+          # carry the Prisma CLI.
           docker run -d \
             --name sebwenpos \
             --restart unless-stopped \
             -p 3000:3000 \
-            -v sebwenpos-data:/app/db \
             --env-file /opt/sebwenpos/.env \
             ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
           sleep 10
