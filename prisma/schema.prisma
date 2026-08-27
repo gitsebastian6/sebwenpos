@@ -1739,10 +1739,15 @@ model ChatMessage {
   tokens    Int      @default(0) // Token count for this message
   model     String? // GLM model used
   latencyMs Int?     @map("latency_ms") // Response time in ms
+  // Idempotency-Key del cliente (solo se setea en el mensaje 'assistant').
+  // Un reintento del POST con la misma key devuelve esta respuesta sin volver
+  // a llamar al modelo ni recontar tokens. NULL para mensajes sin key.
+  clientKey String?  @map("client_key")
   createdAt DateTime @default(now()) @map("created_at")
 
   session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
+  @@unique([sessionId, clientKey])
   @@index([sessionId])
   @@index([createdAt])
   @@map("chat_messages")

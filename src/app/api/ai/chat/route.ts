@@ -43,6 +43,17 @@ const AI_MODEL = process.env.AI_CHAT_MODEL || 'glm-4.7-flash'  // Used by Z.ai/Z
 const MAX_CONTEXT_MESSAGES = parseInt(process.env.AI_MAX_CONTEXT_MESSAGES || '20', 10)
 const MAX_MESSAGE_LENGTH = 2000
 
+/** Sum of tokensUsed across the user's chat sessions created today (informational). */
+async function sumTokensUsedToday(userId: number): Promise<number> {
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
+  const sessions = await db.chatSession.findMany({
+    where: { userId, createdAt: { gte: todayStart } },
+    select: { tokensUsed: true },
+  })
+  return sessions.reduce((sum, s) => sum + s.tokensUsed, 0)
+}
+
 // ─── Navigation list — built from VIEW_LABELS so the assistant can never  ───
 // ─── drift from the real sidebar names (see src/lib/view-labels.ts)      ───
 
@@ -571,6 +582,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { message, sessionId, currentPage, subscriptionStatus, planName } = body
 
+    // Idempotency: un reintento del POST (timeout de red, doble submit) con la
+    // misma key devuelve la respuesta ya generada sin volver a llamar al modelo
+    // ni recontar tokens. La key se guarda en el ChatMessage 'assistant'.
+    const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null
+
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return NextResponse.json({ success: false, error: 'Mensaje vacío' }, { status: 400 })
     }
@@ -596,6 +612,24 @@ export async function POST(req: NextRequest) {
         data: { sessionId: newSessionId, userId: auth.userId, storeId: auth.storeId, title: message.slice(0, 80) },
         include: { messages: true },
       })
+    }
+
+    // Idempotency replay: same key already produced an assistant reply → return it.
+    if (idempotencyKey) {
+      const prior = await db.chatMessage.findFirst({
+        where: { sessionId: session.id, clientKey: idempotencyKey, role: 'assistant' },
+        select: { content: true, tokens: true },
+      })
+      if (prior) {
+        const usedToday = await sumTokensUsedToday(auth.userId)
+        return NextResponse.json({
+          success: true,
+          message: prior.content,
+          sessionId: session.sessionId,
+          usage: { usedToday, tokensThisMessage: prior.tokens },
+          replayed: true,
+        })
+      }
     }
 
     // Save user message
@@ -651,10 +685,30 @@ export async function POST(req: NextRequest) {
       model = 'fallback'
     }
 
-    // Save assistant message
-    await db.chatMessage.create({
-      data: { sessionId: session.id, role: 'assistant', content: aiContent, tokens: tokensUsed, model, latencyMs },
-    })
+    // Save assistant message. On a concurrent retry with the same key the unique
+    // (sessionId, clientKey) index rejects the second write (P2002) — return the
+    // reply the winner stored, without double-counting tokens.
+    try {
+      await db.chatMessage.create({
+        data: { sessionId: session.id, role: 'assistant', content: aiContent, tokens: tokensUsed, model, latencyMs, clientKey: idempotencyKey },
+      })
+    } catch (err: any) {
+      if (idempotencyKey && err?.code === 'P2002') {
+        const prior = await db.chatMessage.findFirst({
+          where: { sessionId: session.id, clientKey: idempotencyKey, role: 'assistant' },
+          select: { content: true, tokens: true },
+        })
+        const usedToday = await sumTokensUsedToday(auth.userId)
+        return NextResponse.json({
+          success: true,
+          message: prior?.content ?? aiContent,
+          sessionId: session.sessionId,
+          usage: { usedToday, tokensThisMessage: prior?.tokens ?? tokensUsed },
+          replayed: true,
+        })
+      }
+      throw err
+    }
 
     // Update session stats
     await db.chatSession.update({
@@ -663,13 +717,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Get usage stats (informational only — no limits)
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    const todaySessions = await db.chatSession.findMany({
-      where: { userId: auth.userId, createdAt: { gte: todayStart } },
-      select: { tokensUsed: true },
-    })
-    const usedToday = todaySessions.reduce((sum, s) => sum + s.tokensUsed, 0)
+    const usedToday = await sumTokensUsedToday(auth.userId)
 
     return NextResponse.json({
       success: true,
