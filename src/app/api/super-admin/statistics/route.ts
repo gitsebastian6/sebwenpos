@@ -168,7 +168,7 @@ export async function GET() {
     const monthlyStores = await db.$queryRawUnsafe(`
       SELECT ${sql.monthCol('created_at')} as month, COUNT(*) as count
       FROM stores
-      WHERE parent_store_id IS NULL AND created_at >= '${twelveMonthsAgo.toISOString()}'
+      WHERE parent_store_id IS NULL AND created_at >= ${sql.timestamp(twelveMonthsAgo)}
       GROUP BY ${sql.monthCol('created_at')}
       ORDER BY month ASC
     `)
@@ -180,7 +180,7 @@ export async function GET() {
              COUNT(*) as billing_count,
              SUM(CASE WHEN status = 'PENDING' THEN net_amount ELSE 0 END) as pending_amount
       FROM billing_records
-      WHERE period_start >= '${twelveMonthsAgo.toISOString()}'
+      WHERE period_start >= ${sql.timestamp(twelveMonthsAgo)}
       GROUP BY ${sql.monthCol('period_start')}
       ORDER BY month ASC
     `)
@@ -191,7 +191,7 @@ export async function GET() {
              COUNT(*) as count,
              SUM(CASE WHEN status != 'CANCELLED' THEN total ELSE 0 END) as total_sales
       FROM orders
-      WHERE created_at >= '${twelveMonthsAgo.toISOString()}'
+      WHERE created_at >= ${sql.timestamp(twelveMonthsAgo)}
       GROUP BY ${sql.monthCol('created_at')}
       ORDER BY month ASC
     `)
@@ -200,7 +200,7 @@ export async function GET() {
     const monthlyCustomers = await db.$queryRawUnsafe(`
       SELECT ${sql.monthCol('created_at')} as month, COUNT(*) as count
       FROM customers
-      WHERE created_at >= '${twelveMonthsAgo.toISOString()}'
+      WHERE created_at >= ${sql.timestamp(twelveMonthsAgo)}
       GROUP BY ${sql.monthCol('created_at')}
       ORDER BY month ASC
     `)
@@ -239,7 +239,7 @@ export async function GET() {
              SUM(CASE WHEN event_type = 'SUBSCRIPTION_REACTIVATED' THEN 1 ELSE 0 END) as reactivated,
              SUM(CASE WHEN event_type = 'SUBSCRIPTION_PAST_DUE' THEN 1 ELSE 0 END) as past_due
       FROM store_event_logs
-      WHERE created_at >= '${sixMonthsAgo.toISOString()}'
+      WHERE created_at >= ${sql.timestamp(sixMonthsAgo)}
         AND event_type IN ('SUBSCRIPTION_CANCELLED', 'SUBSCRIPTION_REACTIVATED', 'SUBSCRIPTION_PAST_DUE')
       GROUP BY ${sql.monthCol('created_at')}
       ORDER BY month ASC
@@ -259,15 +259,14 @@ export async function GET() {
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-    // NOTE: aliases must be double-quoted to keep camelCase in the result set —
-    // PostgreSQL folds unquoted identifiers to lowercase (SQLite doesn't), and
-    // a SELECT alias can't be referenced in HAVING (only in ORDER BY) — this
-    // query previously only worked against the SQLite dev database.
+    // NOTE: aliases are double-quoted to keep camelCase in the result set —
+    // PostgreSQL folds unquoted identifiers to lowercase — and a SELECT alias
+    // can't be referenced in HAVING (only in ORDER BY).
     const topStores = await db.$queryRawUnsafe(`
       SELECT s.id as "storeId", s.name as "storeName", COUNT(o.id) as "orderCount",
              SUM(CASE WHEN o.status != 'CANCELLED' THEN o.total ELSE 0 END) as "totalSales"
       FROM stores s
-      LEFT JOIN orders o ON o.store_id = s.id AND o.created_at >= '${thirtyDaysAgo.toISOString()}'
+      LEFT JOIN orders o ON o.store_id = s.id AND o.created_at >= ${sql.timestamp(thirtyDaysAgo)}
       WHERE s.parent_store_id IS NULL
       GROUP BY s.id, s.name
       HAVING COUNT(o.id) > 0

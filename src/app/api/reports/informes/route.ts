@@ -65,8 +65,8 @@ export async function GET(request: NextRequest) {
 
       // 2. INVENTARIO — Valuación y días
       safe('inv-valuation', () => db.$queryRawUnsafe(`
-        SELECT COALESCE(SUM(cost_price * current_stock), 0) as "totalCost",
-               COALESCE(SUM("salePrice" * current_stock), 0) as "totalRetail",
+        SELECT COALESCE(SUM(cost_price * current_stock), 0)::float8 as "totalCost",
+               COALESCE(SUM("salePrice" * current_stock), 0)::float8 as "totalRetail",
                COUNT(CASE WHEN current_stock = 0 THEN 1 END) as "outOfStock",
                COUNT(CASE WHEN current_stock <= min_stock THEN 1 END) as "lowStock",
                COUNT(*) as "totalProducts"

@@ -1,130 +1,53 @@
 /**
- * Sebwen POS — Database Dialect Helper
+ * Sebwen POS — SQL snippet helpers for raw queries (PostgreSQL)
  * ─────────────────────────────────────────────────────────
- * Provides SQL dialect functions for both SQLite and PostgreSQL.
- * The active dialect is determined by DATABASE_URL at startup.
+ * The app runs on PostgreSQL only (dev + prod). This module used to branch
+ * per dialect; it now just centralises a few Postgres-specific snippets so
+ * raw queries stay consistent:
  *
- * Usage in raw queries:
  *   import { sql } from '@/lib/db-dialect'
  *   db.$queryRawUnsafe(`... WHERE created_at >= ${sql.timestamp(ms)} ...`)
- *   db.$queryRawUnsafe(`... WHERE is_active = ${sql.bool(true)} ...`)
- *   db.$queryRawUnsafe(`... GROUP BY ${sql.dateCol('created_at')} ...`)
+ *   db.$queryRawUnsafe(`... GROUP BY ${sql.monthCol('created_at')} ...`)
+ *
+ * Note: `dateCol`/`monthCol` deliberately use TO_CHAR (returns TEXT) rather
+ * than DATE()/date_trunc (returns a `date`/`timestamp` that node-pg turns
+ * into a JS Date, breaking `.split('T')` consumers).
  */
 
-type Dialect = 'postgresql' | 'sqlite'
-
-function detectDialect(): Dialect {
-  const url = process.env.DATABASE_URL || ''
-  return url.startsWith('postgresql://') || url.startsWith('postgres://')
-    ? 'postgresql'
-    : 'sqlite'
-}
-
-import { logger } from '@/lib/logger'
-
-const dialect = detectDialect()
-
-logger.info(`[DB] Dialect: ${dialect.toUpperCase()} (from DATABASE_URL)`)
-
-/**
- * SQL dialect helpers — use these in $queryRawUnsafe calls
- * to keep queries compatible with both SQLite and PostgreSQL.
- */
 export const sql = {
-  /** Get current dialect name */
-  get dialect(): Dialect { return dialect },
+  /** Current SQL dialect — always 'postgresql'. */
+  get dialect(): 'postgresql' {
+    return 'postgresql'
+  },
 
-  /**
-   * Convert a JS Date or epoch-ms to a SQL timestamp literal.
-   * - PostgreSQL: to_timestamp(epoch / 1000)   (seconds)
-   * - SQLite: epoch                           (stored as INTEGER ms, compared as number)
-   */
-  timestamp(dateOrMs: Date | number): number | string {
+  /** JS Date or epoch-ms → a Postgres timestamp expression. */
+  timestamp(dateOrMs: Date | number): string {
     const ms = typeof dateOrMs === 'number' ? dateOrMs : dateOrMs.getTime()
-    if (dialect === 'postgresql') {
-      return `to_timestamp(${ms} / 1000)`
-    }
-    return ms
+    return `to_timestamp(${ms} / 1000)`
   },
 
-  /**
-   * SQL expression to extract DATE from a timestamp column.
-   * IMPORTANT: must return TEXT ('YYYY-MM-DD') in BOTH dialects —
-   * PostgreSQL's DATE(col) returns the `date` type which node-pg converts
-   * to a JS Date object (breaks .split('T') consumers), while
-   * TO_CHAR(...) returns a plain string like SQLite's date(...).
-   * - PostgreSQL: TO_CHAR(col, 'YYYY-MM-DD')
-   * - SQLite: date(col / 1000, 'unixepoch')
-   */
+  /** Extract 'YYYY-MM-DD' TEXT from a timestamp column. */
   dateCol(column: string): string {
-    if (dialect === 'postgresql') {
-      return `TO_CHAR(${column}, 'YYYY-MM-DD')`
-    }
-    return `date(${column} / 1000, 'unixepoch')`
+    return `TO_CHAR(${column}, 'YYYY-MM-DD')`
   },
 
-  /**
-   * SQL boolean literal.
-   * - PostgreSQL: true / false
-   * - SQLite: 1 / 0
-   */
-  bool(value: boolean): boolean | number {
-    if (dialect === 'postgresql') return value
-    return value ? 1 : 0
+  /** SQL boolean literal. */
+  bool(value: boolean): boolean {
+    return value
   },
 
-  /**
-   * SQL expression for "now minus N days".
-   * - PostgreSQL: NOW() - INTERVAL 'N days'
-   * - SQLite: strftime('%s', 'now', 'localtime', '-N days') * 1000
-   */
+  /** "now minus N days" expression. */
   nowMinusDays(days: number): string {
-    if (dialect === 'postgresql') {
-      return `NOW() - INTERVAL '${days} days'`
-    }
-    return `strftime('%s', 'now', 'localtime', '-${days} days') * 1000`
+    return `NOW() - INTERVAL '${days} days'`
   },
 
-  /**
-   * SQL expression for "now".
-   * - PostgreSQL: NOW()
-   * - SQLite: (strftime('%s', 'now') * 1000)
-   */
+  /** "now" expression. */
   now(): string {
-    if (dialect === 'postgresql') return 'NOW()'
-    return "(strftime('%s', 'now') * 1000)"
+    return 'NOW()'
   },
 
-  /**
-   * SQL expression to bucket a timestamp column into a "YYYY-MM" month string,
-   * for GROUP BY month reporting queries.
-   * - PostgreSQL: TO_CHAR(column, 'YYYY-MM')
-   * - SQLite: strftime('%Y-%m', column / 1000, 'unixepoch')
-   */
+  /** Bucket a timestamp column into a 'YYYY-MM' TEXT month, for GROUP BY. */
   monthCol(column: string): string {
-    if (dialect === 'postgresql') {
-      return `TO_CHAR(${column}, 'YYYY-MM')`
-    }
-    return `strftime('%Y-%m', ${column} / 1000, 'unixepoch')`
+    return `TO_CHAR(${column}, 'YYYY-MM')`
   },
-}
-
-/**
- * Build a timestamp comparison string for a WHERE clause.
- * Usage: `WHERE ${sql.tsGte('created_at', startDate)}`
- */
-export function tsGte(column: string, dateOrMs: Date | number): string {
-  const ts = sql.timestamp(dateOrMs)
-  if (dialect === 'postgresql') {
-    return `${column} >= ${ts}`
-  }
-  return `${column} >= ${ts}`
-}
-
-export function tsLte(column: string, dateOrMs: Date | number): string {
-  const ts = sql.timestamp(dateOrMs)
-  if (dialect === 'postgresql') {
-    return `${column} <= ${ts}`
-  }
-  return `${column} <= ${ts}`
 }
