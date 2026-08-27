@@ -104,9 +104,11 @@ services:
       TZ: America/Bogota
       # ── Database (PostgreSQL) ──
       DATABASE_URL: postgresql://sebwenpos:${POSTGRES_PASSWORD:-sebwenpos_secret_2025}@postgres:5432/sebwenpos?schema=public
-      # ── Auth ──
-      AUTH_SECRET: ${AUTH_SECRET:-sebwen-auth-secret-key-2025-secure}
-      INTERNAL_SECRET: ${INTERNAL_SECRET:-sebwen-internal-secret-2025}
+      # ── Auth (no fallback on purpose — a shared/guessable secret is a
+      #    security hole; compose aborts if these are not provided) ──
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required — set it in .env.docker (openssl rand -base64 32)}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required — set it in .env.docker (openssl rand -base64 32)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       # ── App URL ──
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       # ── Email ──
@@ -173,7 +175,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: America/Bogota
-      INTERNAL_SECRET: ${INTERNAL_SECRET:-sebwen-internal-secret-2025}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required — set it in .env.docker}
       APP_BASE_URL: http://app:3000
       ALERT_API_BASE: http://app:3000/api/subscription/alerts
       CRON_PORT: 3010

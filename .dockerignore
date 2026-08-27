@@ -22,6 +22,7 @@ out
 .env.test.local
 .env.production.local
 .env.docker
+.env.docker.example
 
 # SQLite database files (we use PostgreSQL in Docker)
 db/*.db
