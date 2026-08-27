@@ -161,7 +161,7 @@ export function QuotationDetailDialog({
                   )}
 
                   {/* Items */}
-                  <div className="rounded-lg border">
+                  <div className="rounded-lg border overflow-x-auto min-w-0">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -176,7 +176,7 @@ export function QuotationDetailDialog({
                       <TableBody>
                         {detail.items.map((item) => (
                           <TableRow key={item.id} className="hover:bg-muted/30">
-                            <TableCell className="text-sm">
+                            <TableCell className="text-sm break-words min-w-0">
                               {item.productName}
                               {item.presentationName && (
                                 <span className="ml-1.5 inline-flex items-center gap-0.5 text-sky-600 dark:text-sky-400 text-xs">

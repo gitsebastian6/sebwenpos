@@ -10,6 +10,7 @@ import { db } from '@/lib/db'
 import { setSubscriptionStatus } from '@/lib/subscription-cache'
 import { parsePlanFeatures } from './features'
 import { transitionSingleSubscription } from './transitions'
+import { computeDaysRemaining } from './countdown'
 
 /**
  * Get subscription info for a store, running auto-transition and building response.
@@ -66,19 +67,13 @@ export function buildSubInfo(sub: {
 
   // For TRIAL subscriptions, use trialEndDate for daysRemaining
   if (sub.status === 'TRIAL' && trialEndDate) {
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const trialEnd = new Date(trialEndDate.getFullYear(), trialEndDate.getMonth(), trialEndDate.getDate())
-    daysRemaining = Math.ceil((trialEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    daysRemaining = computeDaysRemaining(trialEndDate, now)
   } else if (endDate) {
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
-    daysRemaining = Math.ceil((endDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    daysRemaining = computeDaysRemaining(endDate, now)
   }
 
   if (graceEndDate && sub.status === 'PAST_DUE') {
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const graceEnd = new Date(graceEndDate.getFullYear(), graceEndDate.getMonth(), graceEndDate.getDate())
-    graceDaysRemaining = Math.ceil((graceEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    graceDaysRemaining = computeDaysRemaining(graceEndDate, now)
   }
 
   return {

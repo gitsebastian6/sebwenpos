@@ -14,11 +14,16 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { formatCOP } from '@/lib/format'
+import { useCountdown } from '@/lib/subscription/use-countdown'
+import { getCountdownTarget, formatCountdown } from '@/lib/subscription/countdown'
+import { GRACE_PERIOD_DAYS } from '@/lib/subscription/constants'
 
 export interface SubInfo {
   id: number; status: string; planName: string; planPrice: number
   startDate: string; endDate: string | null; billingPeriod: string; daysRemaining: number | null
   trialEndDate: string | null
+  graceEndDate?: string | null
+  graceDaysRemaining?: number | null
 }
 
 interface SubscriptionInfoCardProps {
@@ -36,6 +41,13 @@ const SUPPORT_WHATSAPP = `https://wa.me/${SEBWEN_SUPPORT_PHONE}?text=${encodeURI
 const SUPPORT_PHONE = SEBWEN_SUPPORT_PHONE.slice(2) // local 10-digit format
 
 export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, onCancel, isOwner = true, isFetching = false, onRefresh }: SubscriptionInfoCardProps) {
+  // Live countdown driven by the status reference date. The hook must run
+  // unconditionally on every render, so it is called BEFORE the !subInfo guard.
+  // Returns null when the status has no future reference date.
+  const countdown = useCountdown(
+    subInfo ? getCountdownTarget(subInfo.status, subInfo) : null,
+  )
+
   if (!subInfo) {
     return (
       <Card className="border-amber-200/60 dark:border-amber-800/40 rounded-2xl shadow-sm overflow-hidden">
@@ -72,10 +84,11 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
     )
   }
 
-  // Determine urgency level for trial
+  // Determine urgency level for trial (activity thresholds use day-granular daysRemaining;
+  // default to critical so a trial close to expiring is always highlighted)
   const trialUrgency = subInfo.status === 'TRIAL' && subInfo.daysRemaining !== null
     ? subInfo.daysRemaining <= 3 ? 'critical' : subInfo.daysRemaining <= 5 ? 'warning' : 'safe'
-    : null
+    : 'critical'
 
   const urgencyColors = {
     critical: {
@@ -139,7 +152,7 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
   return (
     <>
       {/* Trial Countdown Banner */}
-      {subInfo.status === 'TRIAL' && daysRem > 0 && (() => {
+      {subInfo.status === 'TRIAL' && (daysRem > 0 || countdown) && (() => {
         const colors = urgencyColors[trialUrgency!]
         return (
           <div className={`rounded-2xl border border-border/30 ${colors.border} ${colors.bg} p-5 shadow-sm`}>
@@ -157,7 +170,9 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
                       : `Período de prueba activo`}
                   </h3>
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${colors.pillBg} ${colors.pillText}`}>
-                    {daysRem} día{daysRem > 1 ? 's' : ''}
+                    {countdown
+                      ? formatCountdown(countdown)
+                      : `${daysRem} día${daysRem > 1 ? 's' : ''}`}
                   </span>
                 </div>
                 <p className="text-xs mt-1.5 text-muted-foreground leading-relaxed">
@@ -193,6 +208,102 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
                     >
                       <Crown className="h-4 w-4" />
                       {hasPendingReceipt ? 'Solicitud Pendiente...' : 'Actualizar Plan'}
+                    </Button>
+                  )}
+                  {!isOwner && (
+                    <p className="text-xs text-muted-foreground">
+                      Contacta al propietario del negocio para gestionar la suscripción.
+                    </p>
+                  )}
+                  <a
+                    href={`tel:+57${SUPPORT_PHONE}`}
+                    className="inline-flex items-center justify-center gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-sm font-semibold rounded-xl px-4 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-700 hover:shadow-sm transition-all duration-200 shadow-sm"
+                  >
+                    <Phone className="h-4 w-4" />
+                    Llamar {SUPPORT_PHONE}
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+            })()}
+
+      {/* Grace Period Countdown Banner (PAST_DUE / en gracia) */}
+      {subInfo.status === 'PAST_DUE' && subInfo.graceEndDate && (() => {
+        const remaining = countdown
+        const isCritical = !remaining || (remaining.days === 0 && remaining.hours < 2)
+        const colors = isCritical ? urgencyColors.critical : urgencyColors.warning
+        const graceEnd = new Date(subInfo.graceEndDate!)
+        const totalDays = GRACE_PERIOD_DAYS
+        const elapsedPercent = remaining
+          ? Math.min(
+              100,
+              Math.max(0, ((totalDays - (remaining.days + remaining.hours / 24)) / totalDays) * 100),
+            )
+          : 100
+        return (
+          <div
+            className={`rounded-2xl border border-border/30 ${colors.border} ${colors.bg} p-5 shadow-sm`}
+          >
+            <div className="flex items-start gap-4">
+              <div className={`h-11 w-11 rounded-full ${colors.iconBg} flex items-center justify-center shrink-0 shadow-sm`}>
+                <Clock className={`h-5 w-5 ${colors.iconText}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h3 className={`font-bold text-sm ${colors.headingText}`}>
+                    Período de Gracia
+                  </h3>
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${colors.pillBg} ${colors.pillText}`}
+                  >
+                    {formatCountdown(remaining) || 'Gracia terminada'}
+                  </span>
+                </div>
+                <p className="text-xs mt-1.5 text-muted-foreground leading-relaxed">
+                  Tu suscripción venció el{' '}
+                  <span className="font-semibold text-foreground">
+                    {subInfo.endDate
+                      ? new Date(subInfo.endDate).toLocaleDateString('es-CO', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric',
+                        })
+                      : '—'}
+                  </span>
+                  . Tu período de gracia <span className="font-semibold text-foreground">termina el {graceEnd.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}</span>, así que aún puedes pagar para recuperar acceso.
+                </p>
+
+                {/* Progress bar — grace period elapsed */}
+                <div className="mt-3.5">
+                  <div className="w-full h-3 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 relative ${colors.progressBg}`}
+                      style={{ width: `${elapsedPercent}%` }}
+                    >
+                      {isCritical && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-[shimmer_2s_infinite]" />
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1.5 text-right font-medium">
+                    {subInfo.graceDaysRemaining ?? 0} día
+                    {subInfo.graceDaysRemaining !== 1 ? 's' : ''} de gracia restante
+                    {subInfo.graceDaysRemaining !== 1 ? 's' : ''}
+                  </p>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex flex-col sm:flex-row gap-2.5 mt-4">
+                  {isOwner && (
+                    <Button
+                      onClick={onUpgrade}
+                      className="gap-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-200"
+                      disabled={hasPendingReceipt}
+                    >
+                      <Crown className="h-4 w-4" />
+                      {hasPendingReceipt ? 'Solicitud Pendiente...' : 'Renovar Plan'}
                     </Button>
                   )}
                   {!isOwner && (
@@ -326,13 +437,20 @@ export function SubscriptionInfoCard({ subInfo, hasPendingReceipt, onUpgrade, on
               <>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs text-muted-foreground font-medium">Tiempo restante</p>
-                  <p className={`text-xs font-bold ${
-                    daysRem <= 3 ? 'text-red-600 dark:text-red-400'
-                    : daysRem <= 5 ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-emerald-600 dark:text-emerald-400'
-                  }`}>
-                    {daysRem} día{daysRem > 1 ? 's' : ''}
-                  </p>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <p className={`text-xs font-bold ${
+                      daysRem <= 3 ? 'text-red-600 dark:text-red-400'
+                      : daysRem <= 5 ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-emerald-600 dark:text-emerald-400'
+                    }`}>
+                      {daysRem} día{daysRem > 1 ? 's' : ''}
+                    </p>
+                    {countdown && (
+                      <p className="text-[11px] font-mono font-semibold tabular-nums text-foreground/70">
+                        {formatCountdown(countdown)}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="w-full h-2.5 rounded-full bg-muted overflow-hidden">
                   <div

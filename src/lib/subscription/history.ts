@@ -5,26 +5,33 @@
 // records for subscription payments/extensions.
 // ---------------------------------------------------------------------------
 
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import type { HistoryEventType } from './constants'
 
 /**
  * Log a subscription history event.
+ * @param tx Optional Prisma transaction client — pass when this call must be
+ *           atomic with other operations (e.g. webhook processing).
  */
-export async function logSubscriptionHistory(params: {
-  storeId: number
-  subscriptionId: number
-  eventType: HistoryEventType
-  previousStatus?: string | null
-  newStatus?: string | null
-  previousPlanId?: number | null
-  newPlanId?: number | null
-  previousPlanName?: string | null
-  newPlanName?: string | null
-  description?: string
-  metadata?: Record<string, unknown>
-}) {
-  return db.subscriptionHistory.create({
+export async function logSubscriptionHistory(
+  params: {
+    storeId: number
+    subscriptionId: number
+    eventType: HistoryEventType
+    previousStatus?: string | null
+    newStatus?: string | null
+    previousPlanId?: number | null
+    newPlanId?: number | null
+    previousPlanName?: string | null
+    newPlanName?: string | null
+    description?: string
+    metadata?: Record<string, unknown>
+  },
+  tx?: Prisma.TransactionClient,
+) {
+  const client = tx ?? db
+  return client.subscriptionHistory.create({
     data: {
       storeId: params.storeId,
       subscriptionId: params.subscriptionId,
@@ -45,30 +52,34 @@ export async function logSubscriptionHistory(params: {
  * Create a billing record for a subscription payment/extension.
  * Generates an auto-incremental invoice number (VF-0001, VF-0002, ...).
  */
-export async function createBillingRecord(params: {
-  storeId: number
-  subscriptionId: number
-  receiptId?: number | null
-  planId: number
-  planName: string
-  billingPeriod: string
-  amount: number
-  prorationCredit: number
-  status?: string
-  paymentMethod?: string | null
-  periodStart: Date
-  periodEnd: Date
-  notes?: string | null
-}) {
+export async function createBillingRecord(
+  params: {
+    storeId: number
+    subscriptionId: number
+    receiptId?: number | null
+    planId: number
+    planName: string
+    billingPeriod: string
+    amount: number
+    prorationCredit: number
+    status?: string
+    paymentMethod?: string | null
+    periodStart: Date
+    periodEnd: Date
+    notes?: string | null
+  },
+  tx?: Prisma.TransactionClient,
+) {
+  const client = tx ?? db
   // Generate invoice number: VF-XXXX (4-digit padded sequential)
-  const lastRecord = await db.billingRecord.findFirst({
+  const lastRecord = await client.billingRecord.findFirst({
     orderBy: { id: 'desc' },
     select: { id: true },
   })
   const nextNum = (lastRecord?.id ?? 0) + 1
   const invoiceNumber = `VF-${String(nextNum).padStart(4, '0')}`
 
-  return db.billingRecord.create({
+  return client.billingRecord.create({
     data: {
       invoiceNumber,
       storeId: params.storeId,

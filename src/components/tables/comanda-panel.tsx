@@ -6,6 +6,8 @@ import { useComandaAddItem, useComandaUpdateItem } from '@/hooks/api/use-tables'
 import { formatCurrency } from '@/lib/auth'
 import { paymentMethodLabel, formatQty } from '@/lib/format'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
+import { sortPresentationOptions } from '@/lib/product-presentations'
+import { BarcodeScannerDialog, ScanButton } from '@/components/shared/barcode-scanner-dialog'
 import { playAlert, playError } from '@/lib/pos-sounds'
 import { toast } from 'sonner'
 import type { OrderItemData } from '@/types'
@@ -56,6 +58,7 @@ import {
   Pencil,
   X,
   Printer,
+  Layers,
 } from 'lucide-react'
 import type { BarTable, TableSession, Product, Category, Service } from '@/hooks/use-tables-data'
 import { ZONE_STYLES, COMANDA_STATUS_STYLES, formatTimeElapsed, formatTime } from '@/hooks/use-tables-data'
@@ -135,6 +138,15 @@ export function ComandaPanel({
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [addingItem, setAddingItem] = useState<number | null>(null)
   const [pendingItemNotes, setPendingItemNotes] = useState<string>('')
+
+  // ── Camera scanner: scans a barcode and filters the product list ──
+  const [cameraScanOpen, setCameraScanOpen] = useState(false)
+
+  function handleCameraScan(code: string) {
+    setProductSearch(code)
+    fetchProducts(code, categoryFilter)
+    toast.success(`Código escaneado: ${code}`)
+  }
 
   // ── Payment / print data ──
   const [lastPaymentData, setLastPaymentData] = useState<any>(null)
@@ -784,14 +796,18 @@ export function ComandaPanel({
                     <div className="relative flex-1">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input placeholder="Buscar producto..."
-                        className="pl-9 h-10 focus-visible:ring-primary/20 focus-visible:border-primary/40"
+                        className="pl-9 pr-11 h-10 focus-visible:ring-primary/20 focus-visible:border-primary/40"
                         value={productSearch}
                         onChange={(e) => {
                           setProductSearch(e.target.value)
                           fetchProducts(e.target.value, categoryFilter)
                         }}
                       />
+                      <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                        <ScanButton size="compact" label="Escanear código de barras" onClick={() => setCameraScanOpen(true)} />
+                      </div>
                     </div>
+                    <BarcodeScannerDialog open={cameraScanOpen} onClose={() => setCameraScanOpen(false)} onScan={handleCameraScan} />
                     <Select
                       value={categoryFilter}
                       onValueChange={(val) => {
@@ -828,19 +844,26 @@ export function ComandaPanel({
                     <ScrollArea className="max-h-64">
                       <div className="space-y-1.5">
                         {products.map((product) => {
-                          const activePresentations = (product.presentations || []).filter((p) => p.isActive)
-                          const hasPresentations = activePresentations.length > 0
+                          const presentationOptions = sortPresentationOptions(product)
+                          const hasPresentations = presentationOptions.length > 1
                           const rowBody = (
                             <div
                               className="flex items-center justify-between rounded-lg border p-2.5 hover:bg-muted/50 active:bg-muted/70 transition-colors cursor-pointer"
                               onClick={hasPresentations ? undefined : () => handleAddItem(product.id, null)}
                             >
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">{product.name}</p>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-sm font-medium truncate">{product.name}</p>
+                                  {hasPresentations && (
+                                    <Badge variant="secondary" className="text-[10px] px-1 py-0 shrink-0 bg-sky-100 text-sky-700 dark:bg-sky-900/60 dark:text-sky-300">
+                                      <Layers className="h-2.5 w-2.5 mr-0.5" />{presentationOptions.length}
+                                    </Badge>
+                                  )}
+                                </div>
                                 <p className="text-xs text-muted-foreground">
                                   {product.category?.name ?? 'Sin categoría'}
                                   {' · '}
-                                  {formatCurrency(product.salePrice, store?.currencyCode)}
+                                  {formatCurrency(presentationOptions[0].salePrice, store?.currencyCode)}
                                 </p>
                               </div>
                               <div className="shrink-0 ml-2">
@@ -862,25 +885,20 @@ export function ComandaPanel({
                               <PopoverTrigger asChild>{rowBody}</PopoverTrigger>
                               <PopoverContent className="w-56 p-1.5" align="start">
                                 <p className="px-2 py-1 text-xs font-medium text-muted-foreground truncate">{product.name}</p>
-                                <button
-                                  type="button"
-                                  className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
-                                  onClick={() => handleAddItem(product.id, null, null)}
-                                >
-                                  <span>{getUnitOfMeasureLabel(product.unitLabel ?? 'UND')}</span>
-                                  <span className="font-medium tabular-nums">{formatCurrency(product.salePrice, store?.currencyCode)}</span>
-                                </button>
-                                {activePresentations.map((presentation) => (
-                                  <button
-                                    key={presentation.id}
-                                    type="button"
-                                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
-                                    onClick={() => handleAddItem(product.id, null, presentation.id)}
-                                  >
-                                    <span className="truncate" title={presentation.name}>{getUnitOfMeasureLabel(presentation.unitLabel)}</span>
-                                    <span className="font-medium tabular-nums shrink-0 ml-2">{formatCurrency(presentation.salePrice, store?.currencyCode)}</span>
-                                  </button>
-                                ))}
+                                {presentationOptions.map((option) => {
+                                  const presentation = option.presentation
+                                  return (
+                                    <button
+                                      key={presentation?.id ?? 'base'}
+                                      type="button"
+                                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
+                                      onClick={() => handleAddItem(product.id, null, presentation?.id ?? null)}
+                                    >
+                                      <span className={presentation ? 'truncate' : undefined} title={presentation?.name}>{getUnitOfMeasureLabel(option.unitLabel)}</span>
+                                      <span className={presentation ? 'font-medium tabular-nums shrink-0 ml-2' : 'font-medium tabular-nums'}>{formatCurrency(option.salePrice, store?.currencyCode)}</span>
+                                    </button>
+                                  )
+                                })}
                               </PopoverContent>
                             </Popover>
                           )

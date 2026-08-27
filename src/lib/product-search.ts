@@ -16,16 +16,31 @@ export function buildProductSearchOptions(products: ProductOption[], query: stri
   for (const p of products) {
     const nameMatches = !q || p.name.toLowerCase().includes(q)
     const baseCodeMatches = (p.sku || '').toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q)
+    const productOptions: ProductSearchOption[] = []
     if (!q || nameMatches || baseCodeMatches) {
-      options.push({ key: `${p.id}-u`, product: p, presentation: null })
+      productOptions.push({ key: `${p.id}-u`, product: p, presentation: null })
     }
     for (const pr of (p.presentations || []).filter((x) => x.isActive)) {
       const prCodeMatches = (pr.sku || '').toLowerCase().includes(q) || (pr.barcode || '').toLowerCase().includes(q)
       const prNameMatches = pr.name.toLowerCase().includes(q)
       if (!q || nameMatches || prNameMatches || prCodeMatches) {
-        options.push({ key: `${p.id}-${pr.id}`, product: p, presentation: pr })
+        productOptions.push({ key: `${p.id}-${pr.id}`, product: p, presentation: pr })
       }
     }
+    // De menor a mayor precio de venta (empate: menor tamaño primero) — mismo
+    // criterio que el POS: la "Unidad" base (steps=1, salePrice del producto)
+    // participa en el orden. No cambia qué opciones coinciden con la búsqueda.
+    productOptions.sort((a, b) => {
+      const priceA = Number(a.presentation?.salePrice ?? p.salePrice)
+      const priceB = Number(b.presentation?.salePrice ?? p.salePrice)
+      return priceA - priceB || sizeOfOption(a) - sizeOfOption(b)
+    })
+    options.push(...productOptions)
   }
   return options
+}
+
+/** Unidades base de una opción (la "Unidad" base = 1). */
+function sizeOfOption(option: ProductSearchOption): number {
+  return option.presentation ? Number(option.presentation.unitsPerPack) : 1
 }

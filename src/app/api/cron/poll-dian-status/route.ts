@@ -1,8 +1,10 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getStatus } from '@/lib/invoicing/soap-client'
 import { formatInvoiceNumber } from '@/lib/invoice-utils'
 import { logger } from '@/lib/logger'
+import { verifyCronSecret, unauthorizedResponse } from '@/lib/cron-auth'
+import { claimExternalEvent } from '@/lib/idempotency'
 
 export const dynamic = 'force-dynamic'
 
@@ -155,9 +157,41 @@ async function processItem(item: PollItem): Promise<PollResult> {
 // Cron job endpoint: polls DIAN for status of pending invoices and credit notes.
 // Should be called every 10 minutes.
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // ── Auth por shared secret (entry point automático, sin sesión de usuario) ──
+  if (!verifyCronSecret(request)) {
+    logger.warn('[DIAN Cron] Intento de acceso sin CRON_SECRET válido')
+    return unauthorizedResponse()
+  }
+
   try {
     const startTime = Date.now()
+
+    // ── Lock anti-concurrencia vía ProcessedEvent ──
+    // Claim por minuto: si dos ejecuciones se solapan (scheduler + retry),
+    // la segunda cae en P2002 y sale limpio con 200 {skipped:true}.
+    const minuteBucket = new Date().toISOString().slice(0, 16) // YYYY-MM-DDTHH:MM
+    let lockClaimed = true
+    await db.$transaction(async (tx) => {
+      const claim = await claimExternalEvent(tx, 'CRON', `poll-dian-status:${minuteBucket}`)
+      if (!claim.claimed) lockClaimed = false
+    })
+    if (!lockClaimed) {
+      logger.info(`[DIAN Cron] Ejecución duplicada en el mismo minuto (${minuteBucket}), skipped`)
+      return NextResponse.json({
+        processed: 0,
+        validated: 0,
+        rejected: 0,
+        stillPending: 0,
+        errors: 0,
+        invoicesProcessed: 0,
+        creditNotesProcessed: 0,
+        results: [],
+        message: 'Ejecución duplicada — otro cron ya está corriendo en este minuto',
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - startTime,
+      } satisfies PollSummary)
+    }
 
     // 1. Find pending invoices sent > 5 min ago
     const pendingInvoices = await db.invoice.findMany({

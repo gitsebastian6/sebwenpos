@@ -73,6 +73,7 @@ export interface PendingOrder {
     discountAmount: number;
     discountReason?: string;
     notes?: string;
+        paymentSplits?: Array<{ method: string; amount: number; reference?: string }>;
     items: Array<{
       productId?: number;
       serviceId?: number;
@@ -85,6 +86,9 @@ export interface PendingOrder {
   retryCount: number;
   status: 'pending' | 'syncing' | 'failed';
   error?: string;
+  // Timestamp (ms) antes del cual NO se debe reintentar — usado por el backoff
+  // exponencial con jitter en processPendingOrders. null/undefined = reintentar ya.
+  nextRetryAt?: number | null;
 }
 
 export interface SyncMeta {

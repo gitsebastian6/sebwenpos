@@ -24,6 +24,7 @@ export interface Product {
   id: number
   name: string
   sku: string | null
+  barcode?: string | null
   unitLabel: string
   currentStock: number
   minStock: number

@@ -64,11 +64,18 @@ export function usePosRecentSales(storeId: number | undefined | null) {
   return useQuery<any[]>({
     queryKey: ['pos-recent-sales', storeId],
     queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0]
+      // Inicio del día LOCAL (medianoche en la zona horaria del navegador).
+      // Se envía como timestamp ISO completo (con offset de zona) para que el
+      // backend lo reconstruya como instante absoluto. Usar solo `YYYY-MM-DD`
+      // en UTC provoca un desfase de zona horaria: `new Date("2026-08-23")` se
+      // interpreta como medianoche UTC, que en Colombia (UTC-5) son las 19:00
+      // del día anterior, haciendo que ventas de hoy queden fuera del filtro.
+      const startOfDay = new Date()
+      startOfDay.setHours(0, 0, 0, 0)
       const sp = new URLSearchParams({
         storeId: String(storeId),
         status: 'COMPLETED',
-        from: today,
+        from: startOfDay.toISOString(),
         expand: 'items',
       })
       const res = await fetch(`/api/orders?${sp.toString()}`)

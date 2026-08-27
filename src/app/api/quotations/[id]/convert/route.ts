@@ -2,6 +2,8 @@ import { requireStoreAccess } from '@/lib/api-auth'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { lt, mul, toNum } from '@/lib/stock-math'
+import { calcLineTax, type TaxRateInfo } from '@/domain/sales/tax-calculator'
+import { reserveStock } from '@/domain/inventory/stock-reserver'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -80,19 +82,7 @@ export async function POST(
       }
     }
 
-    // Tax calculation helper
-    const calcTax = (totalRow: number, taxRateInfo: { code: string; rate: number; rateType: string } | null) => {
-      if (!taxRateInfo) return { taxCode: null, taxRate: 0, taxAmount: 0, taxBase: totalRow }
-      if (taxRateInfo.code === '03' || taxRateInfo.code === '04') {
-        return { taxCode: taxRateInfo.code, taxRate: 0, taxAmount: 0, taxBase: totalRow }
-      }
-      if (taxRateInfo.rateType === 'PERCENTAGE' && taxRateInfo.rate > 0) {
-        const taxBase = Math.round(totalRow / (1 + taxRateInfo.rate / 100))
-        const taxAmount = totalRow - taxBase
-        return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount, taxBase }
-      }
-      return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount: 0, taxBase: totalRow }
-    }
+    // Tax calculation delegated to the Sales domain service (TaxCalculator).
 
     const defaultTaxRate = await db.taxRate.findFirst({
       where: { storeId: data.storeId, isDefault: true, category: 'SALES_TAX', isActive: true },
@@ -110,7 +100,7 @@ export async function POST(
         : defaultTaxRate
           ? { code: defaultTaxRate.code, rate: defaultTaxRate.rate, rateType: defaultTaxRate.rateType }
           : null
-      const tax = calcTax(totalRow, effectiveTax)
+      const tax = calcLineTax(totalRow, effectiveTax as TaxRateInfo | null)
 
       if (tax.taxCode) {
         const key = tax.taxCode
@@ -218,6 +208,17 @@ export async function POST(
       for (const item of quotation.items) {
         if (item.productId) {
           const baseUnits = mul(item.quantity, item.unitsPerPack || 1)
+
+          // StockReserver (Shared Kernel Sales→Inventory): descuento atómico + FEFO
+          const reservation = await reserveStock(tx, data.storeId, item.productId, toNum(baseUnits))
+          if (!reservation.success && !reservation.notTracked) {
+            throw new Error(
+              reservation.availableStock !== undefined
+                ? `Stock insuficiente para "${reservation.productName}" (disponible: ${reservation.availableStock}).`
+                : `Producto no encontrado.`,
+            )
+          }
+
           await tx.inventoryMovement.create({
             data: {
               storeId: data.storeId,
@@ -228,14 +229,12 @@ export async function POST(
               quantity: baseUnits.negated(),
               movementType: 'SALE',
               referenceId: createdOrder.id,
+              batchId:
+                reservation.consumptions.length === 1 ? reservation.consumptions[0].batchId : null,
               notes: item.presentationName
                 ? `Venta ${orderNumber} — ${item.presentationName} x${item.quantity} (${toNum(baseUnits)} uds base) (desde cotización ${quotation.quotationNumber})`
                 : `Venta ${orderNumber} (desde cotización ${quotation.quotationNumber})`,
             },
-          })
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { currentStock: { decrement: baseUnits } },
           })
         }
       }

@@ -1,6 +1,7 @@
 import { requireStoreAccess } from '@/lib/api-auth'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { calcLineTax, type TaxRateInfo } from '@/domain/sales/tax-calculator'
 import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -32,23 +33,6 @@ const createQuotationSchema = z.object({
   validUntil: z.string().optional().nullable(),
   notes: z.string().max(500).optional(),
 })
-
-// ─── Helper: Calculate Colombian tax-inclusive pricing ──────
-
-function calcTax(totalRow: number, taxRateInfo: { code: string; rate: number; rateType: string } | null) {
-  if (!taxRateInfo) {
-    return { taxCode: null, taxRate: 0, taxAmount: 0, taxBase: totalRow }
-  }
-  if (taxRateInfo.code === '03' || taxRateInfo.code === '04') {
-    return { taxCode: taxRateInfo.code, taxRate: 0, taxAmount: 0, taxBase: totalRow }
-  }
-  if (taxRateInfo.rateType === 'PERCENTAGE' && taxRateInfo.rate > 0) {
-    const taxBase = Math.round(totalRow / (1 + taxRateInfo.rate / 100))
-    const taxAmount = totalRow - taxBase
-    return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount, taxBase }
-  }
-  return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount: 0, taxBase: totalRow }
-}
 
 // ─── Helper: Generate sequential quotation number ───────────
 
@@ -146,7 +130,7 @@ export async function POST(req: NextRequest) {
         : defaultTaxRate
           ? { code: defaultTaxRate.code, rate: defaultTaxRate.rate, rateType: defaultTaxRate.rateType }
           : null
-      const tax = calcTax(totalRow, effectiveTax)
+      const tax = calcLineTax(totalRow, effectiveTax as TaxRateInfo | null)
 
       if (tax.taxCode) {
         const key = tax.taxCode

@@ -7,6 +7,7 @@ import { POSRecentSales } from '@/components/pos/pos-recent-sales'
 import { POSReturnDialog, type POSReturnDialogRef } from '@/components/pos/pos-return-dialog'
 import { ProductGrid } from '@/components/pos/product-grid'
 import { KPIBar } from '@/components/shared/kpi-bar'
+import { useBarcodeScannerDialog } from '@/components/shared/barcode-scanner-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -130,6 +131,9 @@ export function POSView() {
   const anyDialogOpen = cart.showChargeDialog || showRecentSales
   useBarcodeScanner({ onScan: handleBarcodeScan, enabled: !anyDialogOpen })
 
+  // ─── Camera scanner (mobile) ────────────────────────
+  const cameraScanner = useBarcodeScannerDialog(handleBarcodeScan)
+
   // ─── Dedicated barcode input handler ──────────────
   const handleBarcodeInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -215,6 +219,7 @@ export function POSView() {
       taxBreakdown: (cart.lastOrderData.taxBreakdown || undefined) as { name: string; code: string; rate: number; base: number; amount: number }[] | undefined,
       discountAmount: cart.lastOrderData.discountAmount || 0,
       paymentMethod: cart.lastOrderData.paymentMethod,
+      paymentSplits: cart.lastOrderData.paymentSplits,
       currencyCode: currencyCode,
       notes: cart.lastOrderData.notes ?? undefined,
       cufe: cart.lastInvoiceData?.cufe,
@@ -226,6 +231,50 @@ export function POSView() {
       resolutionEnd: store?.resolutionEndNumber || undefined,
     })
   }, [cart.lastOrderData, cart.lastInvoiceData, cart.lastDocType, store, currencyCode])
+
+  // ─── Print a recent order ticket (from Ventas Recientes) ──────
+  const printRecentOrder = useCallback(async (orderId: number) => {
+    try {
+      const res = await fetch(`/api/orders/${orderId}?storeId=${storeId}`)
+      if (!res.ok) throw new Error('Error al cargar la orden')
+      const order = await res.json()
+      const items: TicketItem[] = (order.orderItems || []).map((item: OrderItemData) => ({
+        name: item.presentationName ? `${item.productName} — ${item.presentationName}` : item.productName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: item.totalRow,
+        isService: item.isService,
+      }))
+      printTicket({
+        storeName: store?.name || '',
+        storeNIT: store?.nit || undefined,
+        storeAddress: store?.address || undefined,
+        storePhone: store?.phone || undefined,
+        storeRegime: 'RESPONSABLE',
+        invoiceResolution: store?.resolutionNumber || undefined,
+        invoicePrefix: store?.invoicePrefix || undefined,
+        orderNumber: order.orderNumber,
+        date: order.createdAt,
+        customer: order.customer?.name,
+        tableName: order.tableName || undefined,
+        items,
+        subtotal: order.subtotal,
+        tipAmount: order.tipAmount || 0,
+        total: order.total,
+        taxAmount: order.taxAmount || 0,
+        taxBreakdown: (order.taxBreakdown || undefined) as { name: string; code: string; rate: number; base: number; amount: number }[] | undefined,
+        discountAmount: order.discountAmount || 0,
+        paymentMethod: order.paymentMethod,
+        currencyCode: currencyCode,
+        notes: order.notes ?? undefined,
+        resolutionNumber: store?.resolutionNumber || undefined,
+        resolutionStart: store?.resolutionStartNumber || undefined,
+        resolutionEnd: store?.resolutionEndNumber || undefined,
+      })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo imprimir la venta')
+    }
+  }, [storeId, store, currencyCode])
 
   return (
     <div className="flex flex-col gap-3 h-full relative min-w-0 overflow-x-hidden">
@@ -260,6 +309,9 @@ export function POSView() {
             }`}
           />
         </div>
+
+        {/* Camera scan button (mobile) */}
+        {cameraScanner.scannerUi}
 
         {/* Search bar */}
         <div className="relative flex-1 min-w-0">
@@ -443,6 +495,8 @@ export function POSView() {
         setPaymentMethod={cart.setPaymentMethod}
         transferRef={cart.transferRef}
         setTransferRef={cart.setTransferRef}
+        paymentSplits={cart.paymentSplits}
+        setPaymentSplits={cart.setPaymentSplits}
         cartSheetOpen={cart.cartSheetOpen}
         setCartSheetOpen={cart.setCartSheetOpen}
         setShowChargeDialog={cart.setShowChargeDialog}
@@ -476,7 +530,10 @@ export function POSView() {
       {/* ═══ CHARGE CONFIRMATION DIALOG ═══════════════ */}
       <PaymentDialog
         open={cart.showChargeDialog}
-        onOpenChange={cart.setShowChargeDialog}
+        onOpenChange={(o) => {
+          cart.setShowChargeDialog(o)
+          if (!o) cart.setPaymentSplits([])
+        }}
         cartItemCount={cart.cartItemCount}
         cart={cart.cart}
         subtotal={cart.subtotal}
@@ -488,6 +545,11 @@ export function POSView() {
         tipAmount={cart.tipAmount}
         total={cart.total}
         paymentMethod={cart.paymentMethod}
+        paymentSplits={cart.paymentSplits}
+        addPaymentSplit={cart.addPaymentSplit}
+        removePaymentSplit={cart.removePaymentSplit}
+        updatePaymentSplit={cart.updatePaymentSplit}
+        allocatedSum={cart.allocatedSum}
         selectedCustomer={cart.selectedCustomer}
         hasStoreNit={cart.hasStoreNit}
         isEInvEnabled={cart.isEInvEnabled}
@@ -514,6 +576,7 @@ export function POSView() {
       <POSReturnDialog
         ref={returnDialogRef}
         storeId={storeId}
+        currencyCode={currencyCode}
         onReturnSuccess={handleReturnSuccess}
       />
 
@@ -527,6 +590,7 @@ export function POSView() {
         onSearchChange={setRecentSalesSearch}
         returnDialogRef={returnDialogRef}
         currencyCode={currencyCode}
+        onPrintOrder={printRecentOrder}
       />
     </div>
   )

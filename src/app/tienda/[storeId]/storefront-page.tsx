@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { ProductImage } from '@/components/ui/product-image'
 import { getUnitOfMeasureLabel as unitLabelText } from '@/lib/constants'
 import { parseQtyInput, qtyStepFor, roundQty, formatQty, clampQty } from '@/lib/format'
+import { sortPresentationOptions } from '@/lib/product-presentations'
 import {
   Store, Phone, MapPin, ShoppingCart, MessageCircle,
   Plus, Minus, Trash2, Search, X, ArrowRight, Loader2,
@@ -445,12 +446,17 @@ function ProductCard({
   formatPrice: (price: number) => string
   onAdd: (product: Product, presentation: Presentation | null) => void
 }) {
-  const presentations = product.presentations ?? []
-  const hasPresentations = presentations.length > 0
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const options = sortPresentationOptions(product)
+  const hasPresentations = options.length > 1
+  const [selectedId, setSelectedId] = useState<number | null>(
+    // Default: la unidad más pequeña — en el orden de menor a mayor precio la
+    // primera fila es la más económica (0.25, 0.5, Unidad…). Si la base
+    // "Unidad" es la más barata, selectedId queda null.
+    () => (hasPresentations ? options[0].presentation?.id ?? null : null)
+  )
 
   const selectedPresentation = selectedId
-    ? presentations.find(p => p.id === selectedId) ?? null
+    ? options.find(o => o.presentation?.id === selectedId)?.presentation ?? null
     : null
   const price = selectedPresentation ? selectedPresentation.salePrice : product.salePrice
   const key = `${product.id}-${selectedPresentation?.id ?? 'base'}`
@@ -482,31 +488,27 @@ function ProductCard({
 
         {hasPresentations && (
           <div className="flex flex-wrap gap-1 mt-1.5">
-            <button
-              onClick={(e) => { e.stopPropagation(); setSelectedId(null) }}
-              title={unitLabelText(product.unitLabel)}
-              className={`max-w-full truncate whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded-full border transition-colors ${
-                selectedId === null
-                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                  : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {unitLabelText(product.unitLabel)}
-            </button>
-            {presentations.map(p => (
-              <button
-                key={p.id}
-                onClick={(e) => { e.stopPropagation(); setSelectedId(p.id) }}
-                title={p.name}
-                className={`max-w-full truncate whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded-full border transition-colors ${
-                  selectedId === p.id
-                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                    : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                {unitLabelText(p.unitLabel)} ×{p.unitsPerPack}
-              </button>
-            ))}
+            {options.map(option => {
+              const pr = option.presentation
+              const selected = pr ? selectedId === pr.id : selectedId === null
+              const label = pr
+                ? `${unitLabelText(option.unitLabel)} ×${option.unitsPerPack}`
+                : unitLabelText(product.unitLabel)
+              return (
+                <button
+                  key={pr?.id ?? 'base'}
+                  onClick={(e) => { e.stopPropagation(); setSelectedId(pr?.id ?? null) }}
+                  title={option.name}
+                  className={`max-w-full truncate whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded-full border transition-colors ${
+                    selected
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
           </div>
         )}
 

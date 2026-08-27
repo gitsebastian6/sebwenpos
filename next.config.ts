@@ -52,7 +52,7 @@ const nextConfig: NextConfig = {
           // CSP — frame-ancestors must match X-Frame-Options
           { key: "Content-Security-Policy", value: process.env.NODE_ENV === 'development' ? "frame-ancestors 'self' *.space-z.ai" : "frame-ancestors 'self'" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
           { key: "X-DNS-Prefetch-Control", value: "on" },
         ],
       },

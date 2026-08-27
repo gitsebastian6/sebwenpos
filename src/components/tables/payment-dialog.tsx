@@ -234,7 +234,7 @@ export function PaymentDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md backdrop-blur-sm">
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>Cobrar</DialogTitle>
           <DialogDescription>
             Selecciona el método de pago para los items seleccionados.
@@ -679,11 +679,11 @@ export function PaymentDialog({
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={paymentSaving}>
+        <DialogFooter className="sticky bottom-0 -mx-4 mt-auto gap-2 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 sm:flex-row">
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => handleOpenChange(false)} disabled={paymentSaving}>
             Cancelar
           </Button>
-          <Button className="gap-2 active:scale-[0.98] transition-all" onClick={handleConfirmPayment} disabled={paymentSaving || creatingInvoice}>
+          <Button className="w-full gap-2 active:scale-[0.98] transition-all sm:w-auto" onClick={handleConfirmPayment} disabled={paymentSaving || creatingInvoice}>
             {creatingInvoice ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />

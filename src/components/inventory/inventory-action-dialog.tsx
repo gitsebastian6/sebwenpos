@@ -23,6 +23,7 @@ import { useInventoryAdjustment, useInventoryLoss, useInventoryReturn } from '@/
 import { formatCurrency } from '@/lib/auth'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { floorQty, formatQty, parseQtyInput, roundQty } from '@/lib/format'
+import { sortPresentationOptions } from '@/lib/product-presentations'
 import { useQueryClient } from '@tanstack/react-query'
 import {
     AlertTriangle,
@@ -142,10 +143,16 @@ export function InventoryActionDialog({
 
   function selectProductForAction(product: Product) {
     setSelectedProduct(product)
-    setSelectedPresentationId(null)
+    // Default: la unidad más pequeña — en el orden de menor a mayor precio la
+    // primera fila es la más económica (0.25, 0.5, Unidad…). Si la base
+    // "Unidad" es la más barata, el id queda null.
+    const defaultId = sortPresentationOptions(product)[0].presentation?.id ?? null
+    setSelectedPresentationId(defaultId)
     setDialogProductSearch('')
     if (actionType === 'adjust') {
-      setAdjustQuantity(String(product.currentStock))
+      const upp = defaultId ? (product.presentations?.find((p) => p.id === defaultId)?.unitsPerPack ?? 1) : 1
+      // La cantidad inicial se expresa en la unidad seleccionada por defecto.
+      setAdjustQuantity(String(floorQty(product.currentStock / upp)))
     }
   }
 
@@ -398,12 +405,14 @@ export function InventoryActionDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="base">{getUnitOfMeasureLabel(selectedProduct.unitLabel)}</SelectItem>
-                      {selectedProduct.presentations!.filter((p) => p.isActive).map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)}>
-                          {getUnitOfMeasureLabel(p.unitLabel)} ×{p.unitsPerPack}
-                        </SelectItem>
-                      ))}
+                      {sortPresentationOptions(selectedProduct).map((option) => {
+                        const p = option.presentation
+                        return (
+                          <SelectItem key={p?.id ?? 'base'} value={p ? String(p.id) : 'base'}>
+                            {p ? `${getUnitOfMeasureLabel(p.unitLabel)} ×${option.unitsPerPack}` : getUnitOfMeasureLabel(selectedProduct.unitLabel)}
+                          </SelectItem>
+                        )
+                      })}
                     </SelectContent>
                   </Select>
                   {selectedPresentation && (

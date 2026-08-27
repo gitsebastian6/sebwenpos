@@ -17,11 +17,13 @@ import {
 import type { ReturnOrderDetail } from '@/types'
 import { useOrderDetail, useReturnOrder } from '@/hooks/api/use-orders'
 import { formatQty, clampQty, parseQtyInput } from '@/lib/format'
+import { formatCurrency } from '@/lib/auth'
 
 // ─── Types ──────────────────────────────────────────────
 
 interface POSReturnDialogProps {
   storeId: number | undefined
+  currencyCode: string
   onReturnSuccess: (returnedOrderId: number) => void
 }
 
@@ -32,7 +34,7 @@ export interface POSReturnDialogRef {
 // ─── Component ─────────────────────────────────────────
 
 export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogProps>(
-  function POSReturnDialog({ storeId, onReturnSuccess }, ref) {
+  function POSReturnDialog({ storeId, currencyCode, onReturnSuccess }, ref) {
     const [showDialog, setShowDialog] = useState(false)
     const [returnReason, setReturnReason] = useState('')
     const [returning, setReturning] = useState(false)
@@ -137,7 +139,7 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
 
     return (
       <Dialog open={showDialog} onOpenChange={(open) => { if (!open) handleClose() }}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl md:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="h-5 w-5 text-destructive" />
@@ -155,7 +157,7 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
           ) : returnOrderDetail ? (
             <div className="space-y-4">
               {/* Items list */}
-              <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
+              <div className="border rounded-lg divide-y max-h-[55vh] overflow-y-auto">
                 {returnOrderDetail.orderItems?.filter((i) => i.productId && i.quantity > (i.returnedQuantity || 0)).length === 0 ? (
                   <div className="p-4 text-center text-sm text-muted-foreground">
                     No hay productos devolvibles en esta venta.
@@ -169,15 +171,15 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
                     const returnQty = returnItems.get(item.id) || 0
 
                     return (
-                      <div key={item.id} className={`flex items-center gap-3 p-3 ${isSelected ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}>
+                      <div key={item.id} className={`flex items-start gap-3 p-3 ${isSelected ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}>
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleReturnItem(item.id, available)}
-                          className="h-4 w-4 rounded border-gray-300 text-destructive focus:ring-destructive"
+                          className="h-4 w-4 mt-0.5 rounded border-gray-300 text-destructive focus:ring-destructive shrink-0"
                         />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <p className="text-sm font-medium break-words leading-snug">
                             {item.productName}
                             {item.presentationName && (
                               <span className="text-muted-foreground font-normal"> — {item.presentationName}</span>
@@ -186,36 +188,43 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
                           <p className="text-xs text-muted-foreground">
                             Vendido: {formatQty(item.quantity)}{item.returnedQuantity > 0 ? ` · Devuelto: ${formatQty(item.returnedQuantity)}` : ''} · Disponible: {formatQty(available)}
                           </p>
-                        </div>
-                        {isSelected && (
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => setReturnItemQty(item.id, returnQty - 1, available)}
-                              disabled={returnQty <= 1}
-                              className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50"
-                            >
-                              −
-                            </button>
-                            <Input
-                              type="number"
-                              min={0.001}
-                              max={available}
-                              step="0.001"
-                              value={returnQty}
-                              onChange={(e) => setReturnItemQty(item.id, parseQtyInput(e.target.value), available)}
-                              className="h-7 w-14 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setReturnItemQty(item.id, returnQty + 1, available)}
-                              disabled={returnQty >= available}
-                              className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50"
-                            >
-                              +
-                            </button>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs text-muted-foreground">
+                              P. unit: <span className="font-medium text-foreground">{formatCurrency(item.unitPrice, currencyCode)}</span>
+                              {' · '}
+                              Línea: <span className="font-medium text-foreground">{formatCurrency(item.totalRow, currencyCode)}</span>
+                            </p>
+                            {isSelected && (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setReturnItemQty(item.id, returnQty - 1, available)}
+                                  disabled={returnQty <= 1}
+                                  className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50"
+                                >
+                                  −
+                                </button>
+                                <Input
+                                  type="number"
+                                  min={0.001}
+                                  max={available}
+                                  step="0.001"
+                                  value={returnQty}
+                                  onChange={(e) => setReturnItemQty(item.id, parseQtyInput(e.target.value), available)}
+                                  className="h-7 w-14 text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setReturnItemQty(item.id, returnQty + 1, available)}
+                                  disabled={returnQty >= available}
+                                  className="h-7 w-7 rounded-md border bg-background flex items-center justify-center text-sm hover:bg-muted disabled:opacity-50"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </div>
                       </div>
                     )
                   })
@@ -227,6 +236,22 @@ export const POSReturnDialog = forwardRef<POSReturnDialogRef, POSReturnDialogPro
                 <p className="text-xs text-muted-foreground italic">
                   Los servicios no se pueden devolver al inventario.
                 </p>
+              )}
+
+              {/* Refund total summary */}
+              {returnItems.size > 0 && (
+                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">Total a reembolsar ({returnItems.size} {returnItems.size > 1 ? 'líneas' : 'línea'})</span>
+                  <span className="font-bold text-destructive">
+                    {formatCurrency(
+                      Array.from(returnItems.entries()).reduce((sum, [itemId, qty]) => {
+                        const it = returnOrderDetail.orderItems?.find((x) => x.id === itemId)
+                        return sum + (it ? it.unitPrice * qty : 0)
+                      }, 0),
+                      currencyCode
+                    )}
+                  </span>
+                </div>
               )}
 
               {/* Reason */}

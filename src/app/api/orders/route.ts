@@ -5,11 +5,65 @@ import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { add, lt, mul, toNum } from '@/lib/stock-math'
 import { isSubscriptionActive } from '@/lib/subscription-helpers'
+import { calcLineTax, buildTaxBreakdown, prorateDiscountOverTax, resolveDiscount, type TaxRateInfo } from '@/domain/sales/tax-calculator'
+import { reserveStockAtomically } from '@/lib/atomic-stock'
+import { reserveStock } from '@/domain/inventory/stock-reserver'
+import { validateOrder } from '@/domain/sales/order-aggregate'
+import { publishDomainEvent, type OrderCompletedPayload } from '@/domain/shared/domain-events'
+import '@/domain/accounting/journaling-on-order-completed'
 import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
+
+// ─── Shared order include + response shape ─────────────────────────────
+// Usado tanto por el path de creación como por el replay idempotente, para que
+// el cliente reciba un body idéntico tanto si la orden se acaba de crear como
+// si se recupera de un intento previo cuya respuesta se perdió.
+const orderInclude = {
+  customer: { select: { id: true, name: true } },
+  orderItems: {
+    include: {
+      product: { select: { name: true } },
+      service: { select: { name: true } },
+    },
+  },
+} satisfies Prisma.OrderInclude
+
+type OrderWithItems = Prisma.OrderGetPayload<{ include: typeof orderInclude }>
+
+function buildOrderResponse(order: OrderWithItems, cashRegisterId: number | null) {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    subtotal: Number(order.subtotal),
+    taxAmount: Number(order.taxAmount ?? 0),
+    taxBreakdown: order.taxBreakdown ? JSON.parse(order.taxBreakdown) : null,
+    tipAmount: Number(order.tipAmount ?? 0),
+    discountAmount: Number(order.discountAmount ?? 0),
+    discountType: order.discountType,
+    total: Number(order.total),
+    paymentMethod: order.paymentMethod,
+    customer: order.customer,
+    cashRegisterId,
+    createdAt: order.createdAt.toISOString(),
+    orderItems: order.orderItems.map((item) => ({
+      id: item.id,
+      productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
+      presentationName: item.presentationName ?? null,
+      quantity: item.quantity,
+      unitPrice: Number(item.unitPrice),
+      totalRow: Number(item.totalRow),
+      taxCode: item.taxCode,
+      taxRate: item.taxRate,
+      taxAmount: Number(item.taxAmount),
+      taxBase: Number(item.taxBase),
+      isService: !!item.serviceId,
+    })),
+  }
+}
 
 // ─── POST: Create order ─────────────────────────────────────────────
 
@@ -34,6 +88,14 @@ const createOrderSchema = z.object({
   customerId: z.number().int().positive().nullable().optional(),
   cashRegisterId: z.number().int().positive().optional(),
   paymentMethod: z.enum(['CASH', 'DAVIPLATA', 'NEQUI', 'CARD', 'TRANSFER', 'MIXED', 'CREDIT', 'FIADO', 'WOMPI_PENDING']),
+  // Split-tender: multiple payment methods for a single sale (paymentMethod='MIXED')
+  paymentSplits: z.array(
+    z.object({
+      method: z.enum(['CASH', 'DAVIPLATA', 'NEQUI', 'CARD', 'TRANSFER', 'WOMPI']),
+      amount: z.number().int().positive(),
+      reference: z.string().max(100).optional(),
+    })
+  ).optional(),
   tipAmount: z.number().int().min(0).default(0),
   discountType: z.enum(['NONE', 'PERCENTAGE', 'FIXED']).default('NONE'),
   discountAmount: z.number().int().min(0).default(0),
@@ -51,6 +113,31 @@ export async function POST(req: NextRequest) {
     const storeAccessError = requireStoreAccess(req, data.storeId)
     if (storeAccessError) return storeAccessError
     const auth = getAuthUser(req)
+
+    // ── Idempotency (Kleppmann Ch. 11): si el cliente envía un header
+    //    Idempotency-Key, un POST reintentado (p.ej. tras un timeout donde el
+    //    servidor sí procesó la venta pero la respuesta se perdió) debe
+    //    devolver la orden original en vez de duplicarla. El sync offline envía
+    //    el temp order number como key, que es estable entre reintentos.
+    const idempotencyKey = req.headers.get('x-idempotency-key')?.trim() || null
+    if (idempotencyKey) {
+      const existing = await db.processedRequest.findUnique({
+        where: { storeId_idempotencyKey: { storeId: data.storeId, idempotencyKey } },
+        select: { orderId: true },
+      })
+      if (existing) {
+        const replayed = await db.order.findUnique({
+          where: { id: existing.orderId },
+          include: orderInclude,
+        })
+        if (replayed) {
+          return NextResponse.json(
+            buildOrderResponse(replayed, replayed.cashRegisterId ?? null),
+            { status: 200 },
+          )
+        }
+      }
+    }
 
     // ── Subscription gate: block order creation when subscription is expired/cancelled ──
     const subActive = await isSubscriptionActive(data.storeId)
@@ -162,28 +249,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Helper: calculate tax for a line item ( Colombian tax-inclusive pricing )
-    const calcTax = (totalRow: number, taxRateInfo: { code: string; rate: number; rateType: string } | null) => {
-      // No tax rate → no tax
-      if (!taxRateInfo) {
-        return { taxCode: null, taxRate: 0, taxAmount: 0, taxBase: totalRow }
-      }
-      // EXEMPT (03) or EXCLUDED (04) → zero tax, base = full amount
-      if (taxRateInfo.code === '03' || taxRateInfo.code === '04') {
-        return { taxCode: taxRateInfo.code, taxRate: 0, taxAmount: 0, taxBase: totalRow }
-      }
-      // PERCENTAGE type (standard IVA): prices include tax
-      if (taxRateInfo.rateType === 'PERCENTAGE' && taxRateInfo.rate > 0) {
-        const taxBase = Math.round(totalRow / (1 + taxRateInfo.rate / 100))
-        const taxAmount = totalRow - taxBase
-        return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount, taxBase }
-      }
-      // FIXED_AMOUNT type (e.g. Impoconsumo): tax is added on top
-      // For now treat similarly — base = totalRow, amount = rate * qty
-      // but since prices in the POS are consumer-facing and include everything,
-      // we keep it simple: base = totalRow, amount = 0 unless explicitly handled
-      return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount: 0, taxBase: totalRow }
-    }
+    // Tax calculation delegated to the Sales domain service (TaxCalculator).
+    // See src/domain/sales/tax-calculator.ts — single source of truth for
+    // Colombian tax-inclusive pricing (previously duplicated across routes).
 
     // Tax breakdown accumulator: grouped by tax code
     const taxBreakdownMap: Record<string, { code: string; name: string; base: number; rate: number; amount: number }> = {}
@@ -206,7 +274,7 @@ export async function POST(req: NextRequest) {
           : defaultTaxRate
             ? { code: defaultTaxRate.code, rate: defaultTaxRate.rate, rateType: defaultTaxRate.rateType }
             : null
-        const tax = calcTax(totalRow, effectiveTax)
+        const tax = calcLineTax(totalRow, effectiveTax as TaxRateInfo | null)
         // Accumulate into breakdown
         if (tax.taxCode) {
           const key = tax.taxCode
@@ -239,7 +307,7 @@ export async function POST(req: NextRequest) {
         const effectiveTax = fallbackServiceTaxRate
           ? { code: fallbackServiceTaxRate.code, rate: fallbackServiceTaxRate.rate, rateType: fallbackServiceTaxRate.rateType }
           : null
-        const tax = calcTax(totalRow, effectiveTax)
+        const tax = calcLineTax(totalRow, effectiveTax as TaxRateInfo | null)
         if (tax.taxCode) {
           const key = tax.taxCode
           if (!taxBreakdownMap[key]) {
@@ -269,35 +337,29 @@ export async function POST(req: NextRequest) {
     const subtotal = orderItemsData.reduce((sum, i) => sum + i.totalRow, 0)
     const tipAmount = data.tipAmount || 0
 
-    // Calculate discount (before finalizing the tax breakdown — see below)
-    let discountAmount = 0
-    if (data.discountType === 'PERCENTAGE' && data.discountAmount > 0) {
-      discountAmount = Math.round(subtotal * (data.discountAmount / 100))
-    } else if (data.discountType === 'FIXED') {
-      discountAmount = Math.min(data.discountAmount, subtotal)
-    }
+    // Calculate discount (before finalizing the tax breakdown — see below).
+    // Delegated to the Sales domain service (TaxCalculator.resolveDiscount).
+    let discountAmount = resolveDiscount(data.discountType, data.discountAmount, subtotal)
 
     // A discount reduces what the business actually received, so the IVA base
     // must shrink proportionally too — otherwise the order (and DIAN reporting)
     // declares tax on money that was never collected. totalRow/unitPrice are
     // left untouched (they still represent list price, e.g. for the receipt);
     // only taxBase/taxAmount — the DIAN-facing figures — are discounted.
+    // Delegated to TaxCalculator.prorateDiscountOverTax (single source of truth).
     if (discountAmount > 0 && subtotal > 0) {
-      const discountRatio = discountAmount / subtotal
-      for (const item of orderItemsData) {
-        item.taxBase = Math.round(item.taxBase * (1 - discountRatio))
-        item.taxAmount = Math.round(item.taxAmount * (1 - discountRatio))
+      const { lines: adjusted, totalTax } = prorateDiscountOverTax(orderItemsData, discountAmount, subtotal)
+      // Reflect the prorated figures back onto the line objects the loop built.
+      for (let i = 0; i < orderItemsData.length; i++) {
+        orderItemsData[i].taxBase = adjusted[i].taxBase
+        orderItemsData[i].taxAmount = adjusted[i].taxAmount
       }
+      // Rebuild breakdown from the prorated lines via the domain service.
       for (const key of Object.keys(taxBreakdownMap)) delete taxBreakdownMap[key]
-      for (const item of orderItemsData) {
-        if (!item.taxCode) continue
-        if (!taxBreakdownMap[item.taxCode]) {
-          taxBreakdownMap[item.taxCode] = { code: item.taxCode, name: item.taxCode, base: 0, rate: item.taxRate, amount: 0 }
-        }
-        taxBreakdownMap[item.taxCode].base += item.taxBase
-        taxBreakdownMap[item.taxCode].amount += item.taxAmount
+      for (const entry of buildTaxBreakdown(orderItemsData)) {
+        taxBreakdownMap[entry.code] = { code: entry.code, name: entry.name, base: entry.base, rate: entry.rate, amount: entry.amount }
       }
-      orderTaxAmount = orderItemsData.reduce((sum, i) => sum + i.taxAmount, 0)
+      orderTaxAmount = totalTax
     }
 
     // Resolve tax rate names for breakdown
@@ -324,6 +386,23 @@ export async function POST(req: NextRequest) {
     // In Colombia, prices are tax-inclusive so total = subtotal - discount + tip
     // (tax is already embedded in subtotal/item prices)
     const total = subtotal - discountAmount + tipAmount
+
+    // ── Agregado Order (DDD): validar invariantes de la raíz ANTES de abrir tx ──
+    // I1–I7: ítems no vacíos, producto XOR servicio, cantidades > 0, sin líneas
+    // duplicadas, subtotal/total derivados y consistentes.
+    const orderValidation = validateOrder(orderItemsData as never, {
+      subtotal,
+      taxAmount: orderTaxAmount,
+      discountAmount,
+      tipAmount,
+      total,
+    })
+    if (!orderValidation.ok) {
+      return NextResponse.json(
+        { error: orderValidation.message },
+        { status: 400 },
+      )
+    }
 
     // Tip is only allowed for non-credit orders
     if (tipAmount > 0 && (data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO')) {
@@ -380,8 +459,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Create order, inventory movements, and journal entries in a transaction
-    const order = await db.$transaction(async (tx) => {
+    // Create order, inventory movements, and journal entries in a transaction.
+    // Envuelto en try/catch para manejar la violación de unique constraint
+    // (P2002) que lanza un POST reintentado concurrente sobre ProcessedRequest:
+    // en ese caso se hace replay de la orden ya creada en vez de devolver 500.
+    let order: OrderWithItems
+    try {
+      order = await db.$transaction(async (tx) => {
       // 1. Create the order
       const createdOrder = await tx.order.create({
         data: {
@@ -404,19 +488,21 @@ export async function POST(req: NextRequest) {
               ? 'PENDING_PAYMENT'
               : 'COMPLETED',
           paymentMethod: data.paymentMethod,
+          paymentSplits: data.paymentSplits?.length ? JSON.stringify(data.paymentSplits) : null,
           notes: data.notes ?? null,
           orderItems: { create: orderItemsData },
         },
-        include: {
-          customer: { select: { id: true, name: true } },
-          orderItems: {
-            include: {
-              product: { select: { name: true } },
-              service: { select: { name: true } },
-            },
-          },
-        },
+        include: orderInclude,
       })
+
+      // 1b. Registra la idempotency key atómicamente con la orden, de modo que
+      //     un POST reintentado concurrente (race) choque con el constraint
+      //     único (P2002) y se haga replay en vez de duplicar la venta.
+      if (idempotencyKey) {
+        await tx.processedRequest.create({
+          data: { storeId: data.storeId, idempotencyKey, orderId: createdOrder.id },
+        })
+      }
 
       // 2. Create inventory movements and decrement stock (only for product items)
       //    Deducted — and re-validated — in base units: a presentation line
@@ -426,20 +512,26 @@ export async function POST(req: NextRequest) {
         const presentation = item.presentationId ? presentationMap.get(item.presentationId) : undefined
         const unitsPerPack = presentation ? presentation.unitsPerPack : 1
         const baseUnits = mul(item.quantity, unitsPerPack)
-        const trackInventory = productMap.get(item.productId!)!.trackInventory
 
-        // Re-validate stock inside transaction to prevent race condition.
-        // Sequential + read-your-writes within the same tx also correctly
-        // handles multiple lines of the same product (e.g. Six-pack + Unidad).
-        const freshProduct = await tx.product.findUnique({
-          where: { id: item.productId },
-          select: { currentStock: true, name: true },
-        })
-        if (!freshProduct) {
-          throw new Error('Producto no encontrado. Intenta de nuevo.')
+        // StockReserver (Shared Kernel Sales→Inventory): descuento atómico
+        // + trazabilidad FEFO en un solo contrato. Read-your-writes dentro
+        // de la misma tx maneja múltiples líneas del mismo producto.
+        const reservation = await reserveStock(tx, data.storeId, item.productId!, toNum(baseUnits))
+        if (!reservation.success && !reservation.notTracked) {
+          throw new Error(
+            reservation.availableStock !== undefined
+              ? `Stock insuficiente para "${reservation.productName}" (disponible: ${reservation.availableStock}). Intenta de nuevo.`
+              : `Producto no encontrado. Intenta de nuevo.`,
+          )
         }
-        if (trackInventory !== false && lt(freshProduct.currentStock, baseUnits)) {
-          throw new Error(`Stock insuficiente para "${freshProduct.name}" (disponible: ${toNum(freshProduct.currentStock)}). Intenta de nuevo.`)
+
+        if (reservation.uncovered > 0) {
+          logger.warn('[orders] stock sin lote asignado (legacy)', {
+            storeId: data.storeId,
+            productId: item.productId,
+            orderId: createdOrder.id,
+            uncovered: reservation.uncovered,
+          })
         }
 
         await tx.inventoryMovement.create({
@@ -452,14 +544,14 @@ export async function POST(req: NextRequest) {
             quantity: baseUnits.negated(), // negative for sale, always in base units
             movementType: 'SALE',
             referenceId: createdOrder.id,
+            // Lote consumido solo si la venta salió de un único lote;
+            // multi-lote queda trazado en los Batch mismos.
+            batchId:
+              reservation.consumptions.length === 1 ? reservation.consumptions[0].batchId : null,
             notes: presentation
               ? `Venta ${orderNumber} — ${presentation.name} x${item.quantity} (${toNum(baseUnits)} uds base)`
               : `Venta ${orderNumber}`,
           },
-        })
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { currentStock: { decrement: baseUnits } },
         })
       }
 
@@ -478,92 +570,21 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      // Descuentos en Ventas: contra-revenue account so a discounted sale still
-      // balances (DEBIT Caja/CxC total + DEBIT Descuento = CREDIT Ventas subtotal).
-      // Created lazily so existing stores get it without a backfill migration.
-      const getDescuentoAccount = async () => {
-        const existing = await tx.ledgerAccount.findFirst({
-          where: { storeId: data.storeId, name: 'Descuentos en Ventas' },
-        })
-        if (existing) return existing
-        return tx.ledgerAccount.create({
-          data: { storeId: data.storeId, name: 'Descuentos en Ventas', type: 'EXPENSE', isDefault: false },
-        })
-      }
+      // 3. Asientos contables vía Domain Event (Accounting se suscribe a
+      //    Sales.OrderCompleted — la ruta no conoce cuentas ni partida doble).
+      await publishDomainEvent<OrderCompletedPayload>('OrderCompleted', tx, {
+        storeId: data.storeId,
+        orderId: createdOrder.id,
+        orderNumber,
+        paymentMethod: data.paymentMethod,
+        paymentSplits: data.paymentSplits,
+        subtotal,
+        discountAmount,
+        tipAmount,
+        total,
+        customerId: data.customerId ?? null,
+      })
 
-      // 3. Create journal entries (double-entry accounting)
-      if (data.paymentMethod !== 'CREDIT' && data.paymentMethod !== 'FIADO') {
-        // Find or use default asset account (Caja) and income account (Ventas)
-        const cajaAccount = await tx.ledgerAccount.findFirst({
-          where: { storeId: data.storeId, type: 'ASSET', isDefault: true },
-        })
-        const ventasAccount = await tx.ledgerAccount.findFirst({
-          where: { storeId: data.storeId, name: 'Ventas' },
-        })
-
-        // DEBIT Caja for full total (subtotal + tip)
-        if (cajaAccount) {
-          await tx.journalEntry.create({
-            data: {
-              storeId: data.storeId,
-              ledgerAccountId: cajaAccount.id,
-              amount: total,
-              direction: 'DEBIT',
-              description: `Venta ${orderNumber}${tipAmount > 0 ? ` + Propina $${tipAmount.toLocaleString()}` : ''}`,
-              referenceType: 'ORDER',
-              referenceId: createdOrder.id,
-            },
-          })
-        }
-        // CREDIT Ventas for subtotal (product/service value)
-        if (ventasAccount) {
-          await tx.journalEntry.create({
-            data: {
-              storeId: data.storeId,
-              ledgerAccountId: ventasAccount.id,
-              amount: subtotal,
-              direction: 'CREDIT',
-              description: `Venta ${orderNumber}`,
-              referenceType: 'ORDER',
-              referenceId: createdOrder.id,
-            },
-          })
-        }
-        // DEBIT Descuentos en Ventas for discountAmount (if any) — keeps the entry balanced
-        if (discountAmount > 0) {
-          const descuentoAccount = await getDescuentoAccount()
-          await tx.journalEntry.create({
-            data: {
-              storeId: data.storeId,
-              ledgerAccountId: descuentoAccount.id,
-              amount: discountAmount,
-              direction: 'DEBIT',
-              description: `Descuento venta ${orderNumber}`,
-              referenceType: 'ORDER',
-              referenceId: createdOrder.id,
-            },
-          })
-        }
-        // CREDIT Propina for tip amount (if any)
-        if (tipAmount > 0) {
-          const propinaAccount = await tx.ledgerAccount.findFirst({
-            where: { storeId: data.storeId, name: 'Propina' },
-          })
-          if (propinaAccount) {
-            await tx.journalEntry.create({
-              data: {
-                storeId: data.storeId,
-                ledgerAccountId: propinaAccount.id,
-                amount: tipAmount,
-                direction: 'CREDIT',
-                description: `Propina venta ${orderNumber}`,
-                referenceType: 'ORDER',
-                referenceId: createdOrder.id,
-              },
-            })
-          }
-        }
-      }
 
       // 4. Update customer debt if CREDIT/FIADO payment
       if ((data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO') && data.customerId) {
@@ -579,58 +600,39 @@ export async function POST(req: NextRequest) {
             ...(debtCustomer && debtCustomer.totalDebt <= 0 ? { debtSince: new Date() } : {}),
           },
         })
-        // Also create accounts receivable journal entry
-        const cuentasPorCobrar = await tx.ledgerAccount.findFirst({
-          where: { storeId: data.storeId, name: { contains: 'Cuentas por Cobrar' } },
-        })
-        const ventasAccount = await tx.ledgerAccount.findFirst({
-          where: { storeId: data.storeId, name: 'Ventas' },
-        })
-        if (cuentasPorCobrar) {
-          await tx.journalEntry.create({
-            data: {
-              storeId: data.storeId,
-              ledgerAccountId: cuentasPorCobrar.id,
-              amount: total,
-              direction: 'DEBIT',
-              description: `Venta fiada ${orderNumber}`,
-              referenceType: 'ORDER',
-              referenceId: createdOrder.id,
-            },
-          })
-        }
-        if (ventasAccount) {
-          await tx.journalEntry.create({
-            data: {
-              storeId: data.storeId,
-              ledgerAccountId: ventasAccount.id,
-              amount: subtotal,
-              direction: 'CREDIT',
-              description: `Venta fiada ${orderNumber}`,
-              referenceType: 'ORDER',
-              referenceId: createdOrder.id,
-            },
-          })
-        }
-        // DEBIT Descuentos en Ventas for discountAmount (if any) — keeps the entry balanced
-        if (discountAmount > 0) {
-          const descuentoAccount = await getDescuentoAccount()
-          await tx.journalEntry.create({
-            data: {
-              storeId: data.storeId,
-              ledgerAccountId: descuentoAccount.id,
-              amount: discountAmount,
-              direction: 'DEBIT',
-              description: `Descuento venta fiada ${orderNumber}`,
-              referenceType: 'ORDER',
-              referenceId: createdOrder.id,
-            },
-          })
-        }
+        // Asientos de la venta fiada (CxC/Ventas/Descuentos) los escribe el
+        // handler JournalingOnOrderCompleted vía OrderCompleted (ver arriba).
       }
 
       return createdOrder
     })
+    } catch (error) {
+      // P2002 sobre processed_requests(store_id, idempotency_key) => un retry
+      // concurrente ya persistió esta venta. Refetch y replay de la misma orden.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        idempotencyKey
+      ) {
+        const existing = await db.processedRequest.findUnique({
+          where: { storeId_idempotencyKey: { storeId: data.storeId, idempotencyKey } },
+          select: { orderId: true },
+        })
+        if (existing) {
+          const replayed = await db.order.findUnique({
+            where: { id: existing.orderId },
+            include: orderInclude,
+          })
+          if (replayed) {
+            return NextResponse.json(
+              buildOrderResponse(replayed, replayed.cashRegisterId ?? null),
+              { status: 200 },
+            )
+          }
+        }
+      }
+      throw error
+    }
 
     // Audit: order created
     auditLogFromRequest(req, {
@@ -643,35 +645,7 @@ export async function POST(req: NextRequest) {
     }).catch(() => {})
 
     return NextResponse.json(
-      {
-        id: order.id,
-        orderNumber: order.orderNumber,
-        status: order.status,
-        subtotal: Number(order.subtotal),
-        taxAmount: Number(order.taxAmount ?? 0),
-        taxBreakdown: order.taxBreakdown ? JSON.parse(order.taxBreakdown) : null,
-        tipAmount: Number(order.tipAmount ?? 0),
-        discountAmount: Number(order.discountAmount ?? 0),
-        discountType: order.discountType,
-        total: Number(order.total),
-        paymentMethod: order.paymentMethod,
-        customer: order.customer,
-        cashRegisterId: targetCashRegisterId,
-        createdAt: order.createdAt.toISOString(),
-        orderItems: order.orderItems.map((item) => ({
-          id: item.id,
-          productName: item.product?.name ?? item.service?.name ?? 'Eliminado',
-          presentationName: item.presentationName ?? null,
-          quantity: item.quantity,
-          unitPrice: Number(item.unitPrice),
-          totalRow: Number(item.totalRow),
-          taxCode: item.taxCode,
-          taxRate: item.taxRate,
-          taxAmount: Number(item.taxAmount),
-          taxBase: Number(item.taxBase),
-          isService: !!item.serviceId,
-        })),
-      },
+      buildOrderResponse(order, targetCashRegisterId),
       { status: 201 },
     )
   } catch (error: unknown) {

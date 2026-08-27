@@ -10,6 +10,8 @@ import { formatCurrency } from '@/lib/auth'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { floorQty, formatQty, isFractionalUnit } from '@/lib/format'
 import { AlertTriangle, PackageSearch, RotateCcw, Search, X } from 'lucide-react'
+import { useState } from 'react'
+import { BarcodeScannerDialog, ScanButton } from '@/components/shared/barcode-scanner-dialog'
 import type { Product } from './inventory-types'
 
 interface InventoryProductTableProps {
@@ -31,6 +33,7 @@ export function InventoryProductTable({
   onResetStock,
   currencyCode,
 }: InventoryProductTableProps) {
+  const [cameraScanOpen, setCameraScanOpen] = useState(false)
   return (
     <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
       <CardHeader>
@@ -58,24 +61,32 @@ export function InventoryProductTable({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Search bar */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar producto por nombre, SKU o categoría..."
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9"
-          />
-          {search && (
-            <button
-              onClick={() => onSearchChange('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+        {/* Search bar + camera scanner */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar producto por nombre, SKU o categoría..."
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="pl-9"
+            />
+            {search && (
+              <button
+                onClick={() => onSearchChange('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <ScanButton onClick={() => setCameraScanOpen(true)} label="Escanear producto" />
         </div>
+        <BarcodeScannerDialog
+          open={cameraScanOpen}
+          onClose={() => setCameraScanOpen(false)}
+          onScan={(code) => onSearchChange(code)}
+        />
 
         {/* Product table */}
         {isLoading ? (

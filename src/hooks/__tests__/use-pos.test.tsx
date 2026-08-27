@@ -209,6 +209,33 @@ describe('usePosRecentSales', () => {
     )
   })
 
+  it('sends `from` as a full ISO timestamp for local start-of-day (timezone fix)', async () => {
+    const mockOrders = [{ id: 1, orderNumber: 'ORD-1', status: 'COMPLETED' }]
+    ;(globalThis.fetch as any).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: mockOrders, pagination: { total: 1 } }),
+    })
+
+    const { result } = renderHook(() => usePosRecentSales(1), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const calls = (globalThis.fetch as any).mock.calls
+    const url = calls.find((c: string[]) => c[0].includes('/api/orders'))?.[0] as string
+
+    // El parámetro `from` debe ser un timestamp ISO completo (con 'T' y zona),
+    // no solo una fecha YYYY-MM-DD en UTC, para evitar el desfase horario.
+    const fromParam = new URL(url, 'http://localhost').searchParams.get('from')
+    expect(fromParam).toBeTruthy()
+    expect(fromParam).toContain('T')
+    expect(fromParam).toMatch(/\.\d{3}Z$/)
+
+    // Debe corresponder a medianoche en la zona horaria local del navegador.
+    const startOfDay = new Date()
+    startOfDay.setHours(0, 0, 0, 0)
+    expect(fromParam).toBe(startOfDay.toISOString())
+  })
+
   it('limits results to 50', async () => {
     const manyOrders = Array.from({ length: 60 }, (_, i) => ({
       id: i + 1,

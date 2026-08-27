@@ -235,6 +235,8 @@ model Store {
   wompiTransactions       WompiTransaction[]
   pushSubscriptions       PushSubscription[]
   customerPayments        CustomerPayment[]
+  processedRequests       ProcessedRequest[]
+  batches                 Batch[]
 
   @@map("stores")
 }
@@ -864,6 +866,7 @@ model Product {
   costHistories      CostHistory[]
   presentations      ProductPresentation[]
   providerMappings   ProviderProductMapping[]
+  batches            Batch[]
 
   @@unique([storeId, name])
   @@index([categoryId])
@@ -928,6 +931,9 @@ model InventoryMovement {
   // give this a real FK/@relation to just one of those tables — Postgres will
   // enforce it against that single table and reject every other movementType.
   referenceId      Int?     @map("reference_id")
+  // Lote afectado (trazabilidad FEFO). Nullable: productos sin trackExpiration
+  // o movimientos previos a la funcionalidad de lotes no lo tienen.
+  batchId          Int?     @map("batch_id")
   notes            String?
   createdAt        DateTime @default(now()) @map("created_at")
 
@@ -939,6 +945,42 @@ model InventoryMovement {
   @@index([referenceId])
   @@index([presentationId])
   @@map("inventory_movements")
+}
+
+// ----------------------------------------------
+// CONTEXTO: LOTES (Trazabilidad FEFO)
+// ----------------------------------------------
+// Trazabilidad por lote para productos perecederos/farmacéuticos
+// (Product.trackExpiration = true). La suma de quantity de los lotes ACTIVE
+// debe igualar Product.currentStock — verificado por scripts/verify-batches.ts.
+// Consumo en ventas: FEFO (first-expired-first-out) vía
+// src/domain/inventory/batch-consumer.ts.
+model Batch {
+  id                Int       @id @default(autoincrement())
+  storeId           Int       @map("store_id")
+  productId         Int       @map("product_id")
+  lotNumber         String    @map("lot_number")
+  expiryDate        DateTime? @map("expiry_date")
+  manufacturingDate DateTime? @map("manufacturing_date")
+  // Unidades base restantes en este lote (Decimal, misma precisión que Product.currentStock)
+  quantity          Decimal   @default(0)
+  // Costo unitario de entrada en COP (para valuación por lote; el CPP global sigue en Product)
+  unitCost          Int       @default(0) @map("unit_cost")
+  // Origen: PurchaseItem que creó/entró por última vez al lote (nullable para ajustes manuales)
+  purchaseItemId    Int?      @map("purchase_item_id")
+  status            String    @default("ACTIVE") // ACTIVE, DEPLETED, EXPIRED, QUARANTINE
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt
+
+  store   Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  purchaseItem PurchaseItem? @relation(fields: [purchaseItemId], references: [id], onDelete: SetNull)
+
+  @@unique([productId, lotNumber])
+  @@index([storeId, productId, status])
+  @@index([expiryDate])
+  @@index([storeId, status, expiryDate])
+  @@map("batches")
 }
 
 model Purchase {
@@ -1014,6 +1056,7 @@ model PurchaseItem {
   purchase     Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product      Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
   presentation ProductPresentation? @relation(fields: [presentationId], references: [id], onDelete: SetNull)
+  batches      Batch[]
 
   @@index([purchaseId])
   @@index([productId])
@@ -1035,6 +1078,9 @@ model Provider {
   regime         String   @default("NO_RESPONSABLE") // RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO, GRAN_CONTRIBUTUYENTE
   autoretainer   Boolean  @default(false) @map("autoretainer") // Autoretenedor de IVA
   paymentTerms   String   @default("CONTADO") @map("payment_terms") // CONTADO, CREDITO_30, CREDITO_60, CREDITO_90
+  // Días hábiles entre pedido y entrega (lead time) — usado para el cálculo
+  // de punto de reorden (ROP = demanda × leadTime + safety stock).
+  leadTimeDays   Int      @default(7) @map("lead_time_days")
   creditLimit    Int      @default(0) @map("credit_limit")
   totalDebt      Int      @default(0) @map("total_debt")
   totalPurchases Int      @default(0) @map("total_purchases")
@@ -1178,6 +1224,7 @@ model Order {
   total            Int
   status           String   @default("COMPLETED")
   paymentMethod    String   @default("CASH") @map("payment_method")
+  paymentSplits    String?  @map("payment_splits")
   notes            String?
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt
@@ -1720,4 +1767,62 @@ model PushSubscription {
   @@index([userId])
   @@index([endpoint])
   @@map("push_subscriptions")
+}
+
+// ─── Invoice Counter (atomic consecutive generation) ─────────
+// Ref: Designing Data-Intensive Applications (Kleppmann), Ch. 7
+// Prevents the "lost update" race on MAX(consecutive) that could
+// produce duplicate DIAN invoice numbers under concurrent access.
+// A single row per store; atomically incremented via upsert + increment.
+
+model InvoiceCounter {
+  id              Int      @id @default(autoincrement())
+  storeId         Int      @unique @map("store_id")
+  lastConsecutive Int      @default(0) @map("last_consecutive")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("invoice_counters")
+}
+
+// ----------------------------------------------
+// CONTEXTO: IDEMPOTENCIA DE ÓRDENES (Kleppmann Ch. 11)
+// ----------------------------------------------
+// Persiste la relación entre una Idempotency-Key enviada por el cliente y la
+// orden que se creó a partir de ella, de modo que un POST reintentado (p.ej.
+// tras un timeout donde el servidor sí procesó la venta pero la respuesta se
+// perdió) devuelva la misma orden en lugar de duplicarla. La inserción ocurre
+// dentro de la misma transacción que crea la orden, y un @@unique elimina la
+// race condition entre reintentos concurrentes (P2002 → replay).
+
+model ProcessedRequest {
+  id             Int      @id @default(autoincrement())
+  storeId        Int      @map("store_id")
+  idempotencyKey String   @map("idempotency_key")
+  orderId        Int      @map("order_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, idempotencyKey])
+  @@index([storeId, idempotencyKey])
+  @@map("processed_requests")
+}
+
+// Idempotencia GENERALIZADA para entry points externos (Kleppmann Ch.7):
+// webhooks (Wompi), callbacks de pasarelas, etc. Registra la identidad del
+// evento externo ANTES de procesarlo; el @@unique convierte un reintento
+// concurrente en P2002 → replay/skip en vez de duplicar efectos secundarios.
+// A diferencia de ProcessedRequest (acoplada a órdenes), esta tabla es
+// genérica: cualquier source + externalId.
+model ProcessedEvent {
+  id          Int      @id @default(autoincrement())
+  source      String // WOMPI, STRIPE, DIAN_CALLBACK, ...
+  externalId  String   @map("external_id") // id del evento/transacción externa
+  entityType  String?  @map("entity_type") // WompiTransaction, PaymentReceipt...
+  entityId    Int?     @map("entity_id")
+  receivedAt  DateTime @default(now()) @map("received_at")
+
+  @@unique([source, externalId])
+  @@index([source, externalId])
+  @@map("processed_events")
 }

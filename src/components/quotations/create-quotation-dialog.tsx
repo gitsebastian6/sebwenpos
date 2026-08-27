@@ -34,8 +34,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { DIAN_CONSUMIDOR_FINAL_NIT, getUnitOfMeasureLabel } from '@/lib/constants'
 import { useCreateQuotation } from '@/hooks/api/use-quotations'
 import { usePurchaseProducts, type ProductOption, type ProductPresentationOption } from '@/hooks/api/use-purchases'
-import { buildProductSearchOptions } from '@/lib/product-search'
+import { sortPresentationOptions } from '@/lib/product-presentations'
 import { cartItemKey, type CartItem, type DiscountType } from '@/components/quotations/quotation-types'
+import { BarcodeScannerDialog, ScanButton } from '@/components/shared/barcode-scanner-dialog'
 
 const cop = formatCOP
 
@@ -72,11 +73,38 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
   const saving = createQuotationMut.isPending
 
   // ─── Derived state ────────────────────────────────
+  // One row per product (not one row per presentation). When a product has
+  // multiple presentations, clicking it opens a Popover listing them ordered
+  // de menor a mayor (same logic as POS and Mesas). This makes the selector
+  // explicit and consistent across modules.
   const searchResults = useMemo(() => {
-    if (!productSearch.trim()) return []
-    return buildProductSearchOptions(products, productSearch).slice(0, 15)
+    if (!productSearch.trim()) return [] as ProductOption[]
+    const q = productSearch.trim().toLowerCase()
+    return products
+      .filter((p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.sku || '').toLowerCase().includes(q) ||
+        (p.barcode || '').toLowerCase().includes(q) ||
+        (p.presentations || []).some(
+          (pr) => pr.isActive && (
+            pr.name.toLowerCase().includes(q) ||
+            (pr.sku || '').toLowerCase().includes(q) ||
+            (pr.barcode || '').toLowerCase().includes(q)
+          )
+        )
+      )
+      .slice(0, 20)
   }, [productSearch, products])
   const searchingProducts = !!productSearch.trim() && productsQuery.isLoading
+
+  // ─── Camera scanner: scans a barcode and filters the results ──────────────
+  // `searchResults` is derived reactively from `productSearch`, so setting it
+  // is enough — the exact-match product (incl. presentations) appears listed.
+  const [cameraScanOpen, setCameraScanOpen] = useState(false)
+  const handleCameraScan = (code: string) => {
+    setProductSearch(code)
+    toast.success(`Código escaneado: ${code}`)
+  }
 
   // ─── Cart operations ─────────────────────────────
   const addToCart = (product: ProductOption, presentation: ProductPresentationOption | null) => {
@@ -315,10 +343,14 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
                   placeholder="Buscar por nombre, SKU o código de barras..."
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
-                  className="pl-9"
+                  className="pl-9 pr-11"
                   autoFocus
                 />
+                <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                  <ScanButton size="compact" label="Escanear código de barras" onClick={() => setCameraScanOpen(true)} />
+                </div>
               </div>
+              <BarcodeScannerDialog open={cameraScanOpen} onClose={() => setCameraScanOpen(false)} onScan={handleCameraScan} />
 
               {/* Search results */}
               {searchingProducts && (
@@ -328,39 +360,78 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
                 </div>
               )}
               {searchResults.length > 0 && (
-                <div className="rounded-lg border max-h-48 overflow-y-auto">
-                  {searchResults.map((opt) => {
-                    const price = opt.presentation ? opt.presentation.salePrice : opt.product.salePrice
-                    const inCart = cart.find((c) => c.productId === opt.product.id && c.presentationId === (opt.presentation?.id ?? null))
-                    return (
-                      <button
-                        key={opt.key}
-                        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors border-b last:border-b-0"
-                        onClick={() => addToCart(opt.product, opt.presentation)}
-                      >
+                <div className="rounded-lg border max-h-64 overflow-y-auto divide-y">
+                  {searchResults.map((product) => {
+                    const presentationOptions = sortPresentationOptions(product)
+                    const hasPresentations = presentationOptions.length > 1
+                    const fromPrice = presentationOptions[0].salePrice
+                    const inCart = cart.some((c) => c.productId === product.id)
+                    const rowBody = (
+                      <div className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors">
                         <div className="min-w-0">
-                          <div className="font-medium text-sm truncate flex items-center gap-1.5">
-                            {opt.product.name}
-                            {opt.presentation && (
-                              <span className="inline-flex items-center gap-0.5 text-sky-600 dark:text-sky-400 text-xs font-normal shrink-0" title={opt.presentation.name}>
-                                <Layers className="h-3 w-3" />{getUnitOfMeasureLabel(opt.presentation.unitLabel)} (×{opt.presentation.unitsPerPack})
+                          <div className="font-medium text-sm break-words flex items-center gap-1.5">
+                            {product.name}
+                            {hasPresentations && (
+                              <span className="inline-flex items-center gap-0.5 text-sky-600 dark:text-sky-400 text-xs font-normal shrink-0">
+                                <Layers className="h-3 w-3" />{presentationOptions.length} opciones
                               </span>
                             )}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {opt.product.category?.name}
-                            {opt.product.currentStock <= 5 && (
-                              <span className="ml-2 text-amber-600">Stock: {formatQty(opt.product.currentStock)}</span>
+                            {product.category?.name}
+                            {product.currentStock <= 5 && (
+                              <span className="ml-2 text-amber-600">Stock: {formatQty(product.currentStock)}</span>
                             )}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="font-medium text-sm">{cop(price)}</div>
+                          <div className="font-medium text-sm">
+                            {hasPresentations ? `desde ${cop(fromPrice)}` : cop(fromPrice)}
+                          </div>
                           {inCart && (
-                            <div className="text-xs text-emerald-600">×{formatQty(inCart.quantity)} en lista</div>
+                            <div className="text-xs text-emerald-600">en lista</div>
                           )}
                         </div>
-                      </button>
+                      </div>
+                    )
+
+                    if (!hasPresentations) {
+                      return (
+                        <button
+                          key={`p-${product.id}`}
+                          className="w-full"
+                          onClick={() => addToCart(product, null)}
+                        >
+                          {rowBody}
+                        </button>
+                      )
+                    }
+
+                    return (
+                      <Popover key={`p-${product.id}`}>
+                        <PopoverTrigger asChild>
+                          <button className="w-full">{rowBody}</button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-60 p-1.5" align="start">
+                          <p className="px-2 py-1 text-xs font-medium text-muted-foreground break-words">{product.name}</p>
+                          {presentationOptions.map((option) => {
+                            const presentation = option.presentation as unknown as ProductPresentationOption | null
+                            return (
+                              <button
+                                key={presentation?.id ?? 'base'}
+                                type="button"
+                                className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
+                                onClick={() => addToCart(product, presentation)}
+                              >
+                                <span className={presentation ? 'truncate' : undefined} title={presentation?.name}>
+                                  {getUnitOfMeasureLabel(option.unitLabel)}
+                                </span>
+                                <span className="font-medium tabular-nums shrink-0 ml-2">{cop(option.salePrice)}</span>
+                              </button>
+                            )
+                          })}
+                        </PopoverContent>
+                      </Popover>
                     )
                   })}
                 </div>

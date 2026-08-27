@@ -24,6 +24,7 @@ import { useProviders as useFullProviders } from '@/hooks/api/use-providers'
 import { useCreatePurchase, usePurchaseProducts, usePurchaseProviders, type ProductOption } from '@/hooks/api/use-purchases'
 import { useTaxes } from '@/hooks/api/use-taxes'
 import { formatCurrency } from '@/lib/auth'
+import { sortPresentationOptions } from '@/lib/product-presentations'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { useAuthStore } from '@/stores/auth-store'
 import { CheckCircle2, HelpCircle, Loader2, PackagePlus, Upload, UserPlus, XCircle } from 'lucide-react'
@@ -1371,14 +1372,16 @@ export function PurchaseXmlImport({
                               >
                                 <SelectTrigger className="h-9 text-sm w-full bg-muted/50 border-muted-foreground/30"><SelectValue placeholder="Sin resolver" /></SelectTrigger>
                                 <SelectContent>
-                                  {products.flatMap(p => [
-                                    <SelectItem key={p.id} value={String(p.id)}>{p.name} — {getUnitOfMeasureLabel(p.unitLabel)}</SelectItem>,
-                                    ...(p.presentations || []).filter(pr => pr.isActive).map(pr => (
+                                  {products.flatMap(p => sortPresentationOptions(p).map((option) => {
+                                    const pr = option.presentation
+                                    return pr ? (
                                       <SelectItem key={`${p.id}::${pr.id}`} value={`${p.id}::${pr.id}`}>
-                                        {p.name} — {getUnitOfMeasureLabel(pr.unitLabel)} (x{pr.unitsPerPack})
+                                        {p.name} — {getUnitOfMeasureLabel(pr.unitLabel)} (x{option.unitsPerPack})
                                       </SelectItem>
-                                    )),
-                                  ])}
+                                    ) : (
+                                      <SelectItem key={p.id} value={String(p.id)}>{p.name} — {getUnitOfMeasureLabel(p.unitLabel)}</SelectItem>
+                                    )
+                                  }))}
                                   <SelectItem value="__create__">
                                     <span className="flex items-center gap-1 text-primary"><PackagePlus className="h-3 w-3" />Crear producto nuevo</span>
                                   </SelectItem>

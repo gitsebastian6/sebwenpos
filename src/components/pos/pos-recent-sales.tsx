@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Search, ShoppingCart, RotateCcw, Clock } from 'lucide-react'
+import { Search, ShoppingCart, RotateCcw, Clock, Printer } from 'lucide-react'
 import { formatCurrency } from '@/lib/auth'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -29,6 +29,7 @@ interface POSRecentSalesProps {
   onSearchChange: (value: string) => void
   returnDialogRef: React.RefObject<POSReturnDialogRef | null>
   currencyCode: string
+  onPrintOrder: (orderId: number) => void
 }
 
 // ─── Component ─────────────────────────────────────────
@@ -42,6 +43,7 @@ export function POSRecentSales({
   onSearchChange,
   returnDialogRef,
   currencyCode,
+  onPrintOrder,
 }: POSRecentSalesProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -113,7 +115,7 @@ export function POSRecentSales({
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
+                    <div className="text-xs text-muted-foreground mt-0.5 break-words">
                       {format(new Date(order.createdAt), 'HH:mm', { locale: es })}
                       {' · '}
                       {order.orderItems.length} producto{order.orderItems.length !== 1 ? 's' : ''}
@@ -127,6 +129,16 @@ export function POSRecentSales({
                       {formatCurrency(order.total, currencyCode)}
                     </p>
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0 shrink-0"
+                    onClick={() => onPrintOrder(order.id)}
+                    title="Imprimir factura"
+                    aria-label="Imprimir factura"
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

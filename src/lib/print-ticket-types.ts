@@ -34,7 +34,8 @@ export interface TicketData {
   discountAmount?: number
   taxAmount?: number
   taxBreakdown?: Array<{ name: string; code: string; rate: number; base: number; amount: number }>
-  paymentMethod: string
+    paymentMethod: string
+  paymentSplits?: Array<{ method: string; amount: number; reference?: string }>
   currencyCode: string
   notes?: string
   cufe?: string // Código Único de Factura Electrónica

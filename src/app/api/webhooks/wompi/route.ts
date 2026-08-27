@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { verifyWebhookSignature, type WompiWebhookEvent, type WompiTransaction } from '@/lib/wompi/client'
 import { logSubscriptionHistory, createBillingRecord, BILLING_PERIODS, calculateBillingPrice } from '@/lib/subscription-helpers'
 import { logSubscriptionChange } from '@/lib/event-logger'
+import { claimExternalEvent } from '@/lib/idempotency'
 
 export const dynamic = 'force-dynamic'
 
@@ -130,40 +132,64 @@ async function processTransactionUpdate(transaction: WompiTransaction): Promise<
   const terminalStates = ['APPROVED', 'DECLINED', 'VOIDED']
   const internalStatus = mapWompiStatus(wompiStatus)
 
-  // Atomic: only update if NOT already in a matching terminal state
-  const updatedCount = await db.wompiTransaction.updateMany({
-    where: {
+  // ═══════════════════════════════════════════════════════════════════════
+  // TRANSACTIONAL SAFETY (Kleppmann Ch. 7):
+  // The idempotency check (updateMany) AND the side effects (receipt approval,
+  // subscription extension, billing record) are wrapped in a SINGLE $transaction.
+  // Before this fix, the updateMany marked the transaction as "processed" but
+  // the side effects ran outside the tx — if the process crashed in between,
+  // the subscription would never be extended while the WompiTransaction was
+  // already marked terminal (silent inconsistent state).
+  // ═══════════════════════════════════════════════════════════════════════
+  await db.$transaction(async (tx) => {
+    // ── Capa 1 de idempotencia: claim por identidad del evento ──
+    // Registra (WOMPI, transaction.id) antes de tocar nada. Un reintento
+    // de Wompi (timeout/reintento de red) cae en P2002 → skip seguro.
+    const claim = await claimExternalEvent(tx, 'WOMPI', String(wompiId), {
+      type: 'WompiTransaction',
       id: wompiTx.id,
-      status: { notIn: terminalStates },
-    },
-    data: {
-      status: internalStatus,
-      wompiStatus,
-      wompiId: String(wompiId),
-      paymentMethodType: paymentMethodType || null,
-      customerEmail: transaction.customerEmail || null,
-      customerName: transaction.customerName || null,
-      customerPhone: transaction.customerPhone || null,
-      customerDocument: transaction.customerDocument || null,
-      wompiResponse: JSON.stringify(transaction),
-      paidAt: internalStatus === 'APPROVED' ? new Date() : null,
-    },
+    })
+    if (!claim.claimed) {
+      logger.info(`[Wompi Webhook] Idempotency (event claim): evento ${wompiId} ya procesado, skipped`)
+      return
+    }
+
+    // ── Capa 2: atomic status guard (defensa en profundidad) ──
+    // Atomic: only update if NOT already in a matching terminal state
+    const updatedCount = await tx.wompiTransaction.updateMany({
+      where: {
+        id: wompiTx.id,
+        status: { notIn: terminalStates },
+      },
+      data: {
+        status: internalStatus,
+        wompiStatus,
+        wompiId: String(wompiId),
+        paymentMethodType: paymentMethodType || null,
+        customerEmail: transaction.customerEmail || null,
+        customerName: transaction.customerName || null,
+        customerPhone: transaction.customerPhone || null,
+        customerDocument: transaction.customerDocument || null,
+        wompiResponse: JSON.stringify(transaction),
+        paidAt: internalStatus === 'APPROVED' ? new Date() : null,
+      },
+    })
+
+    if (updatedCount.count === 0) {
+      // Already processed by another webhook — skip (rollback the empty tx)
+      logger.info(`[Wompi Webhook] Idempotency (atomic): Transaction ${wompiId} already in terminal state, skipped`)
+      return
+    }
+
+    // ── Process side effects based on status (inside the same tx) ──
+    if (internalStatus === 'APPROVED') {
+      await handleApprovedTransaction(wompiTx, tx)
+    } else if (internalStatus === 'DECLINED' || internalStatus === 'VOIDED') {
+      await handleDeclinedTransaction(wompiTx, tx)
+    }
+
+    logger.info(`[Wompi Webhook] Transaction ${wompiId} updated to ${internalStatus}`)
   })
-
-  if (updatedCount.count === 0) {
-    // Already processed by another webhook — skip
-    logger.info(`[Wompi Webhook] Idempotency (atomic): Transaction ${wompiId} already in terminal state, skipped`)
-    return
-  }
-
-  // ── Process based on status ──
-  if (internalStatus === 'APPROVED') {
-    await handleApprovedTransaction(wompiTx)
-  } else if (internalStatus === 'DECLINED' || internalStatus === 'VOIDED') {
-    await handleDeclinedTransaction(wompiTx)
-  }
-
-  logger.info(`[Wompi Webhook] Transaction ${wompiId} updated to ${internalStatus}`)
 }
 
 /**
@@ -218,6 +244,7 @@ async function handleApprovedTransaction(
       notes: string | null
     } | null
   },
+  tx: Prisma.TransactionClient,
 ): Promise<void> {
   const receipt = wompiTx.receipt
   const subscription = wompiTx.subscription || receipt?.subscription
@@ -227,7 +254,7 @@ async function handleApprovedTransaction(
     const order = wompiTx.order
     const wasPending = order.status === 'PENDING_PAYMENT'
 
-    await db.order.update({
+    await tx.order.update({
       where: { id: wompiTx.order.id },
       data: {
         ...(wasPending ? {
@@ -251,7 +278,7 @@ async function handleApprovedTransaction(
 
   // ── Auto-approve the linked PaymentReceipt (if exists and PENDING) ──
   if (receipt && receipt.status === 'PENDING') {
-    await db.paymentReceipt.update({
+    await tx.paymentReceipt.update({
       where: { id: receipt.id },
       data: {
         status: 'APPROVED',
@@ -293,7 +320,7 @@ async function handleApprovedTransaction(
 
   if (requestedPlanId && requestedPlanId !== subscription.planId) {
     // Plan change requested — validate the target plan exists
-    const targetPlan = await db.plan.findUnique({
+    const targetPlan = await tx.plan.findUnique({
       where: { id: requestedPlanId },
       select: { id: true, name: true, price: true },
     })
@@ -370,7 +397,7 @@ async function handleApprovedTransaction(
     subscriptionUpdateData.previousPlanName = previousPlanName
   }
 
-  await db.subscription.update({
+  await tx.subscription.update({
     where: { id: subscription.id },
     data: subscriptionUpdateData,
   })
@@ -426,7 +453,7 @@ async function handleApprovedTransaction(
       ...(isPlanDowngrade ? { isPlanDowngrade: true } : {}),
       wompiReference: wompiTx.reference,
     },
-  })
+  }, tx)
 
   // ── Create billing record with ACTUAL charged amount ──
   const periodStart = subscription.endDate && new Date(subscription.endDate) > now
@@ -454,7 +481,7 @@ async function handleApprovedTransaction(
       : isPlanChange
         ? `Cambio ${previousPlanName}→${effectivePlanName} (${BILLING_PERIODS[billingPeriodToUse]?.label || billingPeriodToUse}) — cobro real: $${actualAmountCharged.toLocaleString('es-CO')} COP`
         : `Renovación ${BILLING_PERIODS[billingPeriodToUse]?.label || billingPeriodToUse} vía Wompi — cobro real: $${actualAmountCharged.toLocaleString('es-CO')} COP`,
-  })
+  }, tx)
 
   logger.info(
     `[Wompi Webhook] Subscription ${subscription.id} ` +
@@ -487,12 +514,13 @@ async function handleDeclinedTransaction(
       status: string
     } | null
   },
+  tx: Prisma.TransactionClient,
 ): Promise<void> {
   const receipt = wompiTx.receipt
 
   // CRITICAL FIX: Handle POS order decline — cancel the pending order
   if (wompiTx.order && wompiTx.order.status === 'PENDING_PAYMENT') {
-    await db.order.update({
+    await tx.order.update({
       where: { id: wompiTx.order.id },
       data: {
         status: 'CANCELLED',
@@ -503,7 +531,7 @@ async function handleDeclinedTransaction(
   }
 
   if (receipt && receipt.status === 'PENDING') {
-    await db.paymentReceipt.update({
+    await tx.paymentReceipt.update({
       where: { id: receipt.id },
       data: {
         status: 'REJECTED',

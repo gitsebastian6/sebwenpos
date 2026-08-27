@@ -258,7 +258,7 @@ export async function POST(req: NextRequest) {
     try {
       await db.$transaction(async (tx) => {
         // 4a. Obtener consecutivo usando el cliente de transaccion
-        consecutiveResult = await getNextConsecutive(store.id, { store: tx.store, invoice: tx.invoice })
+        consecutiveResult = await getNextConsecutive(store.id, { store: tx.store, invoice: tx.invoice, invoiceCounter: tx.invoiceCounter })
         if (consecutiveResult.warning) {
           logger.warn(`[Invoice] ${consecutiveResult.warning}`)
         }

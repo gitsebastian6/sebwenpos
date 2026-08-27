@@ -68,6 +68,7 @@ export function InventoryView() {
       (p) =>
         p.name.toLowerCase().includes(q) ||
         (p.sku && p.sku.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
         (p.category?.name && p.category.name.toLowerCase().includes(q))
     )
   }, [products, productSearch])

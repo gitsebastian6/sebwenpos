@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { logSubscriptionHistory, transitionSingleSubscription, parsePlanFeatures, GRACE_PERIOD_DAYS } from '@/lib/subscription-helpers'
+import { computeDaysRemaining } from '@/lib/subscription/countdown'
 import { setSubscriptionStatus } from '@/lib/subscription-cache'
 import { requireAuthStoreId } from '@/lib/api-auth'
 
@@ -66,7 +67,7 @@ export async function GET(req: NextRequest) {
 
     const graceEndDate = subscription.graceEndDate
     const graceDaysRemaining = (graceEndDate && subscription.status === 'PAST_DUE')
-      ? Math.ceil((new Date(graceEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      ? computeDaysRemaining(graceEndDate)
       : null
 
     // Warm subscription cache for middleware gating
@@ -89,17 +90,12 @@ export async function GET(req: NextRequest) {
       billingPrice: subscription.billingPrice,
       prorationCredit: subscription.prorationCredit,
       previousPlanName: subscription.previousPlanName,
-      daysRemaining: (() => {
+      daysRemaining: computeDaysRemaining(
         // For TRIAL subscriptions, use trialEndDate; otherwise use endDate
-        const referenceDate = subscription.status === 'TRIAL' && subscription.trialEndDate
+        subscription.status === 'TRIAL' && subscription.trialEndDate
           ? subscription.trialEndDate
-          : subscription.endDate
-        if (!referenceDate) return null
-        const remaining = Math.floor(
-          (new Date(referenceDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
-        )
-        return remaining
-      })(),
+          : subscription.endDate,
+      ),
       planLimits: {
         maxEmployees: subscription.plan.maxEmployees,
         maxProducts: subscription.plan.maxProducts,

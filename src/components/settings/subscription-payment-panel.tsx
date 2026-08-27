@@ -86,6 +86,8 @@ export function SubscriptionPaymentPanel() {
     id: subData.subscriptionId, status: subData.subscriptionStatus, planName: subData.planName, planPrice: subData.planPrice,
     startDate: subData.startDate, endDate: subData.endDate, billingPeriod: subData.billingPeriod, daysRemaining: subData.daysRemaining,
     trialEndDate: subData.trialEndDate,
+    graceEndDate: subData.graceEndDate,
+    graceDaysRemaining: subData.graceDaysRemaining,
   } : null
 
   // ── Sync fresh subscription data back to auth store ──

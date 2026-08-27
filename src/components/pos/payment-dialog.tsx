@@ -1,11 +1,18 @@
 'use client'
 
 import { formatCurrency } from '@/lib/auth'
-import type { PaymentMethod, CustomerSummary } from '@/types'
+import type { PaymentMethod, CustomerSummary, PaymentSplit } from '@/types'
 import type { InvoiceMode } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { NITInput } from '@/components/ui/nit-input'
 import {
@@ -29,7 +36,10 @@ import {
   Hash,
   Percent,
   Loader2,
+  Plus,
   Shield,
+  Wallet,
+  X,
 } from 'lucide-react'
 
 // ─── Payment method labels ──────────────────────────────
@@ -43,6 +53,9 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: React.ReactN
   { value: 'TRANSFER', label: 'Transferencia', icon: <ArrowRightLeft className="h-4 w-4" /> },
   { value: 'FIADO', label: 'Fiado', icon: <Users className="h-4 w-4" /> },
 ]
+
+// ─── Split-tender: methods allowed as payment rows (FIADO is a credit sale, not a split) ───
+const SPLIT_PAYMENT_METHODS = PAYMENT_METHODS.filter((pm) => pm.value !== 'FIADO')
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -64,6 +77,11 @@ export interface PaymentDialogProps {
 
   // Payment & customer
   paymentMethod: PaymentMethod
+  paymentSplits: PaymentSplit[]
+  addPaymentSplit: () => void
+  removePaymentSplit: (id: string) => void
+  updatePaymentSplit: (id: string, patch: Partial<Omit<PaymentSplit, 'id'>>) => void
+  allocatedSum: number
   selectedCustomer: string
 
   // Invoice mode
@@ -111,6 +129,11 @@ export function PaymentDialog({
   tipAmount,
   total,
   paymentMethod,
+  paymentSplits,
+  addPaymentSplit,
+  removePaymentSplit,
+  updatePaymentSplit,
+  allocatedSum,
   selectedCustomer,
   hasStoreNit,
   isEInvEnabled,
@@ -140,6 +163,91 @@ export function PaymentDialog({
           <DialogDescription asChild>
             <div className="space-y-3">
               <p>¿Estás seguro de que deseas registrar esta venta?</p>
+
+              {/* ── Split-tender: multiple payment methods (only when the user opted into dividing the payment) ── */}
+              {paymentSplits.length > 0 && paymentMethod !== 'FIADO' && (
+                <div className="space-y-2 rounded-lg border border-emerald-300/60 bg-emerald-50/60 dark:bg-emerald-950/20 p-3">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                    <Wallet className="h-3.5 w-3.5" />
+                    Pago dividido — varios medios
+                  </Label>
+
+                  <div className="space-y-2">
+                    {paymentSplits.map((split) => {
+                      const needsRef = ['TRANSFER', 'NEQUI', 'DAVIPLATA', 'WOMPI'].includes(split.method)
+                      return (
+                        <div key={split.id} className="rounded-lg bg-background/70 dark:bg-background/40 border border-emerald-200/70 dark:border-emerald-900/50 p-2 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={split.method}
+                              onValueChange={(v) => updatePaymentSplit(split.id, { method: v as PaymentMethod })}
+                            >
+                              <SelectTrigger className="h-9 text-xs flex-1" aria-label={`Medio de pago ${split.id}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {SPLIT_PAYMENT_METHODS.map((pm) => (
+                                  <SelectItem key={pm.value} value={pm.value}>
+                                    <span className="flex items-center gap-1.5">{pm.icon}{pm.label}</span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <label className="flex items-center gap-1 relative">
+                              <span className="absolute left-2 text-xs text-muted-foreground">$</span>
+                              <Input
+                                type="text"
+                                inputMode="numeric"
+                                value={split.amount ? String(split.amount) : ''}
+                                onChange={(e) => updatePaymentSplit(split.id, { amount: Math.max(0, parseFloat(e.target.value) || 0) })}
+                                className="h-9 w-32 text-right text-sm font-semibold tabular-nums pl-5"
+                                aria-label="Monto del pago"
+                              />
+                            </label>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => removePaymentSplit(split.id)}
+                              disabled={paymentSplits.length <= 1}
+                              aria-label="Quitar medio de pago"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          {needsRef && (
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">
+                                {split.method === 'WOMPI' ? 'Referencia Wompi' : `Número de ${split.method === 'TRANSFER' ? 'transferencia' : split.method}`}
+                              </Label>
+                              <Input
+                                type="text"
+                                value={split.reference || ''}
+                                onChange={(e) => updatePaymentSplit(split.id, { reference: e.target.value })}
+                                placeholder={split.method === 'WOMPI' ? 'Ej: 31416_10947' : split.method === 'TRANSFER' ? 'Ej: 000123456789' : 'Ej: 3111234567'}
+                                className="h-9 text-sm tabular-nums"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <Button type="button" variant="outline" size="sm" className="h-9 text-xs gap-1" onClick={addPaymentSplit} disabled={allocatedSum >= total}>
+                      <Plus className="h-3.5 w-3.5" />
+                      Agregar otro pago
+                    </Button>
+                    <p className={`text-xs font-semibold tabular-nums ${allocatedSum === total ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {allocatedSum === total
+                        ? `Cubierto ${formatCurrency(allocatedSum, currencyCode)}`
+                        : `Asignado ${formatCurrency(allocatedSum, currencyCode)} / ${formatCurrency(total, currencyCode)}`}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* ── Invoice Mode Selector (only when e-invoicing is enabled) ── */}
               {hasStoreNit && (
@@ -256,8 +364,10 @@ export function PaymentDialog({
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Método de pago</span>
                   <span className="font-medium flex items-center gap-1.5">
-                    {PAYMENT_METHODS.find((pm) => pm.value === paymentMethod)?.label}
-                    {PAYMENT_METHODS.find((pm) => pm.value === paymentMethod)?.badge && (
+                    {paymentSplits.length > 0
+                      ? `Mixto (${paymentSplits.length} medios)`
+                      : PAYMENT_METHODS.find((pm) => pm.value === paymentMethod)?.label}
+                    {paymentSplits.length === 0 && PAYMENT_METHODS.find((pm) => pm.value === paymentMethod)?.badge && (
                       <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
                         {PAYMENT_METHODS.find((pm) => pm.value === paymentMethod)?.badge}
                       </span>

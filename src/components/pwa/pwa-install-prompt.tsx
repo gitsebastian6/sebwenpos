@@ -106,7 +106,7 @@ export function PWAInstallPrompt() {
   // ── iOS Safari hint ──
   if (showIOSHint) {
     return (
-      <div className="fixed bottom-4 left-4 right-4 z-[9999] mx-auto max-w-md animate-in slide-in-from-bottom-5">
+      <div className="fixed bottom-4 left-4 right-4 z-[40] mx-auto max-w-md animate-in slide-in-from-bottom-5">
         <div className="flex items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-xl">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
             <Smartphone className="h-5 w-5 text-primary" />
@@ -134,7 +134,7 @@ export function PWAInstallPrompt() {
   if (!showBanner || !deferredPrompt) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-[9999] mx-auto max-w-md animate-in slide-in-from-bottom-5">
+    <div className="fixed bottom-4 left-4 right-4 z-[40] mx-auto max-w-md animate-in slide-in-from-bottom-5">
       <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-xl">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
           <Download className="h-5 w-5 text-primary" />

@@ -1,6 +1,7 @@
 'use client'
 
 import { UnitOfMeasureSelect } from '@/components/products/unit-of-measure-select'
+import { BarcodeScannerDialog, ScanButton } from '@/components/shared/barcode-scanner-dialog'
 import { Button } from '@/components/ui/button'
 import {
     Dialog,
@@ -40,7 +41,7 @@ import {
     Upload,
     X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -251,6 +252,24 @@ export function ProductFormDialog({
     setPresentations((prev) => prev.map((p) => (p.key === key ? { ...p, [field]: value } : p)))
   }
 
+  // ─── Camera Scanner (fills barcode fields) ────────────────────────────────
+  // scanTarget === 'barcode' → main product barcode; otherwise a presentation key.
+  const [scanTarget, setScanTarget] = useState<'barcode' | string | null>(null)
+
+  const handleScanFill = useCallback(
+    (code: string) => {
+      if (scanTarget === 'barcode') {
+        setProductForm((prev) => ({ ...prev, barcode: code }))
+        toast.success(`Código escaneado: ${code}`)
+      } else if (scanTarget) {
+        updatePresentation(scanTarget, 'barcode', code)
+        toast.success(`Código de presentación escaneado: ${code}`)
+      }
+      setScanTarget(null)
+    },
+    [scanTarget]
+  )
+
   // ─── Submit Handler ──────────────────────────────────────────────────────
 
   async function handleSaveProduct() {
@@ -360,14 +379,18 @@ export function ProductFormDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="prod-barcode">Código de Barras</Label>
-              <Input
-                id="prod-barcode"
-                placeholder="EAN, UPC, etc."
-                value={productForm.barcode}
-                onChange={(e) => setProductForm({ ...productForm, barcode: e.target.value })}
-                className="font-mono"
-                maxLength={100}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="prod-barcode"
+                  placeholder="EAN, UPC, etc."
+                  value={productForm.barcode}
+                  onChange={(e) => setProductForm({ ...productForm, barcode: e.target.value })}
+                  className="font-mono flex-1"
+                  maxLength={100}
+                />
+                <ScanButton size="compact" label="Escanear código de barras" onClick={() => setScanTarget('barcode')} />
+              </div>
+              <BarcodeScannerDialog open={scanTarget !== null} onClose={() => setScanTarget(null)} onScan={handleScanFill} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="prod-unit">Unidad de Medida</Label>
@@ -908,13 +931,16 @@ export function ProductFormDialog({
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-xs">Código de barras</Label>
-                        <Input
-                          placeholder="EAN, UPC, etc."
-                          value={p.barcode}
-                          onChange={(e) => updatePresentation(p.key, 'barcode', e.target.value)}
-                          className="h-8 text-sm font-mono"
-                          maxLength={100}
-                        />
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            placeholder="EAN, UPC, etc."
+                            value={p.barcode}
+                            onChange={(e) => updatePresentation(p.key, 'barcode', e.target.value)}
+                            className="h-8 text-sm font-mono flex-1"
+                            maxLength={100}
+                          />
+                          <ScanButton size="compact" label={`Escanear código de presentación`} onClick={() => setScanTarget(p.key)} />
+                        </div>
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-xs">SKU</Label>

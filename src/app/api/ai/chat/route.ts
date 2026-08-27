@@ -14,6 +14,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuthUser } from '@/lib/api-auth'
 import { VIEW_LABELS } from '@/lib/view-labels'
+import {
+  AI_TOOLS,
+  AI_TOOLS_SECTION,
+  buildStoreKpisContext,
+  executeAiTool,
+  type AiToolCall,
+} from '@/lib/ai-tools'
 
 // ─── Provider Config (from env vars) ────────────────────────────────────────
 
@@ -263,19 +270,26 @@ async function generateZhipuJwt(apiKey: string): Promise<string> {
 // ─── AI Provider — Google AI Studio (Gemini, OpenAI-compatible endpoint) ───
 
 async function callGemini(
-  messages: Array<{ role: string; content: string }>
-): Promise<{ content: string; tokens: number; model: string }> {
+  messages: Array<any>,
+  tools?: any[]
+): Promise<{ content: string; tokens: number; model: string; toolCalls?: AiToolCall[] }> {
   const startTime = Date.now()
 
   try {
+    const body: Record<string, unknown> = { model: GEMINI_MODEL, messages }
+    if (tools && tools.length > 0) {
+      body.tools = tools
+      body.tool_choice = 'auto'
+    }
+
     const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${GEMINI_API_KEY}`,
       },
-      body: JSON.stringify({ model: GEMINI_MODEL, messages }),
-      signal: AbortSignal.timeout(20000),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
     })
 
     const latencyMs = Date.now() - startTime
@@ -287,12 +301,18 @@ async function callGemini(
     }
 
     const result = await response.json() as any
-    const reply = result.choices?.[0]?.message?.content || ''
-    const tokens = result.usage?.total_tokens || Math.ceil(reply.length / 4)
+    const msg = result.choices?.[0]?.message
+    const reply = msg?.content || ''
+    const toolCalls: AiToolCall[] | undefined = msg?.tool_calls?.map((tc: any) => ({
+      id: tc.id,
+      name: tc.function?.name,
+      arguments: tc.function?.arguments || '{}',
+    }))
+    const tokens = result.usage?.total_tokens || Math.ceil((reply.length + (toolCalls?.length || 0) * 50) / 4)
     const model = result.model || GEMINI_MODEL
 
-    console.log(`[AI Chat] Gemini ${latencyMs}ms, ${tokens} tokens, model: ${model}`)
-    return { content: reply, tokens, model }
+    console.log(`[AI Chat] Gemini ${latencyMs}ms, ${tokens} tokens, model: ${model}, tools: ${toolCalls?.length || 0}`)
+    return { content: reply, tokens, model, toolCalls }
   } catch (error: any) {
     const latencyMs = Date.now() - startTime
     console.error(`[AI Chat] Gemini unreachable after ${latencyMs}ms:`, error?.message || error)
@@ -420,6 +440,81 @@ async function callGlmApi(
   return { content: '', tokens: 0, model: 'error' }
 }
 
+// ─── AI with Tools — orchestration loop (Gemini function calling) ───────────
+
+/**
+ * Call the AI with tool-calling support. Only Gemini supports tools in our
+ * setup; if Gemini is unavailable (or storeId is missing), falls back to the
+ * plain-text multi-provider path (callGlmApi) which preserves the original
+ * navigation-only behavior.
+ *
+ * Tool loop: model may return tool_calls → we execute them server-side
+ * (scoped by storeId) → feed results back → repeat until a final text answer
+ * (max 4 iterations to prevent runaway loops).
+ */
+async function callAiWithTools(
+  messages: Array<any>,
+  storeId: number | null
+): Promise<{ content: string; tokens: number; model: string }> {
+  if (GEMINI_API_KEY && storeId) {
+    try {
+      let currentMessages = [...messages]
+      let totalTokens = 0
+      let lastModel = GEMINI_MODEL
+
+      for (let iter = 0; iter < 4; iter++) {
+        const res = await callGemini(currentMessages, AI_TOOLS)
+        totalTokens += res.tokens
+        if (res.model && res.model !== 'error') lastModel = res.model
+
+        // No tool calls → final answer
+        if (!res.toolCalls || res.toolCalls.length === 0) {
+          if (res.content && res.content.trim()) {
+            return { content: res.content, tokens: totalTokens, model: lastModel }
+          }
+          break // empty reply → fall through to plain-text fallback
+        }
+
+        // Append the assistant message that requested tool calls
+        currentMessages.push({
+          role: 'assistant',
+          content: res.content || '',
+          tool_calls: res.toolCalls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: { name: tc.name, arguments: tc.arguments },
+          })),
+        })
+
+        // Execute each requested tool and append results
+        for (const tc of res.toolCalls) {
+          let toolResult: string
+          try {
+            const parsedArgs = JSON.parse(tc.arguments || '{}')
+            const result = await executeAiTool(tc.name, parsedArgs, storeId)
+            toolResult = JSON.stringify(result)
+          } catch (e: any) {
+            toolResult = JSON.stringify({ error: e?.message || 'tool_execution_error' })
+          }
+          // Keep tool results compact to avoid blowing up the context window
+          if (toolResult.length > 8000) toolResult = toolResult.slice(0, 8000) + '...[truncado]'
+          currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: toolResult })
+        }
+        // continue loop → model will produce a final answer from tool results
+      }
+
+      // Loop exhausted without a final text answer — fall through to plain text
+      console.warn('[AI Chat] Tool loop ended without final content, falling back')
+    } catch (e: any) {
+      console.warn('[AI Chat] Tool-calling path failed, falling back to plain text:', e?.message || e)
+    }
+  }
+
+  // Fallback: plain text call (no tools) — original multi-provider behavior
+  return callGlmApi(messages as Array<{ role: string; content: string }>)
+}
+
+
 // ─── Fallback Response ──────────────────────────────────────────────────────
 
 function getFallbackResponse(userMessage: string): string {
@@ -509,10 +604,19 @@ export async function POST(req: NextRequest) {
     })
 
     // Build system prompt with context
-    const systemPrompt = buildSystemPrompt({ currentPage, subscriptionStatus, planName })
+    let systemPrompt = buildSystemPrompt({ currentPage, subscriptionStatus, planName })
+
+    // F1 — Inject real-time KPI snapshot + tools section when the user has a store.
+    // SUPER_ADMIN without a target store gets the navigation-only assistant.
+    const effectiveStoreId = session.storeId ?? auth.storeId
+    if (effectiveStoreId) {
+      const kpiContext = await buildStoreKpisContext(effectiveStoreId)
+      if (kpiContext) systemPrompt += kpiContext
+      systemPrompt += AI_TOOLS_SECTION
+    }
 
     // Build full message array for multi-turn conversation
-    const apiMessages: Array<{ role: string; content: string }> = [
+    const apiMessages: Array<any> = [
       { role: 'system', content: systemPrompt },
     ]
 
@@ -526,13 +630,14 @@ export async function POST(req: NextRequest) {
     // Add current user message
     apiMessages.push({ role: 'user', content: message.trim() })
 
-    // Call AI — auto-detects best available provider (Gemini → Z.ai → ZhipuAI)
+    // Call AI — with tools (Gemini function calling) when a storeId is available,
+    // otherwise the plain-text multi-provider path (Gemini → Z.ai → ZhipuAI).
     let aiContent: string
     let tokensUsed: number
     let model: string
 
     const aiCallStart = Date.now()
-    const result = await callGlmApi(apiMessages)
+    const result = await callAiWithTools(apiMessages, effectiveStoreId ?? null)
     const latencyMs = Date.now() - aiCallStart
 
     if (result.content && result.content.trim().length > 0) {

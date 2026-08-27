@@ -31,8 +31,8 @@ import { Textarea } from '@/components/ui/textarea'
 import type { DiscountType } from '@/hooks/pos/use-pos-cart'
 import type { OpenCashRegister } from '@/hooks/pos/use-pos-data'
 import { formatCurrency } from '@/lib/auth'
-import { parseQtyInput, qtyStepFor, roundQty } from '@/lib/format'
-import type { CustomerSummary, PaymentMethod } from '@/types'
+import { formatQty, parseQtyInput, qtyStepFor, roundQty } from '@/lib/format'
+import type { CustomerSummary, PaymentMethod, PaymentSplit } from '@/types'
 import {
     AlertTriangle,
     ArrowRightLeft,
@@ -127,6 +127,8 @@ export interface CartSidebarProps {
   setPaymentMethod: (m: PaymentMethod) => void
   transferRef: string
   setTransferRef: (r: string) => void
+  paymentSplits: PaymentSplit[]
+  setPaymentSplits: React.Dispatch<React.SetStateAction<PaymentSplit[]>>
 
   // UI state
   cartSheetOpen: boolean
@@ -193,6 +195,8 @@ export function CartSidebar({
   setPaymentMethod,
   transferRef,
   setTransferRef,
+  paymentSplits,
+  setPaymentSplits,
   cartSheetOpen,
   setCartSheetOpen,
   setShowChargeDialog,
@@ -234,6 +238,15 @@ export function CartSidebar({
   const handleWompiCancel = useCallback(() => {
     setPosWompiDialogOpen(false)
   }, [])
+
+  // ── Split-tender: open the charge dialog with the currently selected method as a first payment row ──
+  const handleStartSplitPayment = useCallback(() => {
+    if (paymentMethod === 'FIADO') return
+    setPaymentSplits([
+      { id: `split-${Date.now().toString(36)}`, method: paymentMethod, amount: total, reference: transferRef || '' },
+    ])
+    setShowChargeDialog(true)
+  }, [paymentMethod, transferRef, total, setPaymentSplits, setShowChargeDialog])
   return (
     <>
     <Sheet open={cartSheetOpen} onOpenChange={setCartSheetOpen}>
@@ -278,35 +291,34 @@ export function CartSidebar({
                     >
                       {/* ── Fila 1: stepper de cantidad + nombre del producto ── */}
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-0.5 shrink-0 bg-muted/50 rounded-lg p-0.5">
+                        <div className="flex items-center gap-1 shrink-0 bg-muted/60 rounded-xl p-1 select-none touch-manipulation">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 rounded-md active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
+                            className="h-11 w-11 rounded-lg text-lg active:scale-90 transition-all duration-150 hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
                             onClick={() => updateQuantity(itemId, -qtyStepFor(item.unitLabel, item.isService ? 0.5 : 1), item.isService, item.presentationId)}
                             disabled={item.quantity <= qtyStepFor(item.unitLabel, item.isService ? 0.5 : 1)}
                             aria-label="Reducir cantidad"
                           >
-                            <Minus className="h-3 w-3" />
+                            <Minus className="h-5 w-5" />
                           </Button>
                           <Input
-                            type="number"
-                            step="0.001"
-                            min="0.001"
-                            value={item.quantity}
+                            type="text"
+                            inputMode="decimal"
+                            value={formatQty(item.quantity)}
                             onChange={(e) => setQuantity(itemId, parseQtyInput(e.target.value), item.isService, item.presentationId)}
-                            className="w-10 h-6 p-0 text-center text-sm font-bold tabular-nums text-foreground bg-transparent border-0 focus-visible:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-14 h-11 p-0 text-center text-base font-bold tabular-nums text-foreground bg-transparent border-0 focus-visible:ring-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             aria-label="Cantidad"
                           />
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 rounded-md active:scale-90 transition-all duration-150 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
+                            className="h-11 w-11 rounded-lg text-lg active:scale-90 transition-all duration-150 hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
                             onClick={() => updateQuantity(itemId, qtyStepFor(item.unitLabel, item.isService ? 0.5 : 1), item.isService, item.presentationId)}
                             disabled={!item.isService && item.quantity >= item.maxStock}
                             aria-label="Aumentar cantidad"
                           >
-                            <Plus className="h-3 w-3" />
+                            <Plus className="h-5 w-5" />
                           </Button>
                         </div>
                         {/* Nombre completo — envuelve en varias líneas si hace falta */}
@@ -350,7 +362,7 @@ export function CartSidebar({
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className={`h-7 w-7 shrink-0 active:scale-90 transition-all duration-150 ${item.notes ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'} hover:text-amber-600 dark:hover:text-amber-400`}
+                                className={`h-9 w-9 shrink-0 active:scale-90 transition-all duration-150 ${item.notes ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'} hover:text-amber-600 dark:hover:text-amber-400`}
                                 title={item.notes ? 'Editar nota' : 'Agregar nota'}
                                 aria-label={item.notes ? 'Editar nota' : 'Agregar nota'}
                               >
@@ -384,7 +396,7 @@ export function CartSidebar({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 active:scale-90 transition-all duration-150"
+                            className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 active:scale-90 transition-all duration-150"
                             onClick={() => removeFromCart(itemId, item.isService, item.presentationId)}
                             title="Eliminar producto"
                             aria-label="Eliminar producto del carrito"
@@ -767,6 +779,18 @@ export function CartSidebar({
                       <Users className="h-3 w-3" />
                       Selecciona un cliente para habilitar el fiado
                     </p>
+                  )}
+                  {paymentMethod !== 'FIADO' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-9 gap-1.5 text-xs border-emerald-300 text-emerald-700 dark:text-emerald-300 dark:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 active:scale-[0.98] transition-all duration-150"
+                      onClick={handleStartSplitPayment}
+                    >
+                      <ArrowRightLeft className="h-3.5 w-3.5" />
+                      Dividir pago — Efectivo + Nequi + Daviplata
+                    </Button>
                   )}
                 </div>
 

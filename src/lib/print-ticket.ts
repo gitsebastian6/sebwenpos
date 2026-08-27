@@ -76,18 +76,20 @@ export function printTicket(data: TicketData) {
   const docSubtitle = contingencyLabel
     || (isElectronic ? 'FACTURA ELECTRÓNICA DE VENTA' : isDocEquivalente ? 'DOCUMENTO EQUIVALENTE DE POS' : 'Tirilla de Venta')
 
-  // Build items
+  // Build items — nombre completo (sin truncado agresivo) en su propia fila,
+  // y el detalle de cantidad x precio unitario en un renglón aparte para que
+  // el nombre nunca pelee espacio con la cantidad y siempre se vea entero.
   const itemsRows = data.items
     .map((item) => {
-      const name = truncate(item.name, 22)
+      const name = truncate(item.name, 48)
       const isSvc = item.isService ? ' *' : ''
       return `
         <tr>
-          <td class="item-name">${formatQty(item.quantity)} ${name}${isSvc}</td>
+          <td class="item-name">${name}${isSvc}</td>
           <td class="item-total">${fmt(item.total, data.currencyCode)}</td>
         </tr>
         <tr>
-          <td class="item-detail" colspan="2">&nbsp;&nbsp;&nbsp;${fmt(item.unitPrice, data.currencyCode)} c/u</td>
+          <td class="item-detail" colspan="2">&nbsp;&nbsp;&nbsp;${formatQty(item.quantity)} x ${fmt(item.unitPrice, data.currencyCode)} c/u</td>
         </tr>`
     })
     .join('')
@@ -204,6 +206,8 @@ export function printTicket(data: TicketData) {
     padding: 1px 0;
     font-size: 11px;
     vertical-align: top;
+    word-break: break-word;
+    white-space: normal;
   }
   td.item-total {
     text-align: right;
@@ -486,10 +490,17 @@ export function printTicket(data: TicketData) {
       <span class="method">Forma de pago:</span>
       <span class="amount">${paymentLabel}</span>
     </div>
-    <div class="payment-method">
-      <span>Pagado con:</span>
-      <span class="amount">${fmt(data.total, data.currencyCode)}</span>
-    </div>
+    ${data.paymentSplits && data.paymentSplits.length > 0
+      ? data.paymentSplits.map((s) => `
+          <div class="payment-method">
+            <span class="method">${PAYMENT_LABELS[s.method] || s.method}${s.reference ? ` (${s.reference})` : ''}</span>
+            <span class="amount">${fmt(s.amount, data.currencyCode)}</span>
+          </div>`).join('')
+      : `
+        <div class="payment-method">
+          <span>Pagado con:</span>
+          <span class="amount">${fmt(data.total, data.currencyCode)}</span>
+        </div>`}
     ${data.paymentMethod === 'CREDIT' || data.paymentMethod === 'FIADO'
       ? '<div style="font-size:9px;color:#b45309;margin-top:2px;">* Venta a crédito - pendiente de pago</div>'
       : ''}

@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Star, PackageSearch, Layers } from 'lucide-react'
 import { formatCurrency } from '@/lib/auth'
 import { UNIT_OF_MEASURE_OPTIONS } from '@/lib/constants'
+import { sortPresentationOptions } from '@/lib/product-presentations'
 import type { Product } from '@/hooks/pos/use-pos-data'
 import type { CartItem, Service, ProductPresentation } from '@/types'
 
@@ -103,8 +104,8 @@ function ProductCard({ product, currencyCode, cart, onAddToCart, onAddPresentati
     .filter((item) => item.productId === product.id)
     .reduce((sum, item) => sum + item.quantity, 0)
   const inCart = cartQuantity > 0
-  const activePresentations = (product.presentations || []).filter((p) => p.isActive)
-  const hasPresentations = activePresentations.length > 0
+  const presentationOptions = sortPresentationOptions(product)
+  const hasPresentations = presentationOptions.length > 1
 
   const cardBody = (
     <CardContent className="p-0">
@@ -125,7 +126,7 @@ function ProductCard({ product, currencyCode, cart, onAddToCart, onAddPresentati
           <Badge
             variant="secondary"
             className="absolute top-1.5 left-1.5 h-5 px-1.5 gap-0.5 text-[10px] bg-sky-100 text-sky-700 dark:bg-sky-900/60 dark:text-sky-300"
-            title={`${activePresentations.length} presentación${activePresentations.length > 1 ? 'es' : ''} disponible${activePresentations.length > 1 ? 's' : ''}`}
+            title={`${presentationOptions.length - 1} presentación${presentationOptions.length - 1 > 1 ? 'es' : ''} disponible${presentationOptions.length - 1 > 1 ? 's' : ''}`}
           >
             <Layers className="h-2.5 w-2.5" />
           </Badge>
@@ -159,9 +160,11 @@ function ProductCard({ product, currencyCode, cart, onAddToCart, onAddPresentati
           {product.name}
         </p>
         <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-          {formatCurrency(product.salePrice, currencyCode)}
-          {product.unitLabel && product.unitLabel !== 'UND' && (
-            <span className="ml-1 text-[10px] font-medium text-muted-foreground align-middle">/ {unitOfMeasureLabel(product.unitLabel)}</span>
+          {/* Precio de la presentación mínima (la seleccionada por defecto). Sin
+              presentaciones, options[0] es la base "Unidad" → mismo precio que hoy. */}
+          {formatCurrency(presentationOptions[0].salePrice, currencyCode)}
+          {presentationOptions[0].unitLabel && presentationOptions[0].unitLabel !== 'UND' && (
+            <span className="ml-1 text-[10px] font-medium text-muted-foreground align-middle">/ {unitOfMeasureLabel(presentationOptions[0].unitLabel)}</span>
           )}
         </p>
       </div>
@@ -192,27 +195,25 @@ function ProductCard({ product, currencyCode, cart, onAddToCart, onAddPresentati
       </PopoverTrigger>
       <PopoverContent className="w-56 p-1.5" align="start">
         <p className="px-2 py-1 text-xs font-medium text-muted-foreground truncate">{previewName}</p>
-        <button
-          type="button"
-          className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
-          onMouseEnter={() => setPreviewName(product.name)}
-          onClick={() => { onAddToCart?.(product); setPickerOpen(false) }}
-        >
-          <span>{unitOfMeasureLabel(product.unitLabel)}</span>
-          <span className="font-medium tabular-nums">{formatCurrency(product.salePrice, currencyCode)}</span>
-        </button>
-        {activePresentations.map((presentation) => (
-          <button
-            key={presentation.id}
-            type="button"
-            className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
-            onMouseEnter={() => setPreviewName(presentation.name)}
-            onClick={() => { onAddPresentation?.(product, presentation); setPickerOpen(false) }}
-          >
-            <span className="truncate" title={presentation.name}>{unitOfMeasureLabel(presentation.unitLabel)}</span>
-            <span className="font-medium tabular-nums shrink-0 ml-2">{formatCurrency(presentation.salePrice, currencyCode)}</span>
-          </button>
-        ))}
+        {presentationOptions.map((option) => {
+          const presentation = option.presentation
+          return (
+            <button
+              key={presentation?.id ?? 'base'}
+              type="button"
+              className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm hover:bg-muted transition-colors"
+              onMouseEnter={() => setPreviewName(option.name)}
+              onClick={() => {
+                if (presentation) onAddPresentation?.(product, presentation)
+                else onAddToCart?.(product)
+                setPickerOpen(false)
+              }}
+            >
+              <span className={presentation ? 'truncate' : undefined} title={presentation?.name}>{unitOfMeasureLabel(option.unitLabel)}</span>
+              <span className={presentation ? 'font-medium tabular-nums shrink-0 ml-2' : 'font-medium tabular-nums'}>{formatCurrency(option.salePrice, currencyCode)}</span>
+            </button>
+          )
+        })}
       </PopoverContent>
     </Popover>
   )

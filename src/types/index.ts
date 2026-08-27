@@ -199,6 +199,7 @@ export interface LastOrderData extends OrderData {
   id: number
   status: string
   paymentMethod: string
+  paymentSplits?: Array<{ method: string; amount: number; reference?: string }>
   customerNit?: string | null
   customerName?: string | null
   subtotal?: number
@@ -251,6 +252,14 @@ export interface CartItem {
   isService: boolean
   notes?: string
   taxRate?: { id: number; name: string; code: string; rate: number; rateType: string } | null
+}
+
+// ---- Payment split (split-tender: varios medios de pago en una sola venta) ----
+export interface PaymentSplit {
+  id: string
+  method: PaymentMethod
+  amount: number
+  reference?: string
 }
 
 export interface ComandaItem {

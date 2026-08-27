@@ -5,6 +5,8 @@ import { logger } from '@/lib/logger'
 import { mul, toNum } from '@/lib/stock-math'
 import { isSubscriptionActive } from '@/lib/subscription-helpers'
 import { emitComandaItemsUpdated, emitPaymentProcessed } from '@/lib/tables-sync'
+import { calcLineTax, type TaxRateInfo } from '@/domain/sales/tax-calculator'
+import { reserveStock } from '@/domain/inventory/stock-reserver'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -154,24 +156,9 @@ export async function POST(
     const productComandaItems = comandaItems.filter((i) => i.productId)
     const serviceComandaItems = comandaItems.filter((i) => i.serviceId)
 
-    // ── Tax computation (Colombian tax-inclusive pricing) ──
+    // ── Tax computation delegated to the Sales domain service (TaxCalculator) ──
     const taxBreakdownMap: Record<string, { code: string; name: string; base: number; rate: number; amount: number }> = {}
     let orderTaxAmount = 0
-
-    const calcTax = (totalRow: number, taxRateInfo: { code: string; rate: number; rateType: string } | null) => {
-      if (!taxRateInfo) {
-        return { taxCode: null, taxRate: 0, taxAmount: 0, taxBase: totalRow }
-      }
-      if (taxRateInfo.code === '03' || taxRateInfo.code === '04') {
-        return { taxCode: taxRateInfo.code, taxRate: 0, taxAmount: 0, taxBase: totalRow }
-      }
-      if (taxRateInfo.rateType === 'PERCENTAGE' && taxRateInfo.rate > 0) {
-        const taxBase = Math.round(totalRow / (1 + taxRateInfo.rate / 100))
-        const taxAmount = totalRow - taxBase
-        return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount, taxBase }
-      }
-      return { taxCode: taxRateInfo.code, taxRate: taxRateInfo.rate, taxAmount: 0, taxBase: totalRow }
-    }
 
     // Build order item data with per-item tax info
     const orderItemsData = comandaItems.map((item) => {
@@ -179,7 +166,7 @@ export async function POST(
       const tr = item.product?.taxRate
         ? { code: item.product.taxRate.code, rate: item.product.taxRate.rate, rateType: item.product.taxRate.rateType }
         : null
-      const tax = calcTax(totalRow, tr)
+      const tax = calcLineTax(totalRow, tr as TaxRateInfo | null)
 
       // Accumulate into breakdown
       if (tax.taxCode) {
@@ -307,6 +294,17 @@ export async function POST(
       for (const item of productComandaItems) {
         const unitsPerPack = item.unitsPerPack || 1
         const baseUnits = mul(item.quantity, unitsPerPack)
+
+        // StockReserver (Shared Kernel Sales→Inventory): descuento atómico + FEFO
+        const reservation = await reserveStock(tx, data.storeId, item.productId!, toNum(baseUnits))
+        if (!reservation.success && !reservation.notTracked) {
+          throw new Error(
+            reservation.availableStock !== undefined
+              ? `Stock insuficiente para "${reservation.productName}" (disponible: ${reservation.availableStock}).`
+              : `Producto no encontrado.`,
+          )
+        }
+
         await tx.inventoryMovement.create({
           data: {
             storeId: data.storeId,
@@ -317,12 +315,10 @@ export async function POST(
             quantity: baseUnits.negated(),
             movementType: 'SALE',
             referenceId: createdOrder.id,
+            batchId:
+              reservation.consumptions.length === 1 ? reservation.consumptions[0].batchId : null,
             notes: `Venta ${orderNumber} - ${tableLabel}`,
           },
-        })
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { currentStock: { decrement: baseUnits } },
         })
       }
 

@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     const categoryId = searchParams.get('categoryId')
     const active = searchParams.get('active')
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
-    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '100')))
+    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '100')))
     const skip = (page - 1) * limit
 
     if (!storeId) {

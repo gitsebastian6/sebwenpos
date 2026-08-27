@@ -7,6 +7,7 @@ const mockDb = vi.hoisted(() => ({
     findMany: vi.fn(),
     findUnique: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   productPresentation: {
     findMany: vi.fn(),
@@ -140,10 +141,13 @@ function setupSuccessfulTransactionMocks() {
     const mockTx = {
       order: { create: vi.fn().mockResolvedValue(mockCreatedOrder) },
       product: {
-        findUnique: vi.fn().mockResolvedValue({ currentStock: 50, name: 'Café' }),
+        findUnique: vi.fn().mockResolvedValue({ currentStock: 50, name: 'Café', trackInventory: true }),
         update: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       inventoryMovement: { create: vi.fn() },
+      // Modelo Batch (trazabilidad FEFO) — sin lotes en los fixtures
+      batch: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
       serviceTransaction: { create: vi.fn() },
       ledgerAccount: { findFirst: vi.fn().mockResolvedValue(null) },
       journalEntry: { create: vi.fn() },
@@ -189,8 +193,9 @@ describe('POST /api/orders', () => {
     mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
       const mockTx = {
         order: { create: vi.fn((args: any) => { capturedOrderCreateArgs = args; return Promise.resolve(mockCreatedOrder) }) },
-        product: { findUnique: vi.fn().mockResolvedValue({ currentStock: 50, name: 'Café' }), update: vi.fn() },
+        product: { findUnique: vi.fn().mockResolvedValue({ currentStock: 50, name: 'Café', trackInventory: true }), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
         inventoryMovement: { create: vi.fn() },
+        batch: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
         serviceTransaction: { create: vi.fn() },
         ledgerAccount: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 99, name: 'Descuentos en Ventas' }) },
         journalEntry: { create: vi.fn() },
@@ -227,11 +232,13 @@ describe('POST /api/orders', () => {
     let capturedOrderCreateArgs: any = null
     const inventoryMovementCreate = vi.fn()
     const productUpdate = vi.fn()
+    const productUpdateMany = vi.fn().mockResolvedValue({ count: 1 })
     mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
       const mockTx = {
         order: { create: vi.fn((args: any) => { capturedOrderCreateArgs = args; return Promise.resolve(mockCreatedOrder) }) },
-        product: { findUnique: vi.fn().mockResolvedValue({ currentStock: 50, name: 'Café Colombiano' }), update: productUpdate },
+        product: { findUnique: vi.fn().mockResolvedValue({ currentStock: 50, name: 'Café Colombiano', trackInventory: true }), update: productUpdate, updateMany: productUpdateMany },
         inventoryMovement: { create: inventoryMovementCreate },
+        batch: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
         serviceTransaction: { create: vi.fn() },
         ledgerAccount: { findFirst: vi.fn().mockResolvedValue(null) },
         journalEntry: { create: vi.fn() },
@@ -258,7 +265,7 @@ describe('POST /api/orders', () => {
     const movementCall = inventoryMovementCreate.mock.calls[0][0]
     expect(Number(movementCall.data.quantity)).toBe(-6)
     expect(movementCall.data.movementType).toBe('SALE')
-    const productCall = productUpdate.mock.calls[0][0]
+    const productCall = productUpdateMany.mock.calls[0][0]
     expect(Number(productCall.data.currentStock.decrement)).toBe(6)
   })
 
@@ -389,8 +396,9 @@ describe('POST /api/orders', () => {
     mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
       const mockTx = {
         order: { create: vi.fn().mockResolvedValue(mockCreatedOrder) },
-        product: { findUnique: vi.fn().mockResolvedValue({ currentStock: 1, name: 'Café' }), update: vi.fn() },
+        product: { findUnique: vi.fn().mockResolvedValue({ currentStock: 1, name: 'Café', trackInventory: false }), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
         inventoryMovement: { create: vi.fn() },
+        batch: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
         serviceTransaction: { create: vi.fn() },
         ledgerAccount: { findFirst: vi.fn().mockResolvedValue(null) },
         journalEntry: { create: vi.fn() },

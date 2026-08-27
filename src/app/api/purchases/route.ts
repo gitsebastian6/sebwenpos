@@ -2,6 +2,7 @@ import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { add, div, mul, toDec, toNum } from '@/lib/stock-math'
+import { receiveBatchFromPurchase } from '@/domain/inventory/batch-receiver'
 import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -281,7 +282,7 @@ export async function POST(req: NextRequest) {
         id: { in: productIds },
         storeId: data.storeId,
       },
-      select: { id: true, name: true, costPrice: true, currentStock: true },
+      select: { id: true, name: true, costPrice: true, currentStock: true, trackExpiration: true },
     })
 
     const foundIds = new Set(products.map((p) => p.id))
@@ -508,6 +509,29 @@ export async function POST(req: NextRequest) {
               : `Compra ${consecutiveNumber} — ${productMeta.name} x${item.quantity}${item.isBonus ? ' (bonificado)' : ''}`,
           },
         })
+
+        // Trazabilidad por lote (Vidal): si el producto rastrea vencimiento y la
+        // línea trae lotNumber, crea/consolida el Batch correspondiente.
+        if (productMeta.trackExpiration && item.lotNumber?.trim()) {
+          const createdItem = await tx.purchaseItem.findFirst({
+            where: {
+              purchaseId: createdPurchase.id,
+              productId: item.productId,
+              presentationId: presentation ? presentation.id : null,
+            },
+            select: { id: true },
+          })
+          await receiveBatchFromPurchase(tx, {
+            storeId: data.storeId,
+            productId: item.productId,
+            purchaseItemId: createdItem?.id ?? null,
+            lotNumber: item.lotNumber,
+            expiryDate: parseOptionalDate(item.expiryDate),
+            manufacturingDate: parseOptionalDate(item.manufacturingDate),
+            baseUnits: toNum(baseUnits),
+            baseUnitCost: toNum(div(item.unitCost, unitsPerPack || 1)),
+          })
+        }
 
         // Homologación por proveedor: si esta línea trae el código propio del
         // proveedor, se guarda/actualiza para que la próxima importación de este

@@ -192,14 +192,42 @@ export async function enqueuePendingOrder(
 }
 
 /**
+ * Exponential backoff with jitter (Kleppmann Ch. 1).
+ * Returns the delay (ms) to wait before the next retry for a given attempt.
+ *   delay = min(base * 2^attempt, maxDelay) + random_jitter
+ * Spreads retries across clients and prevents thundering-herd against a
+ * recovering server.
+ */
+function computeBackoff(attempt: number): number {
+  const base = 1000; // 1s
+  const maxDelay = 60 * 1000; // 60s cap
+  const exponential = Math.min(base * 2 ** attempt, maxDelay);
+  const jitter = Math.random() * 1000; // up to 1s, spreads clients apart
+  return exponential + jitter;
+}
+
+const MAX_RETRIES = 5;
+
+/**
  * Process all pending orders — called when coming back online.
  * Returns count of successfully synced orders.
  */
 export async function processPendingOrders(storeId: number): Promise<number> {
+  const now = Date.now();
   const pending = await db.pendingOrders
     .where('storeId')
     .equals(storeId)
-    .filter((o) => o.status === 'pending' || o.status === 'failed')
+    .filter((o) => {
+      if (o.status === 'pending') return true;
+      if (o.status === 'failed') {
+        // Agotó MAX_RETRIES — falla permanente, no se reintenta más
+        if ((o.retryCount ?? 0) >= MAX_RETRIES) return false;
+        // Respeta el backoff exponencial: saltar hasta que pase nextRetryAt
+        if (o.nextRetryAt && o.nextRetryAt > now) return false;
+        return true;
+      }
+      return false;
+    })
     .toArray();
 
   let synced = 0;
@@ -211,7 +239,13 @@ export async function processPendingOrders(storeId: number): Promise<number> {
 
       const res = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // Idempotency key (Kleppmann Ch. 11): el temp order number es estable
+          // entre reintentos, así que un POST reintentado re-entrega la misma
+          // orden del servidor en vez de duplicar la venta.
+          'x-idempotency-key': order.tempOrderNumber,
+        },
         body: JSON.stringify(order.payload),
       });
 
@@ -223,30 +257,36 @@ export async function processPendingOrders(storeId: number): Promise<number> {
       } else {
         const errorData = await res.json().catch(() => ({}));
         const retryCount = (order.retryCount ?? 0) + 1;
+        const nextRetryAt = Date.now() + computeBackoff(retryCount);
 
-        if (retryCount >= 5) {
-          // Max retries — mark as permanently failed
+        if (retryCount >= MAX_RETRIES) {
+          // Max retries — marca como falla permanente (nextRetryAt=null → se filtra fuera)
           await db.pendingOrders.update(order.id!, {
             status: 'failed',
             retryCount,
             error: errorData.error || `HTTP ${res.status}`,
+            nextRetryAt: null,
           });
           console.error('[Offline] Order permanently failed:', order.tempOrderNumber);
         } else {
-          // Retry later
+          // Reintentar después con backoff exponencial + jitter
           await db.pendingOrders.update(order.id!, {
             status: 'failed',
             retryCount,
             error: errorData.error || `HTTP ${res.status}`,
+            nextRetryAt,
           });
         }
       }
     } catch (err) {
-      // Network error — mark for retry
+      // Error de red — marcar para reintento con backoff
+      const retryCount = (order.retryCount ?? 0) + 1;
+      const nextRetryAt = Date.now() + computeBackoff(retryCount);
       await db.pendingOrders.update(order.id!, {
         status: 'failed',
-        retryCount: (order.retryCount ?? 0) + 1,
+        retryCount,
         error: err instanceof Error ? err.message : 'Network error',
+        nextRetryAt,
       });
     }
   }

@@ -226,6 +226,7 @@ async function getTotalInvoices(storeId: number): Promise<number> {
 type ConsecutiveClient = {
   store: typeof db.store
   invoice: typeof db.invoice
+  invoiceCounter: typeof db.invoiceCounter
 }
 
 export async function getNextConsecutive(
@@ -288,14 +289,44 @@ export async function getNextConsecutive(
       )
     }
 
-    // 4. Obtener el último consecutivo usado (dentro de la transacción para atomicidad)
-    const lastInvoice = await c.invoice.findFirst({
+    // 4. Atomically increment the consecutive counter.
+    //    CRITICAL (Kleppmann Ch.7, p.243): a read-modify-write on
+    //    MAX(consecutive) is a lost update under Read Committed — two
+    //    concurrent invoices can read the same MAX and produce DUPLICATE
+    //    consecutives, which is illegal under DIAN. An atomic upsert +
+    //    increment is a single statement that takes a row-level lock,
+    //    eliminating the race.
+    //
+    //    On first use (counter row doesn't exist yet), initialize from the
+    //    highest existing invoice consecutive so we never re-issue a used
+    //    number. The unique constraint on storeId prevents duplicate creates.
+    const existingCounter = await c.invoiceCounter.findUnique({
       where: { storeId },
-      orderBy: { consecutive: 'desc' },
-      select: { consecutive: true },
+      select: { lastConsecutive: true },
     })
 
-    const nextConsecutive = (lastInvoice?.consecutive ?? 0) + 1
+    let nextConsecutive: number
+    if (existingCounter) {
+      // Common path: atomic increment (row-level lock on the UPDATE).
+      const updated = await c.invoiceCounter.update({
+        where: { storeId },
+        data: { lastConsecutive: { increment: 1 } },
+        select: { lastConsecutive: true },
+      })
+      nextConsecutive = updated.lastConsecutive
+    } else {
+      // First time: initialize from max existing invoice consecutive,
+      // or startNumber if no invoices exist yet.
+      const maxResult = await c.invoice.aggregate({
+        where: { storeId },
+        _max: { consecutive: true },
+      })
+      const initValue = Math.max(startNumber, (maxResult._max.consecutive ?? 0) + 1)
+      await c.invoiceCounter.create({
+        data: { storeId, lastConsecutive: initValue },
+      })
+      nextConsecutive = initValue
+    }
 
     // 5. Validar que el consecutivo está dentro del rango autorizado
     if (nextConsecutive < startNumber) {
@@ -341,7 +372,7 @@ export async function getNextConsecutive(
   if (client) {
     return acquire(client)
   }
-  return db.$transaction(async (tx) => acquire({ store: tx.store, invoice: tx.invoice }))
+  return db.$transaction(async (tx) => acquire({ store: tx.store, invoice: tx.invoice, invoiceCounter: tx.invoiceCounter }))
 }
 
 /**

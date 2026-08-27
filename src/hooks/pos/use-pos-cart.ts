@@ -7,7 +7,7 @@ import { useOffline } from '@/lib/offline/offline-provider'
 import { enqueuePendingOrder } from '@/lib/offline/sync'
 import { playCartAdd, playError, playSaleSuccess } from '@/lib/pos-sounds'
 import { useAuthStore } from '@/stores/auth-store'
-import type { CartItem, CustomerSummary, InvoiceMode, LastInvoiceData, LastOrderData, PaymentMethod, ProductPresentation, Service } from '@/types'
+import type { CartItem, CustomerSummary, InvoiceMode, LastInvoiceData, LastOrderData, PaymentMethod, ProductPresentation, Service, PaymentSplit } from '@/types'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import type { OpenCashRegister, Product } from './use-pos-data'
@@ -82,6 +82,11 @@ export function usePosCart(deps: UsePosCartDeps) {
   const [tipAmount, setTipAmount] = useState<number>(0)
   const [showTipInput, setShowTipInput] = useState(false)
   const [transferRef, setTransferRef] = useState('')
+
+  // ─── Split-tender (multiple payment methods for one sale) ───────────
+  // Empty → single-method flow. Non-empty → paymentMethod resolves to 'MIXED'
+  // and every row is a payment allocation (amount + per-method reference).
+  const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([])
 
   // ─── Discount states ─────────────────────────────────
   const [discountType, setDiscountType] = useState<DiscountType>('NONE')
@@ -331,6 +336,7 @@ export function usePosCart(deps: UsePosCartDeps) {
     setTipAmount(0)
     setShowTipInput(false)
     setTransferRef('')
+    setPaymentSplits([])
     setDiscountType('NONE')
     setDiscountValue(0)
     setDiscountReason('')
@@ -383,6 +389,34 @@ export function usePosCart(deps: UsePosCartDeps) {
 
   const total = useMemo(() => subtotal - discountAmount + tipAmount, [subtotal, discountAmount, tipAmount])
 
+  // ─── Split-tender operations ─────────────────────────
+  const allocatedSum = useMemo(
+    () => roundQty(paymentSplits.reduce((sum, p) => sum + p.amount, 0)),
+    [paymentSplits]
+  )
+
+  const addPaymentSplit = useCallback(() => {
+    setPaymentSplits((prev) => {
+      const used = prev.reduce((sum, p) => sum + p.amount, 0)
+      const remaining = Math.max(0, roundQty(total - used))
+      if (remaining <= 0) return prev
+      const id = `split-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+      const method: PaymentMethod = prev.length === 0 ? 'CASH' : prev[prev.length - 1].method
+      return [...prev, { id, method, amount: remaining, reference: '' }]
+    })
+  }, [total])
+
+  const removePaymentSplit = useCallback((id: string) => {
+    setPaymentSplits((prev) => prev.filter((p) => p.id !== id))
+  }, [])
+
+  const updatePaymentSplit = useCallback(
+    (id: string, patch: Partial<Omit<PaymentSplit, 'id'>>) => {
+      setPaymentSplits((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)))
+    },
+    []
+  )
+
   // ─── Submit order ────────────────────────────────────
   const handleSubmitOrder = async () => {
     if (!storeId || cart.length === 0) return
@@ -395,6 +429,8 @@ export function usePosCart(deps: UsePosCartDeps) {
       return
     }
 
+    const isSplit = paymentSplits.length > 0
+
     // Fiado requires a customer
     if (paymentMethod === 'FIADO' && selectedCustomer === 'none') {
       toast.error('Para vender fiado debes seleccionar un cliente')
@@ -403,18 +439,41 @@ export function usePosCart(deps: UsePosCartDeps) {
       return
     }
 
-    // Transfer/Nequi/Daviplata require reference number
-    if (['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && !transferRef.trim()) {
+    // Transfer/Nequi/Daviplata require reference number (single-method path only)
+    if (!isSplit && ['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod) && !transferRef.trim()) {
       toast.error(`Ingresa el número de ${paymentMethod === 'TRANSFER' ? 'transferencia' : paymentMethod === 'NEQUI' ? 'Nequi' : 'Daviplata'}`)
       playError()
       setShowChargeDialog(false)
       return
     }
 
+    // Split-tender: multiple payment methods for a single sale
+    if (isSplit) {
+      if (roundQty(allocatedSum) !== roundQty(total)) {
+        toast.error('La suma de los pagos debe ser igual al total')
+        playError()
+        return
+      }
+      for (const split of paymentSplits) {
+        if (split.amount <= 0) {
+          toast.error('Todos los pagos deben tener un monto mayor a 0')
+          playError()
+          return
+        }
+        if (['TRANSFER', 'NEQUI', 'DAVIPLATA', 'WOMPI'].includes(split.method) && !split.reference?.trim()) {
+          toast.error(`Ingresa la referencia para ${split.method}`)
+          playError()
+          return
+        }
+      }
+    }
+
     setIsSubmitting(true)
 
-    // Transfer/Nequi/Daviplata: append reference to notes
-    const isTransferMethod = ['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod)
+    const resolvedPaymentMethod = isSplit ? 'MIXED' : paymentMethod
+
+    // Transfer/Nequi/Daviplata: append reference to notes (single-method path)
+    const isTransferMethod = !isSplit && ['TRANSFER', 'NEQUI', 'DAVIPLATA'].includes(paymentMethod)
     const transferNote = isTransferMethod && transferRef.trim() ? `Ref: ${transferRef.trim()}` : ''
 
     try {
@@ -422,8 +481,8 @@ export function usePosCart(deps: UsePosCartDeps) {
         storeId,
         customerId: selectedCustomer !== 'none' ? Number(selectedCustomer) : null,
         cashRegisterId: deps.selectedCashRegisterId !== 'auto' ? Number(deps.selectedCashRegisterId) : undefined,
-        paymentMethod,
-        tipAmount: paymentMethod !== 'FIADO' ? tipAmount : 0,
+        paymentMethod: resolvedPaymentMethod,
+        tipAmount: resolvedPaymentMethod !== 'FIADO' ? tipAmount : 0,
         discountType,
         discountAmount,
         discountReason: discountReason.trim() || undefined,
@@ -437,6 +496,11 @@ export function usePosCart(deps: UsePosCartDeps) {
           quantity: item.quantity,
           notes: item.notes || undefined,
         })),
+        ...(isSplit
+          ? {
+              paymentSplits: paymentSplits.map(({ id, method, amount, reference }) => ({ method, amount, reference })),
+            }
+          : {}),
       }
 
       let order: any
@@ -474,13 +538,18 @@ export function usePosCart(deps: UsePosCartDeps) {
       deps.fetchOpenCashRegisters()
 
       setLastOrderNumber(order.orderNumber)
-      setLastOrderData(order)
+      setLastOrderData(
+        paymentSplits.length > 0
+          ? { ...order, paymentSplits: paymentSplits.map(({ id, method, amount, reference }) => ({ method, amount, reference })) }
+          : order
+      )
       setLastDocType(posInvoiceMode)
       setCart([])
       setNotes('')
       setTipAmount(0)
       setShowTipInput(false)
       setTransferRef('')
+      setPaymentSplits([])
       setDiscountType('NONE')
       setDiscountValue(0)
       setDiscountReason('')
@@ -568,6 +637,8 @@ export function usePosCart(deps: UsePosCartDeps) {
     notes, setNotes,
     paymentMethod, setPaymentMethod,
     transferRef, setTransferRef,
+    paymentSplits, setPaymentSplits,
+    addPaymentSplit, removePaymentSplit, updatePaymentSplit, allocatedSum,
 
     // UI state
     cartSheetOpen, setCartSheetOpen,

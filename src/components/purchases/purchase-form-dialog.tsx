@@ -27,6 +27,7 @@ import {
   type Purchase, type ProviderOption, type ProductPresentationOption,
 } from '@/hooks/api/use-purchases'
 import { buildProductSearchOptions } from '@/lib/product-search'
+import { BarcodeScannerDialog, ScanButton } from '@/components/shared/barcode-scanner-dialog'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { useCategories } from '@/hooks/api/use-categories'
 import { useTaxes } from '@/hooks/api/use-taxes'
@@ -139,6 +140,22 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
   // ── Item management ──
 
   function addItem() { setPurchaseItems(prev => [...prev, EMPTY_ITEM()]) }
+
+  // ── Camera scanner: creates a new line with the scanned product pre-selected ──
+  const [cameraScanOpen, setCameraScanOpen] = useState(false)
+
+  function handleCameraScan(code: string) {
+    const opts = buildProductSearchOptions(products, code)
+    if (opts.length === 0) {
+      toast.error(`Producto no encontrado: ${code}`)
+      return
+    }
+    const newItem = EMPTY_ITEM()
+    setPurchaseItems(prev => [...prev, newItem])
+    selectProductLine(newItem.id, opts[0].product, opts[0].presentation)
+    setItemDropdowns(prev => ({ ...prev, [newItem.id]: false }))
+    toast.success(`Escaneado: ${opts[0].product.name}${opts[0].presentation ? ` — ${opts[0].presentation.name}` : ''}`)
+  }
 
   function removeItem(itemId: string) {
     if (purchaseItems.length <= 1) { toast.error('Debe haber al menos un producto'); return }
@@ -450,8 +467,12 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">Productos ({purchaseItems.length})</Label>
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addItem}><Plus className="h-3 w-3 mr-1" />Agregar</Button>
+              <div className="flex items-center gap-1.5">
+                <ScanButton size="compact" label="Escanear producto para nueva línea" onClick={() => setCameraScanOpen(true)} />
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addItem}><Plus className="h-3 w-3 mr-1" />Agregar</Button>
+              </div>
             </div>
+            <BarcodeScannerDialog open={cameraScanOpen} onClose={() => setCameraScanOpen(false)} onScan={handleCameraScan} />
             <div className="rounded border overflow-x-auto">
               <Table>
                 <TableHeader><TableRow>
