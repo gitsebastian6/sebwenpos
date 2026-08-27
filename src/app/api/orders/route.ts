@@ -605,7 +605,7 @@ export async function POST(req: NextRequest) {
       }
 
       return createdOrder
-    })
+    }, { timeout: 15000, maxWait: 5000 })
     } catch (error) {
       // P2002 sobre processed_requests(store_id, idempotency_key) => un retry
       // concurrente ya persistió esta venta. Refetch y replay de la misma orden.

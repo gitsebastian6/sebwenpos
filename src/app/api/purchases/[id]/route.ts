@@ -744,7 +744,7 @@ export async function PUT(
       }
 
       return updated
-    })
+    }, { timeout: 15000, maxWait: 5000 })
 
     return NextResponse.json({
       id: result.id,
@@ -857,7 +857,7 @@ export async function DELETE(
           })
         }
       }
-    })
+    }, { timeout: 15000, maxWait: 5000 })
 
     return NextResponse.json({ message: 'Compra cancelada exitosamente' })
   } catch (error) {

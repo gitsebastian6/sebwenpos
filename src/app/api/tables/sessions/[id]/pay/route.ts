@@ -494,7 +494,7 @@ export async function POST(
       }
 
       return createdOrder
-    })
+    }, { timeout: 15000, maxWait: 5000 })
 
     // Calculate profitability (only for product items — services have no costPrice)
     const profitability = productComandaItems.map((item) => ({

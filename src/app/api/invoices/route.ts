@@ -364,7 +364,7 @@ export async function POST(req: NextRequest) {
             testMode,
           },
         })
-      })
+      }, { timeout: 15000, maxWait: 5000 })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error desconocido'
       return NextResponse.json({ error: message }, { status: 400 })

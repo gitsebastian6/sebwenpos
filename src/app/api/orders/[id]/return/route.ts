@@ -220,7 +220,7 @@ export async function POST(
       }
 
       return { totalReturned, returnedItems, fullyReturned: allFullyReturned }
-    })
+    }, { timeout: 15000, maxWait: 5000 })
 
     const itemSummary = results.returnedItems.map((i) => `${i.name} x${i.quantity}`).join(', ')
 

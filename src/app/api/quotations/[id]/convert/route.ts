@@ -285,7 +285,7 @@ export async function POST(
       })
 
       return createdOrder
-    })
+    }, { timeout: 15000, maxWait: 5000 })
 
     return NextResponse.json({
       success: true,

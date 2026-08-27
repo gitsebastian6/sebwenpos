@@ -201,7 +201,7 @@ export async function POST(
         returnedItems,
         fullyReturned: allFullyReturned,
       }
-    })
+    }, { timeout: 15000, maxWait: 5000 })
 
     const itemSummary = results.returnedItems.map((i) => `${i.name} x${i.quantity}`).join(', ')
     return NextResponse.json({

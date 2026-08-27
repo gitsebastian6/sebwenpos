@@ -583,7 +583,7 @@ export async function POST(req: NextRequest) {
       }
 
       return createdPurchase
-    })
+    }, { timeout: 15000, maxWait: 5000 })
 
     return NextResponse.json(
       {
