@@ -29,6 +29,10 @@ const mockDb = vi.hoisted(() => ({
     create: vi.fn(),
     count: vi.fn(),
     findMany: vi.fn(),
+    findUnique: vi.fn(),
+  },
+  processedRequest: {
+    findUnique: vi.fn(),
   },
   inventoryMovement: {
     create: vi.fn(),
@@ -63,6 +67,7 @@ vi.mock('@/lib/auth', () => ({
   sanitizeUser: vi.fn(),
 }))
 
+import { Prisma } from '@prisma/client'
 import { mockPostRequest, parseResponse } from '@/lib/__tests__/test-helpers'
 import { GET, POST } from '../route'
 
@@ -152,6 +157,7 @@ function setupSuccessfulTransactionMocks() {
       ledgerAccount: { findFirst: vi.fn().mockResolvedValue(null) },
       journalEntry: { create: vi.fn() },
       customer: { update: vi.fn() },
+      processedRequest: { create: vi.fn() },
     }
     return cb(mockTx)
   })
@@ -582,5 +588,85 @@ describe('GET /api/orders', () => {
 
     expect(status).toBe(500)
     expect(body.error).toBeTruthy()
+  })
+})
+
+// ─── Idempotency (Idempotency-Key → ProcessedRequest replay) ───────────────
+
+describe('POST /api/orders — idempotency', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setupSuccessfulTransactionMocks()
+  })
+
+  it('replays the original order (200) when the key was already processed — no new transaction', async () => {
+    mockDb.processedRequest.findUnique.mockResolvedValue({ orderId: 999 })
+    mockDb.order.findUnique.mockResolvedValue({ ...mockCreatedOrder, id: 999, cashRegisterId: 7 })
+
+    const res = await POST(mockPostRequest(validOrderBody, { 'x-idempotency-key': 'OFFLINE-abc' }) as never)
+    const { status, body } = await parseResponse(res)
+
+    expect(status).toBe(200)
+    expect(body.id).toBe(999)
+    expect(mockDb.processedRequest.findUnique).toHaveBeenCalledWith({
+      where: { storeId_idempotencyKey: { storeId: 1, idempotencyKey: 'OFFLINE-abc' } },
+      select: { orderId: true },
+    })
+    expect(mockDb.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('persists the key inside the transaction on first use', async () => {
+    mockDb.processedRequest.findUnique.mockResolvedValue(null)
+    let txProcessedRequestCreate: ReturnType<typeof vi.fn> | undefined
+    mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {
+      const tx = {
+        order: { create: vi.fn().mockResolvedValue(mockCreatedOrder) },
+        product: {
+          findUnique: vi.fn().mockResolvedValue({ currentStock: 50, name: 'Café', trackInventory: true }),
+          update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        inventoryMovement: { create: vi.fn() },
+        batch: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
+        serviceTransaction: { create: vi.fn() },
+        ledgerAccount: { findFirst: vi.fn().mockResolvedValue(null) },
+        journalEntry: { create: vi.fn() },
+        customer: { update: vi.fn() },
+        processedRequest: { create: vi.fn() },
+      }
+      txProcessedRequestCreate = tx.processedRequest.create
+      return cb(tx)
+    })
+
+    const res = await POST(mockPostRequest(validOrderBody, { 'x-idempotency-key': 'OFFLINE-xyz' }) as never)
+    const { status } = await parseResponse(res)
+
+    expect(status).toBe(201)
+    expect(txProcessedRequestCreate).toHaveBeenCalledWith({
+      data: { storeId: 1, idempotencyKey: 'OFFLINE-xyz', orderId: mockCreatedOrder.id },
+    })
+  })
+
+  it('replays on a concurrent P2002 on processed_requests instead of returning 500', async () => {
+    mockDb.processedRequest.findUnique
+      .mockResolvedValueOnce(null) // pre-check: not seen yet
+      .mockResolvedValueOnce({ orderId: 999 }) // post-P2002 recheck: another retry won the race
+    mockDb.order.findUnique.mockResolvedValue({ ...mockCreatedOrder, id: 999, cashRegisterId: 7 })
+    mockDb.$transaction.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('unique constraint', { code: 'P2002', clientVersion: 'test' }),
+    )
+
+    const res = await POST(mockPostRequest(validOrderBody, { 'x-idempotency-key': 'OFFLINE-race' }) as never)
+    const { status, body } = await parseResponse(res)
+
+    expect(status).toBe(200)
+    expect(body.id).toBe(999)
+  })
+
+  it('rethrows a non-P2002 transaction error as 500', async () => {
+    mockDb.processedRequest.findUnique.mockResolvedValue(null)
+    mockDb.$transaction.mockRejectedValue(new Error('connection lost'))
+
+    const res = await POST(mockPostRequest(validOrderBody, { 'x-idempotency-key': 'OFFLINE-boom' }) as never)
+    expect((await parseResponse(res)).status).toBe(500)
   })
 })
