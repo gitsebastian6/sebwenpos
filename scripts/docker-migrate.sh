@@ -2,7 +2,8 @@
 # ---------------------------------------------------------------------------
 # SebwenPOS — Docker Database Migration Script
 # ---------------------------------------------------------------------------
-# Runs prisma db push to create/update all tables in PostgreSQL.
+# Applies committed migrations from prisma/migrations via `prisma migrate
+# deploy` (idempotent, non-destructive — never drops columns/tables).
 # Includes retry logic and proper error handling.
 # ---------------------------------------------------------------------------
 
@@ -49,25 +50,25 @@ done
 
 echo "✅ PostgreSQL is reachable"
 
-# ── 3. Run prisma db push with retries ──
-echo "🔄 Running prisma db push..."
-PUSH_RETRIES=3
-PUSH_COUNT=0
+# ── 3. Apply committed migrations with retries ──
+echo "🔄 Running prisma migrate deploy..."
+DEPLOY_RETRIES=3
+DEPLOY_COUNT=0
 
-while [ $PUSH_COUNT -lt $PUSH_RETRIES ]; do
-  PUSH_COUNT=$((PUSH_COUNT + 1))
-  echo "   Attempt $PUSH_COUNT/$PUSH_RETRIES..."
+while [ $DEPLOY_COUNT -lt $DEPLOY_RETRIES ]; do
+  DEPLOY_COUNT=$((DEPLOY_COUNT + 1))
+  echo "   Attempt $DEPLOY_COUNT/$DEPLOY_RETRIES..."
 
-  if npx prisma db push --accept-data-loss --schema=prisma/schema.prisma 2>&1; then
-    echo "✅ Database migration completed successfully"
+  if npx prisma migrate deploy --schema=prisma/schema.prisma 2>&1; then
+    echo "✅ Database migrations applied successfully"
     exit 0
   fi
 
-  if [ $PUSH_COUNT -lt $PUSH_RETRIES ]; then
-    echo "⚠️  Migration failed, retrying in 5 seconds..."
+  if [ $DEPLOY_COUNT -lt $DEPLOY_RETRIES ]; then
+    echo "⚠️  migrate deploy failed, retrying in 5 seconds..."
     sleep 5
   fi
 done
 
-echo "❌ Database migration failed after $PUSH_RETRIES attempts"
+echo "❌ Database migrations failed after $DEPLOY_RETRIES attempts"
 exit 1

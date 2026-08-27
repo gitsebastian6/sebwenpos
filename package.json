@@ -12,6 +12,8 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
     "db:reset": "prisma migrate reset",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:seed:demo": "npx tsx prisma/seed-saas-demo.ts",
