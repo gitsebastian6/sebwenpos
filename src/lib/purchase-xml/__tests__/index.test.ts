@@ -16,7 +16,7 @@ import {
   unwrapAttachedDocument,
   validateCufe,
   validateResolutionRange
-} from '../purchase-xml-import'
+} from '../index'
 
 // A synthetic DIAN "AttachedDocument" envelope: the real, commercial
 // <Invoice> (with line items, prices, and the seller's data) is embedded as
