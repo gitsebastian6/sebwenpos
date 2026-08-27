@@ -4,6 +4,15 @@
 // a un borrador de factura electrónica DIAN sin contaminar el
 // modelo de Sales con vocabulario de facturación.
 // Función PURA: sin Prisma, sin HTTP, 100% testeable.
+//
+// ESTADO: es el seam ACL previsto (CONTEXT_MAP §4), NO está en el
+// camino de creación de facturas. La ruta real (POST /api/invoices)
+// usa lib/invoice-utils.calculateInvoiceFromOrder +
+// invoicing/consecutive-counter + invoicing/xml-generator, que
+// producen una factura DIAN real (consecutivo, CUFE, XML UBL). Este
+// translator genera un BORRADOR de preview (número DRAFT-, sin CUFE)
+// y hoy solo lo ejercita su test — se conserva como punto de
+// extensión para un endpoint de previsualización / desacople futuro.
 // ============================================================
 
 export interface InvoiceDraftLine {

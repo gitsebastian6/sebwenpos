@@ -75,7 +75,7 @@
 |-----------|----------------|-------------|
 | Identity → (todos) | **ACL** (Anti-Corruption Layer) | El middleware `src/middleware.ts` traduce tokens HMAC en headers `x-auth-*`. Ningún contexto conoce los detalles criptográficos. |
 | Subscription → Sales | **Customer / Supplier** (con gate) | Subscription es *upstream*: decide si Sales puede operar (bloquea ventas nuevas en PAST_DUE vía `isSubscriptionActive`). Sales solo pregunta "¿puedo?". |
-| Sales → Invoicing | **ACL + Traducción** | Un `Order` del contexto Sales se **traduce** a un `Invoice` del contexto Invoicing. Sales no conoce CUFE/XML/SOAP. Punto de extensión: `InvoiceTranslator`. |
+| Sales → Invoicing | **ACL + Traducción** | Un `Order` del contexto Sales se **traduce** a un `Invoice` del contexto Invoicing. Sales no conoce CUFE/XML/SOAP. Seam ACL: `src/domain/invoicing/invoice-translator.ts` (`translateOrderToInvoiceDraft` → borrador de preview, sin CUFE). **Aún no en el camino de creación de facturas** — hoy `POST /api/invoices` usa `lib/invoice-utils` + `invoicing/consecutive-counter` + `invoicing/xml-generator` directamente. |
 | Sales → Catalog | **Conformist** (hoy) → **Customer/Supplier** (objetivo) | Hoy Sales lee `Product` directamente vía Prisma. Objetivo: Sales pide al agregado `Product` "¿puedes satisfacer esta línea?" sin tocar la base. |
 | Sales → Inventory | **Shared Kernel** (StockReserver) | El pool de stock en unidades base es conocimiento **compartido** entre Sales y Catalog. Se extrae a un Domain Service compartido. |
 | Sales → Accounting | **Customer / Supplier** | Sales emite `OrderCompleted` → Accounting genera el asiento. Hoy acoplado en la misma transacción; objetivo: evento de dominio. |
