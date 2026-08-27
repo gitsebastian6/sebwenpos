@@ -9,7 +9,7 @@ process.env.ALERT_API_BASE = 'https://test.example.com/api/subscription/alerts'
 // @ts-expect-error
       process.env.NODE_ENV = 'development'
 
-import { requireEnv, envOrDefault, envOrDefaultInt, envOrDefaultBool } from '../env'
+import { requireEnv, envOrDefault, envOrDefaultInt, envOrDefaultBool, assertRequiredEnv } from '../env'
 
 describe('env utilities', () => {
   beforeEach(() => {
@@ -46,6 +46,49 @@ describe('env utilities', () => {
       expect(() => requireEnv('MISSING_VAR_XYZ')).toThrow('FATAL')
       // @ts-expect-error
       process.env.NODE_ENV = 'development'
+    })
+  })
+
+  // ─── assertRequiredEnv ───────────────────────────────────────────────────
+
+  describe('assertRequiredEnv', () => {
+    it('does not throw when all required vars are set', () => {
+      // @ts-expect-error
+      process.env.NODE_ENV = 'production'
+      expect(() => assertRequiredEnv()).not.toThrow()
+      // @ts-expect-error
+      process.env.NODE_ENV = 'development'
+    })
+
+    it('throws in production listing every missing required var', () => {
+      // @ts-expect-error
+      process.env.NODE_ENV = 'production'
+      const saved = { auth: process.env.AUTH_SECRET, internal: process.env.INTERNAL_SECRET }
+      delete process.env.AUTH_SECRET
+      delete process.env.INTERNAL_SECRET
+      try {
+        expect(() => assertRequiredEnv()).toThrow(/AUTH_SECRET.*INTERNAL_SECRET|INTERNAL_SECRET.*AUTH_SECRET/)
+      } finally {
+        process.env.AUTH_SECRET = saved.auth
+        process.env.INTERNAL_SECRET = saved.internal
+        // @ts-expect-error
+        process.env.NODE_ENV = 'development'
+      }
+    })
+
+    it('only warns in development when a required var is missing', () => {
+      // @ts-expect-error
+      process.env.NODE_ENV = 'development'
+      const saved = process.env.AUTH_SECRET
+      delete process.env.AUTH_SECRET
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        expect(() => assertRequiredEnv()).not.toThrow()
+        expect(warnSpy).toHaveBeenCalled()
+      } finally {
+        warnSpy.mockRestore()
+        process.env.AUTH_SECRET = saved
+      }
     })
   })
 

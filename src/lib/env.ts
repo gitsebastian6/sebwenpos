@@ -93,3 +93,52 @@ export const getAlertApiBase = () => requireEnv('ALERT_API_BASE')
 
 /** Cron service port */
 export const getCronPort = () => envOrDefaultInt('CRON_PORT', 3010)
+
+// ---------------------------------------------------------------------------
+// Startup validation
+// ---------------------------------------------------------------------------
+// Called once from instrumentation.ts register() on the Node.js runtime so a
+// misconfigured production deploy fails immediately instead of 500-ing on the
+// first request that happens to touch a secret.
+
+/** Secrets the server cannot securely operate without in production. */
+const REQUIRED_IN_PRODUCTION = ['AUTH_SECRET', 'INTERNAL_SECRET', 'NEXT_PUBLIC_APP_URL'] as const
+
+/** Not fatal, but a real weakness if unset — warned about in every environment. */
+const RECOMMENDED = ['ENCRYPTION_KEY'] as const
+
+function isSet(name: string): boolean {
+  const v = process.env[name]
+  return !!v && v.trim().length > 0
+}
+
+/**
+ * Validate the environment at boot. In production, throws (crashing the server)
+ * if any REQUIRED_IN_PRODUCTION variable is missing, listing all of them at
+ * once. In development, only logs warnings so local work is not blocked.
+ * Idempotent and side-effect free apart from logging / throwing.
+ */
+export function assertRequiredEnv(): void {
+  const missingRequired = REQUIRED_IN_PRODUCTION.filter((n) => !isSet(n))
+  const missingRecommended = RECOMMENDED.filter((n) => !isSet(n))
+
+  if (missingRecommended.length > 0) {
+    console.warn(
+      `[ENV] Recommended variable(s) not set: ${missingRecommended.join(', ')}. ` +
+        `ENCRYPTION_KEY falls back to AUTH_SECRET — set a distinct value in production.`,
+    )
+  }
+
+  if (missingRequired.length === 0) return
+
+  const msg =
+    `[ENV] FATAL: missing required environment variable(s): ${missingRequired.join(', ')}. ` +
+    `Add them to your .env file. See .env.example for reference.`
+
+  if (isDev()) {
+    console.warn(`\n${msg}\n[ENV] Running in development mode — continuing anyway. FIX THIS BEFORE PRODUCTION.\n`)
+    return
+  }
+
+  throw new Error(msg)
+}
