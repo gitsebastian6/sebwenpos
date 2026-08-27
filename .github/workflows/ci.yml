@@ -112,6 +112,12 @@ jobs:
       - name: Check migrations are in sync with schema
         run: npx prisma migrate status
 
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint .
+
       - name: Build Next.js
         run: npm run build
 
