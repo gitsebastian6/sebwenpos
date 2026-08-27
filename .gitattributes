@@ -42,3 +42,6 @@ docker-compose*.yml text eol=lf
 *.zip binary
 *.p12 binary
 *.pfx binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary

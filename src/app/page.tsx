@@ -6,7 +6,6 @@ import { useAppStore } from '@/stores/app-store'
 import { AuthPage } from '@/components/auth/auth-page'
 import { AppShell } from '@/components/layout/app-shell'
 import { SuperAdminShell } from '@/components/super-admin/super-admin-shell'
-import { QueryProvider } from '@/providers/query-provider'
 
 function LoadingScreen() {
   return (
@@ -78,9 +77,7 @@ export default function Home() {
   if (!store) return <LoadingScreen />
 
   // Store Owner or Employee → App Shell
-  return (
-    <QueryProvider>
-      <AppShell />
-    </QueryProvider>
-  )
+  // QueryProvider is mounted once in src/app/layout.tsx — do not re-wrap here
+  // (a second QueryClient would fragment the cache).
+  return <AppShell />
 }

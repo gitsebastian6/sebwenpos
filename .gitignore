@@ -1,3 +1,4 @@
+.
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
@@ -35,7 +36,9 @@ yarn-error.log*
 .env.local
 .env.production
 .env.development
+.env.docker
 !.env.example
+!.env.docker.example
 
 # vercel
 .vercel
@@ -81,3 +84,14 @@ mini-services/ai-chat-service/log.txt
 # Local DB backups and Windows reserved-name artifact — never commit
 /backups/
 /nul
+
+# SQLite databases — dev-only, never commit (prod runs Postgres)
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Local tooling scratch output
+/tsc_out.txt
+/c:Users*
