@@ -43,66 +43,20 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import {
+  buildProductPayload,
+  emptyPresentationRow,
+  emptyProductForm,
+  profitMarginPct,
+  suggestedSalePrice,
+  validateProductForm,
+  type PresentationFormRow,
+  type ProductFormData,
+} from '@/lib/product-form-math'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export interface ProductFormData {
-  name: string
-  sku: string
-  barcode: string
-  unitLabel: string
-  categoryId: string
-  providerId: string
-  taxRateId: string
-  description: string
-  imgUrl: string
-  invima: string
-  costPrice: string
-  salePrice: string
-  commission: string
-  minStock: string
-  trackInventory: boolean
-  trackExpiration: boolean
-  isActive: boolean
-}
-
-export const emptyProductForm: ProductFormData = {
-  name: '',
-  sku: '',
-  barcode: '',
-  unitLabel: 'UND',
-  categoryId: 'none',
-  providerId: 'none',
-  taxRateId: 'none',
-  description: '',
-  imgUrl: '',
-  invima: '',
-  costPrice: '',
-  salePrice: '',
-  commission: '0',
-  minStock: '5',
-  trackInventory: true,
-  trackExpiration: false,
-  isActive: true,
-}
-
-// A product's own name/barcode/sku/price fields ARE its "Unidad" presentation.
-// This row shape covers only the up-to-2 EXTRA presentations (Six-pack, Caja, etc.).
-export interface PresentationFormRow {
-  key: string // local React key only, not sent to the API
-  name: string
-  unitLabel: string
-  barcode: string
-  sku: string
-  unitsPerPack: string
-  salePrice: string
-  costPrice: string
-  isActive: boolean
-}
-
-function emptyPresentationRow(): PresentationFormRow {
-  return { key: crypto.randomUUID(), name: '', unitLabel: 'UND', barcode: '', sku: '', unitsPerPack: '', salePrice: '', costPrice: '', isActive: true }
-}
+// Re-exported for existing consumers.
+export { emptyProductForm } from '@/lib/product-form-math'
+export type { ProductFormData, PresentationFormRow } from '@/lib/product-form-math'
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -188,19 +142,15 @@ export function ProductFormDialog({
 
   // ─── Commission Auto-Calculation ─────────────────────────────────────────
 
-  const suggestedPrice = useMemo(() => {
-    const cost = Number(productForm.costPrice)
-    const commission = Number(productForm.commission || 0)
-    if (!cost || cost <= 0 || commission <= 0) return null
-    return Math.round(cost * (1 + commission / 100))
-  }, [productForm.costPrice, productForm.commission])
+  const suggestedPrice = useMemo(
+    () => suggestedSalePrice(productForm.costPrice, productForm.commission),
+    [productForm.costPrice, productForm.commission],
+  )
 
-  const profitMargin = useMemo(() => {
-    const cost = Number(productForm.costPrice)
-    const sale = Number(productForm.salePrice)
-    if (!cost || cost <= 0 || !sale || sale <= 0) return null
-    return ((sale - cost) / sale) * 100
-  }, [productForm.costPrice, productForm.salePrice])
+  const profitMargin = useMemo(
+    () => profitMarginPct(productForm.costPrice, productForm.salePrice),
+    [productForm.costPrice, productForm.salePrice],
+  )
 
   // ─── Image Upload Handler ────────────────────────────────────────────────
 
@@ -273,60 +223,17 @@ export function ProductFormDialog({
   // ─── Submit Handler ──────────────────────────────────────────────────────
 
   async function handleSaveProduct() {
-    if (!productForm.name.trim()) {
-      toast.error('El nombre es obligatorio')
-      return
-    }
-    if (!productForm.salePrice || Number(productForm.salePrice) <= 0) {
-      toast.error('El precio de venta es obligatorio y debe ser mayor a 0')
-      return
-    }
-    for (const p of presentations) {
-      if (!p.name.trim()) { toast.error('Cada presentación necesita un nombre (ej: Six-pack, Caja x24)'); return }
-      if (!p.unitsPerPack || Number(p.unitsPerPack) < 0.001) { toast.error(`"${p.name}": debe equivaler a 0.001 o más unidades base`); return }
-      if (!p.salePrice || Number(p.salePrice) <= 0) { toast.error(`"${p.name}": el precio de venta debe ser mayor a 0`); return }
-    }
-    const barcodes = [productForm.barcode.trim(), ...presentations.map((p) => p.barcode.trim())].filter(Boolean)
-    if (new Set(barcodes).size !== barcodes.length) {
-      toast.error('Hay códigos de barras repetidos entre las presentaciones de este producto')
+    const validationError = validateProductForm(productForm, presentations)
+    if (validationError) {
+      toast.error(validationError)
       return
     }
 
     setProductSaving(true)
     try {
-      const body = {
-        storeId: store?.id,
-        name: productForm.name.trim(),
-        sku: productForm.sku.trim() || undefined,
-        barcode: productForm.barcode.trim() || undefined,
-        unitLabel: productForm.unitLabel,
-        categoryId: productForm.categoryId !== 'none' ? Number(productForm.categoryId) : undefined,
-        providerId: productForm.providerId !== 'none' ? Number(productForm.providerId) : undefined,
-        taxRateId: productForm.taxRateId !== 'none' ? Number(productForm.taxRateId) : undefined,
-        description: productForm.description.trim() || undefined,
-        imgUrl: productForm.imgUrl.trim() || null,
-        invima: productForm.invima.trim() || null,
-        costPrice: productForm.costPrice ? Math.round(Number(productForm.costPrice)) : 0,
-        salePrice: Math.round(Number(productForm.salePrice)),
-        commission: Math.max(0, Math.min(100, Math.round(Number(productForm.commission || 0)))),
-        minStock: productForm.minStock ? Number(productForm.minStock) : 5,
-        trackInventory: productForm.trackInventory,
-        trackExpiration: productForm.trackExpiration,
-        isActive: productForm.isActive,
-        presentations: presentations.map((p) => ({
-          name: p.name.trim(),
-          unitLabel: p.unitLabel,
-          barcode: p.barcode.trim() || undefined,
-          sku: p.sku.trim() || undefined,
-          unitsPerPack: Number(p.unitsPerPack),
-          salePrice: Math.round(Number(p.salePrice)),
-          costPrice: p.costPrice ? Math.round(Number(p.costPrice)) : 0,
-          isActive: p.isActive,
-        })),
-      }
-
+      const body = buildProductPayload(productForm, presentations, store?.id)
       const isEditing = !!editingProduct
-      await onSave(body, isEditing)
+      await onSave(body as unknown as Record<string, unknown>, isEditing)
       onOpenChange(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar producto')
