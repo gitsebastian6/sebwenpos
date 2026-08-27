@@ -1,4 +1,4 @@
-import { requireStoreAccess } from '@/lib/api-auth'
+import { requireAuthStoreId } from '@/lib/api-auth'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from 'next/server'
@@ -113,19 +113,9 @@ function parseActive(val: string | undefined): boolean {
 // ─── POST /api/products/import ──────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const storeId = req.headers.get('x-auth-store-id')
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
-    }
-
-    const storeIdNum = Number(storeId)
-    if (isNaN(storeIdNum)) {
-      return NextResponse.json({ error: 'storeId inválido' }, { status: 400 })
-    }
-
-    // Auth check
-    const storeAccessError = requireStoreAccess(req, storeIdNum)
-    if (storeAccessError) return storeAccessError
+    const storeIdOrErr = requireAuthStoreId(req)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeIdNum = storeIdOrErr
 
     // Parse multipart form
     const formData = await req.formData()

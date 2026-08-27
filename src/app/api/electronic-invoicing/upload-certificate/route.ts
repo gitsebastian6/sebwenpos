@@ -3,23 +3,19 @@ import { db } from '@/lib/db'
 import { writeFile, unlink, stat } from 'fs/promises'
 import path from 'path'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
+import { requireAuthStoreId } from '@/lib/api-auth'
 
 const CERT_DIR = path.join(process.cwd(), 'certificates')
 
 // POST /api/electronic-invoicing/upload-certificate — Upload .p12 certificate
 export async function POST(req: NextRequest) {
   try {
+    const storeIdOrErr = requireAuthStoreId(req)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeIdNum = storeIdOrErr
+
     const formData = await req.formData()
-    const storeId = req.headers.get('x-auth-store-id')
     const file = formData.get('certificate') as File | null
-
-    if (!storeId) {
-      return NextResponse.json({ error: 'Tienda no identificada' }, { status: 401 })
-    }
-
-    const storeAccessErr = requireStoreAccess(req, Number(storeId))
-    if (storeAccessErr) return storeAccessErr
 
     if (!file) {
       return NextResponse.json({ error: 'No se recibió el archivo' }, { status: 400 })
@@ -40,13 +36,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'El archivo parece estar vacío o corrupto' }, { status: 400 })
     }
 
-    const store = await db.store.findUnique({ where: { id: Number(storeId) } })
+    const store = await db.store.findUnique({ where: { id: storeIdNum } })
     if (!store) {
       return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 })
     }
 
     // Generate safe filename
-    const certFileName = `store_${storeId}_cert.p12`
+    const certFileName = `store_${storeIdNum}_cert.p12`
     const certPath = path.join(CERT_DIR, certFileName)
 
     // Delete old certificate if exists
@@ -58,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     // Update store record
     await db.store.update({
-      where: { id: Number(storeId) },
+      where: { id: storeIdNum },
       data: { certificateUploaded: true },
     })
 
@@ -78,15 +74,11 @@ export async function POST(req: NextRequest) {
 // DELETE /api/electronic-invoicing/upload-certificate?storeId=X — Remove certificate
 export async function DELETE(req: NextRequest) {
   try {
-    const storeId = req.headers.get('x-auth-store-id') || req.nextUrl.searchParams.get('storeId')
-    if (!storeId) {
-      return NextResponse.json({ error: 'Tienda no identificada' }, { status: 401 })
-    }
+    const storeIdOrErr = requireAuthStoreId(req)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeIdNum = storeIdOrErr
 
-    const storeAccessErr = requireStoreAccess(req, Number(storeId))
-    if (storeAccessErr) return storeAccessErr
-
-    const certFileName = `store_${storeId}_cert.p12`
+    const certFileName = `store_${storeIdNum}_cert.p12`
     const certPath = path.join(CERT_DIR, certFileName)
 
     // Delete file
@@ -94,7 +86,7 @@ export async function DELETE(req: NextRequest) {
 
     // Update store record
     await db.store.update({
-      where: { id: Number(storeId) },
+      where: { id: storeIdNum },
       data: {
         certificateUploaded: false,
         certificatePassword: null,
@@ -112,21 +104,17 @@ export async function DELETE(req: NextRequest) {
 // GET /api/electronic-invoicing/upload-certificate?storeId=X — Check certificate status
 export async function GET(req: NextRequest) {
   try {
-    const storeId = req.headers.get('x-auth-store-id') || req.nextUrl.searchParams.get('storeId')
-    if (!storeId) {
-      return NextResponse.json({ error: 'Tienda no identificada' }, { status: 401 })
-    }
+    const storeIdOrErr = requireAuthStoreId(req)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeIdNum = storeIdOrErr
 
-    const storeAccessErr = requireStoreAccess(req, Number(storeId))
-    if (storeAccessErr) return storeAccessErr
-
-    const certFileName = `store_${storeId}_cert.p12`
+    const certFileName = `store_${storeIdNum}_cert.p12`
     const certPath = path.join(CERT_DIR, certFileName)
 
     try {
       const stats = await stat(certPath)
       const store = await db.store.findUnique({
-        where: { id: Number(storeId) },
+        where: { id: storeIdNum },
         select: { certificateUploaded: true },
       })
 

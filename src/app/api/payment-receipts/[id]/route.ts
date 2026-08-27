@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
+import { requireAuthStoreId } from '@/lib/api-auth'
 import { saveReceiptFile } from '@/lib/file-storage'
 
 export const dynamic = 'force-dynamic'
@@ -40,13 +40,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
 
-    const storeId = req.headers.get('x-auth-store-id')
-    if (!storeId) {
-      return NextResponse.json({ error: 'Tienda no identificada' }, { status: 401 })
-    }
-
-    const storeAccessErr = requireStoreAccess(req, parseInt(storeId, 10))
-    if (storeAccessErr) return storeAccessErr
+    const storeIdOrErr = requireAuthStoreId(req)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeIdNum = storeIdOrErr
 
     const body = await req.json()
     const data = attachFileSchema.parse(body)
@@ -87,7 +83,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Comprobante no encontrado' }, { status: 404 })
     }
 
-    if (receipt.storeId !== parseInt(storeId, 10)) {
+    if (receipt.storeId !== storeIdNum) {
       return NextResponse.json({ error: 'No tienes acceso a este comprobante' }, { status: 403 })
     }
 

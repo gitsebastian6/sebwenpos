@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
+import { requireAuthStoreId } from '@/lib/api-auth'
 import { saveReceiptFile } from '@/lib/file-storage'
 
 export const dynamic = 'force-dynamic'
@@ -41,16 +41,12 @@ const uploadSchema = z.object({
  */
 export async function GET(req: NextRequest) {
   try {
-    const storeId = req.headers.get('x-auth-store-id')
-    if (!storeId) {
-      return NextResponse.json({ error: 'Tienda no identificada' }, { status: 401 })
-    }
-
-    const storeAccessErr = requireStoreAccess(req, parseInt(storeId, 10))
-    if (storeAccessErr) return storeAccessErr
+    const storeIdOrErr = requireAuthStoreId(req)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeIdNum = storeIdOrErr
 
     const receipts = await db.paymentReceipt.findMany({
-      where: { storeId: parseInt(storeId, 10) },
+      where: { storeId: storeIdNum },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -85,13 +81,9 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const storeId = req.headers.get('x-auth-store-id')
-    if (!storeId) {
-      return NextResponse.json({ error: 'Tienda no identificada' }, { status: 401 })
-    }
-
-    const storeAccessErr = requireStoreAccess(req, parseInt(storeId, 10))
-    if (storeAccessErr) return storeAccessErr
+    const storeIdOrErr = requireAuthStoreId(req)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeIdNum = storeIdOrErr
 
     const body = await req.json()
     const data = uploadSchema.parse(body)
@@ -139,7 +131,7 @@ export async function POST(req: NextRequest) {
 
     // Find the subscription for this store
     const subscription = await db.subscription.findUnique({
-      where: { storeId: parseInt(storeId, 10) },
+      where: { storeId: storeIdNum },
     })
 
     if (!subscription) {
@@ -202,7 +194,7 @@ export async function POST(req: NextRequest) {
     const receipt = await db.paymentReceipt.create({
       data: {
         subscriptionId: subscription.id,
-        storeId: parseInt(storeId, 10),
+        storeId: storeIdNum,
         fileName: data.fileName || null,
         fileSize: data.fileSize || null,
         fileType: data.fileType || null,

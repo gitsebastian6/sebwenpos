@@ -4,7 +4,7 @@ import { writeFile, unlink, access } from 'fs/promises'
 import path from 'path'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess } from '@/lib/api-auth'
+import { requireAuthStoreId } from '@/lib/api-auth'
 import { encryptField, decryptField } from '@/lib/field-encryption'
 import { storeHasFeature, featureGatedResponse } from '@/lib/subscription-helpers'
 
@@ -20,14 +20,9 @@ const eInvoicingConfigSchema = z.object({
 // POST /api/electronic-invoicing/config — Save provider config
 export async function POST(req: NextRequest) {
   try {
-    const storeId = req.headers.get('x-auth-store-id')
-    if (!storeId) {
-      return NextResponse.json({ error: 'Tienda no identificada' }, { status: 401 })
-    }
-
-    const storeIdNum = Number(storeId)
-    const storeAccessErr = requireStoreAccess(req, Number(storeId))
-    if (storeAccessErr) return storeAccessErr
+    const storeIdOrErr = requireAuthStoreId(req)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeIdNum = storeIdOrErr
 
     // ── Feature Gate: electronicInvoicing ──
     const hasEInvoicing = await storeHasFeature(storeIdNum, 'electronicInvoicing')
@@ -47,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     const { invoiceEnabled, invoiceProvider, certificatePassword, softwareId, softwarePin, providerConfig } = data
 
-    const store = await db.store.findUnique({ where: { id: Number(storeId) } })
+    const store = await db.store.findUnique({ where: { id: storeIdNum } })
     if (!store) {
       return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 })
     }
@@ -60,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
 
     const updated = await db.store.update({
-      where: { id: Number(storeId) },
+      where: { id: storeIdNum },
       data: {
         ...(invoiceEnabled !== undefined && { invoiceEnabled: Boolean(invoiceEnabled) }),
         ...(invoiceProvider && { invoiceProvider: String(invoiceProvider) }),
@@ -90,16 +85,12 @@ export async function POST(req: NextRequest) {
 // GET /api/electronic-invoicing/config?storeId=X — Get current config
 export async function GET(req: NextRequest) {
   try {
-    const storeId = req.headers.get('x-auth-store-id') || req.nextUrl.searchParams.get('storeId')
-    if (!storeId) {
-      return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
-    }
-
-    const storeAccessErr = requireStoreAccess(req, Number(storeId))
-    if (storeAccessErr) return storeAccessErr
+    const storeIdOrErr = requireAuthStoreId(req)
+    if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
+    const storeIdNum = storeIdOrErr
 
     const store = await db.store.findUnique({
-      where: { id: Number(storeId) },
+      where: { id: storeIdNum },
       select: {
         id: true,
         name: true,
@@ -125,7 +116,7 @@ export async function GET(req: NextRequest) {
     if (!store) {
       // Return safe defaults instead of 404 — store might not have config yet
       return NextResponse.json({
-        id: Number(storeId),
+        id: storeIdNum,
         name: '',
         nit: null,
         legalName: null,
