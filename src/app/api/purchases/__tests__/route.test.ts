@@ -195,7 +195,7 @@ describe('POST /api/purchases', () => {
     // Simulates a real DB row: findUnique always returns whatever the last
     // update() actually wrote, proving the fix reads live state, not the
     // stale `products` array fetched once before the transaction.
-    let liveProduct = { costPrice: mockProduct.costPrice, currentStock: mockProduct.currentStock }
+    const liveProduct = { costPrice: mockProduct.costPrice, currentStock: mockProduct.currentStock }
     const capturedUpdates: any[] = []
     const capturedCostHistory: any[] = []
     mockDb.$transaction.mockImplementation(async (cb: (tx: any) => Promise<unknown>) => {

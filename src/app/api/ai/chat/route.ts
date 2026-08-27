@@ -458,7 +458,7 @@ async function callAiWithTools(
 ): Promise<{ content: string; tokens: number; model: string }> {
   if (GEMINI_API_KEY && storeId) {
     try {
-      let currentMessages = [...messages]
+      const currentMessages = [...messages]
       let totalTokens = 0
       let lastModel = GEMINI_MODEL
 

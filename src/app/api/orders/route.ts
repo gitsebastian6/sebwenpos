@@ -339,7 +339,7 @@ export async function POST(req: NextRequest) {
 
     // Calculate discount (before finalizing the tax breakdown — see below).
     // Delegated to the Sales domain service (TaxCalculator.resolveDiscount).
-    let discountAmount = resolveDiscount(data.discountType, data.discountAmount, subtotal)
+    const discountAmount = resolveDiscount(data.discountType, data.discountAmount, subtotal)
 
     // A discount reduces what the business actually received, so the IVA base
     // must shrink proportionally too — otherwise the order (and DIAN reporting)
