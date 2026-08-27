@@ -57,6 +57,10 @@ export interface AuthPayload {
 // The Edge Runtime middleware cannot access Prisma, so we maintain an
 // in-memory set of revoked token JTIs. API routes (Node.js) populate this
 // set when they revoke tokens or when they need to check revocation.
+//
+// ⚠️ SINGLE-INSTANCE ONLY. With >1 app instance a revoked token stays valid on
+// instances that haven't synced yet (up to SYNC_INTERVAL_MS). Move to a shared
+// store before scaling out. See docs/DEPLOYMENT.md.
 
 const revokedTokens = new Map<string, number>() // jti -> expiresAt (ms)
 let lastSyncTime = 0

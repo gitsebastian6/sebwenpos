@@ -12,6 +12,11 @@
 //
 // This closes the "mid-session expiry" gap: if a subscription expires while
 // the user has a valid 24h token, the middleware will catch it within 5 min.
+//
+// ⚠️ SINGLE-INSTANCE ONLY. With >1 app instance the instance that didn't warm
+// the cache FAILS OPEN, so an EXPIRED/CANCELLED store keeps working until it
+// hits the instance that has a fresh entry. Move to a shared store before
+// scaling out. See docs/DEPLOYMENT.md.
 // ---------------------------------------------------------------------------
 
 interface SubscriptionCacheEntry {

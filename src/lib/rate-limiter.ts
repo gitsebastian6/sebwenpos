@@ -2,8 +2,10 @@
  * Sebwen POS — In-Memory Rate Limiter
  * ─────────────────────────────────────────────────────────
  * Token bucket style rate limiter using a Map with TTL cleanup.
- * Suitable for single-instance deployments.
- * For multi-instance, migrate to Redis.
+ *
+ * ⚠️ SINGLE-INSTANCE ONLY. State lives in this process's memory. Running more
+ * than one app instance multiplies the effective limit by the instance count.
+ * Move to Redis / Postgres-with-TTL before scaling out. See docs/DEPLOYMENT.md.
  */
 
 interface RateLimitEntry {
