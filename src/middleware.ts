@@ -6,16 +6,22 @@ import { isSubscriptionBlocked, getCachedSubscriptionStatus } from '@/lib/subscr
 import { safeStringEqual } from '@/lib/crypto-utils'
 
 // ---------------------------------------------------------------------------
-// Sebwen POS — Auth + CORS + CSRF + Rate Limit + Subscription Middleware
+// Sebwen POS — Auth + CORS + Rate Limit + Subscription Middleware
 // ---------------------------------------------------------------------------
 // Validates HMAC-SHA256 tokens on every API request.
 // Checks token revocation blacklist (in-memory cache synced from DB).
-// Validates CSRF tokens on state-changing requests.
 // Applies rate limiting to business-critical routes.
 // Checks subscription status from in-memory cache (blocks EXPIRED/CANCELLED).
-// Public routes (login, register, init) are exempt from auth + CSRF.
+// Public routes (login, register, init) are exempt from auth.
 // Super Admin routes require SUPER_ADMIN role.
 // Store routes require matching storeId.
+//
+// No CSRF protection: every API call is authenticated with a Bearer token in
+// the Authorization header (injected by src/lib/auth-interceptor.ts). A
+// cross-site attacker cannot read localStorage to forge that header and the
+// browser does not attach it automatically the way it does cookies, so these
+// endpoints are not CSRF-exploitable. No route authenticates via a session
+// cookie.
 // ---------------------------------------------------------------------------
 
 // CORS configuration — restricted to known origins
@@ -25,8 +31,7 @@ const ALLOWED_ORIGINS = [
 ].filter(Boolean) as string[]
 
 const CORS_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
-const CORS_ALLOW_HEADERS = 'Content-Type, Authorization, X-Internal-Secret, X-Auth-User-Id, X-Auth-Role, X-Auth-Store-Id, X-CSRF-Token, X-Transform-Port'
+const CORS_ALLOW_HEADERS = 'Content-Type, Authorization, X-Internal-Secret, X-Auth-User-Id, X-Auth-Role, X-Auth-Store-Id, X-Transform-Port'
 
 function withCORS(response: NextResponse, origin?: string | null): NextResponse {
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
@@ -40,28 +45,6 @@ function withCORS(response: NextResponse, origin?: string | null): NextResponse 
 
 function corsError(message: string, status: number): NextResponse {
   return withCORS(NextResponse.json({ error: message }, { status }))
-}
-
-// ---------------------------------------------------------------------------
-// CSRF Protection — Double-Submit Cookie Pattern
-// ---------------------------------------------------------------------------
-
-function validateCSRF(request: NextRequest): boolean {
-  const method = request.method.toUpperCase()
-
-  if (CSRF_SAFE_METHODS.has(method)) return true
-
-  const authHeader = request.headers.get('authorization')
-  if (authHeader && authHeader.startsWith('Bearer ')) return true
-
-  const internalSecret = request.headers.get('x-internal-secret')
-  if (internalSecret) return true
-
-  const csrfHeader = request.headers.get('x-csrf-token')
-  const csrfCookie = request.cookies.get('csrf_token')?.value
-
-  if (!csrfHeader || !csrfCookie) return false
-  return safeStringEqual(csrfHeader, csrfCookie)
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +141,7 @@ export async function middleware(request: NextRequest) {
     return withCORS(new NextResponse(null, { status: 204 }), origin)
   }
 
-  // 1. Public routes — no auth needed, no CSRF needed
+  // 1. Public routes — no auth needed
   if (isPublicPath(pathname)) {
     return withCORS(NextResponse.next(), origin)
   }
@@ -172,12 +155,7 @@ export async function middleware(request: NextRequest) {
     return withCORS(NextResponse.next(), origin)
   }
 
-  // 3. CSRF validation on all state-changing requests
-  if (!validateCSRF(request)) {
-    return corsError('Token CSRF inválido — posible ataque cross-site', 403)
-  }
-
-  // 4. All other API routes require authentication
+  // 3. All other API routes require authentication
   const authHeader = request.headers.get('authorization')
   const token = extractTokenFromRequest(authHeader)
 
@@ -195,11 +173,11 @@ export async function middleware(request: NextRequest) {
     return corsError('Token inválido o expirado', 401)
   }
 
-  // 5. Route-based rate limiting (after auth, before business logic)
+  // 4. Route-based rate limiting (after auth, before business logic)
   const rateLimitResult = checkRouteRateLimit(request, pathname)
   if (rateLimitResult) return rateLimitResult
 
-  // 6. Super Admin routes — require SUPER_ADMIN role
+  // 5. Super Admin routes — require SUPER_ADMIN role
   if (isSuperAdminPath(pathname)) {
     if (payload.role !== 'SUPER_ADMIN') {
       return corsError('Acceso restringido a Super Administrador', 403)
@@ -212,7 +190,7 @@ export async function middleware(request: NextRequest) {
     }), origin)
   }
 
-  // 7. Store routes — verify storeId matches token
+  // 6. Store routes — verify storeId matches token
   const url = new URL(request.url)
   const queryStoreId = url.searchParams.get('storeId')
 
@@ -223,7 +201,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 8. Subscription gating — block expired/cancelled stores mid-session
+  // 7. Subscription gating — block expired/cancelled stores mid-session
   //    Uses in-memory cache populated by login/refresh/subscription routes.
   //    Fail-open on cache miss (allows request, next route re-warms cache).
   //    Exempt paths (subscription management, payments, auth) always pass.
@@ -236,7 +214,7 @@ export async function middleware(request: NextRequest) {
       )
     }
 
-    // 8b. PAST_DUE (gracia de pago): solo lectura + gestión de suscripción.
+    // 7b. PAST_DUE (gracia de pago): solo lectura + gestión de suscripción.
     //     Bloquea ventas nuevas server-side (POS/Mesas/Facturación) — antes
     //     esta restricción solo existía como flag en la respuesta del login.
     const cachedStatus = getCachedSubscriptionStatus(payload.storeId)

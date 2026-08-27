@@ -64,7 +64,6 @@ export function QuickStartDialog({ open, onOpenChange }: QuickStartDialogProps) 
         data.isSuperAdmin,
         data.subscription,
         data.availableStores,
-        data.csrfToken,
       )
 
       setSuccess(true)

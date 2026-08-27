@@ -11,7 +11,6 @@ interface LoginResponse {
   user: { id: number; fullName?: string; cedula: string; phone?: string | null; email?: string | null; role?: string }
   store: { id: number; name: string; currencyCode: string }
   token: string
-  csrfToken?: string
   permissions: string[]
   isSuperAdmin: boolean
   subscription?: { status: string; planName?: string; endDate?: string } | null

@@ -72,14 +72,13 @@ interface AuthState {
   store: StoreInfo | null
   token: string | null
   tokenIssuedAt: number | null
-  csrfToken: string | null
   permissions: Record<string, boolean>
   isSuperAdmin: boolean
   isAuthenticated: boolean
   isLoading: boolean
   subscription: SubscriptionInfo | null
   availableStores: AvailableStore[]
-  login: (user: AuthUser, store: StoreInfo | null, token: string, permissions?: Record<string, boolean>, isSuperAdmin?: boolean, subscription?: SubscriptionInfo | null, availableStores?: AvailableStore[] | null, csrfToken?: string | null) => void
+  login: (user: AuthUser, store: StoreInfo | null, token: string, permissions?: Record<string, boolean>, isSuperAdmin?: boolean, subscription?: SubscriptionInfo | null, availableStores?: AvailableStore[] | null) => void
   logout: () => void
   setLoading: (loading: boolean) => void
   updateStore: (store: StoreInfo) => void
@@ -148,7 +147,6 @@ export const useAuthStore = create<AuthState>()(
       store: null,
       token: null,
       tokenIssuedAt: null,
-      csrfToken: null,
       permissions: {},
       isSuperAdmin: false,
       isAuthenticated: false,
@@ -156,9 +154,9 @@ export const useAuthStore = create<AuthState>()(
       subscription: null,
       availableStores: [],
 
-      login: (user, store, token, permissions, isSuperAdmin = false, subscription = null, availableStores = null, csrfToken = null) =>
+      login: (user, store, token, permissions, isSuperAdmin = false, subscription = null, availableStores = null) =>
         set({
-          user, store, token, tokenIssuedAt: Date.now(), csrfToken,
+          user, store, token, tokenIssuedAt: Date.now(),
           permissions: permissions || DEFAULT_PERMISSIONS,
           isSuperAdmin,
           isAuthenticated: true, isLoading: false,
@@ -180,7 +178,7 @@ export const useAuthStore = create<AuthState>()(
         }
 
         set({
-          user: null, store: null, token: null, tokenIssuedAt: null, csrfToken: null,
+          user: null, store: null, token: null, tokenIssuedAt: null,
           permissions: {}, isSuperAdmin: false,
           isAuthenticated: false, isLoading: false,
           subscription: null,
@@ -277,7 +275,6 @@ export const useAuthStore = create<AuthState>()(
         store: state.store,
         token: state.token,
         tokenIssuedAt: state.tokenIssuedAt,
-        csrfToken: state.csrfToken,
         permissions: state.permissions,
         isSuperAdmin: state.isSuperAdmin,
         isAuthenticated: state.isAuthenticated,

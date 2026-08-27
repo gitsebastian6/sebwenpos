@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword, sanitizeUser } from '@/lib/auth'
 import { generateToken } from '@/lib/auth-helpers'
-import { generateCsrfToken } from '@/lib/csrf'
 import { withRateLimit, SIGNUP_RATE_LIMIT } from '@/lib/rate-limiter'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
@@ -234,7 +233,6 @@ export async function POST(req: NextRequest) {
       storeId: result.store.id,
       role: 'OWNER',
     })
-    const csrfToken = generateCsrfToken()
     const safeUser = sanitizeUser(result.user)
 
     const permissions = {
@@ -248,7 +246,6 @@ export async function POST(req: NextRequest) {
       user: safeUser,
       store: result.store,
       token,
-      csrfToken,
       isSuperAdmin: false,
       permissions,
       subscription: {
@@ -271,14 +268,6 @@ export async function POST(req: NextRequest) {
       message: '¡Cuenta creada! Ya puedes empezar a vender.',
       quickStart: true,
     }, { status: 201 })
-
-    response.cookies.set('csrf_token', csrfToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 8 * 60 * 60,
-    })
 
     return response
   } catch (error: unknown) {
