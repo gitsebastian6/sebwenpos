@@ -10,8 +10,10 @@ export interface ConsecutiveResult {
   prefix: string
   resolutionNumber: string
   resolutionDate: string
-  startDate: Date
-  endDate: Date
+  // Nullable: a DIAN resolution may omit the validity window (the code only
+  // enforces it when both dates are present).
+  startDate: Date | null
+  endDate: Date | null
   startNumber: number
   endNumber: number
   warning?: string

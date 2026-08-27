@@ -115,6 +115,9 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+      - name: Type-check (strictNullChecks — src/lib + src/domain)
+        run: npx tsc -p tsconfig.strict.json
+
       - name: Lint
         run: npx eslint .
 

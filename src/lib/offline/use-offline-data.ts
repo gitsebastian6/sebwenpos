@@ -94,7 +94,7 @@ export async function searchOfflineProducts(
   return db.products
     .where('storeId')
     .equals(storeId)
-    .filter((p) => p.isActive && (p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.toLowerCase().includes(q))))
+    .filter((p) => p.isActive && (p.name.toLowerCase().includes(q) || (p.barcode?.toLowerCase().includes(q) ?? false)))
     .toArray();
 }
 
@@ -117,6 +117,6 @@ export async function searchOfflineCustomers(
   return db.customers
     .where('storeId')
     .equals(storeId)
-    .filter((c) => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)) || (c.nit && c.nit.includes(q)))
+    .filter((c) => c.name.toLowerCase().includes(q) || (c.phone?.includes(q) ?? false) || (c.nit?.includes(q) ?? false))
     .toArray();
 }

@@ -1,0 +1,21 @@
+{
+  // Incremental strictNullChecks rollout. The base tsconfig has
+  // strictNullChecks:false for the whole app; this config turns it on for the
+  // "pure" lower layers (src/lib, src/domain) only. Expand `include` folder by
+  // folder as each one is cleaned up.
+  //
+  // Run: npm run type-check:strict
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strictNullChecks": true,
+    "noEmit": true
+  },
+  "include": [
+    "src/lib/**/*.ts",
+    "src/lib/**/*.tsx",
+    "src/domain/**/*.ts"
+  ],
+  // Tests are covered by the base tsconfig + vitest; the strict rollout targets
+  // production code only.
+  "exclude": ["node_modules", "**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"]
+}
