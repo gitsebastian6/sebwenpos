@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { toNum } from '@/lib/stock-math'
@@ -323,6 +324,9 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(request, shift.storeId)
     if (storeAccessErr) return storeAccessErr
+    // Eliminar un turno de caja es una corrección contable, no una acción de cajero.
+    const permErr = await requirePermission(request, 'accounting')
+    if (permErr) return permErr
 
     if (shift._count.orders > 0) {
       return NextResponse.json({

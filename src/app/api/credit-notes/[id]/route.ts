@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { formatInvoiceNumber } from '@/lib/invoice-utils'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,8 @@ export async function GET(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'invoices')
+    if (permErr) return permErr
 
     const creditNote = await db.creditNote.findFirst({
       where: { id: Number(id), storeId },
@@ -162,6 +165,8 @@ export async function PUT(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'invoices')
+    if (permErr) return permErr
 
     // Verificar que la nota existe
     const existing = await db.creditNote.findFirst({
@@ -245,6 +250,8 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'invoices')
+    if (permErr) return permErr
 
     const creditNote = await db.creditNote.findFirst({
       where: { id: Number(id), storeId },

@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { DIAN_CONSUMIDOR_FINAL_NIT, getSoftwareProviderNIT } from '@/lib/constants'
 import { db } from '@/lib/db'
 import { decryptField } from '@/lib/field-encryption'
@@ -72,6 +73,11 @@ export async function GET(request: NextRequest) {
     if (!storeId) {
       return NextResponse.json({ error: 'storeId es requerido' }, { status: 400 })
     }
+
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'invoices')
+    if (permErr) return permErr
 
     const where: Record<string, unknown> = { storeId }
 
@@ -179,6 +185,8 @@ export async function POST(req: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(req, data.storeId)
     if (storeAccessError) return storeAccessError
+    const permErr = await requirePermission(req, 'invoices')
+    if (permErr) return permErr
 
     // 1. Buscar la factura original
     const invoice = await db.invoice.findFirst({

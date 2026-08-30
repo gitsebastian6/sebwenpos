@@ -22,6 +22,7 @@ const mockInvoiceUtils = vi.hoisted(() => ({
 vi.mock('@/lib/db', () => ({ db: mockDb }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }))
 vi.mock('@/lib/api-auth', () => ({ requireStoreAccess: vi.fn().mockReturnValue(null) }))
+vi.mock('@/lib/permissions', () => ({ requirePermission: vi.fn().mockResolvedValue(null) }))
 vi.mock('@/lib/invoicing/credit-note-counter', () => mockCounter)
 vi.mock('@/lib/invoice-utils', () => mockInvoiceUtils)
 vi.mock('@/lib/field-encryption', () => ({ decryptField: vi.fn(() => 'pin') }))
