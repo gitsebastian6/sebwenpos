@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from 'next/server'
@@ -61,6 +62,8 @@ export async function PUT(
 
     const storeAccessErr = requireStoreAccess(req, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'products')
+    if (permErr) return permErr
 
     // Verify category belongs to store if provided
     if (data.categoryId !== undefined && data.categoryId !== null) {
@@ -182,6 +185,8 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(req, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'products')
+    if (permErr) return permErr
 
     // Soft delete
     await db.product.update({

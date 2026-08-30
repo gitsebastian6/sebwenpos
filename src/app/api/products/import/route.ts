@@ -1,4 +1,5 @@
 import { requireAuthStoreId } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import {
@@ -90,6 +91,8 @@ export async function POST(req: NextRequest) {
     const storeIdOrErr = requireAuthStoreId(req)
     if (storeIdOrErr instanceof NextResponse) return storeIdOrErr
     const storeIdNum = storeIdOrErr
+    const permErr = await requirePermission(req, 'products')
+    if (permErr) return permErr
 
     // Parse multipart form
     const formData = await req.formData()

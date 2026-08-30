@@ -11,6 +11,20 @@
 //   - EMPLOYEE             → the assigned Role's permissions when the role is
 //                            active, otherwise the permissions stored directly
 //                            on the Employee row. Missing key / parse error → deny.
+//
+// ── Where to apply `requirePermission` (convention) ──────────────────────
+// The role model has one boolean per module — it does NOT distinguish read
+// from write. Applying it bluntly to a GET would break cross-module reads:
+// the POS cashier holds only `pos` yet legitimately reads the catalog,
+// customers, services, tax rates and the open cash shift (see
+// src/hooks/pos/*, src/lib/offline/sync.ts).
+//
+//   • State-changing handlers (POST / PUT / PATCH / DELETE) → always gate on
+//     the owning module's permission, after `requireStoreAccess`.
+//   • GET handlers → gate only when the data is private to that one module
+//     (e.g. purchases, reports, the ledger). Leave shared reference reads
+//     (products, categories, customers, services, taxes, cash-register/current)
+//     at `requireStoreAccess` so the POS keeps working.
 // ---------------------------------------------------------------------------
 
 import { NextRequest, NextResponse } from 'next/server'

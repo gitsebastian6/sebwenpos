@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,8 @@ export async function PUT(
 
     const storeAccessErr = requireStoreAccess(req, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'products')
+    if (permErr) return permErr
 
     const category = await db.category.update({
       where: { id: categoryId },
@@ -83,6 +86,8 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(req, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'products')
+    if (permErr) return permErr
 
     // Remove category from products that reference it, then delete
     await db.product.updateMany({

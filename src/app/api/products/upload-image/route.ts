@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { saveProductImageFile } from '@/lib/file-storage'
 
 export const dynamic = 'force-dynamic'
@@ -29,6 +30,8 @@ export async function POST(req: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'products')
+    if (permErr) return permErr
 
     if (!ALLOWED_TYPES.includes(data.fileType)) {
       return NextResponse.json(

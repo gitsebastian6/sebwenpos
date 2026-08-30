@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from 'next/server'
@@ -136,6 +137,8 @@ export async function POST(req: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(req, data.storeId)
     if (storeAccessError) return storeAccessError
+    const permErr = await requirePermission(req, 'products')
+    if (permErr) return permErr
 
     // Verify category belongs to store if provided
     if (data.categoryId) {
