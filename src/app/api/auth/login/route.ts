@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { fullPermissions } from '@/lib/permissions-catalog'
 import { verifyPassword, sanitizeUser } from '@/lib/auth'
 import { generateToken } from '@/lib/auth-helpers'
 import { withRateLimit, LOGIN_RATE_LIMIT, attachRateLimitHeaders } from '@/lib/rate-limiter'
@@ -113,12 +114,7 @@ export async function POST(req: NextRequest) {
     let availableStores: Array<{ id: number; name: string; isMain: boolean }> | null = null
 
     if (user.role === 'OWNER' && store) {
-      permissions = {
-        dashboard: true, pos: true, tables: true, products: true,
-        customers: true, providers: true, orders: true, invoices: true,
-        inventory: true, accounting: true, services: true, reports: true,
-        settings: true, quotations: true, manageEmployees: true, manageRoles: true,
-      }
+      permissions = fullPermissions()
     } else if (user.role === 'EMPLOYEE' && user.employee) {
       store = user.employee.store
       employeeId = user.employee.id

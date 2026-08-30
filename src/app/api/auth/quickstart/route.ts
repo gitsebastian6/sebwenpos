@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { fullPermissions } from '@/lib/permissions-catalog'
 import { hashPassword, sanitizeUser } from '@/lib/auth'
 import { generateToken } from '@/lib/auth-helpers'
 import { withRateLimit, SIGNUP_RATE_LIMIT } from '@/lib/rate-limiter'
@@ -54,12 +55,7 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await hashPassword(data.password)
 
-    const adminPermissions = JSON.stringify({
-      dashboard: true, pos: true, tables: true, products: true,
-      customers: true, providers: true, orders: true, invoices: true,
-      inventory: true, accounting: true, services: true, reports: true,
-      settings: true, quotations: true, manageEmployees: true, manageRoles: true,
-    })
+    const adminPermissions = JSON.stringify(fullPermissions())
 
     const cajeroPermissions = JSON.stringify({
       dashboard: true, pos: true, orders: true, quotations: true,
@@ -235,12 +231,7 @@ export async function POST(req: NextRequest) {
     })
     const safeUser = sanitizeUser(result.user)
 
-    const permissions = {
-      dashboard: true, pos: true, tables: true, products: true,
-      customers: true, providers: true, orders: true, invoices: true,
-      inventory: true, accounting: true, services: true, reports: true,
-      settings: true, quotations: true, manageEmployees: true, manageRoles: true,
-    }
+    const permissions = fullPermissions()
 
     const response = NextResponse.json({
       user: safeUser,

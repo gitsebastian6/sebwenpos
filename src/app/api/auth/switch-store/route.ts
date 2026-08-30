@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { fullPermissions } from '@/lib/permissions-catalog'
 import { sanitizeUser } from '@/lib/auth'
 import { generateToken } from '@/lib/auth-helpers'
 import { getAuthUser } from '@/lib/api-auth'
@@ -13,13 +14,8 @@ const SWITCH_STORE_RATE_LIMIT: { maxRequests: number; windowSeconds: number } = 
 
 /** Full OWNER permissions (same as login) */
 function buildOwnerPermissions(isPastDue: boolean): Record<string, boolean> {
-  return {
-    dashboard: true, pos: !isPastDue, tables: !isPastDue,
-    products: true, customers: true, providers: true, purchases: true,
-    services: true, orders: true, invoices: true, quotations: true,
-    inventory: true, accounting: true, reports: true,
-    settings: true, manageEmployees: true, manageRoles: true,
-  }
+  // OWNER = acceso completo; en gracia (PAST_DUE) se le quita pos/tables/mesas.
+  return { ...fullPermissions(), pos: !isPastDue, tables: !isPastDue }
 }
 
 /**

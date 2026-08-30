@@ -5,29 +5,9 @@ import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { requirePermission } from '@/lib/permissions'
 import { requireFeature } from '@/lib/subscription-guard'
+import { emptyPermissions } from '@/lib/permissions-catalog'
 
 export const dynamic = 'force-dynamic'
-
-const ALL_PERMISSIONS: Record<string, boolean> = {
-  dashboard: false,
-  pos: false,
-  tables: false,
-  products: false,
-  customers: false,
-  providers: false,
-  purchases: false,
-  orders: false,
-  onlineOrders: false,
-  invoices: false,
-  inventory: false,
-  accounting: false,
-  services: false,
-  reports: false,
-  settings: false,
-  quotations: false,
-  manageEmployees: false,
-  manageRoles: false,
-}
 
 const updateRoleSchema = z.object({
   name: z.string().min(2).max(50).optional(),
@@ -94,7 +74,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (data.description !== undefined) updateData.description = data.description
     if (data.isActive !== undefined) updateData.isActive = data.isActive
     if (data.permissions !== undefined) {
-      updateData.permissions = JSON.stringify({ ...ALL_PERMISSIONS, ...data.permissions })
+      updateData.permissions = JSON.stringify({ ...emptyPermissions(), ...data.permissions })
     }
 
     // Si se marca como default, quitar default a otros

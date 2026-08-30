@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { PERMISSION_LABELS } from '@/lib/permissions-catalog'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -82,27 +83,7 @@ const POSITIONS = [
   { value: 'Otro', label: 'Otro' },
 ]
 
-// Permission labels for read-only display
-const PERMISSION_LABELS: Record<string, string> = {
-  dashboard: 'Dashboard',
-  pos: 'Punto de Venta',
-  tables: 'Mesas y Comandas',
-  products: 'Productos',
-  customers: 'Clientes',
-  providers: 'Proveedores',
-  purchases: 'Compras',
-  orders: 'Órdenes y Ventas',
-  onlineOrders: 'Pedidos en línea',
-  invoices: 'Facturación',
-  inventory: 'Inventario',
-  accounting: 'Contabilidad',
-  services: 'Servicios',
-  reports: 'Informes',
-  settings: 'Configuración',
-  quotations: 'Cotizaciones',
-  manageEmployees: 'Gestionar Empleados',
-  manageRoles: 'Gestionar Roles',
-}
+// PERMISSION_LABELS — fuente única en src/lib/permissions-catalog.ts (importado arriba).
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 

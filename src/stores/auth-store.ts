@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { useAppStore } from './app-store'
+import { fullPermissions } from '@/lib/permissions-catalog'
 
 export interface AuthUser {
   id: number
@@ -151,12 +152,8 @@ export function checkAndRepairAuth(): { isAuthenticated: boolean; storeId: numbe
 }
 
 // Permisos por defecto (owner tiene todo)
-const DEFAULT_PERMISSIONS: Record<string, boolean> = {
-  dashboard: true, pos: true, tables: true, products: true,
-  customers: true, providers: true, orders: true, onlineOrders: true, invoices: true,
-  inventory: true, accounting: true, services: true, reports: true,
-  settings: true, quotations: true, manageEmployees: true, manageRoles: true,
-}
+// OWNER / fallback → acceso completo. Fuente: src/lib/permissions-catalog.ts
+const DEFAULT_PERMISSIONS = fullPermissions()
 
 export const useAuthStore = create<AuthState>()(
   persist(

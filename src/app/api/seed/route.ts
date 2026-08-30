@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { db } from '@/lib/db'
+import { fullPermissions } from '@/lib/permissions-catalog'
 import { hashPassword } from '@/lib/auth'
 import { requireAuth } from '@/lib/api-auth'
 import { z } from 'zod'
@@ -427,12 +428,7 @@ export async function POST(req: NextRequest) {
     })
 
     // ─── Default Roles ────────────────────────────────────────
-    const adminPerms = JSON.stringify({
-      dashboard: true, pos: true, tables: true, products: true,
-      customers: true, providers: true, orders: true, invoices: true,
-      inventory: true, accounting: true, services: true, reports: true,
-      settings: true, quotations: true, manageEmployees: true, manageRoles: true,
-    })
+    const adminPerms = JSON.stringify(fullPermissions())
     const cajeroPerms = JSON.stringify({
       dashboard: true, pos: true, tables: false, products: false,
       customers: true, providers: false, orders: true, invoices: false,

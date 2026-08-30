@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
+import { PERMISSION_KEYS } from '@/lib/permissions-catalog'
 import { toast } from 'sonner'
 import {
   Plus,
@@ -139,6 +140,18 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
 const ALL_PERMISSIONS: Record<string, boolean> = Object.fromEntries(
   PERMISSION_GROUPS.flatMap((g) => g.permissions.map((p) => [p.key, false]))
 )
+
+// Aserción de dev: el editor debe exponer EXACTAMENTE las keys del catálogo.
+// Si falla, alguien agregó/quitó un permiso en permissions-catalog.ts sin
+// actualizar PERMISSION_GROUPS (o al revés).
+if (process.env.NODE_ENV !== 'production') {
+  const editorKeys = new Set(Object.keys(ALL_PERMISSIONS))
+  const missing = PERMISSION_KEYS.filter((k) => !editorKeys.has(k))
+  const extra = [...editorKeys].filter((k) => !(PERMISSION_KEYS as readonly string[]).includes(k))
+  if (missing.length || extra.length) {
+    console.error('[roles-view] PERMISSION_GROUPS desincronizado con permissions-catalog:', { missing, extra })
+  }
+}
 
 function getGroupForPermission(key: string): PermissionGroup | undefined {
   return PERMISSION_GROUPS.find((g) => g.permissions.some((p) => p.key === key))

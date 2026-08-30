@@ -5,30 +5,9 @@ import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { requirePermission } from '@/lib/permissions'
 import { requireFeature } from '@/lib/subscription-guard'
+import { emptyPermissions } from '@/lib/permissions-catalog'
 
 export const dynamic = 'force-dynamic'
-
-// Todos los permisos disponibles con sus valores por defecto
-const ALL_PERMISSIONS: Record<string, boolean> = {
-  dashboard: false,
-  pos: false,
-  tables: false,
-  products: false,
-  customers: false,
-  providers: false,
-  purchases: false,
-  orders: false,
-  onlineOrders: false,
-  invoices: false,
-  inventory: false,
-  accounting: false,
-  services: false,
-  reports: false,
-  settings: false,
-  quotations: false,
-  manageEmployees: false,
-  manageRoles: false,
-}
 
 const createRoleSchema = z.object({
   storeId: z.number().int().positive(),
@@ -98,7 +77,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Combinar permisos recibidos con los que faltan
-    const finalPermissions = { ...ALL_PERMISSIONS, ...data.permissions }
+    const finalPermissions = { ...emptyPermissions(), ...data.permissions }
 
     const role = await db.role.create({
       data: {

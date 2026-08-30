@@ -31,29 +31,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAuthUser } from '@/lib/api-auth'
 
-/** Module/capability keys used by the sidebar and the role editor. */
-export const PERMISSION_KEYS = [
-  'dashboard',
-  'pos',
-  'tables',
-  'products',
-  'customers',
-  'providers',
-  'purchases',
-  'orders',
-  'onlineOrders',
-  'invoices',
-  'inventory',
-  'accounting',
-  'services',
-  'reports',
-  'settings',
-  'quotations',
-  'manageEmployees',
-  'manageRoles',
-] as const
-
-export type PermissionKey = (typeof PERMISSION_KEYS)[number]
+// Fuente única de verdad de las keys — ver src/lib/permissions-catalog.ts.
+export { PERMISSION_KEYS, type PermissionKey } from '@/lib/permissions-catalog'
+import type { PermissionKey } from '@/lib/permissions-catalog'
 
 /**
  * Resolve an employee's effective permission map the same way `auth/login`

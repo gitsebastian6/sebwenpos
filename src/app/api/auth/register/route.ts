@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { fullPermissions } from '@/lib/permissions-catalog'
 import { hashPassword, sanitizeUser } from '@/lib/auth'
 import { generateToken } from '@/lib/auth-helpers'
 import { withRateLimit, REGISTER_RATE_LIMIT, attachRateLimitHeaders } from '@/lib/rate-limiter'
@@ -132,12 +133,7 @@ export async function POST(req: NextRequest) {
       role: 'OWNER',
     })
 
-    const permissions: Record<string, boolean> = {
-      dashboard: true, pos: true, tables: true, products: true,
-      customers: true, providers: true, orders: true, invoices: true,
-      inventory: true, accounting: true, services: true, reports: true,
-      settings: true, quotations: true, manageEmployees: true,
-    }
+    const permissions: Record<string, boolean> = fullPermissions()
 
     return attachRateLimitHeaders(
       NextResponse.json({ user: safeUser, store: user.store, token, permissions }),
