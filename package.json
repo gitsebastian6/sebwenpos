@@ -27,6 +27,7 @@
     "db:migrate:status": "prisma migrate status",
     "db:reset": "prisma migrate reset",
     "db:seed": "npx tsx prisma/seed.ts",
+    "db:backfill:plan-features": "npx tsx scripts/backfill-plan-features.ts",
     "db:seed:demo": "npx tsx prisma/seed-saas-demo.ts",
     "test": "vitest run",
     "test:watch": "vitest",
