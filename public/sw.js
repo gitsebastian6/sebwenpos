@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-const SW_VERSION = 'v1';
+const SW_VERSION = 'v5';
 
 // ─── Cache Names ──────────────────────────────────────────────────────
 const STATIC_CACHE = `sebwen-static-${SW_VERSION}`;

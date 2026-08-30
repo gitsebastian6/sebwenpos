@@ -15,6 +15,7 @@ export function handlePrintPurchases(
   search: string,
   currencyCode: string,
   thermal = false,
+  paperWidth: '80' | '58' = '80',
 ) {
   const filterLabel = statusFilter === 'ALL' ? 'Todas' : statusFilter === 'COMPLETED' ? 'Completadas' : statusFilter === 'PENDING' ? 'Pendientes' : 'Canceladas'
   const subtitle = search || statusFilter !== 'ALL' ? `${search ? `"${search}" · ` : ''}${filterLabel}` : 'Todas las compras'
@@ -28,7 +29,7 @@ export function handlePrintPurchases(
       lines.push({ left: `${format(new Date(p.date), 'dd/MM/yy', { locale: es })} · ${p.itemCount} prod. · IVA: ${formatCurrency(p.totalIva, currencyCode)}` })
       lines.push({ left: p.paymentStatus === 'PAID' ? '✓ Pagado' : p.paymentStatus === 'PARTIAL' ? '◐ Parcial' : '○ Pendiente', separator: true })
     })
-    printThermal80mm({ title: 'COMPRAS', lines, footer: `Total: ${purchases.length}` })
+    printThermal80mm({ title: 'COMPRAS', lines, footer: `Total: ${purchases.length}`, paperWidth })
   } else {
     printReport({
       title: 'Reporte de Compras', subtitle,
@@ -55,7 +56,7 @@ export function handlePrintPurchases(
 
 // ── Print single purchase detail ──
 
-export function handlePrintPurchaseDetail(purchase: Purchase, currencyCode: string) {
+export function handlePrintPurchaseDetail(purchase: Purchase, currencyCode: string, paperWidth: '80' | '58' = '80') {
   const lines: { left: string; right?: string; bold?: boolean; separator?: boolean }[] = []
   const doc = getDocBadge(purchase.documentType)
   lines.push({ left: `${purchase.consecutiveNumber || `#${purchase.id}`} [${doc.short}]`, bold: true, separator: true })
@@ -80,12 +81,12 @@ export function handlePrintPurchaseDetail(purchase: Purchase, currencyCode: stri
   if (purchase.totalDiscount > 0) lines.push({ left: `Descuento:`, right: formatCurrency(purchase.totalDiscount, currencyCode) })
   lines.push({ left: `TOTAL:`, right: formatCurrency(purchase.total, currencyCode), bold: true, separator: true })
   lines.push({ left: `Pagado: ${formatCurrency(purchase.amountPaid, currencyCode)} / ${formatCurrency(purchase.total, currencyCode)}`, separator: true })
-  printThermal80mm({ title: 'COMPRA DETALLE', lines, footer: `Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm')}` })
+  printThermal80mm({ title: 'COMPRA DETALLE', lines, footer: `Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, paperWidth })
 }
 
 // ── Print thermal detail (compact) ──
 
-export function handlePrintThermalDetail(purchase: Purchase, currencyCode: string) {
+export function handlePrintThermalDetail(purchase: Purchase, currencyCode: string, paperWidth: '80' | '58' = '80') {
   const lines: { left: string; right?: string; bold?: boolean; separator?: boolean }[] = []
   const doc = getDocBadge(purchase.documentType)
   lines.push({ left: `${purchase.consecutiveNumber || `#${purchase.id}`} [${doc.short}]`, bold: true, separator: true })
@@ -108,7 +109,7 @@ export function handlePrintThermalDetail(purchase: Purchase, currencyCode: strin
   if (purchase.totalDiscount > 0) lines.push({ left: 'Desc:', right: `-${formatCurrency(purchase.totalDiscount, currencyCode)}` })
   lines.push({ left: 'TOTAL:', right: formatCurrency(purchase.total, currencyCode), bold: true, separator: true })
   lines.push({ left: `Pagado: ${formatCurrency(purchase.amountPaid, currencyCode)}/${formatCurrency(purchase.total, currencyCode)}` })
-  printThermal80mm({ title: 'COMPRA DETALLE', lines, footer: `${format(new Date(), 'dd/MM/yyyy HH:mm')}` })
+  printThermal80mm({ title: 'COMPRA DETALLE', lines, footer: `${format(new Date(), 'dd/MM/yyyy HH:mm')}`, paperWidth })
 }
 
 // ── Excel export ──

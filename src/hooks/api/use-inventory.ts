@@ -95,6 +95,35 @@ export function useKardex(
   })
 }
 
+export interface ProductBatch {
+  id: number
+  lotNumber: string
+  expiryDate: string | null
+  manufacturingDate: string | null
+  quantity: number
+  unitCost: number
+}
+
+/**
+ * Lotes ACTIVE de un producto (FEFO), para el selector de lote en los diálogos
+ * de ajuste / pérdida / devolución. Deshabilitado si falta productId/storeId.
+ */
+export function useProductBatches(
+  productId: number | null | undefined,
+  storeId: number | null | undefined
+) {
+  return useQuery<ProductBatch[]>({
+    queryKey: ['product-batches', productId, storeId],
+    queryFn: async () => {
+      const res = await fetch(`/api/products/${productId}/batches?storeId=${storeId}`)
+      if (!res.ok) throw new Error('Error al obtener lotes')
+      return res.json()
+    },
+    enabled: !!productId && !!storeId,
+    staleTime: 15_000,
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Mutation hooks
 // ---------------------------------------------------------------------------

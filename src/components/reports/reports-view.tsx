@@ -1,7 +1,6 @@
 'use client'
 
-import React from 'react'
-import { useState, useRef } from 'react'
+import React, { useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { useQuery } from '@tanstack/react-query'
 import { unwrapArray, queryFetch } from '@/hooks/api/query-helpers'
@@ -21,11 +20,11 @@ import {
   Download, FileSpreadsheet,
 } from 'lucide-react'
 import { exportToExcel } from '@/lib/export-excel'
-import { InventoryActionDialogs } from './inventory-action-dialogs'
-import type { InventoryDialogsHandle } from './inventory-action-dialogs'
+import { InventoryActionDialog } from '@/components/inventory/inventory-action-dialog'
+import type { ActionType, Product as InvProduct } from '@/components/inventory/inventory-types'
 import {
   tabLabelMap, getExportData, fdate,
-  type ReportsData, type ReportProduct, type TraceabilityItem,
+  type ReportsData, type TraceabilityItem,
 } from './reports-export'
 import { LoadingSkeleton } from './report-shared'
 import { CifrasTab, VentasTab, RentabilidadTab, PuntoEqTab } from './report-tabs-overview'
@@ -51,18 +50,18 @@ export function ReportsView() {
   // Trazabilidad filter
   const [trazFilter, setTrazFilter] = useState<string>('ALL')
 
-  // Ref for inventory dialogs
-  const dialogsRef = useRef<InventoryDialogsHandle>(null)
+  // Inventory action dialog (compartido con el módulo Inventario)
+  const [invAction, setInvAction] = useState<{ type: ActionType } | null>(null)
 
   // ─── TanStack Query hooks ───────────────────────────────────────────────
   const { data: rawData, isLoading: loading, error: queryError, refetch: fetchReports } = useInformes(store?.id, from, to)
   const data = rawData as unknown as ReportsData | undefined
 
-  const { data: productsData, refetch: fetchProducts } = useQuery<ReportProduct[]>({
+  const { data: productsData, refetch: fetchProducts } = useQuery<InvProduct[]>({
     queryKey: ['products-for-reports', store?.id],
     queryFn: async () => {
       const res = await fetch(`/api/products?storeId=${store?.id}`)
-      return unwrapArray<ReportProduct>(res)
+      return unwrapArray<InvProduct>(res)
     },
     enabled: !!store?.id,
     staleTime: 120_000,
@@ -84,9 +83,9 @@ export function ReportsView() {
   }
 
   // ── Open dialogs ──
-  const openReturnDialog = () => { fetchProducts(); setTimeout(() => dialogsRef.current?.openReturnDialog(), 0) }
-  const openAdjustDialog = () => { fetchProducts(); setTimeout(() => dialogsRef.current?.openAdjustDialog(), 0) }
-  const openLossDialog = () => { fetchProducts(); setTimeout(() => dialogsRef.current?.openLossDialog(), 0) }
+  const openReturnDialog = () => { fetchProducts(); setInvAction({ type: 'return' }) }
+  const openAdjustDialog = () => { fetchProducts(); setInvAction({ type: 'adjust' }) }
+  const openLossDialog = () => { fetchProducts(); setInvAction({ type: 'loss' }) }
 
   // ── Export helpers ──
   const dateRangeStr = `${fdate(from)} - ${fdate(to)}`
@@ -244,13 +243,18 @@ export function ReportsView() {
         <CxcTab d={d} cc={cc} />
       </Tabs>
 
-      {/* ── Inventory Action Dialogs ── */}
-      <InventoryActionDialogs
-        ref={dialogsRef}
-        storeId={store!.id}
-        products={products}
-        onSuccess={fetchReports}
-      />
+      {/* ── Inventory Action Dialog (compartido) ── */}
+      {invAction && (
+        <InventoryActionDialog
+          key={invAction.type}
+          open
+          onOpenChange={(o) => { if (!o) { setInvAction(null); fetchReports() } }}
+          actionType={invAction.type}
+          storeId={store?.id}
+          products={products}
+          currencyCode={cc}
+        />
+      )}
     </div>
   )
 }

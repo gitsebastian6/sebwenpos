@@ -67,7 +67,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (q) {
-      where.name = { contains: q }
+      // Match name, SKU or barcode so a scanned code (fed into the same search
+      // box) resolves the product server-side, not just typed names.
+      where.OR = [
+        { name: { contains: q } },
+        { sku: { contains: q } },
+        { barcode: { contains: q } },
+      ]
     }
 
     if (categoryId && categoryId !== 'all') {

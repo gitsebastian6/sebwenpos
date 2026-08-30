@@ -11,9 +11,12 @@ import { ProductImage } from '@/components/ui/product-image'
 import { getUnitOfMeasureLabel as unitLabelText } from '@/lib/constants'
 import { parseQtyInput, qtyStepFor, roundQty, formatQty, clampQty } from '@/lib/format'
 import { sortPresentationOptions } from '@/lib/product-presentations'
+import { useProductScanner } from '@/hooks/use-product-scanner'
+import { normalizePhone, buildWaMeUrl } from '@/lib/phone'
 import {
   Store, Phone, MapPin, ShoppingCart, MessageCircle,
   Plus, Minus, Trash2, Search, X, ArrowRight, Loader2,
+  Bike, ShoppingBag, CheckCircle2,
 } from 'lucide-react'
 
 interface Presentation {
@@ -34,6 +37,7 @@ interface Product {
   description: string | null
   imgUrl: string | null
   sku: string | null
+  barcode: string | null
   presentations?: Presentation[]
 }
 
@@ -48,10 +52,19 @@ interface StoreInfo {
   id: number
   name: string
   phone: string | null
+  whatsapp: string | null
   address: string | null
   cityName: string | null
   currencyCode: string
+  dialCode: string
+  deliveryEnabled: boolean
+  deliveryFee: number
+  deliveryFreeAbove: number | null
+  deliveryMinOrder: number
+  acceptingOrders: boolean
 }
+
+type Fulfillment = 'DELIVERY' | 'PICKUP'
 
 interface CartItem {
   key: string
@@ -76,6 +89,17 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // ── Checkout ──
+  const [fulfillment, setFulfillment] = useState<Fulfillment>('DELIVERY')
+  const [customerName, setCustomerName] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [countryCode, setCountryCode] = useState('57')
+  const [deliveryAddress, setDeliveryAddress] = useState('')
+  const [deliveryNotes, setDeliveryNotes] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const [confirmation, setConfirmation] = useState<{ orderNumber: string; total: number; waUrl: string } | null>(null)
+
   useEffect(() => {
     async function loadStore() {
       try {
@@ -84,6 +108,8 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
         const data = await res.json()
         setStore(data.store)
         setCategories(data.categories)
+        if (data.store?.dialCode) setCountryCode(String(data.store.dialCode))
+        if (!data.store?.deliveryEnabled) setFulfillment('PICKUP')
       } catch (err) {
         setError('No pudimos cargar esta tienda')
       } finally {
@@ -140,10 +166,16 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
     setCart(prev => prev.filter(item => item.key !== key))
   }
 
+  const CURRENCY_LOCALE: Record<string, string> = {
+    COP: 'es-CO', MXN: 'es-MX', PEN: 'es-PE', CLP: 'es-CL', ARS: 'es-AR',
+    USD: 'en-US', EUR: 'es-ES', BRL: 'pt-BR',
+  }
+
   function formatPrice(price: number) {
-    return new Intl.NumberFormat('es-CO', {
+    const cur = store?.currencyCode || 'COP'
+    return new Intl.NumberFormat(CURRENCY_LOCALE[cur] || 'es-CO', {
       style: 'currency',
-      currency: store?.currencyCode || 'COP',
+      currency: cur,
       minimumFractionDigits: 0,
     }).format(price)
   }
@@ -156,35 +188,130 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
     return cart.reduce((sum, item) => sum + item.quantity, 0)
   }
 
-  function sendWhatsAppOrder() {
-    if (!store?.phone || cart.length === 0) return
+  // Costo de domicilio calculado con la misma regla que el backend, para que
+  // el cliente lo vea ANTES de pedir.
+  function deliveryFeeFor(subtotal: number): number {
+    if (fulfillment !== 'DELIVERY' || !store?.deliveryEnabled) return 0
+    if (store.deliveryFreeAbove != null && subtotal >= store.deliveryFreeAbove) return 0
+    return Math.max(0, store.deliveryFee || 0)
+  }
 
-    let message = `🛒 *Pedido de Tienda Virtual*\n\n`
-    message += `📋 *${store.name}*\n\n`
+  function missingForMin(subtotal: number): number {
+    if (fulfillment !== 'DELIVERY' || !store?.deliveryEnabled || !store.deliveryMinOrder) return 0
+    return Math.max(0, store.deliveryMinOrder - subtotal)
+  }
 
+  function missingForFree(subtotal: number): number {
+    if (fulfillment !== 'DELIVERY' || !store?.deliveryEnabled || store.deliveryFreeAbove == null) return 0
+    return Math.max(0, store.deliveryFreeAbove - subtotal)
+  }
+
+  async function submitOrder() {
+    if (!store || cart.length === 0 || submitting) return
+    setSubmitError('')
+
+    if (!customerName.trim() || customerName.trim().length < 2) {
+      setSubmitError('Escribe tu nombre'); return
+    }
+    if (normalizePhone(customerPhone, countryCode).length < 8) {
+      setSubmitError('El teléfono no es válido'); return
+    }
+    if (fulfillment === 'DELIVERY' && !deliveryAddress.trim()) {
+      setSubmitError('La dirección es obligatoria para domicilio'); return
+    }
+    const subtotal = getCartTotal()
+    if (missingForMin(subtotal) > 0) {
+      setSubmitError(`Te faltan ${formatPrice(missingForMin(subtotal))} para el pedido mínimo`); return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/public/store/${storeId}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: customerName.trim(),
+          customerPhone: customerPhone.trim(),
+          countryCode,
+          fulfillmentType: fulfillment,
+          deliveryAddress: fulfillment === 'DELIVERY' ? deliveryAddress.trim() : undefined,
+          deliveryNotes: deliveryNotes.trim() || undefined,
+          items: cart.map(i => ({
+            productId: i.productId,
+            presentationId: i.presentationId ?? undefined,
+            quantity: i.quantity,
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setSubmitError(data.error || 'No pudimos registrar tu pedido')
+        return
+      }
+
+      // Persistido. Ahora abrir WhatsApp con el N° de pedido.
+      const oo = data.onlineOrder
+      const waUrl = buildWhatsAppUrl(oo.orderNumber, oo.deliveryFee ?? 0, oo.total ?? subtotal)
+      if (waUrl) window.open(waUrl, '_blank')
+      setConfirmation({ orderNumber: oo.orderNumber, total: oo.total ?? subtotal, waUrl })
+      setCart([])
+      setShowCart(false)
+    } catch {
+      setSubmitError('Sin conexión. Revisa tu internet e inténtalo de nuevo.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  function buildWhatsAppUrl(orderNumber: string, fee: number, total: number): string {
+    if (!store) return ''
+    const dest = normalizePhone(store.whatsapp || store.phone || '', countryCode)
+    if (!dest) return ''
+    let message = `🛒 *Pedido ${orderNumber}*\n📋 *${store.name}*\n\n`
+    message += `👤 ${customerName.trim()}\n📞 ${customerPhone.trim()}\n`
+    message += fulfillment === 'DELIVERY'
+      ? `🛵 Domicilio: ${deliveryAddress.trim()}\n`
+      : `🏪 Recoge en tienda\n`
+    if (deliveryNotes.trim()) message += `📝 ${deliveryNotes.trim()}\n`
+    message += `\n`
     cart.forEach(item => {
       const label = item.presentationLabel ? ` (${item.presentationLabel})` : ''
       message += `• ${item.name}${label} x${formatQty(item.quantity)} — ${formatPrice(item.price * item.quantity)}\n`
     })
-
-    message += `\n💰 *Total: ${formatPrice(getCartTotal())}*`
-    message += `\n\n_Pedido enviado desde la tienda virtual de Sebwen_`
-
-    const phone = store.phone.replace(/\D/g, '')
-    const encodedMessage = encodeURIComponent(message)
-    window.open(`https://wa.me/57${phone}?text=${encodedMessage}`, '_blank')
+    if (fee > 0) message += `\n🛵 Domicilio: ${formatPrice(fee)}`
+    message += `\n💰 *Total: ${formatPrice(total)}*`
+    return buildWaMeUrl(dest, message)
   }
 
-  // Filter products by search and category
+  // Filter products by search and category — name, SKU or barcode (own or a
+  // presentation's) so a scanned code resolves the item.
   const filteredCategories = categories
     .filter(cat => !selectedCategory || cat.id === selectedCategory)
     .map(cat => ({
       ...cat,
-      products: cat.products.filter(p =>
-        !search || p.name.toLowerCase().includes(search.toLowerCase())
-      ),
+      products: cat.products.filter(p => {
+        if (!search) return true
+        const q = search.toLowerCase()
+        return (
+          p.name.toLowerCase().includes(q) ||
+          (p.sku || '').toLowerCase().includes(q) ||
+          (p.barcode || '').toLowerCase().includes(q) ||
+          (p.presentations || []).some(pr =>
+            (pr.sku || '').toLowerCase().includes(q) || (pr.barcode || '').toLowerCase().includes(q))
+        )
+      }),
     }))
     .filter(cat => cat.products.length > 0)
+
+  // Scanner (camera + USB gun) — a shopper can scan an item's barcode to find
+  // it. Resolves against the whole catalog; the code drops into the search box.
+  const { scanButton, scannerDialog } = useProductScanner({
+    products: categories.flatMap(c => c.products),
+    size: 'compact',
+    label: 'Escanear producto',
+    onExactMatch: (_m, code) => setSearch(code),
+    onText: (code) => setSearch(code),
+  })
 
   if (loading) {
     return (
@@ -237,7 +364,7 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
       <div className="border-b border-zinc-800/40 bg-zinc-900/30">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4 text-xs text-zinc-500">
           {store.phone && (
-            <a href={`tel:+57${store.phone.replace(/\D/g, '')}`} className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors">
+            <a href={`tel:+${normalizePhone(store.phone, store.dialCode)}`} className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors">
               <Phone className="h-3.5 w-3.5" />
               {store.phone}
             </a>
@@ -251,22 +378,51 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
         </div>
       </div>
 
+      {/* Delivery / pickup policy — visible ANTES de pedir */}
+      <div className={`border-b border-zinc-800/40 ${store.acceptingOrders ? 'bg-emerald-950/20' : 'bg-amber-950/20'}`}>
+        <div className="max-w-3xl mx-auto px-4 py-2.5 text-xs flex flex-wrap items-center gap-x-3 gap-y-1">
+          {!store.acceptingOrders ? (
+            <span className="text-amber-400 font-medium">🌙 Cerrado — no está recibiendo pedidos ahora</span>
+          ) : store.deliveryEnabled ? (
+            <>
+              <span className="text-emerald-400 font-medium inline-flex items-center gap-1">
+                <Bike className="h-3.5 w-3.5" /> Domicilio {formatPrice(store.deliveryFee)}
+              </span>
+              {store.deliveryFreeAbove != null && (
+                <span className="text-zinc-400">· Gratis desde {formatPrice(store.deliveryFreeAbove)}</span>
+              )}
+              {store.deliveryMinOrder > 0 && (
+                <span className="text-zinc-400">· Pedido mínimo {formatPrice(store.deliveryMinOrder)}</span>
+              )}
+            </>
+          ) : (
+            <span className="text-zinc-400 inline-flex items-center gap-1">
+              <ShoppingBag className="h-3.5 w-3.5" /> Solo recoge en tienda
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Search */}
       <div className="max-w-3xl mx-auto px-4 pt-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-600" />
           <Input
-            placeholder="Buscar productos..."
+            placeholder="Buscar o escanear productos..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 h-10 rounded-xl border-zinc-800 bg-zinc-900/50 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/20 focus-visible:border-emerald-500/40"
+            className="pl-10 pr-20 h-10 rounded-xl border-zinc-800 bg-zinc-900/50 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/20 focus-visible:border-emerald-500/40"
           />
           {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-300">
+            <button onClick={() => setSearch('')} className="absolute right-10 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-300">
               <X className="h-4 w-4" />
             </button>
           )}
+          <div className="absolute right-1 top-1/2 -translate-y-1/2">
+            {scanButton}
+          </div>
         </div>
+        {scannerDialog}
       </div>
 
       {/* Category pills */}
@@ -341,7 +497,10 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
               <ShoppingCart className="h-5 w-5" />
               <span>{getCartCount()} producto{getCartCount() !== 1 ? 's' : ''}</span>
               <span className="mx-1">·</span>
-              <span>{formatPrice(getCartTotal())}</span>
+              <span>{formatPrice(getCartTotal() + deliveryFeeFor(getCartTotal()))}</span>
+              {deliveryFeeFor(getCartTotal()) > 0 && (
+                <span className="text-[11px] font-normal text-emerald-100/80">(inc. domicilio)</span>
+              )}
               <ArrowRight className="h-4 w-4 ml-auto" />
             </Button>
           </div>
@@ -358,8 +517,12 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
                 <ShoppingCart className="h-5 w-5 text-emerald-400" />
                 Tu Pedido
               </h2>
-              <button onClick={() => setShowCart(false)} className="text-zinc-500 hover:text-zinc-200">
-                <X className="h-5 w-5" />
+              <button
+                onClick={() => setShowCart(false)}
+                aria-label="Cerrar"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 transition-colors hover:bg-emerald-500/20 hover:text-emerald-300"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
 
@@ -409,23 +572,141 @@ export default function StorefrontPage({ params }: { params: Promise<{ storeId: 
               ))}
             </div>
 
-            <div className="sticky bottom-0 bg-zinc-900 border-t border-zinc-800 p-4 space-y-3">
-              <div className="flex items-center justify-between text-lg font-bold">
-                <span>Total</span>
-                <span className="text-emerald-400">{formatPrice(getCartTotal())}</span>
+            {/* Checkout form */}
+            <div className="p-4 space-y-3 border-t border-zinc-800">
+              {store.deliveryEnabled && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setFulfillment('DELIVERY')}
+                    className={`h-10 rounded-lg text-sm font-medium border transition-colors inline-flex items-center justify-center gap-1.5 ${
+                      fulfillment === 'DELIVERY'
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40'
+                        : 'border-zinc-700 text-zinc-400'
+                    }`}
+                  >
+                    <Bike className="h-4 w-4" /> Domicilio
+                  </button>
+                  <button
+                    onClick={() => setFulfillment('PICKUP')}
+                    className={`h-10 rounded-lg text-sm font-medium border transition-colors inline-flex items-center justify-center gap-1.5 ${
+                      fulfillment === 'PICKUP'
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40'
+                        : 'border-zinc-700 text-zinc-400'
+                    }`}
+                  >
+                    <ShoppingBag className="h-4 w-4" /> Recoge
+                  </button>
+                </div>
+              )}
+
+              <Input
+                placeholder="Tu nombre"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="h-10 rounded-lg border-zinc-800 bg-zinc-800/50 text-zinc-100 placeholder:text-zinc-600"
+              />
+              <div className="flex gap-2">
+                <Input
+                  value={`+${countryCode}`}
+                  onChange={(e) => setCountryCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className="h-10 w-16 rounded-lg border-zinc-800 bg-zinc-800/50 text-center text-zinc-100"
+                  aria-label="Código de país"
+                />
+                <Input
+                  placeholder="Tu WhatsApp"
+                  inputMode="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  className="h-10 flex-1 rounded-lg border-zinc-800 bg-zinc-800/50 text-zinc-100 placeholder:text-zinc-600"
+                />
               </div>
+
+              {fulfillment === 'DELIVERY' && (
+                <>
+                  <Input
+                    placeholder="Dirección de entrega"
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    className="h-10 rounded-lg border-zinc-800 bg-zinc-800/50 text-zinc-100 placeholder:text-zinc-600"
+                  />
+                  <Input
+                    placeholder="Indicaciones (opcional): torre, apto, color de la casa…"
+                    value={deliveryNotes}
+                    onChange={(e) => setDeliveryNotes(e.target.value)}
+                    className="h-10 rounded-lg border-zinc-800 bg-zinc-800/50 text-zinc-100 placeholder:text-zinc-600"
+                  />
+                </>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-zinc-900 border-t border-zinc-800 p-4 space-y-2">
+              <div className="flex items-center justify-between text-sm text-zinc-400">
+                <span>Subtotal</span>
+                <span>{formatPrice(getCartTotal())}</span>
+              </div>
+              {fulfillment === 'DELIVERY' && store.deliveryEnabled && (
+                <div className="flex items-center justify-between text-sm text-zinc-400">
+                  <span>Domicilio</span>
+                  <span>{deliveryFeeFor(getCartTotal()) === 0 ? 'Gratis' : formatPrice(deliveryFeeFor(getCartTotal()))}</span>
+                </div>
+              )}
+              {missingForFree(getCartTotal()) > 0 && deliveryFeeFor(getCartTotal()) > 0 && (
+                <p className="text-[11px] text-emerald-400/80">Te faltan {formatPrice(missingForFree(getCartTotal()))} para envío gratis</p>
+              )}
+              <div className="flex items-center justify-between text-lg font-bold pt-1">
+                <span>Total</span>
+                <span className="text-emerald-400">{formatPrice(getCartTotal() + deliveryFeeFor(getCartTotal()))}</span>
+              </div>
+
+              {missingForMin(getCartTotal()) > 0 && (
+                <p className="text-xs text-amber-400 text-center">
+                  Te faltan {formatPrice(missingForMin(getCartTotal()))} para el pedido mínimo de domicilio
+                </p>
+              )}
+              {submitError && <p className="text-xs text-red-400 text-center">{submitError}</p>}
+
               <Button
-                onClick={sendWhatsAppOrder}
-                className="w-full h-12 rounded-xl gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white font-semibold text-base shadow-lg transition-all active:scale-[0.98]"
+                onClick={submitOrder}
+                disabled={submitting || !store.acceptingOrders || missingForMin(getCartTotal()) > 0}
+                className="w-full h-12 rounded-xl gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white font-semibold text-base shadow-lg transition-all active:scale-[0.98] disabled:opacity-50"
               >
-                <MessageCircle className="h-5 w-5" />
-                Pedir por WhatsApp
-                <ArrowRight className="h-4 w-4 ml-1" />
+                {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <MessageCircle className="h-5 w-5" />}
+                {store.acceptingOrders ? 'Enviar pedido por WhatsApp' : 'Tienda cerrada'}
+                {!submitting && store.acceptingOrders && <ArrowRight className="h-4 w-4 ml-1" />}
               </Button>
               <p className="text-[11px] text-zinc-600 text-center">
-                Se abrirá WhatsApp con tu pedido listo para enviar
+                Guardamos tu pedido y se abre WhatsApp para confirmarlo con el negocio
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation screen */}
+      {confirmation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+          <div className="max-w-sm w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-6 text-center space-y-3">
+            <CheckCircle2 className="h-12 w-12 text-emerald-500 mx-auto" />
+            <h2 className="text-lg font-bold">¡Pedido enviado!</h2>
+            <p className="text-sm text-zinc-400">
+              Tu pedido <span className="font-mono font-semibold text-zinc-200">{confirmation.orderNumber}</span> quedó registrado
+              por {formatPrice(confirmation.total)}. El negocio te confirmará por WhatsApp.
+            </p>
+            <p className="text-xs text-zinc-600">
+              Si no se abrió WhatsApp,{' '}
+              <button
+                className="text-emerald-400 underline"
+                onClick={() => confirmation.waUrl && window.open(confirmation.waUrl, '_blank')}
+              >
+                ábrelo aquí
+              </button>.
+            </p>
+            <Button
+              onClick={() => setConfirmation(null)}
+              className="w-full h-10 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+            >
+              Seguir comprando
+            </Button>
           </div>
         </div>
       )}

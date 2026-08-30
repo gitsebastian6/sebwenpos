@@ -19,6 +19,8 @@ import { formatCurrency } from '@/lib/auth'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { playError } from '@/lib/pos-sounds'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
+import { receiptStoreFields } from '@/lib/receipt-store-fields'
+import { resolveScannedCode } from '@/lib/product-search'
 import { useAuthStore } from '@/stores/auth-store'
 import type { OrderItemData, ProductPresentation } from '@/types'
 import {
@@ -26,7 +28,6 @@ import {
     Printer,
     RotateCcw,
     ScanBarcode,
-    Search,
     ShoppingCart,
     Star,
 } from 'lucide-react'
@@ -83,37 +84,27 @@ export function POSView() {
 
   // ─── Barcode scanner state ──────────────────────────
   const [barcodeFlash, setBarcodeFlash] = useState<'success' | 'error' | null>(null)
-  const barcodeInputRef = useRef<HTMLInputElement>(null)
 
-  // ─── Barcode scan handler ──────────────────────────
+  const flashSuccess = useCallback(() => {
+    setBarcodeFlash('success')
+    setTimeout(() => setBarcodeFlash(null), 1500)
+  }, [])
+
+  // ─── Barcode scan handler (hardware gun / camera) ──
+  // Fires on a real scan: exact match adds to the cart, a miss beeps + warns.
   const handleBarcodeScan = useCallback(
     (barcode: string) => {
-      const lower = barcode.toLowerCase()
-      // Exact match on the base "Unidad" barcode first...
-      const product = products.find((p) => p.barcode && p.barcode.toLowerCase() === lower)
-      // ...otherwise search each product's presentations (Six-pack, Caja x24, etc.)
-      let matchedProduct = product
-      let matchedPresentation: ProductPresentation | undefined
-      if (!matchedProduct) {
-        for (const p of products) {
-          const presentation = p.presentations?.find(
-            (pr) => pr.isActive && pr.barcode && pr.barcode.toLowerCase() === lower
-          )
-          if (presentation) {
-            matchedProduct = p
-            matchedPresentation = presentation
-            break
-          }
-        }
-      }
+      // Exact barcode OR SKU match, on the base "Unidad" or any active
+      // presentation (Six-pack, Caja x24…) — same resolver used app-wide.
+      const { exact } = resolveScannedCode(products, barcode)
 
-      if (matchedProduct && matchedPresentation) {
-        cart.addPresentationToCart(matchedProduct, matchedPresentation)
-        toast.success(`Escaneado: ${matchedProduct.name} — ${getUnitOfMeasureLabel(matchedPresentation.unitLabel)}`)
+      if (exact?.presentation) {
+        cart.addPresentationToCart(exact.product, exact.presentation as ProductPresentation)
+        toast.success(`Escaneado: ${exact.product.name} — ${getUnitOfMeasureLabel(exact.presentation.unitLabel)}`)
         setBarcodeFlash('success')
-      } else if (matchedProduct) {
-        cart.addToCart(matchedProduct)
-        toast.success(`Escaneado: ${matchedProduct.name}`)
+      } else if (exact) {
+        cart.addToCart(exact.product)
+        toast.success(`Escaneado: ${exact.product.name}`)
         setBarcodeFlash('success')
       } else {
         playError()
@@ -133,20 +124,6 @@ export function POSView() {
 
   // ─── Camera scanner (mobile) ────────────────────────
   const cameraScanner = useBarcodeScannerDialog(handleBarcodeScan)
-
-  // ─── Dedicated barcode input handler ──────────────
-  const handleBarcodeInputKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
-        const value = (e.target as HTMLInputElement).value.trim()
-        if (value.length >= 4) {
-          handleBarcodeScan(value)
-          ;(e.target as HTMLInputElement).value = ''
-        }
-      }
-    },
-    [handleBarcodeScan]
-  )
 
   // ─── Return success handler ────────────────────────
   const handleReturnSuccess = useCallback((returnedOrderId: number) => {
@@ -169,11 +146,19 @@ export function POSView() {
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim()
-      filtered = filtered.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          (p.sku && p.sku.toLowerCase().includes(query))
-      )
+      filtered = filtered.filter((p) => {
+        if (p.name.toLowerCase().includes(query)) return true
+        if (p.sku && p.sku.toLowerCase().includes(query)) return true
+        if (p.barcode && p.barcode.toLowerCase().includes(query)) return true
+        // …también por nombre/SKU/código de una presentación (Six-pack, Caja x24…)
+        return (p.presentations || []).some(
+          (pr) =>
+            pr.isActive &&
+            (pr.name.toLowerCase().includes(query) ||
+              (pr.sku && pr.sku.toLowerCase().includes(query)) ||
+              (pr.barcode && pr.barcode.toLowerCase().includes(query)))
+        )
+      })
     }
 
     return filtered
@@ -189,6 +174,29 @@ export function POSView() {
     return services
   }, [services, selectedCategory, searchQuery])
 
+  // ─── Unified search box: Enter key ─────────────────
+  // The single field both filters the grid live AND acts as a scan target.
+  // On Enter: an exact barcode/SKU match (or a single remaining result) goes
+  // straight to the cart; anything ambiguous just stays as a filter — no beep.
+  const handleSearchEnter = useCallback(() => {
+    const q = searchQuery.trim()
+    if (!q) return
+    const { exact } = resolveScannedCode(products, q)
+    if (exact?.presentation) {
+      cart.addPresentationToCart(exact.product, exact.presentation as ProductPresentation)
+    } else if (exact) {
+      cart.addToCart(exact.product)
+    } else if (filteredProducts.length === 1 && filteredServices.length === 0) {
+      cart.addToCart(filteredProducts[0])
+    } else if (filteredServices.length === 1 && filteredProducts.length === 0) {
+      cart.addServiceToCart(filteredServices[0] as never)
+    } else {
+      return
+    }
+    flashSuccess()
+    setSearchQuery('')
+  }, [searchQuery, products, filteredProducts, filteredServices, cart, flashSuccess])
+
   // ─── Print last order ticket ──────────────────────
   const printLastOrderTicket = useCallback(() => {
     if (!cart.lastOrderData) return
@@ -200,11 +208,11 @@ export function POSView() {
       isService: item.isService,
     }))
     printTicket({
+      ...receiptStoreFields(store),
       storeName: store?.name || '',
       storeNIT: store?.nit || undefined,
       storeAddress: store?.address || undefined,
       storePhone: store?.phone || undefined,
-      storeRegime: 'RESPONSABLE',
       invoiceResolution: store?.resolutionNumber || undefined,
       invoicePrefix: store?.invoicePrefix || undefined,
       orderNumber: cart.lastInvoiceData?.invoiceNumber || cart.lastOrderData.orderNumber,
@@ -246,11 +254,11 @@ export function POSView() {
         isService: item.isService,
       }))
       printTicket({
+        ...receiptStoreFields(store),
         storeName: store?.name || '',
         storeNIT: store?.nit || undefined,
         storeAddress: store?.address || undefined,
         storePhone: store?.phone || undefined,
-        storeRegime: 'RESPONSABLE',
         invoiceResolution: store?.resolutionNumber || undefined,
         invoicePrefix: store?.invoicePrefix || undefined,
         orderNumber: order.orderNumber,
@@ -280,13 +288,16 @@ export function POSView() {
     <div className="flex flex-col gap-3 h-full relative min-w-0 overflow-x-hidden">
       <KPIBar context="pos" />
 
-      {/* ═══ HEADER: Barcode Input + Search + Category Tabs ═══════════ */}
-      {/* Barcode scanner input + search row */}
+      {/* ═══ HEADER: Unified search / scan + Category Tabs ═══════════ */}
       <div className="flex items-center gap-2">
-        {/* Dedicated barcode input */}
-        <div className="relative shrink-0 w-44 sm:w-52">
+        {/* Camera scan button (mobile) */}
+        {cameraScanner.scannerUi}
+
+        {/* Single field: type to filter (name / SKU / barcode, incl.
+            presentations) or scan — Enter adds an exact match to the cart. */}
+        <div className="relative flex-1 min-w-0">
           <ScanBarcode
-            className={`absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors duration-300 ${
+            className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 transition-colors duration-300 ${
               barcodeFlash === 'success'
                 ? 'text-emerald-500'
                 : barcodeFlash === 'error'
@@ -295,33 +306,23 @@ export function POSView() {
             }`}
           />
           <Input
-            ref={barcodeInputRef}
-            data-barcode-input
             type="text"
-            placeholder="Escanear código..."
-            onKeyDown={handleBarcodeInputKeyDown}
-            className={`pl-9 pr-2 h-11 text-sm bg-background/80 backdrop-blur-sm transition-all duration-300 ${
+            placeholder="Buscar o escanear: nombre, código de barras o SKU…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleSearchEnter()
+              }
+            }}
+            className={`pl-10 pr-28 h-11 text-base bg-background/80 backdrop-blur-sm transition-all duration-200 ${
               barcodeFlash === 'success'
                 ? 'ring-2 ring-emerald-500/50 border-emerald-500/50'
                 : barcodeFlash === 'error'
                   ? 'ring-2 ring-red-500/50 border-red-500/50'
-                  : 'focus-visible:ring-emerald-500/30 focus-visible:border-emerald-500/50'
+                  : 'focus-visible:ring-emerald-500/30 focus-visible:border-emerald-500/50 focus-visible:shadow-[0_0_20px_rgba(16,185,129,0.12)]'
             }`}
-          />
-        </div>
-
-        {/* Camera scan button (mobile) */}
-        {cameraScanner.scannerUi}
-
-        {/* Search bar */}
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Buscar producto por nombre o SKU..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-11 text-base bg-background/80 backdrop-blur-sm focus-visible:ring-emerald-500/30 focus-visible:border-emerald-500/50 focus-visible:shadow-[0_0_20px_rgba(16,185,129,0.12)] transition-all duration-200"
           />
           {/* Barcode scanner active indicator */}
           {!anyDialogOpen && (

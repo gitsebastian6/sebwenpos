@@ -196,6 +196,28 @@ model Store {
   storeDescription           String?   @map("store_description")
   storeWhatsapp              String?   @map("store_whatsapp")
   storeActive                Boolean   @default(false) @map("store_active")
+  // Domicilio / Delivery (tarifa fija + "gratis sobre X" opcional)
+  deliveryEnabled            Boolean   @default(false) @map("delivery_enabled")
+  deliveryFee                Int       @default(0) @map("delivery_fee")
+  deliveryFreeAbove          Int?      @map("delivery_free_above")
+  deliveryMinOrder           Int       @default(0) @map("delivery_min_order")
+  // "Aceptando pedidos ahora" — independiente de storeActive (horario / pausa manual)
+  acceptingOrders            Boolean   @default(true) @map("accepting_orders")
+  // Tirilla / recibo térmico (Configuración → Tirilla)
+  receiptPaperWidth          String    @default("80") @map("receipt_paper_width") // "80" | "58" (mm)
+  receiptDocDenomination     String?   @map("receipt_doc_denomination") // denominación impresa del documento
+  receiptFooterText          String?   @map("receipt_footer_text") // reemplaza "Gracias por su compra"
+  receiptExtraLegend         String?   @map("receipt_extra_legend") // leyenda tributaria libre (multilínea)
+  isIvaWithholdingAgent      Boolean   @default(false) @map("is_iva_withholding_agent") // "Agente retenedor de IVA"
+  isSelfWithholdingAgent     Boolean   @default(false) @map("is_self_withholding_agent") // "Autorretenedor"
+  isIncResponsible           Boolean   @default(false) @map("is_inc_responsible") // "Responsable del INC"
+  // Resolución DIAN del documento equivalente POS (distinta de la de factura electrónica)
+  posResolutionNumber        String?   @map("pos_resolution_number")
+  posResolutionPrefix        String?   @map("pos_resolution_prefix")
+  posResolutionFrom          Int?      @map("pos_resolution_from")
+  posResolutionTo            Int?      @map("pos_resolution_to")
+  posResolutionDate          DateTime? @map("pos_resolution_date")
+  posResolutionEndDate       DateTime? @map("pos_resolution_end_date")
   createdAt                  DateTime  @default(now()) @map("created_at")
   updatedAt                  DateTime  @updatedAt
 
@@ -239,6 +261,7 @@ model Store {
   customerPayments        CustomerPayment[]
   processedRequests       ProcessedRequest[]
   batches                 Batch[]
+  onlineOrders            OnlineOrder[]
 
   @@map("stores")
 }
@@ -862,6 +885,7 @@ model Product {
   taxRate            TaxRate?                 @relation(fields: [taxRateId], references: [id], onDelete: SetNull)
   inventoryMovements InventoryMovement[]
   orderItems         OrderItem[]
+  onlineOrderItems   OnlineOrderItem[]
   comandaItems       ComandaItem[]
   purchaseItems      PurchaseItem[]
   quotationItems     QuotationItem[]
@@ -904,6 +928,7 @@ model ProductPresentation {
 
   product            Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderItems         OrderItem[]
+  onlineOrderItems   OnlineOrderItem[]
   purchaseItems      PurchaseItem[]
   quotationItems     QuotationItem[]
   inventoryMovements InventoryMovement[]
@@ -1228,6 +1253,11 @@ model Order {
   paymentMethod    String   @default("CASH") @map("payment_method")
   paymentSplits    String?  @map("payment_splits")
   notes            String?
+  // Contexto de entrega (ventas convertidas desde un pedido de la tienda virtual)
+  fulfillmentType  String   @default("IN_STORE") @map("fulfillment_type") // IN_STORE | DELIVERY | PICKUP
+  deliveryFee      Int      @default(0) @map("delivery_fee") // columna dedicada — NO entra al subtotal ni a la base de IVA
+  deliveryAddress  String?  @map("delivery_address")
+  placedAt         DateTime? @map("placed_at") // cuándo el cliente hizo el pedido online (≠ createdAt = momento de aceptar)
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt
 
@@ -1239,6 +1269,7 @@ model Order {
   orderItems       OrderItem[]
   invoice          Invoice?
   wompiTransaction WompiTransaction?
+  onlineOrder      OnlineOrder?
 
   @@unique([storeId, orderNumber])
   @@index([storeId, createdAt])
@@ -1281,6 +1312,73 @@ model OrderItem {
   @@index([serviceId])
   @@index([presentationId])
   @@map("order_items")
+}
+
+// ----------------------------------------------
+// CONTEXTO: PEDIDOS EN LÍNEA (TIENDA VIRTUAL / DELIVERY)
+// ----------------------------------------------
+// Staging de una SOLICITUD hecha por un cliente anónimo en /tienda/[slug].
+// NO toca stock ni contabilidad: el comerciante la revisa en la bandeja
+// "Pedidos en línea" y al ACEPTARLA se convierte en un Order real (flujo de
+// venta normal — exige caja abierta, descuenta stock, asienta). Rechazar la
+// marca REJECTED. El cron interno pasa a CANCELLED los PENDING muy viejos.
+
+model OnlineOrder {
+  id                      Int      @id @default(autoincrement())
+  storeId                 Int      @map("store_id")
+  orderNumber             String   @map("order_number") // corto y público, ej. WEB-3F7Q
+  status                  String   @default("PENDING") // PENDING | ACCEPTED | REJECTED | CANCELLED
+  customerName            String   @map("customer_name")
+  customerPhone           String   @map("customer_phone") // tal cual lo escribió el cliente
+  customerPhoneNormalized String   @map("customer_phone_normalized") // solo dígitos, con código de país
+  fulfillmentType         String   @map("fulfillment_type") // DELIVERY | PICKUP
+  deliveryAddress         String?  @map("delivery_address")
+  deliveryNotes           String?  @map("delivery_notes")
+  subtotal                Int
+  deliveryFee             Int      @default(0) @map("delivery_fee")
+  total                   Int
+  // Config de domicilio vigente al hacer el pedido (para detectar cambios luego)
+  feeConfigSnapshot       String?  @map("fee_config_snapshot") // JSON { deliveryFee, freeAbove, minOrder }
+  // hash(items)+total+phoneNormalized — dedupe de doble envío en ventana corta
+  dedupeKey               String   @map("dedupe_key")
+  rejectionReason         String?  @map("rejection_reason")
+  convertedToOrderId      Int?     @unique @map("converted_to_order_id")
+  createdAt               DateTime @default(now()) @map("created_at") // = placed-at
+  updatedAt               DateTime @updatedAt
+
+  store           Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  convertedToOrder Order?           @relation(fields: [convertedToOrderId], references: [id], onDelete: SetNull)
+  items           OnlineOrderItem[]
+
+  @@index([storeId, status])
+  @@index([storeId, createdAt])
+  @@index([storeId, dedupeKey])
+  @@map("online_orders")
+}
+
+model OnlineOrderItem {
+  id               Int     @id @default(autoincrement())
+  onlineOrderId    Int     @map("online_order_id")
+  productId        Int?    @map("product_id")
+  presentationId   Int?    @map("presentation_id")
+  // Snapshot inmutable (sobrevive rename/borrado). unitPrice/totalRow están
+  // denominados en la unidad de ESTA presentación; unitsPerPack convierte a
+  // unidades base cuando se acepta y se descuenta stock.
+  productName      String  @map("product_name")
+  presentationName String? @map("presentation_name")
+  unitsPerPack     Decimal @default(1) @map("units_per_pack")
+  quantity         Decimal
+  unitPrice        Int     @map("unit_price")
+  totalRow         Int     @map("total_row")
+
+  onlineOrder  OnlineOrder          @relation(fields: [onlineOrderId], references: [id], onDelete: Cascade)
+  product      Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)
+  presentation ProductPresentation? @relation(fields: [presentationId], references: [id], onDelete: SetNull)
+
+  @@index([onlineOrderId])
+  @@index([productId])
+  @@index([presentationId])
+  @@map("online_order_items")
 }
 
 // ----------------------------------------------

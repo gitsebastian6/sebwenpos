@@ -30,7 +30,8 @@ export interface Product {
   minStock: number
   salePrice: number
   costPrice: number
-  category: { id: number; name: string } | null
+  trackExpiration?: boolean
+  category?: { id: number; name: string; icon?: string | null } | null
   presentations?: ProductPresentationOption[]
 }
 
@@ -85,3 +86,8 @@ export const LOSS_REASONS = [
   { value: 'INVENTARIO', label: 'Diferencia de inventario' },
   { value: 'OTRO', label: 'Otro motivo' },
 ]
+
+/** Lookup `codigo → etiqueta` para tablas de reportes. */
+export const LOSS_REASON_LABELS: Record<string, string> = Object.fromEntries(
+  LOSS_REASONS.map((r) => [r.value, r.label])
+)

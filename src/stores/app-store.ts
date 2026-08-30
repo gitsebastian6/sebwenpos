@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 export type AppView =
   | 'dashboard'
@@ -9,6 +10,7 @@ export type AppView =
   | 'providers'
   | 'purchases'
   | 'orders'
+  | 'online-orders'
   | 'invoices'
   | 'inventory'
   | 'expirations'
@@ -33,12 +35,22 @@ interface AppState {
   goToSettingsTab: (tab: string) => void
 }
 
-export const useAppStore = create<AppState>()((set) => ({
-  currentView: 'dashboard',
-  sidebarOpen: true,
-  settingsTab: 'business',
-  setView: (view) => set({ currentView: view }),
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-  goToSettingsTab: (tab) => set({ currentView: 'settings', settingsTab: tab }),
-}))
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      currentView: 'dashboard',
+      sidebarOpen: true,
+      settingsTab: 'business',
+      setView: (view) => set({ currentView: view }),
+      setSidebarOpen: (open) => set({ sidebarOpen: open }),
+      toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      goToSettingsTab: (tab) => set({ currentView: 'settings', settingsTab: tab }),
+    }),
+    {
+      name: 'pos-ui',
+      // Solo la vista y el estado del sidebar sobreviven a una recarga /
+      // arranque en frío de la PWA. `settingsTab` es efímero por diseño.
+      partialize: (s) => ({ currentView: s.currentView, sidebarOpen: s.sidebarOpen }),
+    }
+  )
+)

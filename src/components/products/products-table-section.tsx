@@ -30,6 +30,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { ProductImage } from '@/components/ui/product-image'
+import { useProductScanner } from '@/hooks/use-product-scanner'
 import {
   PackageSearch,
   Plus,
@@ -74,9 +75,7 @@ export interface ProductsTableSectionProps {
   onNewProduct: () => void
   onEditProduct: (p: Product) => void
   onToggleProduct: (p: Product) => void
-  onAdjustStock: (id: number, name: string, stock: number) => void
-  onLoss: (id: number, name: string) => void
-  onReturn: (id: number, name: string) => void
+  onInventoryAction: (type: 'adjust' | 'loss' | 'return', product: Product) => void
   onTrace: (id: number, name: string) => void
   onDelete: (p: Product) => void
   onPrint: (thermal: boolean) => void
@@ -105,9 +104,7 @@ export function ProductsTableSection({
   onNewProduct,
   onEditProduct,
   onToggleProduct,
-  onAdjustStock,
-  onLoss,
-  onReturn,
+  onInventoryAction,
   onTrace,
   onDelete,
   onPrint,
@@ -115,6 +112,16 @@ export function ProductsTableSection({
   onSetView,
   currencyCode,
 }: ProductsTableSectionProps) {
+  // Scanner (camera + USB gun) — feeds the code into the search box; the
+  // catalog search matches name/SKU/barcode (server-side).
+  const { scanButton, scannerDialog } = useProductScanner({
+    products,
+    size: 'compact',
+    label: 'Escanear producto',
+    onExactMatch: (_m, code) => setSearchQuery(code),
+    onText: (code) => setSearchQuery(code),
+  })
+
   return (
     <>
       {/* Toolbar */}
@@ -127,9 +134,13 @@ export function ProductsTableSection({
               placeholder="Buscar producto..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 w-full focus-visible:ring-primary/20 focus-visible:border-primary/40 transition-all"
+              className="pl-9 pr-10 w-full focus-visible:ring-primary/20 focus-visible:border-primary/40 transition-all"
             />
+            <div className="absolute right-1 top-1/2 -translate-y-1/2">
+              {scanButton}
+            </div>
           </div>
+          {scannerDialog}
           {/* Category filter */}
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="w-full sm:w-auto sm:min-w-[160px]">
@@ -265,26 +276,30 @@ export function ProductsTableSection({
                   <TableHead className="text-right min-w-[60px]">Comisión</TableHead>
                   <TableHead className="text-right min-w-[50px]">Stock</TableHead>
                   <TableHead className="min-w-[60px]">Estado</TableHead>
-                  <TableHead className="text-center w-[50px] sticky right-0 bg-background z-10">Acciones</TableHead>
+                  <TableHead className="text-center w-[76px] sticky right-0 z-20 bg-background border-l border-border/50">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {productsLoading ? (
                   Array.from({ length: 6 }).map((_, i) => (
-                    <TableRow key={i}>
+                    <TableRow key={i} className="bg-background">
                       <TableCell><Skeleton className="h-5 w-36" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-12" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-10 ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-8 ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-14" /></TableCell>
+                      <TableCell className="sticky right-0 z-10 bg-inherit border-l border-border/50"><Skeleton className="h-8 w-8 mx-auto rounded-md" /></TableCell>
                     </TableRow>
                   ))
                 ) : filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="h-48 text-center">
+                    <TableCell colSpan={12} className="h-48 text-center">
                       <div className="flex flex-col items-center justify-center">
                         <Package className="h-16 w-16 text-muted-foreground/30 mb-3 animate-pulse" />
                         <p className="text-muted-foreground font-medium">No se encontraron productos</p>
@@ -294,7 +309,7 @@ export function ProductsTableSection({
                   </TableRow>
                 ) : (
                   filteredProducts.map((product) => (
-                    <TableRow key={product.id} className={`${!product.isActive ? 'opacity-60' : ''} hover:bg-muted/30 transition-colors`}>
+                    <TableRow key={product.id} className={`${!product.isActive ? 'opacity-60' : ''} bg-background hover:bg-muted/30 transition-colors`}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-3">
                           <ProductImage
@@ -402,7 +417,7 @@ export function ProductsTableSection({
                           {product.isActive ? 'Activo' : 'Inactivo'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center sticky right-0 bg-background">
+                      <TableCell className="text-center sticky right-0 z-10 bg-inherit border-l border-border/50">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Más opciones">
@@ -420,15 +435,15 @@ export function ProductsTableSection({
                               {product.isActive ? 'Desactivar' : 'Activar'}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => onAdjustStock(product.id, product.name, product.currentStock)}>
+                            <DropdownMenuItem onClick={() => onInventoryAction('adjust', product)}>
                               <SlidersHorizontal className="h-4 w-4 mr-2" />
                               Ajustar Stock
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onLoss(product.id, product.name)}>
+                            <DropdownMenuItem onClick={() => onInventoryAction('loss', product)}>
                               <AlertTriangle className="h-4 w-4 mr-2" />
                               Registrar Pérdida
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onReturn(product.id, product.name)}>
+                            <DropdownMenuItem onClick={() => onInventoryAction('return', product)}>
                               <RotateCcw className="h-4 w-4 mr-2" />
                               Registrar Devolución
                             </DropdownMenuItem>

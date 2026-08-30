@@ -7,6 +7,22 @@ import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { transitionOverdueSubscriptions, getSubscriptionInfo } from '@/lib/subscription-helpers'
 import { auditLog, getClientContext } from '@/lib/audit-logger'
+import { STORE_SESSION_SELECT } from '@/lib/store-select'
+
+// Forma canónica de la tienda que viaja al cliente en el login: TODAS las
+// columnas que el front lee (Tienda Virtual, domicilio, resolución, etc.) más
+// la suscripción anidada. Si esto devuelve un subconjunto, el próximo login
+// pisa el `store` completo del auth-store con uno parcial → la UI "pierde" la
+// config (bug histórico de storeSlug/storeActive).
+const storeSelectWithSubscription = {
+  ...STORE_SESSION_SELECT,
+  subscription: {
+    select: {
+      id: true, status: true, planId: true, endDate: true, trialEndDate: true,
+      plan: { select: { id: true, name: true, price: true, maxProducts: true, maxEmployees: true, maxStores: true } },
+    },
+  },
+} as const
 
 export const dynamic = 'force-dynamic'
 
@@ -28,30 +44,8 @@ export async function POST(req: NextRequest) {
     const user = await db.user.findUnique({
       where: { cedula: data.cedula },
       include: {
-        store: {
-          select: {
-            id: true, name: true, legalName: true, nit: true, address: true, phone: true,
-            currencyCode: true, countryCode: true, invoiceEnabled: true, invoiceTestMode: true,
-            invoicePrefix: true, resolutionNumber: true, parentStoreId: true,
-            subscription: {
-              select: {
-                id: true, status: true, planId: true, endDate: true, trialEndDate: true,
-                plan: { select: { id: true, name: true, price: true, maxProducts: true, maxEmployees: true, maxStores: true } },
-              },
-            },
-          },
-        },
-        employee: { include: { store: { select: {
-            id: true, name: true, legalName: true, nit: true, address: true, phone: true,
-            currencyCode: true, countryCode: true, invoiceEnabled: true, invoiceTestMode: true,
-            invoicePrefix: true, resolutionNumber: true, parentStoreId: true,
-            subscription: {
-              select: {
-                id: true, status: true, planId: true, endDate: true, trialEndDate: true,
-                plan: { select: { id: true, name: true, price: true, maxProducts: true, maxEmployees: true, maxStores: true } },
-              },
-            },
-          } }, role: true } },
+        store: { select: storeSelectWithSubscription },
+        employee: { include: { store: { select: storeSelectWithSubscription }, role: true } },
       },
     })
 

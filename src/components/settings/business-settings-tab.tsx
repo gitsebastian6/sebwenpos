@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthStore } from '@/stores/auth-store'
 import { toast } from 'sonner'
 import { useUpdateStore } from '@/hooks/api/use-settings'
@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Save, Store, MapPin, Phone, CreditCard, Globe, MessageCircle, ExternalLink } from 'lucide-react'
+import { Loader2, Save, Store, MapPin, Phone, CreditCard, Globe, MessageCircle, ExternalLink, Bike, Clock } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 
 export function BusinessSettingsTab() {
@@ -34,6 +34,45 @@ export function BusinessSettingsTab() {
   const [storeWhatsapp, setStoreWhatsapp] = useState((store as any)?.storeWhatsapp || '')
   const [storeActive, setStoreActive] = useState((store as any)?.storeActive || false)
 
+  // Domicilio / Delivery
+  const [acceptingOrders, setAcceptingOrders] = useState((store as any)?.acceptingOrders ?? true)
+  const [deliveryEnabled, setDeliveryEnabled] = useState((store as any)?.deliveryEnabled || false)
+  const [deliveryFee, setDeliveryFee] = useState(String((store as any)?.deliveryFee ?? 0))
+  const [deliveryFreeAbove, setDeliveryFreeAbove] = useState(
+    (store as any)?.deliveryFreeAbove != null ? String((store as any).deliveryFreeAbove) : ''
+  )
+  const [deliveryMinOrder, setDeliveryMinOrder] = useState(String((store as any)?.deliveryMinOrder ?? 0))
+
+  // Los campos de Tienda Virtual + domicilio vienen todos del mismo select del
+  // login. Si el `store` no los trae (login viejo / hidratación parcial), NO
+  // debemos escribirlos en el PUT: un guardado desde el form vacío borraría el
+  // slug/config real. Este flag distingue "no cargado" de "el usuario lo dejó
+  // vacío a propósito".
+  const vStoreLoaded = !!store && 'storeActive' in (store as object)
+
+  // Re-sembrar el formulario cuando cambia la tienda (switch de sucursal,
+  // hidratación tardía, updateStore tras guardar). Los useState de arriba solo
+  // corren al montar.
+  useEffect(() => {
+    if (!store) return
+    const s = store as any
+    setStoreName(s.name || '')
+    setStoreAddress(s.address || '')
+    setStorePhone(s.phone || '')
+    setStoreCurrency(s.currencyCode || 'COP')
+    setDebtOverdueDays(String(s.debtOverdueDays ?? 30))
+    setStoreSlug(s.storeSlug || '')
+    setStoreDescription(s.storeDescription || '')
+    setStoreWhatsapp(s.storeWhatsapp || '')
+    setStoreActive(s.storeActive || false)
+    setAcceptingOrders(s.acceptingOrders ?? true)
+    setDeliveryEnabled(s.deliveryEnabled || false)
+    setDeliveryFee(String(s.deliveryFee ?? 0))
+    setDeliveryFreeAbove(s.deliveryFreeAbove != null ? String(s.deliveryFreeAbove) : '')
+    setDeliveryMinOrder(String(s.deliveryMinOrder ?? 0))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store?.id, (store as any)?.updatedAt])
+
   const hasChanges =
     storeName !== (store?.name || '') ||
     storeAddress !== (store?.address || '') ||
@@ -43,7 +82,12 @@ export function BusinessSettingsTab() {
     storeSlug !== ((store as any)?.storeSlug || '') ||
     storeDescription !== ((store as any)?.storeDescription || '') ||
     storeWhatsapp !== ((store as any)?.storeWhatsapp || '') ||
-    storeActive !== ((store as any)?.storeActive || false)
+    storeActive !== ((store as any)?.storeActive || false) ||
+    acceptingOrders !== ((store as any)?.acceptingOrders ?? true) ||
+    deliveryEnabled !== ((store as any)?.deliveryEnabled || false) ||
+    deliveryFee !== String((store as any)?.deliveryFee ?? 0) ||
+    deliveryFreeAbove !== ((store as any)?.deliveryFreeAbove != null ? String((store as any).deliveryFreeAbove) : '') ||
+    deliveryMinOrder !== String((store as any)?.deliveryMinOrder ?? 0)
 
   const updateStoreMutation = useUpdateStore()
   const saving = updateStoreMutation.isPending
@@ -51,22 +95,34 @@ export function BusinessSettingsTab() {
   async function handleSave() {
     if (!store?.id) return
     try {
-      const data = await updateStoreMutation.mutateAsync({
-        storeId: store.id,
-        data: {
-          name: storeName,
-          legalName: store?.legalName || null,
-          nit: store?.nit || null,
-          address: storeAddress || null,
-          phone: storePhone || null,
-          currencyCode: storeCurrency,
-          debtOverdueDays: Number(debtOverdueDays) || 30,
-          storeSlug: storeSlug || null,
-          storeDescription: storeDescription || null,
-          storeWhatsapp: storeWhatsapp || null,
-          storeActive,
-        },
-      })
+      const payload: Record<string, unknown> = {
+        name: storeName,
+        legalName: store?.legalName || null,
+        nit: store?.nit || null,
+        address: storeAddress || null,
+        phone: storePhone || null,
+        currencyCode: storeCurrency,
+        debtOverdueDays: Number(debtOverdueDays) || 30,
+      }
+
+      // Solo tocar la config de Tienda Virtual / domicilio si el `store` la trae
+      // cargada — así un guardado desde un form a medio hidratar nunca borra el
+      // slug o apaga la tienda por accidente.
+      if (vStoreLoaded) {
+        payload.storeSlug = storeSlug || null
+        payload.storeDescription = storeDescription || null
+        payload.storeWhatsapp = storeWhatsapp || null
+        payload.storeActive = storeActive
+        payload.acceptingOrders = acceptingOrders
+        payload.deliveryEnabled = deliveryEnabled
+        payload.deliveryFee = Math.max(0, Math.round(Number(deliveryFee) || 0))
+        payload.deliveryFreeAbove = deliveryFreeAbove.trim() === ''
+          ? null
+          : Math.max(0, Math.round(Number(deliveryFreeAbove) || 0))
+        payload.deliveryMinOrder = Math.max(0, Math.round(Number(deliveryMinOrder) || 0))
+      }
+
+      const data = await updateStoreMutation.mutateAsync({ storeId: store.id, data: payload })
       updateStore(data)
       toast.success('Datos del negocio actualizados')
     } catch {
@@ -279,6 +335,77 @@ export function BusinessSettingsTab() {
             maxLength={500}
           />
         </div>
+
+        <Separator />
+
+        {/* ── Domicilio ── */}
+        <div className="flex items-center justify-between rounded-lg border border-border/50 p-4">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-medium flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              Aceptando pedidos ahora
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Apágalo cuando estés cerrado; los clientes no podrán enviar pedidos
+            </p>
+          </div>
+          <Switch checked={acceptingOrders} onCheckedChange={setAcceptingOrders} />
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border border-border/50 p-4">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-medium flex items-center gap-1.5">
+              <Bike className="h-3.5 w-3.5" />
+              Domicilio disponible
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Cobra un valor de envío a los pedidos de la tienda virtual
+            </p>
+          </div>
+          <Switch checked={deliveryEnabled} onCheckedChange={setDeliveryEnabled} />
+        </div>
+
+        {deliveryEnabled && (
+          <div className="grid gap-3 sm:grid-cols-3 rounded-lg border border-dashed border-border/60 p-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="delivery-fee" className="text-xs">Valor del domicilio</Label>
+              <Input
+                id="delivery-fee"
+                type="number"
+                min="0"
+                value={deliveryFee}
+                onChange={(e) => setDeliveryFee(e.target.value)}
+                className="focus-visible:ring-primary/20 focus-visible:border-primary/40"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="delivery-free-above" className="text-xs">Gratis desde (opcional)</Label>
+              <Input
+                id="delivery-free-above"
+                type="number"
+                min="0"
+                value={deliveryFreeAbove}
+                onChange={(e) => setDeliveryFreeAbove(e.target.value)}
+                placeholder="Sin límite"
+                className="focus-visible:ring-primary/20 focus-visible:border-primary/40"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="delivery-min-order" className="text-xs">Pedido mínimo</Label>
+              <Input
+                id="delivery-min-order"
+                type="number"
+                min="0"
+                value={deliveryMinOrder}
+                onChange={(e) => setDeliveryMinOrder(e.target.value)}
+                className="focus-visible:ring-primary/20 focus-visible:border-primary/40"
+              />
+            </div>
+            <p className="sm:col-span-3 text-[11px] text-muted-foreground">
+              El cliente ve estos valores en la tienda <strong>antes</strong> de hacer el pedido.
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
     </>

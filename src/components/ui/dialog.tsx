@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
-import { XIcon } from "lucide-react"
+import { ChevronLeftIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -50,9 +50,15 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  mobileFullscreen = false,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  /**
+   * En móvil el diálogo ocupa toda la pantalla (hoja) — para formularios de
+   * crear/editar. Por defecto es una tarjeta centrada también en móvil.
+   */
+  mobileFullscreen?: boolean
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
@@ -60,21 +66,26 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[92dvh] overflow-y-auto overscroll-contain translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-4 shadow-lg duration-200 sm:max-w-lg sm:p-6",
+          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 flex flex-col w-full max-w-[calc(100%-2rem)] max-h-[92dvh] overflow-y-auto overscroll-contain translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-4 shadow-lg duration-200 sm:max-w-lg sm:p-6",
+          // Solo crear/editar: hoja a pantalla completa en móvil. El ! (sufijo,
+          // Tailwind v4) gana a los anchos/altos que el diálogo pase por className.
+          mobileFullscreen &&
+            "max-sm:inset-0! max-sm:top-0! max-sm:left-0! max-sm:h-[100dvh]! max-sm:max-h-[100dvh]! max-sm:w-full! max-sm:max-w-none! max-sm:translate-x-0! max-sm:translate-y-0! max-sm:rounded-none!",
           className
         )}
         {...props}
       >
-        {children}
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            aria-label="Volver"
+            className="sticky -top-4 z-20 -mx-4 -mt-4 flex shrink-0 items-center gap-1.5 self-stretch rounded-t-lg border-b border-border/60 bg-emerald-500/[0.07] px-4 py-2.5 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/15 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500/40 disabled:pointer-events-none dark:text-emerald-400 sm:-top-6 sm:-mx-6 sm:-mt-6 sm:px-6 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
           >
-            <XIcon />
-            <span className="sr-only">Close</span>
+            <ChevronLeftIcon />
+            <span>Volver</span>
           </DialogPrimitive.Close>
         )}
+        {children}
       </DialogPrimitive.Content>
     </DialogPortal>
   )
@@ -96,6 +107,8 @@ function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="dialog-footer"
       className={cn(
         "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        // En móvil los botones quedan pegados abajo, siempre alcanzables.
+        "max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:mt-auto max-sm:-mx-4 max-sm:-mb-4 max-sm:border-t max-sm:bg-background max-sm:px-4 max-sm:py-3",
         className
       )}
       {...props}

@@ -404,7 +404,7 @@ export function TaxRatesPanel() {
 
       {/* ── Tax Create/Edit Dialog ── */}
       <Dialog open={showTaxDialog} onOpenChange={(open) => { setShowTaxDialog(open); if (!open) resetTaxForm() }}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
+        <DialogContent mobileFullscreen className="sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>
               {editingTax ? 'Editar Tarifa de Impuesto' : 'Nueva Tarifa de Impuesto'}

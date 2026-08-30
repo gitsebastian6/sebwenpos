@@ -17,6 +17,21 @@ export function ServiceWorkerRegistrar() {
       return;
     }
 
+    // In development the SW's cache-first strategy for JS/CSS serves stale
+    // bundles and hides code changes ("I restarted dev and nothing changed").
+    // Never register it here, and proactively tear down any SW + caches a
+    // previous run left behind so the next reload is clean.
+    if (process.env.NODE_ENV !== 'production') {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((reg) => reg.unregister());
+        if (regs.length > 0) console.log('[PWA] Dev mode — unregistered stale Service Worker(s)');
+      });
+      if (typeof caches !== 'undefined') {
+        caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));
+      }
+      return;
+    }
+
     async function registerSW() {
       try {
         const reg = await navigator.serviceWorker.register('/sw.js', {

@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { defaultDialCode } from '@/lib/phone'
 
 export const dynamic = 'force-dynamic'
+
+// Config de domicilio expuesta al storefront (para mostrar el costo ANTES de pedir).
+function deliveryConfig(store: {
+  deliveryEnabled: boolean
+  deliveryFee: number
+  deliveryFreeAbove: number | null
+  deliveryMinOrder: number
+  acceptingOrders: boolean
+}) {
+  return {
+    deliveryEnabled: store.deliveryEnabled,
+    deliveryFee: store.deliveryFee,
+    deliveryFreeAbove: store.deliveryFreeAbove,
+    deliveryMinOrder: store.deliveryMinOrder,
+    acceptingOrders: store.acceptingOrders,
+  }
+}
 
 /**
  * GET /api/public/store/[storeId]
@@ -32,16 +50,24 @@ export async function GET(
         address: true,
         cityName: true,
         currencyCode: true,
+        countryCode: true,
         storeDescription: true,
         storeWhatsapp: true,
         storeActive: true,
         storeSlug: true,
+        deliveryEnabled: true,
+        deliveryFee: true,
+        deliveryFreeAbove: true,
+        deliveryMinOrder: true,
+        acceptingOrders: true,
       },
     })
 
     if (!store) {
       return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 })
     }
+
+    const dialCode = defaultDialCode({ countryCode: store.countryCode, currencyCode: store.currencyCode })
 
     // Si la tienda virtual no está activa, mostrar página básica
     if (!store.storeActive) {
@@ -53,10 +79,12 @@ export async function GET(
           address: store.address,
           cityName: store.cityName,
           currencyCode: store.currencyCode,
+          dialCode,
           description: store.storeDescription,
           whatsapp: store.storeWhatsapp,
           slug: store.storeSlug,
           active: false,
+          ...deliveryConfig(store),
         },
         categories: [],
         services: [],
@@ -83,6 +111,7 @@ export async function GET(
             description: true,
             imgUrl: true,
             sku: true,
+            barcode: true,
             presentations: {
               where: { isActive: true },
               select: {
@@ -123,10 +152,12 @@ export async function GET(
         address: store.address,
         cityName: store.cityName,
         currencyCode: store.currencyCode,
+        dialCode,
         description: store.storeDescription,
         whatsapp: store.storeWhatsapp,
         slug: store.storeSlug,
         active: true,
+        ...deliveryConfig(store),
       },
       categories,
       services,

@@ -1,5 +1,12 @@
 // ── Report Types (shared with reports-view) ──
-export interface ReportProduct { id: string; name: string; sku: string | null; currentStock: number }
+export interface ReportProduct {
+  id: string
+  name: string
+  sku: string | null
+  currentStock: number
+  barcode?: string | null
+  presentations?: Array<{ id: number; sku?: string | null; barcode?: string | null; isActive?: boolean }>
+}
 export interface SalesPaymentEntry { count: number; total: number }
 export interface SalesCategoryEntry { qty: number; total: number }
 export interface TopProduct { name: string; total: number; qty: number }

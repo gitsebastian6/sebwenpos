@@ -4,7 +4,7 @@
 
 import type { TicketData } from './print-ticket-types'
 import { PAYMENT_LABELS } from './print-ticket-types'
-import { fmt, fmtDate, truncate } from './print-ticket-helpers'
+import { fmt, fmtDate, truncate, normalizePaperWidth, paperColumns } from './print-ticket-helpers'
 import { formatQty } from './format'
 
 // ─── Re-exports for backward compatibility ─────────────────────────────────
@@ -25,21 +25,58 @@ export function printTicket(data: TicketData) {
   const hasTip = data.tipAmount > 0
   const now = new Date()
 
-  // Resolve resolution fields (support both naming conventions)
-  const effectiveResolution = data.invoiceResolution || data.resolutionNumber
-  const effectiveStart = data.invoiceStartNumber ?? data.resolutionStart
-  const effectiveEnd = data.invoiceEndNumber ?? data.resolutionEnd
+  // ─── Ancho del rollo (Configuración → Tirilla) ──────────────────────────────
+  const width = normalizePaperWidth(data.paperWidth)
+  const cols = paperColumns(width)
+  const pageMm = width === '58' ? '58mm' : '80mm'
+  const bodyMm = width === '58' ? '54mm' : '72mm'
+  const baseFontPx = width === '58' ? '10px' : '11px'
+  const storeNamePx = width === '58' ? '13px' : '15px'
+  const padX = width === '58' ? '2mm' : '3mm'
+
   const isElectronic = data.isElectronic || !!data.cufe
   const isDocEquivalente = data.isDocEquivalente || false
 
+  // Resolución DIAN a imprimir:
+  //  - Factura electrónica  → resolución de FE (invoiceResolution / resolutionNumber).
+  //  - Tirilla / doc. equivalente POS → resolución propia del documento POS.
+  const effectiveResolution = isElectronic
+    ? (data.invoiceResolution || data.resolutionNumber)
+    : (data.posResolutionNumber || data.invoiceResolution || data.resolutionNumber)
+  const effectiveStart = isElectronic
+    ? (data.invoiceStartNumber ?? data.resolutionStart)
+    : (data.posResolutionFrom ?? data.invoiceStartNumber ?? data.resolutionStart)
+  const effectiveEnd = isElectronic
+    ? (data.invoiceEndNumber ?? data.resolutionEnd)
+    : (data.posResolutionTo ?? data.invoiceEndNumber ?? data.resolutionEnd)
+  const effectivePrefix = isElectronic
+    ? data.invoicePrefix
+    : (data.posResolutionPrefix || data.invoicePrefix)
+
   const REGIME_LABELS: Record<string, string> = {
-    RESPONSABLE: 'Régimen Común — Responsable del IVA',
-    NO_RESPONSABLE: 'Régimen Simplificado — No Responsable del IVA',
-    SIMPLIFICADO: 'Régimen Simplificado - SIMPLE',
+    RESPONSABLE: 'Responsable del IVA',
+    NO_RESPONSABLE: 'No responsable de IVA',
+    SIMPLIFICADO: 'Régimen Simple de Tributación (SIMPLE)',
   }
   // If no regime specified but store has NIT, default to RESPONSABLE per DIAN rules
   const effectiveRegime = data.storeRegime || (data.storeNIT ? 'RESPONSABLE' : '')
   const regimeLabel = effectiveRegime ? (REGIME_LABELS[effectiveRegime] || effectiveRegime) : ''
+  // Solo un responsable de IVA discrimina el impuesto en la tirilla. Un "No
+  // responsable de IVA" NO debe imprimir IVA ni la leyenda de responsable
+  // (Res. DIAN 000042/2020 art. 13; E.T. art. 437 par. 3).
+  const isResponsable = effectiveRegime === 'RESPONSABLE'
+  const taxAmt = data.taxAmount ?? 0
+  const showTax = isResponsable && taxAmt > 0
+
+  // Leyendas de calidad tributaria (Res. DIAN 000042/2020 art. 13 num. 8)
+  const qualityLegends: string[] = []
+  if (data.isIvaWithholdingAgent) qualityLegends.push('Agente retenedor de IVA')
+  if (data.isSelfWithholdingAgent) qualityLegends.push('Autorretenedor')
+  if (data.isIncResponsible) qualityLegends.push('Responsable del impuesto nacional al consumo')
+  const extraLegendLines = (data.extraLegend || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
 
   // Format NIT for display: 222222222222 -> 222.222.222-222
   function formatNIT(nit: string): string {
@@ -72,16 +109,22 @@ export function printTicket(data: TicketData) {
     '04': 'FACTURA ELECTRÓNICA SIN VALIDACIÓN PREVIA (TIPO 04)',
   }
   const contingencyLabel = data.invoiceType && data.invoiceType !== '01' ? (CONTINGENCY_LABELS[data.invoiceType] || '') : ''
-  // Determine document subtitle
+  // Determine document subtitle. Para la tirilla no electrónica la denominación
+  // es configurable (Configuración → Tirilla): una "tirilla de venta" a secas no
+  // es denominación válida ante la DIAN si se usa como documento equivalente.
   const docSubtitle = contingencyLabel
-    || (isElectronic ? 'FACTURA ELECTRÓNICA DE VENTA' : isDocEquivalente ? 'DOCUMENTO EQUIVALENTE DE POS' : 'Tirilla de Venta')
+    || (isElectronic
+      ? 'FACTURA ELECTRÓNICA DE VENTA'
+      : isDocEquivalente
+        ? 'DOCUMENTO EQUIVALENTE DE POS'
+        : (data.docDenomination || 'Tirilla de Venta'))
 
   // Build items — nombre completo (sin truncado agresivo) en su propia fila,
   // y el detalle de cantidad x precio unitario en un renglón aparte para que
   // el nombre nunca pelee espacio con la cantidad y siempre se vea entero.
   const itemsRows = data.items
     .map((item) => {
-      const name = truncate(item.name, 48)
+      const name = truncate(item.name, cols)
       const isSvc = item.isService ? ' *' : ''
       return `
         <tr>
@@ -107,6 +150,12 @@ export function printTicket(data: TicketData) {
     ? `<div class="info-row"><span>Mesa:</span><span>${data.tableName}</span></div>`
     : ''
 
+  const deliveryBlock = data.fulfillmentType === 'DELIVERY'
+    ? `<div class="info-row"><span>Entrega:</span><span>Domicilio</span></div>${data.deliveryAddress ? `<div class="info-row"><span>Dirección:</span><span>${data.deliveryAddress}</span></div>` : ''}`
+    : data.fulfillmentType === 'PICKUP'
+      ? `<div class="info-row"><span>Entrega:</span><span>Recoge en tienda</span></div>`
+      : ''
+
   // Notes
   const notesBlock = data.notes
     ? `<div class="notes">${data.notes}</div>`
@@ -120,17 +169,17 @@ export function printTicket(data: TicketData) {
 <style>
   @page {
     margin: 0;
-    size: 80mm auto;
+    size: ${pageMm} auto;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body {
     font-family: 'Courier New', 'Lucida Console', monospace;
-    font-size: 11px;
+    font-size: ${baseFontPx};
     line-height: 1.35;
-    width: 72mm;
-    max-width: 280px;
-    padding: 4mm 3mm;
+    width: ${bodyMm};
+    max-width: 100%;
+    padding: 4mm ${padX};
     color: #111;
     background: #fff;
   }
@@ -143,7 +192,7 @@ export function printTicket(data: TicketData) {
     margin-bottom: 6px;
   }
   .store-name {
-    font-size: 15px;
+    font-size: ${storeNamePx};
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -400,12 +449,28 @@ export function printTicket(data: TicketData) {
 
   /* ── Print helpers ── */
   .dashed { border: none; border-top: 1px dashed #999; margin: 4px 0; }
+  .paper-hint {
+    font-size: 10px;
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px dashed #f59e0b;
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin-bottom: 8px;
+    text-align: center;
+  }
   @media print {
     body { padding: 2mm; }
+    .paper-hint { display: none !important; }
   }
 </style>
 </head>
 <body>
+
+  <div class="paper-hint">
+    Tirilla de ${width} mm. En el diálogo elige «Tamaño de papel: ${pageMm}»
+    (o «Recibo» / el predeterminado del rollo) y márgenes «Ninguno».
+  </div>
 
   <!-- ═══ HEADER ═══ -->
   <div class="header">
@@ -425,6 +490,7 @@ export function printTicket(data: TicketData) {
     </div>
     ${customerBlock}
     ${tableBlock}
+    ${deliveryBlock}
   </div>
 
   <!-- ═══ ITEMS ═══ -->
@@ -441,9 +507,11 @@ export function printTicket(data: TicketData) {
 
   <!-- ═══ TRIBUTARY INFO ═══ -->
   ${regimeLabel ? `<div class="tax-info">${regimeLabel}</div>` : ''}
-  ${effectiveResolution ? `<div class="tax-info">Resolución DIAN ${effectiveResolution}${data.invoicePrefix ? ` Prefijo: ${data.invoicePrefix}` : ''}${effectiveStart != null && effectiveEnd != null ? ` Del ${String(effectiveStart).padStart(6, '0')} al ${String(effectiveEnd).padStart(6, '0')}` : ''}</div>` : ''}
+  ${qualityLegends.map((l) => `<div class="tax-info">${l}</div>`).join('')}
+  ${effectiveResolution ? `<div class="tax-info">Resolución DIAN ${effectiveResolution}${effectivePrefix ? ` Prefijo: ${effectivePrefix}` : ''}${effectiveStart != null && effectiveEnd != null ? ` Del ${String(effectiveStart).padStart(6, '0')} al ${String(effectiveEnd).padStart(6, '0')}` : ''}</div>` : ''}
   ${isElectronic ? `<div class="tributary-msg">Venta sujeta al régimen de facturación electrónica</div>` : ''}
   ${customerNitDisplay ? `<div class="tax-info">${customerNitDisplay}</div>` : ''}
+  ${extraLegendLines.map((l) => `<div class="tax-info">${l}</div>`).join('')}
 
   <!-- ═══ CUFE (only for electronic invoices) ═══ -->
   ${isElectronic && data.cufe ? `
@@ -462,10 +530,10 @@ export function printTicket(data: TicketData) {
       <span>Descuento</span>
       <span>- ${fmt(data.discountAmount, data.currencyCode)}</span>
     </div>` : ''}
-    ${data.taxAmount && data.taxAmount > 0 ? `
+    ${showTax ? `
       <div class="tax-row">
         <span>IVA Incluido</span>
-        <span>+ ${fmt(data.taxAmount, data.currencyCode)}</span>
+        <span>+ ${fmt(taxAmt, data.currencyCode)}</span>
       </div>
       ${data.taxBreakdown && data.taxBreakdown.length > 0 ? data.taxBreakdown.map(tax => `
         <div class="tax-detail-row">
@@ -477,6 +545,10 @@ export function printTicket(data: TicketData) {
     ${hasTip ? `<div class="tip-row">
       <span>Propina</span>
       <span>+ ${fmt(data.tipAmount, data.currencyCode)}</span>
+    </div>` : ''}
+    ${data.deliveryFee && data.deliveryFee > 0 ? `<div class="tip-row">
+      <span>Domicilio</span>
+      <span>+ ${fmt(data.deliveryFee, data.currencyCode)}</span>
     </div>` : ''}
     <div class="total-row-main">
       <span class="label">Total</span>
@@ -518,7 +590,7 @@ export function printTicket(data: TicketData) {
       <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(data.qrCodeUrl)}" class="qr-image" alt="QR DIAN" />
       <div class="qr-url" style="font-size:6px;color:#888;word-break:break-all;">${data.qrCodeUrl}</div>
     </div>` : ''}
-    <div class="footer-msg">${isElectronic ? 'Representación gráfica de la factura electrónica de venta' : isDocEquivalente ? 'Documento equivalente de POS autorizado por la DIAN' : 'Gracias por su compra'}</div>
+    <div class="footer-msg">${isElectronic ? 'Representación gráfica de la factura electrónica de venta' : isDocEquivalente ? 'Documento equivalente de POS autorizado por la DIAN' : (data.footerText || 'Gracias por su compra')}</div>
     ${isElectronic ? '<div class="footer-msg">Autorizada mediante resolución DIAN</div>' : ''}
     ${isDocEquivalente && !isElectronic ? '<div class="footer-msg">Autorizado mediante resolución DIAN como documento equivalente</div>' : ''}
     <div class="footer-msg">¡Vuelva pronto!</div>

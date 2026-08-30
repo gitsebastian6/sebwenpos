@@ -36,7 +36,7 @@ import {
   Sparkles,
   Check,
   Upload,
-  X,
+  ChevronLeft,
   MessageCircle,
   Beaker,
 } from 'lucide-react'
@@ -91,7 +91,7 @@ export function PlanChangeDialog({ open, onOpenChange, storeId, plans, currentPl
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-hidden p-0 gap-0 [&>button]:hidden flex flex-col">
+      <DialogContent showCloseButton={false} className="sm:max-w-[560px] max-h-[92vh] overflow-hidden p-0 gap-0 flex flex-col">
         <PlanChangeInner
           key={dialogKey}
           storeId={storeId}
@@ -249,10 +249,11 @@ function PlanChangeInner({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="h-8 w-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors"
-                  aria-label="Cerrar"
+                  aria-label="Volver"
+                  className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1.5 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/20 dark:text-emerald-400"
                 >
-                  <X className="h-4 w-4" />
+                  <ChevronLeft className="h-4 w-4" />
+                  Volver
                 </button>
               </div>
             </div>

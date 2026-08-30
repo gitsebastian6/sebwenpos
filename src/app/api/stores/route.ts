@@ -30,8 +30,31 @@ const storeUpdateSchema = z.object({
   storeDescription: z.string().max(500).optional().nullable(),
   storeWhatsapp: z.string().max(30).optional().nullable(),
   storeActive: z.boolean().optional(),
+  // Domicilio / Delivery
+  deliveryEnabled: z.boolean().optional(),
+  deliveryFee: z.number().int().min(0).max(100_000_000).optional(),
+  deliveryFreeAbove: z.number().int().min(0).max(100_000_000).optional().nullable(),
+  deliveryMinOrder: z.number().int().min(0).max(100_000_000).optional(),
+  acceptingOrders: z.boolean().optional(),
   // Días de antigüedad para considerar una deuda de CxC "vencida" (Índice de Morosidad)
   debtOverdueDays: z.number().int().min(1).max(365).optional(),
+  // Datos fiscales (editable por el dueño para la tirilla)
+  taxRegime: z.enum(['RESPONSABLE', 'NO_RESPONSABLE', 'SIMPLIFICADO']).optional().nullable(),
+  // Tirilla / recibo térmico (Configuración → Tirilla)
+  receiptPaperWidth: z.enum(['80', '58']).optional(),
+  receiptDocDenomination: z.string().max(120).optional().nullable(),
+  receiptFooterText: z.string().max(300).optional().nullable(),
+  receiptExtraLegend: z.string().max(600).optional().nullable(),
+  isIvaWithholdingAgent: z.boolean().optional(),
+  isSelfWithholdingAgent: z.boolean().optional(),
+  isIncResponsible: z.boolean().optional(),
+  // Resolución DIAN del documento equivalente POS
+  posResolutionNumber: z.string().max(50).optional().nullable(),
+  posResolutionPrefix: z.string().max(10).optional().nullable(),
+  posResolutionFrom: z.number().int().min(0).optional().nullable(),
+  posResolutionTo: z.number().int().min(0).optional().nullable(),
+  posResolutionDate: z.string().optional().nullable(),
+  posResolutionEndDate: z.string().optional().nullable(),
 })
 
 // GET /api/stores?storeId=1  OR  GET /api/stores?userId=1
@@ -93,6 +116,15 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    // El slug de la tienda virtual no puede ser puramente numérico: la ruta
+    // pública resuelve por id numérico O slug, y un slug "12345" colisionaría.
+    if (parsed.data.storeSlug && /^\d+$/.test(parsed.data.storeSlug)) {
+      return NextResponse.json(
+        { error: 'La URL de la tienda debe incluir al menos una letra' },
+        { status: 400 }
+      )
+    }
+
     const existing = await db.store.findUnique({
       where: { id: parseInt(storeId) },
     })
@@ -123,6 +155,13 @@ export async function PUT(request: NextRequest) {
         invoiceTestMode: parsed.data.invoiceTestMode ?? undefined,
         divipolaCode: parsed.data.divipolaCode ?? undefined,
         cityName: parsed.data.cityName ?? undefined,
+        taxRegime: parsed.data.taxRegime ?? undefined,
+        posResolutionDate: parsed.data.posResolutionDate
+          ? new Date(parsed.data.posResolutionDate)
+          : parsed.data.posResolutionDate === null ? null : undefined,
+        posResolutionEndDate: parsed.data.posResolutionEndDate
+          ? new Date(parsed.data.posResolutionEndDate)
+          : parsed.data.posResolutionEndDate === null ? null : undefined,
       },
     })
 

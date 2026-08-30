@@ -13,7 +13,7 @@
 //   I4. No hay líneas duplicadas del mismo producto+presentación
 //       (identidad de línea dentro del agregado).
 //   I5. subtotal = Σ totalRow de los ítems.
-//   I6. total = subtotal − descuento + propina.
+//   I6. total = subtotal − descuento + propina + domicilio.
 //   I7. Montos no negativos; descuento nunca supera el subtotal.
 //
 // Uso en la ruta: construir primero los datos calculados y pasar
@@ -34,6 +34,9 @@ export interface OrderAggregateTotals {
   taxAmount: number
   discountAmount: number
   tipAmount: number
+  // Domicilio: cargo dedicado que suma al total pero NO al subtotal ni a la
+  // base de IVA. Opcional — 0 para ventas en tienda.
+  deliveryFee?: number
   total: number
 }
 
@@ -96,10 +99,14 @@ export function validateOrder(
   if (totals.discountAmount > totals.subtotal) {
     return fail('I7', 'El descuento no puede superar el subtotal')
   }
+  const deliveryFee = totals.deliveryFee ?? 0
+  if (deliveryFee < 0) {
+    return fail('I7', 'El domicilio no puede ser negativo')
+  }
 
   // I6
   const expectedTotal =
-    totals.subtotal - totals.discountAmount + totals.tipAmount
+    totals.subtotal - totals.discountAmount + totals.tipAmount + deliveryFee
   if (totals.total !== expectedTotal) {
     return fail('I6', `Total inconsistente: declarado ${totals.total}, esperado ${expectedTotal}`)
   }

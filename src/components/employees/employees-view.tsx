@@ -441,7 +441,7 @@ export function EmployeesView() {
 
       {/* ─── Create Dialog ────────────────────────────────────────────── */}
       <Dialog open={showCreateDialog} onOpenChange={(open) => { if (!open) { setShowCreateDialog(false); resetCreateForm() } }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
+        <DialogContent mobileFullscreen className="max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserCog className="h-5 w-5" />
@@ -597,7 +597,7 @@ export function EmployeesView() {
 
       {/* ─── Edit Dialog ──────────────────────────────────────────────── */}
       <Dialog open={showEditDialog} onOpenChange={(open) => { if (!open) { setShowEditDialog(false); setEditingEmployee(null) } }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
+        <DialogContent mobileFullscreen className="max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-5 w-5" />

@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/table'
 import { BarChart3, ShoppingCart, Armchair, Monitor, Printer } from 'lucide-react'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
+import { receiptStoreFields } from '@/lib/receipt-store-fields'
+import { useAuthStore } from '@/stores/auth-store'
 import type { ReportData } from './accounting-types'
 import {
   formatCurrency,
@@ -79,6 +81,7 @@ interface SalesDetailCardProps {
 }
 
 export function SalesDetailCard({ reportData, currencyCode, storeName }: SalesDetailCardProps) {
+  const store = useAuthStore((s) => s.store)
   return (
     <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
       <CardHeader>
@@ -206,6 +209,7 @@ export function SalesDetailCard({ reportData, currencyCode, storeName }: SalesDe
                             total: item.totalRow,
                           }))
                           printTicket({
+                            ...receiptStoreFields(store),
                             storeName,
                             orderNumber: order.orderNumber,
                             date: order.createdAt,

@@ -206,6 +206,12 @@ export function ProductFormDialog({
   // scanTarget === 'barcode' → main product barcode; otherwise a presentation key.
   const [scanTarget, setScanTarget] = useState<'barcode' | string | null>(null)
 
+  // Close the camera if the form is dismissed while it's open — the overlay is
+  // portaled to <body> and would otherwise stay stuck for the next open.
+  useEffect(() => {
+    if (!open) setScanTarget(null)
+  }, [open])
+
   const handleScanFill = useCallback(
     (code: string) => {
       if (scanTarget === 'barcode') {
@@ -248,7 +254,7 @@ export function ProductFormDialog({
     <Dialog open={open} onOpenChange={(isOpen) => {
       if (!isOpen) onOpenChange(false)
     }}>
-      <DialogContent className="max-w-[95vw] w-[95vw] sm:max-w-[95vw] md:max-w-[95vw] lg:max-w-[95vw] xl:max-w-[95vw] max-h-[92vh] overflow-y-auto rounded-xl backdrop-blur-sm">
+      <DialogContent mobileFullscreen className="max-w-[95vw] w-[95vw] sm:max-w-[95vw] md:max-w-[95vw] lg:max-w-[95vw] xl:max-w-[95vw] max-h-[92vh] overflow-y-auto rounded-xl backdrop-blur-sm">
         <DialogHeader>
           <DialogTitle>
             {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}

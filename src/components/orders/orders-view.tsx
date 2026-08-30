@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useOrders, useOrderDetail, useReturnOrder } from '@/hooks/api/use-orders'
 import { useCreateInvoice } from '@/hooks/api/use-invoices'
 import { formatCurrency } from '@/lib/auth'
-import { formatQty, clampQty, parseQtyInput } from '@/lib/format'
+import { formatQty, clampQty, parseQtyInput , paymentMethodLabel } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -56,10 +56,10 @@ import {
   Loader2,
 } from 'lucide-react'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
+import { receiptStoreFields } from '@/lib/receipt-store-fields'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { KPIBar } from '@/components/shared/kpi-bar'
-import { paymentMethodLabel } from '@/lib/format'
 import { es } from 'date-fns/locale'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -90,6 +90,9 @@ interface OrderDetail {
   notes: string | null
   createdAt: string
   tableName?: string | null
+  fulfillmentType?: string
+  deliveryFee?: number
+  deliveryAddress?: string | null
   customer: {
     id: number
     name: string
@@ -180,11 +183,14 @@ export function OrdersView() {
       unitPrice: item.unitPrice, total: item.totalRow, isService: item.isService,
     }))
     printTicket({
+      ...receiptStoreFields(store),
       storeName: store.name, storeNIT: store.nit || undefined,
       storeAddress: store.address || undefined, storePhone: store.phone || undefined,
-      storeRegime: 'RESPONSABLE',
       invoiceResolution: store.resolutionNumber || undefined,
       invoicePrefix: store.invoicePrefix || undefined,
+      resolutionNumber: store.resolutionNumber || undefined,
+      resolutionStart: store.resolutionStartNumber ?? undefined,
+      resolutionEnd: store.resolutionEndNumber ?? undefined,
       orderNumber: detail.orderNumber, date: detail.createdAt,
       customer: detail.customer?.name, tableName: detail.tableName ?? undefined,
       items, subtotal: detail.subtotal, tipAmount: detail.tipAmount,
@@ -193,6 +199,9 @@ export function OrdersView() {
       taxAmount: detail.taxAmount || 0,
       taxBreakdown: detail.taxBreakdown || undefined,
       discountAmount: detail.discountAmount || 0,
+      fulfillmentType: detail.fulfillmentType,
+      deliveryFee: detail.deliveryFee || 0,
+      deliveryAddress: detail.deliveryAddress ?? undefined,
     })
   }
 
@@ -498,9 +507,19 @@ export function OrdersView() {
                   <p className="text-sm mt-0.5">
                     {orderDetail.tableName
                       ? <span className="inline-flex items-center gap-1"><UtensilsCrossed className="h-3.5 w-3.5 text-amber-600" />{orderDetail.tableName}</span>
-                      : <span className="inline-flex items-center gap-1"><ShoppingBag className="h-3.5 w-3.5 text-emerald-600" />Punto de Venta</span>}
+                      : orderDetail.fulfillmentType === 'DELIVERY'
+                        ? <span className="inline-flex items-center gap-1"><ShoppingBag className="h-3.5 w-3.5 text-emerald-600" />Domicilio</span>
+                        : orderDetail.fulfillmentType === 'PICKUP'
+                          ? <span className="inline-flex items-center gap-1"><ShoppingBag className="h-3.5 w-3.5 text-emerald-600" />Recoge en tienda</span>
+                          : <span className="inline-flex items-center gap-1"><ShoppingBag className="h-3.5 w-3.5 text-emerald-600" />Punto de Venta</span>}
                   </p>
                 </div>
+                {orderDetail.deliveryAddress && (
+                  <div className="col-span-2">
+                    <Label className="text-xs text-muted-foreground">Dirección de entrega</Label>
+                    <p className="text-sm mt-0.5">{orderDetail.deliveryAddress}</p>
+                  </div>
+                )}
                 <div>
                   <Label className="text-xs text-muted-foreground">Estado</Label>
                   <div className="mt-0.5"><StatusBadge status={orderDetail.status} /></div>
@@ -612,6 +631,11 @@ export function OrdersView() {
                 {orderDetail.tipAmount > 0 && (
                   <div className="flex justify-between text-sm text-pink-600 dark:text-pink-400">
                     <span>Propina</span><span>{formatCurrency(orderDetail.tipAmount, store?.currencyCode)}</span>
+                  </div>
+                )}
+                {(orderDetail.deliveryFee ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Domicilio</span><span>{formatCurrency(orderDetail.deliveryFee || 0, store?.currencyCode)}</span>
                   </div>
                 )}
                 <Separator />

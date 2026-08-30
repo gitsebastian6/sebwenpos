@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------------------
+# SebwenPOS — Compose OVERRIDE de desarrollo (hot-reload real en Docker)
+# ---------------------------------------------------------------------------
+# Redefine SOLO el servicio `app`: usa la etapa `devserver` del Dockerfile
+# (node_modules Linux + código, sin `next build`) y corre `next dev`.
+#
+# El hot-reload NO usa bind mount (en Windows los bind mounts desde C:\ no
+# emiten eventos de archivo). Usa `docker compose watch`: Compose vigila el
+# host —donde inotify sí funciona— y sincroniza los cambios al contenedor;
+# el watcher de Next dentro del contenedor (inotify real) recompila.
+#
+# Uso:
+#   npm run docker:dev        → build + arranca + queda vigilando (Ctrl+C para salir)
+#   npm run docker:dev:logs   → solo los logs
+#   npm run docker:prod       → vuelve a la imagen de producción
+#
+# Reconstruye automáticamente al cambiar package.json (regla `rebuild`).
+# Al cambiar prisma/schema.prisma se sincroniza y reinicia el contenedor
+# (el arranque vuelve a correr `prisma generate`).
+# ---------------------------------------------------------------------------
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: devserver
+    # `prisma generate` en cada arranque/reinicio (cubre cambios de schema).
+    command: sh -c "npx prisma generate && exec npx next dev -p 3000 -H 0.0.0.0"
+    environment:
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      # .next queda dentro del contenedor (no en la capa de escritura).
+      - /app/.next
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /app/src
+        - action: sync
+          path: ./public
+          target: /app/public
+        - action: sync+restart
+          path: ./prisma/schema.prisma
+          target: /app/prisma/schema.prisma
+        - action: sync+restart
+          path: ./next.config.ts
+          target: /app/next.config.ts
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./package-lock.json
+    # La imagen `deps` no trae curl → healthcheck con node.
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 10s
+      start_period: 120s
+      retries: 20

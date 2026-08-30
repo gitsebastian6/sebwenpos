@@ -127,7 +127,7 @@ export function EditStoreDialog({ store, open, onOpenChange, onSaved }: EditStor
 
   return (
     <Dialog open={open} onOpenChange={(open) => { if (!open) { setEditReceiptFile(null); setEditReceiptForm({ amount: '', paymentMethod: 'NEQUI', reference: '', notes: '' }) } onOpenChange(open) }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
+      <DialogContent mobileFullscreen className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
         <DialogHeader>
           <DialogTitle>Editar Datos del Establecimiento</DialogTitle>
           <DialogDescription>Modifique la información del local y del propietario</DialogDescription>

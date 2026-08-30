@@ -6,7 +6,7 @@ import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, useI
 import { useProviders } from '@/hooks/api/use-providers'
 import { useTaxes } from '@/hooks/api/use-taxes'
 import { useCurrentSubscription } from '@/hooks/api/use-subscription'
-import { useKardex, useInventoryAdjustment, useInventoryLoss, useInventoryReturn } from '@/hooks/api/use-inventory'
+import { useKardex } from '@/hooks/api/use-inventory'
 import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from '@/hooks/api/use-categories'
 import { useAppStore } from '@/stores/app-store'
 import { formatCurrency } from '@/lib/auth'
@@ -20,13 +20,12 @@ import { ProductFormDialog } from './product-form-dialog'
 import { ImportProductsDialog } from './import-products-dialog'
 import type { ImportResult } from './import-products-dialog'
 import {
-  AdjustStockDialog,
-  LossDialog,
-  ReturnDialog,
   TraceDialog,
   CategoryFormDialog,
   DeleteConfirmDialog,
 } from './products-action-dialogs'
+import { InventoryActionDialog } from '@/components/inventory/inventory-action-dialog'
+import type { ActionType } from '@/components/inventory/inventory-types'
 import { ProductsTableSection } from './products-table-section'
 import { CategoriesSection } from './categories-section'
 
@@ -90,22 +89,11 @@ export function ProductsView() {
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'product' | 'category'; item: Product | Category } | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const [adjustDialogOpen, setAdjustDialogOpen] = useState(false)
-  const [lossDialogOpen, setLossDialogOpen] = useState(false)
-  const [returnDialogOpen, setReturnDialogOpen] = useState(false)
   const [traceDialogOpen, setTraceDialogOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
 
-  // ─── Action Dialog Props ───────────────────────────────────────────────
-  const [adjustProductId, setAdjustProductId] = useState<number | null>(null)
-  const [adjustProductName, setAdjustProductName] = useState('')
-  const [adjustCurrentStock, setAdjustCurrentStock] = useState(0)
-
-  const [lossProductId, setLossProductId] = useState<number | null>(null)
-  const [lossProductName, setLossProductName] = useState('')
-
-  const [returnProductId, setReturnProductId] = useState<number | null>(null)
-  const [returnProductName, setReturnProductName] = useState('')
+  // ─── Inventory action dialog (compartido con el módulo Inventario) ──────
+  const [invAction, setInvAction] = useState<{ type: ActionType; product: Product } | null>(null)
 
   const [traceProductId, setTraceProductId] = useState<number | null>(null)
   const [traceProductName, setTraceProductName] = useState('')
@@ -114,12 +102,6 @@ export function ProductsView() {
   const traceLoading = kardexQuery.isLoading
 
   const [importing, setImporting] = useState(false)
-
-  // ─── TanStack Query — Inventory Mutations ────────────────────────────────
-  const adjustStockMut = useInventoryAdjustment()
-  const lossMut = useInventoryLoss()
-  const returnMut = useInventoryReturn()
-  const actionSubmitting = adjustStockMut.isPending || lossMut.isPending || returnMut.isPending
 
   // ─── Product Handlers ──────────────────────────────────────────────────
 
@@ -208,58 +190,14 @@ export function ProductsView() {
 
   // ─── Quick Action Handlers ────────────────────────────────────────────
 
-  function openAdjustStockDialog(productId: number, name: string, currentStock: number) {
-    setAdjustProductId(productId)
-    setAdjustProductName(name)
-    setAdjustCurrentStock(currentStock)
-    setAdjustDialogOpen(true)
-  }
-
-  function openLossDialog(productId: number, name: string) {
-    setLossProductId(productId)
-    setLossProductName(name)
-    setLossDialogOpen(true)
-  }
-
-  function openReturnDialog(productId: number, name: string) {
-    setReturnProductId(productId)
-    setReturnProductName(name)
-    setReturnDialogOpen(true)
+  function openInventoryAction(type: ActionType, product: Product) {
+    setInvAction({ type, product })
   }
 
   function openTraceDialog(productId: number, name: string) {
     setTraceProductName(name)
     setTraceProductId(productId)
     setTraceDialogOpen(true)
-  }
-
-  async function handleAdjustStock(newStock: number, notes: string) {
-    if (!store?.id || !adjustProductId) return
-    const diff = newStock - adjustCurrentStock
-    if (diff === 0) { toast.info('Sin cambios'); return }
-    try {
-      await adjustStockMut.mutateAsync({ body: { storeId: store.id, productId: adjustProductId, quantity: diff, notes: notes || undefined } })
-      toast.success('Stock ajustado')
-      setAdjustDialogOpen(false)
-    } catch { toast.error('Error al ajustar stock') }
-  }
-
-  async function handleLoss(quantity: number, reason: string, notes: string) {
-    if (!store?.id || !lossProductId) return
-    try {
-      await lossMut.mutateAsync({ body: { storeId: store.id, productId: lossProductId, quantity, reason, notes: notes || undefined } })
-      toast.success('Pérdida registrada')
-      setLossDialogOpen(false)
-    } catch { toast.error('Error al registrar pérdida') }
-  }
-
-  async function handleReturn(quantity: number, notes: string) {
-    if (!store?.id || !returnProductId) return
-    try {
-      await returnMut.mutateAsync({ body: { storeId: store.id, productId: returnProductId, quantity, notes: notes || undefined } })
-      toast.success('Devolución registrada')
-      setReturnDialogOpen(false)
-    } catch { toast.error('Error al registrar devolución') }
   }
 
   // ─── Import Handler ────────────────────────────────────────────────────
@@ -317,6 +255,7 @@ export function ProductsView() {
         title: 'LISTADO DE PRODUCTOS',
         lines,
         footer: `Generado: ${new Date().toLocaleDateString('es-CO')}`,
+        paperWidth: store?.receiptPaperWidth === '58' ? '58' : '80',
       })
     } else {
       printReport({
@@ -397,9 +336,7 @@ export function ProductsView() {
             onNewProduct={openNewProductDialog}
             onEditProduct={openEditProductDialog}
             onToggleProduct={handleToggleProduct}
-            onAdjustStock={openAdjustStockDialog}
-            onLoss={openLossDialog}
-            onReturn={openReturnDialog}
+            onInventoryAction={openInventoryAction}
             onTrace={openTraceDialog}
             onDelete={(p) => setDeleteTarget({ type: 'product', item: p })}
             onPrint={handlePrintProducts}
@@ -447,28 +384,17 @@ export function ProductsView() {
         onConfirm={handleConfirmDelete}
         deleting={deleting}
       />
-      <AdjustStockDialog
-        open={adjustDialogOpen}
-        onOpenChange={setAdjustDialogOpen}
-        productName={adjustProductName}
-        currentStock={adjustCurrentStock}
-        onSubmit={handleAdjustStock}
-        submitting={actionSubmitting}
-      />
-      <LossDialog
-        open={lossDialogOpen}
-        onOpenChange={setLossDialogOpen}
-        productName={lossProductName}
-        onSubmit={handleLoss}
-        submitting={actionSubmitting}
-      />
-      <ReturnDialog
-        open={returnDialogOpen}
-        onOpenChange={setReturnDialogOpen}
-        productName={returnProductName}
-        onSubmit={handleReturn}
-        submitting={actionSubmitting}
-      />
+      {invAction && (
+        <InventoryActionDialog
+          key={`${invAction.type}-${invAction.product.id}`}
+          open
+          onOpenChange={(o) => { if (!o) setInvAction(null) }}
+          actionType={invAction.type}
+          storeId={store?.id}
+          product={invAction.product}
+          currencyCode={store?.currencyCode}
+        />
+      )}
       <TraceDialog
         open={traceDialogOpen}
         onOpenChange={(open) => { if (!open) setTraceProductId(null); setTraceDialogOpen(open) }}
@@ -489,3 +415,4 @@ export function ProductsView() {
     </div>
   )
 }
+

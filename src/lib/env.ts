@@ -112,11 +112,62 @@ function isSet(name: string): boolean {
   return !!v && v.trim().length > 0
 }
 
+// ---------------------------------------------------------------------------
+// Production safety checks (config that is present but unsafe)
+// ---------------------------------------------------------------------------
+// `assertRequiredEnv` above catches *missing* secrets. These catch config that
+// is set but would silently weaken a production deploy:
+//   - WOMPI_ENV=demo (or unset): the payment client auto-approves every charge
+//     without collecting money and skips webhook signature verification.
+//   - WOMPI_SKIP_SIGNATURE=true: disables webhook signature verification.
+//   - A security secret left as the .env.example placeholder or too short.
+
+/** A secret whose value still looks like the shipped example placeholder. */
+const PLACEHOLDER_SECRET = /change[-_ ]?me|replace[-_ ]?me|example[-_ ]?secret|your[-_ ]?secret[-_ ]?here/i
+const MIN_SECRET_LENGTH = 16
+const SECURITY_SECRETS = ['AUTH_SECRET', 'INTERNAL_SECRET', 'ENCRYPTION_KEY'] as const
+
+/**
+ * Config that is present but unsafe for production. Returns a list of
+ * human-readable problems (empty = safe). Pure — no logging or throwing — so it
+ * is callable from tests regardless of NODE_ENV.
+ */
+export function productionSafetyErrors(): string[] {
+  const errors: string[] = []
+
+  const wompiEnv = (process.env.WOMPI_ENV || '').trim().toLowerCase()
+  if (wompiEnv !== 'sandbox' && wompiEnv !== 'production') {
+    errors.push(
+      `WOMPI_ENV is "${process.env.WOMPI_ENV ?? '(unset)'}" — production requires "sandbox" or ` +
+        `"production". In "demo" mode every charge is auto-approved without collecting money ` +
+        `and webhook signatures are not verified.`,
+    )
+  }
+  if ((process.env.WOMPI_SKIP_SIGNATURE || '').trim().toLowerCase() === 'true') {
+    errors.push(
+      'WOMPI_SKIP_SIGNATURE=true disables Wompi webhook signature verification — not allowed in production.',
+    )
+  }
+
+  for (const name of SECURITY_SECRETS) {
+    const value = (process.env[name] || '').trim()
+    if (!value) continue // absence is handled by REQUIRED_IN_PRODUCTION / RECOMMENDED
+    if (PLACEHOLDER_SECRET.test(value)) {
+      errors.push(`${name} is still set to an example placeholder — generate a real random value.`)
+    } else if (value.length < MIN_SECRET_LENGTH) {
+      errors.push(`${name} is only ${value.length} chars — use at least ${MIN_SECRET_LENGTH} random chars.`)
+    }
+  }
+
+  return errors
+}
+
 /**
  * Validate the environment at boot. In production, throws (crashing the server)
- * if any REQUIRED_IN_PRODUCTION variable is missing, listing all of them at
- * once. In development, only logs warnings so local work is not blocked.
- * Idempotent and side-effect free apart from logging / throwing.
+ * if any REQUIRED_IN_PRODUCTION variable is missing or any production-safety
+ * check fails, listing all problems at once. In development, only logs warnings
+ * so local work is not blocked. Idempotent and side-effect free apart from
+ * logging / throwing.
  */
 export function assertRequiredEnv(): void {
   const missingRequired = REQUIRED_IN_PRODUCTION.filter((n) => !isSet(n))
@@ -129,11 +180,17 @@ export function assertRequiredEnv(): void {
     )
   }
 
-  if (missingRequired.length === 0) return
+  const problems: string[] = []
+  if (missingRequired.length > 0) {
+    problems.push(`missing required environment variable(s): ${missingRequired.join(', ')}`)
+  }
+  problems.push(...productionSafetyErrors())
+
+  if (problems.length === 0) return
 
   const msg =
-    `[ENV] FATAL: missing required environment variable(s): ${missingRequired.join(', ')}. ` +
-    `Add them to your .env file. See .env.example for reference.`
+    `[ENV] FATAL:\n  - ${problems.join('\n  - ')}\n` +
+    `See .env.example for reference.`
 
   if (isDev()) {
     console.warn(`\n${msg}\n[ENV] Running in development mode — continuing anyway. FIX THIS BEFORE PRODUCTION.\n`)

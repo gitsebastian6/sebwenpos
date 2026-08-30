@@ -24,6 +24,14 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-unreachable": "error",
     "@typescript-eslint/prefer-as-const": "error",
 
+    // ── Resolución de imports: atrapa rutas/módulos rotos en el editor y en CI,
+    //    no solo cuando Turbopack falla el build. `import/named` queda apagada
+    //    porque `tsc` ya valida los named imports en .ts/.tsx y da falsos
+    //    positivos con paquetes que usan `export type` (p.ej. class-variance-authority). ──
+    "import/named": "off",
+    "import/no-unresolved": "error",
+    "import/no-duplicates": "warn",
+
     // ── Se mantienen apagadas (ruido o cubiertas por TS/estilo) ──
     "@typescript-eslint/ban-ts-comment": "off",
     "@typescript-eslint/no-unused-disable-directive": "off",
@@ -43,7 +51,15 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "mini-services/**", "scripts/**", "test/**", "prisma/**", "*.config.*", "daemon.js", "daemon-prod.js", "keepalive.cjs", "start-server.js"]
+  // Resolver de imports: usa tsconfig para los alias `@/*` y `@data/*`.
+  settings: {
+    "import/resolver": {
+      typescript: { project: "./tsconfig.json" },
+      node: true,
+    },
+  },
+}, {
+  ignores: ["node_modules/**", ".next/**", ".next-snapshot/**", ".turbo/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "mini-services/**", "scripts/**", "test/**", "prisma/**", "*.config.*", "daemon.js", "daemon-prod.js", "keepalive.cjs", "start-server.js"]
 }];
 
 export default eslintConfig;

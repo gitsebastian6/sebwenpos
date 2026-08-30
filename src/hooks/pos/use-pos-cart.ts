@@ -6,9 +6,10 @@ import { floorQty, isFractionalUnit, roundQty } from '@/lib/format'
 import { useOffline } from '@/lib/offline/offline-provider'
 import { enqueuePendingOrder } from '@/lib/offline/sync'
 import { playCartAdd, playError, playSaleSuccess } from '@/lib/pos-sounds'
+import { clearPosCartDraft, loadPosCartDraft, savePosCartDraft } from '@/lib/pos-cart-draft'
 import { useAuthStore } from '@/stores/auth-store'
 import type { CartItem, CustomerSummary, InvoiceMode, LastInvoiceData, LastOrderData, PaymentMethod, ProductPresentation, Service, PaymentSplit } from '@/types'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { OpenCashRegister, Product } from './use-pos-data'
 
@@ -74,25 +75,28 @@ export function usePosCart(deps: UsePosCartDeps) {
   const { store } = useAuthStore()
   const storeId = store?.id
 
+  // ─── Borrador de venta en curso (sobrevive recargas / evicción de la PWA) ──
+  const [initialDraft] = useState(() => loadPosCartDraft(storeId))
+
   // ─── Cart state ──────────────────────────────────────
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [selectedCustomer, setSelectedCustomer] = useState<string>('none')
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH')
-  const [notes, setNotes] = useState('')
-  const [tipAmount, setTipAmount] = useState<number>(0)
-  const [showTipInput, setShowTipInput] = useState(false)
-  const [transferRef, setTransferRef] = useState('')
+  const [cart, setCart] = useState<CartItem[]>(() => initialDraft?.cart ?? [])
+  const [selectedCustomer, setSelectedCustomer] = useState<string>(() => initialDraft?.selectedCustomer ?? 'none')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() => initialDraft?.paymentMethod ?? 'CASH')
+  const [notes, setNotes] = useState(() => initialDraft?.notes ?? '')
+  const [tipAmount, setTipAmount] = useState<number>(() => initialDraft?.tipAmount ?? 0)
+  const [showTipInput, setShowTipInput] = useState(() => (initialDraft?.tipAmount ?? 0) > 0)
+  const [transferRef, setTransferRef] = useState(() => initialDraft?.transferRef ?? '')
 
   // ─── Split-tender (multiple payment methods for one sale) ───────────
   // Empty → single-method flow. Non-empty → paymentMethod resolves to 'MIXED'
   // and every row is a payment allocation (amount + per-method reference).
-  const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>([])
+  const [paymentSplits, setPaymentSplits] = useState<PaymentSplit[]>(() => initialDraft?.paymentSplits ?? [])
 
   // ─── Discount states ─────────────────────────────────
-  const [discountType, setDiscountType] = useState<DiscountType>('NONE')
-  const [discountValue, setDiscountValue] = useState<number>(0)
-  const [discountReason, setDiscountReason] = useState('')
-  const [showDiscountInput, setShowDiscountInput] = useState(false)
+  const [discountType, setDiscountType] = useState<DiscountType>(() => initialDraft?.discountType ?? 'NONE')
+  const [discountValue, setDiscountValue] = useState<number>(() => initialDraft?.discountValue ?? 0)
+  const [discountReason, setDiscountReason] = useState(() => initialDraft?.discountReason ?? '')
+  const [showDiscountInput, setShowDiscountInput] = useState(() => (initialDraft?.discountType ?? 'NONE') !== 'NONE')
 
   // ─── UI states ───────────────────────────────────────
   const [showChargeDialog, setShowChargeDialog] = useState(false)
@@ -102,7 +106,7 @@ export function usePosCart(deps: UsePosCartDeps) {
   // ─── Invoice mode ────────────────────────────────────
   const isEInvEnabled = !!store?.invoiceEnabled && !!store?.nit
   const hasStoreNit = !!store?.nit
-  const [posInvoiceMode, setPosInvoiceMode] = useState<InvoiceMode>('TIRILLA')
+  const [posInvoiceMode, setPosInvoiceMode] = useState<InvoiceMode>(() => initialDraft?.posInvoiceMode ?? 'TIRILLA')
   const [lastInvoiceData, setLastInvoiceData] = useState<LastInvoiceData | null>(null)
   const [lastDocType, setLastDocType] = useState<'TIRILLA' | 'DOC_EQUIPOS' | 'ELECTRONICA'>('TIRILLA')
   const [creatingInvoice, setCreatingInvoice] = useState(false)
@@ -119,6 +123,57 @@ export function usePosCart(deps: UsePosCartDeps) {
   const createOrderMutation = useCreateOrder()
   const createInvoiceMutation = useCreateInvoice()
   const { isOnline } = useOffline()
+
+  // ─── Persistencia del borrador ───────────────────────
+  // Snapshot vivo del borrador (leído por el autosave y por el flush).
+  const draftRef = useRef({
+    cart, selectedCustomer, paymentMethod, notes, tipAmount, transferRef,
+    paymentSplits, discountType, discountValue, discountReason, posInvoiceMode,
+  })
+  draftRef.current = {
+    cart, selectedCustomer, paymentMethod, notes, tipAmount, transferRef,
+    paymentSplits, discountType, discountValue, discountReason, posInvoiceMode,
+  }
+
+  // Reconciliar el borrador restaurado contra el catálogo actual: quitar líneas
+  // de productos que ya no existen. Corre una sola vez, al llegar el catálogo.
+  const didReconcileDraft = useRef(false)
+  useEffect(() => {
+    if (didReconcileDraft.current) return
+    if (!initialDraft || initialDraft.cart.length === 0) { didReconcileDraft.current = true; return }
+    if (deps.products.length === 0) return
+    didReconcileDraft.current = true
+    setCart((prev) => {
+      const valid = prev.filter(
+        (l) => l.isService || (l.productId != null && deps.products.some((p) => p.id === l.productId))
+      )
+      if (valid.length !== prev.length) {
+        toast.info('Se quitaron líneas del pedido guardado (productos ya no disponibles).')
+      }
+      return valid.length === prev.length ? prev : valid
+    })
+  }, [deps.products, initialDraft])
+
+  // Autosave con debounce.
+  useEffect(() => {
+    if (!storeId) return
+    const t = setTimeout(() => savePosCartDraft(storeId, draftRef.current), 400)
+    return () => clearTimeout(t)
+  }, [storeId, cart, selectedCustomer, paymentMethod, notes, tipAmount, transferRef, paymentSplits, discountType, discountValue, discountReason, posInvoiceMode])
+
+  // Flush inmediato al ir a segundo plano / cerrar — el momento en que el SO
+  // suele descartar la PWA.
+  useEffect(() => {
+    if (!storeId) return
+    const flush = () => savePosCartDraft(storeId, draftRef.current)
+    const onVis = () => { if (document.visibilityState === 'hidden') flush() }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [storeId])
 
   // ─── Cart operations ─────────────────────────────────
   const addToCart = useCallback(
@@ -345,7 +400,8 @@ export function usePosCart(deps: UsePosCartDeps) {
     setInvoiceCustomerNit('')
     setInvoiceCustomerName('')
     setInvoiceCustomerEmail('')
-  }, [])
+    clearPosCartDraft(storeId)
+  }, [storeId])
 
   const clearLastOrder = useCallback(() => {
     setLastOrderNumber(null)
@@ -544,6 +600,7 @@ export function usePosCart(deps: UsePosCartDeps) {
           : order
       )
       setLastDocType(posInvoiceMode)
+      clearPosCartDraft(storeId)
       setCart([])
       setNotes('')
       setTipAmount(0)

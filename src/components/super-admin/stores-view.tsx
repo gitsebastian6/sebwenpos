@@ -509,7 +509,7 @@ export function CreateStoreDialog({ open, onOpenChange, plans, onSuccess }: Crea
 
   return (
     <Dialog open={open} onOpenChange={(open) => { if (!open) { setForm({ ownerCedula: '', ownerPassword: '', ownerFullName: '', ownerEmail: '', ownerPhone: '', storeName: '', nit: '', legalName: '', address: '', phone: '', selectedPlanId: '' }); setSelectedBillingPeriod('MONTHLY'); setCreateReceiptFile(null); setCreateReceiptForm({ amount: '', paymentMethod: 'NEQUI', reference: '', notes: '' }) } onOpenChange(open) }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
+      <DialogContent mobileFullscreen className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
         <DialogHeader>
           <DialogTitle>Crear Nueva Tienda</DialogTitle>
           <DialogDescription>Complete los datos del propietario y de la tienda. Se crearán automáticamente categorías, IVA y roles.</DialogDescription>

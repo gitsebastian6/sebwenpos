@@ -10,6 +10,9 @@
 # Shell scripts MUST always use LF (Linux line endings) — never CRLF
 *.sh text eol=lf
 
+# Husky hooks run via `sh` — CRLF rompe el shebang / los comandos en Linux/CI
+.husky/* text eol=lf
+
 # Node.js files prefer LF
 *.js text eol=lf
 *.ts text eol=lf

@@ -42,6 +42,18 @@ RUN chmod +x /app/node_modules/@prisma/engines/schema-engine-* 2>/dev/null || tr
 # Generate Prisma client with PostgreSQL provider
 RUN npx prisma generate
 
+# ── Stage: Dev Server (hot-reload vía `docker compose watch`) ─────────────
+# Extiende `deps` (node_modules Linux + prisma client) y añade el código.
+# NO hace `next build`: arranca `next dev`. Compose sincroniza los cambios del
+# host a /app/src → el watcher del contenedor (inotify real) recompila.
+FROM deps AS devserver
+WORKDIR /app
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY . .
+EXPOSE 3000
+CMD ["npx", "next", "dev", "-p", "3000", "-H", "0.0.0.0"]
+
 # ── Stage 2: Builder ──────────────────────────────────────────────────────
 FROM node:20-bookworm-slim AS builder
 

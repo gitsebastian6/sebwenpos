@@ -44,3 +44,14 @@ export function generateOrderNumber(): string {
   const rand = crypto.randomInt(0, 10000).toString().padStart(4, '0')
   return `TK-${dateStr}-${rand}`
 }
+
+// Número corto y público para un pedido de la tienda virtual, ej. WEB-7QK3.
+// Sin ambigüedad visual (sin 0/O/1/I) — el cliente lo lee y lo dicta por WhatsApp.
+export function generateOnlineOrderNumber(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let code = ''
+  for (let i = 0; i < 4; i++) {
+    code += alphabet[crypto.randomInt(0, alphabet.length)]
+  }
+  return `WEB-${code}`
+}

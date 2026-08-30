@@ -8,11 +8,15 @@
  *
  * Deliberately NOT a Radix Dialog: it is designed to open on top of other
  * dialogs (quotation/purchase forms) without nested focus-trap or z-index
- * conflicts. It uses a plain fixed overlay with a very high z-index.
+ * conflicts. It uses a plain fixed overlay with a very high z-index, rendered
+ * through a portal to <body> so a `transform`ed ancestor (Radix DialogContent
+ * is translated for centering) can't become its containing block and shrink
+ * the "fixed inset-0" overlay to the parent dialog's box.
  */
 
-import { Camera, X } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { Camera, ChevronLeft } from 'lucide-react'
+import { useCallback, useEffect, useState, type SyntheticEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { useCameraScanner, type CameraScannerState } from '@/hooks/use-camera-scanner'
 
 // ─── ScanButton ──────────────────────────────────────────────────────────────
@@ -33,9 +37,9 @@ export function ScanButton({
         type="button"
         aria-label={label}
         onClick={onClick}
-        className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+        className="inline-flex items-center justify-center h-8 w-8 shrink-0 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 active:scale-95 transition-all"
       >
-        <Camera className="h-3.5 w-3.5" />
+        <Camera className="h-4 w-4" />
       </button>
     )
   }
@@ -101,38 +105,57 @@ export function BarcodeScannerDialog({
 
   const { state, videoRef } = useCameraScanner({ active: open, onScan: handleDetected })
 
-  // Close on Escape
+  // Keep taps/focus inside the camera from reaching a parent Radix Dialog/Sheet
+  // (which is portaled to <body> too) — otherwise Radix reads them as "interact
+  // outside" and closes the form underneath the scanner.
+  const stopEvt = useCallback((e: SyntheticEvent) => {
+    e.stopPropagation()
+    ;(e.nativeEvent as Event).stopImmediatePropagation?.()
+  }, [])
+
+  // Close on Escape.
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onClose()
+      }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // Capture phase so we win the keypress before the parent dialog's handler.
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
   }, [open, onClose])
 
-  if (!open) return null
+  if (!open || typeof document === 'undefined') return null
 
   const message = state in STATE_MESSAGES ? STATE_MESSAGES[state as keyof typeof STATE_MESSAGES] : null
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Escáner de código de barras"
-      className="fixed inset-0 z-[9999] flex flex-col bg-black/95 backdrop-blur-sm"
+      // pointer-events-auto: sobre un Dialog/Sheet de Radix el <body> queda con
+      // pointer-events:none; al estar portaleado ahí, la X heredaría ese "no
+      // clickable". Lo re-habilitamos. Los stopEvt evitan que el toque/enfoque
+      // se lea como "interacción fuera" del formulario padre.
+      className="pointer-events-auto fixed inset-0 z-[9999] flex flex-col bg-black/95 backdrop-blur-sm"
+      onPointerDown={stopEvt}
+      onFocus={stopEvt}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <p className="text-sm font-medium text-white/90">Apunta la cámara al código de barras</p>
+      <div className="flex items-center gap-3 px-4 pt-4 pb-2">
         <button
           type="button"
           onClick={onClose}
-          aria-label="Cerrar escáner"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+          aria-label="Volver"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-500/25"
         >
-          <X className="h-5 w-5" />
+          <ChevronLeft className="h-4 w-4" />
+          Volver
         </button>
+        <p className="truncate text-sm font-medium text-white/80">Apunta la cámara al código de barras</p>
       </div>
 
       {/* Viewport */}
@@ -196,7 +219,8 @@ export function BarcodeScannerDialog({
           Funciona con EAN-13, EAN-8, UPC, Code 128 y Code 39
         </p>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -206,21 +230,36 @@ export function BarcodeScannerDialog({
  * Convenience hook: returns [scannerOpen, openScanner, closeScanner] plus a
  * pre-wired scanner UI (button + dialog). Views only provide `onScan`.
  */
-export function useBarcodeScannerDialog(onScan: (code: string) => void) {
+export function useBarcodeScannerDialog(
+  onScan: (code: string) => void,
+  options?: { label?: string; size?: 'default' | 'compact' }
+) {
   const [open, setOpen] = useState(false)
+
+  const openScanner = useCallback(() => setOpen(true), [])
+  const closeScanner = useCallback(() => setOpen(false), [])
+
+  const scanButton = <ScanButton onClick={openScanner} label={options?.label} size={options?.size} />
+  // The dialog is `position: fixed` but a `transform`ed ancestor would become
+  // its containing block and break the full-screen overlay — render it via a
+  // portal-safe spot. Callers that place `scanButton` inside a transformed
+  // wrapper should render `scannerDialog` separately, outside it.
+  const scannerDialog = <BarcodeScannerDialog open={open} onClose={closeScanner} onScan={onScan} />
 
   const scannerUi = (
     <>
-      <ScanButton onClick={() => setOpen(true)} />
-      <BarcodeScannerDialog open={open} onClose={() => setOpen(false)} onScan={onScan} />
+      {scanButton}
+      {scannerDialog}
     </>
   )
 
   return {
     open,
-    openScanner: () => setOpen(true),
-    closeScanner: () => setOpen(false),
+    openScanner,
+    closeScanner,
     scannerUi,
+    scanButton,
+    scannerDialog,
   }
 }
 

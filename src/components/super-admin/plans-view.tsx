@@ -14,8 +14,7 @@ import {
 } from '@/components/ui/table'
 import { Crown, Users, Package, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatCOP } from './helpers'
-import { formatLimit } from './helpers'
+import { formatCOP , formatLimit } from './helpers'
 import type { PlanData } from './types'
 import { useUpdatePlan, useCreatePlan, useDeletePlan } from '@/hooks/api/use-super-admin'
 
@@ -231,7 +230,7 @@ export function PlansView({ plans, onPlansChange }: PlansViewProps) {
 
       {/* Create/Edit Plan Dialog */}
       <Dialog open={showPlanDialog} onOpenChange={setShowPlanDialog}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
+        <DialogContent mobileFullscreen className="max-w-lg max-h-[90vh] overflow-y-auto rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>{planDialogMode === 'create' ? 'Nuevo Plan' : `Editar Plan: ${editingPlan?.name}`}</DialogTitle>
             <DialogDescription>

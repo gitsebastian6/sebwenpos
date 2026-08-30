@@ -127,3 +127,24 @@ export function emitTableDeleted(storeId: number) {
     data: {},
   })
 }
+
+// ─── Pedidos en línea (tienda virtual / delivery) ─────────────────────────
+// Se reusa el mismo mini-servicio socket.io por tienda. La bandeja "Pedidos
+// en línea" escucha estos eventos e invalida su query (con polling de
+// respaldo, por si el socket está caído).
+
+export function emitOnlineOrderCreated(storeId: number, onlineOrder: { id: number; orderNumber: string }) {
+  return emitTablesEvent({
+    storeId,
+    event: 'onlineorder:created',
+    data: { onlineOrder },
+  })
+}
+
+export function emitOnlineOrderUpdated(storeId: number, onlineOrder: { id: number; orderNumber: string; status: string }) {
+  return emitTablesEvent({
+    storeId,
+    event: 'onlineorder:updated',
+    data: { onlineOrder },
+  })
+}

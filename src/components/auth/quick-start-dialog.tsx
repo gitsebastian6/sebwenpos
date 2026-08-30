@@ -87,7 +87,7 @@ export function QuickStartDialog({ open, onOpenChange }: QuickStartDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[440px] bg-zinc-950 border-zinc-800 text-zinc-100 p-0 overflow-hidden">
+      <DialogContent showCloseButton={false} className="sm:max-w-[440px] bg-zinc-950 border-zinc-800 text-zinc-100 p-0 overflow-hidden">
         {success ? (
           <div className="p-8 text-center space-y-4">
             <div className="mx-auto h-16 w-16 bg-emerald-500/15 rounded-full flex items-center justify-center border border-emerald-500/20">
@@ -108,6 +108,15 @@ export function QuickStartDialog({ open, onOpenChange }: QuickStartDialogProps) 
         ) : (
           <>
             <DialogHeader className="p-6 pb-0">
+              <button
+                type="button"
+                onClick={handleClose}
+                aria-label="Volver"
+                className="mb-3 -ml-1 inline-flex w-fit items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-500/10"
+              >
+                <ArrowRight className="h-4 w-4 rotate-180" />
+                Volver
+              </button>
               <div className="flex items-center gap-3 mb-2">
                 <div className="h-10 w-10 bg-emerald-500/10 rounded-xl flex items-center justify-center border border-emerald-500/20">
                   <Zap className="h-5 w-5 text-emerald-400" />

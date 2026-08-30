@@ -17,6 +17,7 @@ export const VIEW_LABELS: Record<string, string> = {
   purchases: 'Compras',
   services: 'Servicios',
   orders: 'Órdenes',
+  'online-orders': 'Pedidos en línea',
   invoices: 'Facturación Electrónica',
   quotations: 'Cotizaciones',
   inventory: 'Inventario',

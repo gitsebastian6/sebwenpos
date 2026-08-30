@@ -1,73 +1,49 @@
 import { requireAuthStoreId } from '@/lib/api-auth'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import {
+  BOOLEAN_IMPORT_FIELDS,
+  NUMERIC_IMPORT_FIELDS,
+  buildColumnMap,
+  stripAccents,
+} from '@/lib/product-import-columns'
+import { buildPresentations, parseBool, resolveUnitLabel } from '@/lib/product-import-row'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 
 export const dynamic = 'force-dynamic'
 
-// ─── Expected Excel Columns (case-insensitive, trim whitespace) ────────────
-// Columnas esperadas en el Excel (insensible a mayúsculas, sin espacios extra)
-const COLUMN_MAP: Record<string, string> = {
-  'sku': 'sku',
-  'código sku': 'sku',
-  'codigo sku': 'sku',
-  'nombre': 'name',
-  'name': 'name',
-  'producto': 'name',
-  'descripción': 'description',
-  'descripcion': 'description',
-  'descripción corta': 'description',
-  'categoría': 'categoryName',
-  'categoria': 'categoryName',
-  'proveedor': 'providerName',
-  'impuesto': 'taxRateName',
-  'tasa impuesto': 'taxRateName',
-  'invima': 'invima',
-  'registro invima': 'invima',
-  'precio compra': 'costPrice',
-  'precio de compra': 'costPrice',
-  'costo': 'costPrice',
-  'precio costo': 'costPrice',
-  'precio venta': 'salePrice',
-  'precio de venta': 'salePrice',
-  'precio': 'salePrice',
-  'comisión': 'commission',
-  'comision': 'commission',
-  '% comisión': 'commission',
-  'stock': 'currentStock',
-  'stock actual': 'currentStock',
-  'inventario': 'currentStock',
-  'stock mínimo': 'minStock',
-  'stock minimo': 'minStock',
-  'mínimo stock': 'minStock',
-  'minimo stock': 'minStock',
-  'activo': 'isActive',
-  'estado': 'isActive',
-  'imagen url': 'imgUrl',
-  'img url': 'imgUrl',
-}
+// Encabezado normalizado (trim → minúsculas → sin tildes) → campo interno.
+// El catálogo completo de columnas vive en src/lib/product-import-columns.ts
+const COLUMN_MAP = buildColumnMap()
 
 interface ExcelRow {
   sku?: string
   name?: string
+  barcode?: string
   description?: string
   categoryName?: string
   providerName?: string
   taxRateName?: string
   invima?: string
+  unitLabel?: string
   costPrice?: number
   salePrice?: number
   commission?: number
   currentStock?: number
   minStock?: number
+  trackInventory?: string
+  trackExpiration?: string
   isActive?: string
   imgUrl?: string
+  // Columnas de presentaciones adicionales ("pres1_*" / "pres2_*"): numéricas
+  // ya parseadas a number, de texto como string.
+  [key: string]: string | number | undefined
 }
 
 // ─── Normalize column header ────────────────────────────────────────────────
 function normalizeHeader(header: string): string {
-  const key = header.trim().toLowerCase()
+  const key = stripAccents(header).trim().toLowerCase()
   return COLUMN_MAP[key] || ''
 }
 
@@ -83,18 +59,16 @@ function parseRow(raw: Record<string, unknown>): ExcelRow | null {
     if (field === 'name') {
       if (!strVal) return null // name is required
       mapped.name = strVal
-    } else if (field === 'isActive') {
-      mapped.isActive = strVal
-    } else if (['costPrice', 'salePrice', 'commission', 'currentStock', 'minStock'].includes(field)) {
+    } else if (BOOLEAN_IMPORT_FIELDS.has(field)) {
+      mapped[field] = strVal
+    } else if (NUMERIC_IMPORT_FIELDS.has(field)) {
       const numVal = parseFloat(strVal.replace(/[,$\s]/g, ''))
       if (!isNaN(numVal)) {
         // Precisión QTY_PRECISION=3 (0.001) para stock/cantidades; precios se redondean a COP entero al crear
-        ;(mapped as Record<string, unknown>)[field] = Math.round(numVal * 1000) / 1000
+        mapped[field] = Math.round(numVal * 1000) / 1000
       }
-    } else {
-      if (strVal) {
-        ;(mapped as Record<string, unknown>)[field] = strVal
-      }
+    } else if (strVal) {
+      mapped[field] = strVal
     }
   }
 
@@ -196,6 +170,7 @@ export async function POST(req: NextRequest) {
     const categoryMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]))
     const providerMap = new Map(providers.map(p => [p.name.toLowerCase(), p.id]))
     const taxRateMap = new Map(taxRates.map(t => [t.name.toLowerCase(), t.id]))
+    const taxRateCodeMap = new Map(taxRates.map(t => [t.code.toLowerCase(), t.id]))
 
     // ─── AUTO-CREATE missing categories ────────────────────────────────────
     const createdCategories: string[] = []
@@ -257,7 +232,9 @@ export async function POST(req: NextRequest) {
     // ─── Validate and create products ──────────────────────────────────────
     const created: string[] = []
     const skipped: { row: number; name: string; reason: string }[] = []
+    const warnings: { row: number; name: string; message: string }[] = []
     const errors: { row: number; message: string }[] = parseErrors
+    let createdPresentations = 0
 
     for (let i = 0; i < parsed.length; i++) {
       const row = parsed[i]
@@ -279,26 +256,59 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // Resolve category by name (auto-created above if missing)
-      let categoryId: number | undefined
-      if (row.categoryName) {
-        categoryId = categoryMap.get(row.categoryName.toLowerCase())
+      // Validate lengths (mirror the .max() rules of POST /api/products)
+      if (row.name!.trim().length > 200) {
+        skipped.push({ row: rowNum, name: row.name!, reason: 'El nombre supera 200 caracteres' })
+        continue
+      }
+      const baseBarcode = row.barcode?.trim() || null
+      if (baseBarcode && baseBarcode.length > 100) {
+        skipped.push({ row: rowNum, name: row.name!, reason: 'El código de barras supera 100 caracteres' })
+        continue
       }
 
-      // Resolve provider by name (auto-created above if missing)
-      let providerId: number | undefined
-      if (row.providerName) {
-        providerId = providerMap.get(row.providerName.toLowerCase())
-      }
+      // Resolve category / provider by name (auto-created above if missing)
+      const categoryId = row.categoryName ? categoryMap.get(row.categoryName.toLowerCase()) : undefined
+      const providerId = row.providerName ? providerMap.get(row.providerName.toLowerCase()) : undefined
 
-      // Resolve tax rate by name
+      // Resolve tax rate by name OR code
       let taxRateId: number | undefined
       if (row.taxRateName) {
-        taxRateId = taxRateMap.get(row.taxRateName.toLowerCase())
+        const key = row.taxRateName.toLowerCase()
+        taxRateId = taxRateMap.get(key) ?? taxRateCodeMap.get(key)
       }
 
-      // Parse active status
+      // Unit of measure — code or label; blank/invalid → UND (+ warning)
+      const unit = resolveUnitLabel(row.unitLabel)
+      if (unit.invalid) {
+        warnings.push({
+          row: rowNum,
+          name: row.name!,
+          message: `Unidad de medida "${String(row.unitLabel).trim()}" no reconocida, se usó UND`,
+        })
+      }
+
+      // Additional presentations (flat "Presentación N ..." columns)
+      const pres = buildPresentations(row)
+      if (pres.error) {
+        skipped.push({ row: rowNum, name: row.name!, reason: pres.error })
+        continue
+      }
+      for (const w of pres.warnings) {
+        warnings.push({ row: rowNum, name: row.name!, message: w })
+      }
+
+      // Barcode must be unique within the row (base vs its presentations)
+      const rowBarcodes = [baseBarcode, ...pres.presentations.map(p => p.barcode)].filter(Boolean) as string[]
+      if (new Set(rowBarcodes).size !== rowBarcodes.length) {
+        skipped.push({ row: rowNum, name: row.name!, reason: 'Códigos de barras repetidos entre las presentaciones' })
+        continue
+      }
+
+      // Parse boolean flags
       const isActive = parseActive(row.isActive)
+      const trackInventory = parseBool(row.trackInventory, true)
+      const trackExpiration = parseBool(row.trackExpiration, false)
 
       try {
         await db.product.create({
@@ -306,6 +316,8 @@ export async function POST(req: NextRequest) {
             storeId: storeIdNum,
             name: row.name!.trim(),
             sku: row.sku?.trim() || null,
+            barcode: baseBarcode,
+            unitLabel: unit.code,
             categoryId: categoryId || null,
             providerId: providerId || null,
             taxRateId: taxRateId || null,
@@ -317,10 +329,18 @@ export async function POST(req: NextRequest) {
             commission: Math.round(row.commission || 0),
             currentStock: row.currentStock || 0,
             minStock: row.minStock ?? 5,
+            trackInventory,
+            trackExpiration,
             isActive,
+            ...(pres.presentations.length > 0 && {
+              presentations: {
+                create: pres.presentations.map((p, idx) => ({ ...p, sortOrder: idx })),
+              },
+            }),
           },
         })
         created.push(row.name!)
+        createdPresentations += pres.presentations.length
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Error desconocido'
         if (message.includes('Unique')) {
@@ -331,7 +351,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    logger.info(`[Import] Store ${storeIdNum}: ${created.length} created, ${skipped.length} skipped`)
+    logger.info(
+      `[Import] Store ${storeIdNum}: ${created.length} created (${createdPresentations} presentations), ${skipped.length} skipped, ${warnings.length} warnings`
+    )
 
     const newTotal = planLimit !== null ? Math.min(currentCount + created.length, planLimit) : currentCount + created.length
     const limitReached = planLimit !== null && newTotal >= planLimit
@@ -339,8 +361,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       imported: created.length,
+      importedPresentations: createdPresentations,
       created,
       skipped,
+      ...(warnings.length > 0 && { warnings }),
       totalInFile: rawData.length,
       createdCategories,
       createdProviders,

@@ -421,7 +421,7 @@ export function PurchaseXmlImport({
     <>
       <input type="file" accept=".xml" className="hidden" onChange={handleUpload} disabled={xmlParsing || createPurchase.isPending} id="xml-purchase-input" />
       <Dialog open={!!xmlPreview} onOpenChange={open => { if (!open) setXmlPreview(null) }}>
-        <DialogContent className="max-w-[95vw] w-[95vw] sm:max-w-[95vw] md:max-w-[95vw] lg:max-w-[95vw] xl:max-w-[95vw] max-h-[92vh] overflow-y-auto">
+        <DialogContent mobileFullscreen className="max-w-[95vw] w-[95vw] sm:max-w-[95vw] md:max-w-[95vw] lg:max-w-[95vw] xl:max-w-[95vw] max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Vista Previa de Importación</DialogTitle>
             <DialogDescription>{xmlPreview?.fileName} · {xmlPreview?.xmlFormat}</DialogDescription>

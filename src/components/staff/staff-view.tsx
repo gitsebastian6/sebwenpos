@@ -827,7 +827,7 @@ export function StaffView() {
 
       {/* ═══════════ ROLE DIALOG ═══════════ */}
       <Dialog open={showRoleDialog} onOpenChange={setShowRoleDialog}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent mobileFullscreen className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingRole ? 'Editar Rol' : 'Crear Rol'}</DialogTitle>
             <DialogDescription>

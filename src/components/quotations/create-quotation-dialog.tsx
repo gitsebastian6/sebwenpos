@@ -36,7 +36,7 @@ import { useCreateQuotation } from '@/hooks/api/use-quotations'
 import { usePurchaseProducts, type ProductOption, type ProductPresentationOption } from '@/hooks/api/use-purchases'
 import { sortPresentationOptions } from '@/lib/product-presentations'
 import { cartItemKey, type CartItem, type DiscountType } from '@/components/quotations/quotation-types'
-import { BarcodeScannerDialog, ScanButton } from '@/components/shared/barcode-scanner-dialog'
+import { useProductScanner } from '@/hooks/use-product-scanner'
 
 const cop = formatCOP
 
@@ -97,15 +97,6 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
   }, [productSearch, products])
   const searchingProducts = !!productSearch.trim() && productsQuery.isLoading
 
-  // ─── Camera scanner: scans a barcode and filters the results ──────────────
-  // `searchResults` is derived reactively from `productSearch`, so setting it
-  // is enough — the exact-match product (incl. presentations) appears listed.
-  const [cameraScanOpen, setCameraScanOpen] = useState(false)
-  const handleCameraScan = (code: string) => {
-    setProductSearch(code)
-    toast.success(`Código escaneado: ${code}`)
-  }
-
   // ─── Cart operations ─────────────────────────────
   const addToCart = (product: ProductOption, presentation: ProductPresentationOption | null) => {
     const key = cartItemKey(product.id, presentation?.id ?? null)
@@ -126,6 +117,24 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
     }
     setProductSearch('')
   }
+
+  // ─── Scanner (camera + USB gun) ──────────────────
+  // Exact barcode/SKU → straight to the cart (like the POS). Otherwise drop the
+  // code into the search box; `searchResults` reacts and lists the candidates.
+  const { scanButton, scannerDialog } = useProductScanner({
+    products,
+    keyboardEnabled: open && createStep === 2,
+    size: 'compact',
+    label: 'Escanear código de barras',
+    onExactMatch: (m) => {
+      addToCart(m.product, m.presentation)
+      toast.success(`Escaneado: ${m.product.name}${m.presentation ? ` — ${getUnitOfMeasureLabel(m.presentation.unitLabel)}` : ''}`)
+    },
+    onText: (code) => {
+      setProductSearch(code)
+      toast.info(`Sin coincidencia exacta para "${code}"`)
+    },
+  })
 
   const updateCartQty = (productId: number, presentationId: number | null, delta: number) => {
     const key = cartItemKey(productId, presentationId)
@@ -227,7 +236,7 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
 
   return (
     <Dialog open={open} onOpenChange={handleDialogChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col rounded-xl">
+      <DialogContent mobileFullscreen className="sm:max-w-2xl max-h-[90vh] flex flex-col rounded-xl">
         <DialogHeader>
           <DialogTitle>Nueva Cotización</DialogTitle>
           <DialogDescription>
@@ -347,10 +356,10 @@ export function CreateQuotationDialog({ open, onOpenChange, store }: CreateQuota
                   autoFocus
                 />
                 <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                  <ScanButton size="compact" label="Escanear código de barras" onClick={() => setCameraScanOpen(true)} />
+                  {scanButton}
                 </div>
               </div>
-              <BarcodeScannerDialog open={cameraScanOpen} onClose={() => setCameraScanOpen(false)} onScan={handleCameraScan} />
+              {scannerDialog}
 
               {/* Search results */}
               {searchingProducts && (

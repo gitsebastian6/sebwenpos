@@ -51,13 +51,15 @@ export async function POST(request: NextRequest) {
         data: { currentStock: 0 },
       })
 
-      // 2. Create an inventory movement for each product
+      // 2. Create an inventory movement for each product. El reseteo BAJA el
+      // stock a 0, así que el delta del movimiento es NEGATIVO (para que el
+      // balance corrido del kardex cuadre con currentStock = 0).
       for (const product of productsWithStock) {
         await tx.inventoryMovement.create({
           data: {
             storeId,
             productId: product.id,
-            quantity: product.currentStock,
+            quantity: -toNum(product.currentStock),
             movementType: 'ADJUSTMENT',
             notes: `RESETEO DE INVENTARIO${note ? ` - ${note}` : ''} (era ${product.currentStock} unidades)`,
           },

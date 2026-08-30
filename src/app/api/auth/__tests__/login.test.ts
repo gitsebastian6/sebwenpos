@@ -107,6 +107,17 @@ describe('POST /api/auth/login', () => {
       invoicePrefix: 'FE',
       resolutionNumber: '18764',
       parentStoreId: null,
+      // Tienda Virtual + domicilio — deben viajar en el login o el próximo
+      // inicio de sesión pisa el `store` completo con uno parcial.
+      storeSlug: 'mi-tienda',
+      storeDescription: 'La mejor tienda',
+      storeWhatsapp: '3009998877',
+      storeActive: true,
+      deliveryEnabled: true,
+      deliveryFee: 5000,
+      deliveryFreeAbove: 50000,
+      deliveryMinOrder: 10000,
+      acceptingOrders: true,
       subscription: {
         id: 1,
         status: 'ACTIVE',
@@ -229,5 +240,46 @@ describe('POST /api/auth/login', () => {
       where: { cedula: validBody.cedula },
       include: expect.any(Object),
     })
+  })
+
+  it('selects the Tienda Virtual / delivery columns (regression: config must survive re-login)', async () => {
+    mockDb.user.findUnique.mockResolvedValue(mockUser)
+    mockAuth.verifyPassword.mockResolvedValue(true)
+
+    await POST(mockPostRequest(validBody) as any)
+
+    const arg = mockDb.user.findUnique.mock.calls[0][0]
+    const ownerSelect = arg.include.store.select
+    const employeeSelect = arg.include.employee.include.store.select
+    for (const sel of [ownerSelect, employeeSelect]) {
+      expect(sel.storeSlug).toBe(true)
+      expect(sel.storeActive).toBe(true)
+      expect(sel.storeWhatsapp).toBe(true)
+      expect(sel.storeDescription).toBe(true)
+      expect(sel.debtOverdueDays).toBe(true)
+      expect(sel.deliveryEnabled).toBe(true)
+      expect(sel.deliveryFee).toBe(true)
+      expect(sel.deliveryFreeAbove).toBe(true)
+      expect(sel.deliveryMinOrder).toBe(true)
+      expect(sel.acceptingOrders).toBe(true)
+    }
+    // Secretos NUNCA deben ir al cliente
+    expect(ownerSelect.certificatePassword).toBeUndefined()
+    expect(ownerSelect.softwarePin).toBeUndefined()
+    expect(ownerSelect.pteApiKey).toBeUndefined()
+    expect(ownerSelect.providerConfig).toBeUndefined()
+  })
+
+  it('returns the Tienda Virtual config in the store payload', async () => {
+    mockDb.user.findUnique.mockResolvedValue(mockUser)
+    mockAuth.verifyPassword.mockResolvedValue(true)
+
+    const { status, body } = await parseResponse(await POST(mockPostRequest(validBody) as any))
+
+    expect(status).toBe(200)
+    expect(body.store.storeSlug).toBe('mi-tienda')
+    expect(body.store.storeActive).toBe(true)
+    expect(body.store.deliveryFee).toBe(5000)
+    expect(body.store.acceptingOrders).toBe(true)
   })
 })

@@ -1,0 +1,3 @@
+# Gate completo antes de empujar: typecheck + lint + test + next build + smoke.
+# Tarda unos minutos. Emergencias: `git push --no-verify`.
+npm run verify

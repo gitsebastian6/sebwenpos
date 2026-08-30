@@ -44,3 +44,62 @@ export function buildProductSearchOptions(products: ProductOption[], query: stri
 function sizeOfOption(option: ProductSearchOption): number {
   return option.presentation ? Number(option.presentation.unitsPerPack) : 1
 }
+
+// ─── Barcode / SKU exact-match resolver ──────────────────────────────────────
+// Shared by every product picker that wires a scanner (POS, Compras,
+// Cotizaciones, Mesas, Inventario…). A scanned code is only auto-selected when
+// it maps to exactly ONE product-or-presentation by an *exact* barcode/SKU
+// match; anything else falls back to filling the search box.
+
+// Minimal shape a product needs to be resolvable from a scanned code — only
+// the fields the resolver actually reads, so concrete catalog types (POS,
+// Compras, reports…) satisfy it structurally regardless of their `id` type.
+export interface ScannablePresentation {
+  sku?: string | null
+  barcode?: string | null
+  isActive?: boolean
+}
+export interface ScannableProduct {
+  sku?: string | null
+  barcode?: string | null
+  presentations?: ScannablePresentation[] | null
+}
+
+export interface ScanMatch<
+  P extends ScannableProduct,
+  PR = P extends { presentations?: ReadonlyArray<infer U> | null | undefined } ? U : ScannablePresentation,
+> {
+  product: P
+  /** null → the product's base "Unidad"; otherwise the matched presentation. */
+  presentation: PR | null
+}
+
+/**
+ * Resolve a raw scanned string against a catalog.
+ * - `exact`   → the single product/presentation whose barcode or SKU equals the
+ *               code (case-insensitive). null when there are 0 or 2+ matches.
+ * - `ambiguous` → true when 2+ different products/presentations matched.
+ */
+export function resolveScannedCode<P extends ScannableProduct>(
+  products: P[],
+  rawCode: string
+): { exact: ScanMatch<P> | null; ambiguous: boolean } {
+  const code = rawCode.trim().toLowerCase()
+  if (!code) return { exact: null, ambiguous: false }
+
+  const hits: ScanMatch<P>[] = []
+  for (const p of products) {
+    if ((p.barcode || '').toLowerCase() === code || (p.sku || '').toLowerCase() === code) {
+      hits.push({ product: p, presentation: null })
+    }
+    for (const pr of (p.presentations ?? []) as ScannablePresentation[]) {
+      if (pr.isActive === false) continue
+      if ((pr.barcode || '').toLowerCase() === code || (pr.sku || '').toLowerCase() === code) {
+        hits.push({ product: p, presentation: pr as unknown as ScanMatch<P>['presentation'] })
+      }
+    }
+  }
+
+  if (hits.length === 1) return { exact: hits[0], ambiguous: false }
+  return { exact: null, ambiguous: hits.length > 1 }
+}

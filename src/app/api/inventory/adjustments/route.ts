@@ -1,9 +1,10 @@
+import { adjustStock, InsufficientStockError } from '@/domain/inventory/adjust-stock'
+import { lotInputFields, resolveLotInput } from '@/domain/inventory/lot-input'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
-import { add, lt } from '@/lib/stock-math'
-import { Prisma } from '@prisma/client'
+import { mul, roundQty, sub, toNum } from '@/lib/stock-math'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -13,8 +14,12 @@ const adjustmentSchema = z.object({
   storeId: z.number().int().positive(),
   productId: z.number().int().positive(),
   presentationId: z.number().int().positive().optional(),
-  quantity: z.number(), // positive or negative, always in BASE units
+  // 'delta'    → quantity es ± en la unidad elegida (agregar/quitar)
+  // 'absolute' → quantity es el conteo total en la unidad elegida (establecer)
+  mode: z.enum(['delta', 'absolute']).default('delta'),
+  quantity: z.number(), // en la unidad de la presentación elegida (o base si no hay presentationId)
   notes: z.string().optional(),
+  ...lotInputFields,
 })
 
 // POST /api/inventory/adjustments
@@ -26,80 +31,86 @@ export async function POST(req: NextRequest) {
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
 
-    // Verify product exists and belongs to store
     const product = await db.product.findFirst({
       where: { id: data.productId, storeId: data.storeId },
+      select: { id: true, name: true },
     })
-
     if (!product) {
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 })
     }
 
-    let presentationSnapshot: { name: string; unitsPerPack: Prisma.Decimal | number } | null = null
-    if (data.presentationId) {
+    // unitsPerPack SIEMPRE se relee de BD — nunca se confía en el cliente.
+    // El modo 'absolute' (establecer total) se cuenta SIEMPRE en unidades base:
+    // un total exacto en una presentación no puede representar cantidades que no
+    // sean múltiplo de unitsPerPack. Solo 'delta' usa la presentación.
+    let unitsPerPack = 1
+    let presentationName: string | null = null
+    if (data.presentationId && data.mode === 'delta') {
       const presentation = await db.productPresentation.findFirst({
         where: { id: data.presentationId, productId: data.productId },
+        select: { unitLabel: true, unitsPerPack: true },
       })
       if (!presentation) {
         return NextResponse.json({ error: 'Presentación no encontrada' }, { status: 404 })
       }
-      presentationSnapshot = { name: getUnitOfMeasureLabel(presentation.unitLabel), unitsPerPack: presentation.unitsPerPack }
+      unitsPerPack = toNum(presentation.unitsPerPack) || 1
+      presentationName = getUnitOfMeasureLabel(presentation.unitLabel)
     }
 
-    // If negative quantity, prevent stock from going below 0
-    if (data.quantity < 0) {
-      if (lt(add(product.currentStock, data.quantity), 0)) {
-        return NextResponse.json(
-          { error: 'Stock insuficiente. El stock no puede ser menor a 0.' },
-          { status: 400 }
-        )
+    const result = await db.$transaction(async (tx) => {
+      // El delta base se resuelve DENTRO de la transacción para que 'absolute'
+      // use el currentStock fresco (no una lectura vieja del cliente).
+      let baseDelta: number
+      if (data.mode === 'absolute') {
+        const fresh = await tx.product.findUnique({
+          where: { id: data.productId },
+          select: { currentStock: true },
+        })
+        const target = toNum(roundQty(mul(data.quantity, unitsPerPack)))
+        baseDelta = toNum(roundQty(sub(target, fresh?.currentStock ?? 0)))
+      } else {
+        baseDelta = toNum(roundQty(mul(data.quantity, unitsPerPack)))
       }
-    }
 
-    // Create movement and update stock in a transaction
-    const movement = await db.$transaction(async (tx) => {
-      const mov = await tx.inventoryMovement.create({
-        data: {
-          storeId: data.storeId,
-          productId: data.productId,
-          presentationId: data.presentationId,
-          presentationName: presentationSnapshot?.name,
-          unitsPerPack: presentationSnapshot?.unitsPerPack ?? 1,
-          quantity: data.quantity,
-          movementType: 'ADJUSTMENT',
-          notes: data.notes,
-        },
-        include: {
-          product: {
-            select: { id: true, name: true, currentStock: true },
-          },
-        },
+      if (baseDelta === 0) return null
+
+      const adj = await adjustStock(tx, {
+        storeId: data.storeId,
+        productId: data.productId,
+        baseDelta,
+        movementType: 'ADJUSTMENT',
+        presentationId: data.presentationId ?? null,
+        presentationName,
+        unitsPerPack,
+        notes: data.notes ?? null,
+        ...resolveLotInput(data),
       })
-
-      await tx.product.update({
-        where: { id: data.productId },
-        data: {
-          currentStock: {
-            increment: data.quantity,
-          },
-        },
-      })
-
-      return mov
+      return { ...adj, baseDelta }
     })
 
-    return NextResponse.json({
-      id: movement.id,
-      productId: movement.productId,
-      productName: movement.product.name,
-      presentationName: movement.presentationName,
-      unitsPerPack: movement.unitsPerPack,
-      quantity: movement.quantity,
-      movementType: movement.movementType,
-      notes: movement.notes,
-      createdAt: movement.createdAt.toISOString(),
-    }, { status: 201 })
+    if (!result) {
+      return NextResponse.json({ error: 'No hay cambio en el stock' }, { status: 400 })
+    }
+
+    return NextResponse.json(
+      {
+        id: result.movementId,
+        productId: data.productId,
+        productName: product.name,
+        presentationName,
+        unitsPerPack,
+        quantity: result.baseDelta,
+        movementType: 'ADJUSTMENT',
+        notes: data.notes ?? null,
+        newStock: result.newStock,
+        createdAt: new Date().toISOString(),
+      },
+      { status: 201 }
+    )
   } catch (error: unknown) {
+    if (error instanceof InsufficientStockError) {
+      return NextResponse.json({ error: error.message, availableStock: error.availableStock }, { status: 400 })
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }

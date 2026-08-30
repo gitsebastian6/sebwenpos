@@ -7,7 +7,7 @@ import { formatCurrency } from '@/lib/auth'
 import { paymentMethodLabel, formatQty } from '@/lib/format'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { sortPresentationOptions } from '@/lib/product-presentations'
-import { BarcodeScannerDialog, ScanButton } from '@/components/shared/barcode-scanner-dialog'
+import { useProductScanner } from '@/hooks/use-product-scanner'
 import { playAlert, playError } from '@/lib/pos-sounds'
 import { toast } from 'sonner'
 import type { OrderItemData } from '@/types'
@@ -63,6 +63,7 @@ import {
 import type { BarTable, TableSession, Product, Category, Service } from '@/hooks/use-tables-data'
 import { ZONE_STYLES, COMANDA_STATUS_STYLES, formatTimeElapsed, formatTime } from '@/hooks/use-tables-data'
 import { printTicket, type TicketItem } from '@/lib/print-ticket'
+import { receiptStoreFields } from '@/lib/receipt-store-fields'
 
 // ─── ComandaPanel Props ──────────────────────────────────────────────────────
 
@@ -139,14 +140,24 @@ export function ComandaPanel({
   const [addingItem, setAddingItem] = useState<number | null>(null)
   const [pendingItemNotes, setPendingItemNotes] = useState<string>('')
 
-  // ── Camera scanner: scans a barcode and filters the product list ──
-  const [cameraScanOpen, setCameraScanOpen] = useState(false)
-
-  function handleCameraScan(code: string) {
-    setProductSearch(code)
-    fetchProducts(code, categoryFilter)
-    toast.success(`Código escaneado: ${code}`)
-  }
+  // ── Scanner (camera + USB gun) ──
+  // Exact barcode/SKU already in the loaded list → straight into the comanda.
+  // Otherwise feed the code to the server search (name/SKU/barcode) and let the
+  // user tap the result.
+  const { scanButton, scannerDialog } = useProductScanner({
+    products,
+    keyboardEnabled: open,
+    size: 'compact',
+    label: 'Escanear código de barras',
+    onExactMatch: (m) => {
+      handleAddItem(m.product.id, null, m.presentation?.id ?? null)
+      toast.success(`Escaneado: ${m.product.name}${m.presentation ? ` — ${getUnitOfMeasureLabel(m.presentation.unitLabel)}` : ''}`)
+    },
+    onText: (code) => {
+      setProductSearch(code)
+      fetchProducts(code, categoryFilter)
+    },
+  })
 
   // ── Payment / print data ──
   const [lastPaymentData, setLastPaymentData] = useState<any>(null)
@@ -305,7 +316,7 @@ export function ComandaPanel({
         {selectedTable && (
           <>
             <SheetHeader className="p-4 pb-2 border-b shrink-0">
-              <div className="flex items-center justify-between pr-6">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <SheetTitle className="text-lg font-semibold">
                     Mesa {selectedTable.number}
@@ -705,11 +716,11 @@ export function ComandaPanel({
                             isService: item.isService,
                           }))
                           printTicket({
+                            ...receiptStoreFields(store),
                             storeName: store?.name || '',
                             storeNIT: store?.nit || undefined,
                             storeAddress: store?.address || undefined,
                             storePhone: store?.phone || undefined,
-                            storeRegime: 'RESPONSABLE',
                             invoiceResolution: store?.resolutionNumber || undefined,
                             invoicePrefix: store?.invoicePrefix || undefined,
                             orderNumber: lastPaymentData.orderNumber,
@@ -804,10 +815,10 @@ export function ComandaPanel({
                         }}
                       />
                       <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                        <ScanButton size="compact" label="Escanear código de barras" onClick={() => setCameraScanOpen(true)} />
+                        {scanButton}
                       </div>
                     </div>
-                    <BarcodeScannerDialog open={cameraScanOpen} onClose={() => setCameraScanOpen(false)} onScan={handleCameraScan} />
+                    {scannerDialog}
                     <Select
                       value={categoryFilter}
                       onValueChange={(val) => {

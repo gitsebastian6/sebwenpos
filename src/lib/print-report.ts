@@ -195,15 +195,21 @@ export function printReport({
 }
 
 /**
- * Opens a thermal 80mm printer receipt in a new browser window.
- * Optimized for small POS thermal printers (72mm printable width).
+ * Opens a thermal printer receipt in a new browser window.
+ * Ancho configurable: '80' (~72mm imprimibles) o '58' (~54mm). El nombre se
+ * conserva por compatibilidad; usa `options.paperWidth` para 58 mm.
  */
 export function printThermal80mm(options: {
   title: string
   subtitle?: string
   lines: { left: string; right?: string; bold?: boolean; separator?: boolean }[]
   footer?: string
+  paperWidth?: '80' | '58'
 }) {
+  const isNarrow = options.paperWidth === '58'
+  const pageMm = isNarrow ? '58mm' : '80mm'
+  const bodyMm = isNarrow ? '54mm' : '72mm'
+  const baseFontPx = isNarrow ? '8px' : '9px'
   const now = new Date()
   const dateStr = now.toLocaleDateString('es-CO', {
     year: 'numeric',
@@ -222,14 +228,15 @@ export function printThermal80mm(options: {
   <style>
     @page {
       margin: 0;
-      size: 80mm auto;
+      size: ${pageMm} auto;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Courier New', 'Lucida Console', monospace;
-      font-size: 9px;
+      font-size: ${baseFontPx};
       color: #000;
-      width: 72mm;
+      width: ${bodyMm};
+      max-width: 100%;
       margin: 0 auto;
       padding: 4mm 2mm;
     }
@@ -310,10 +317,10 @@ export function printThermal80mm(options: {
 <body>
   <div class="no-print">
     <button class="print-btn" onclick="window.print()">
-      🖨️ Imprimir en Térmica 80mm
+      🖨️ Imprimir en Térmica ${pageMm}
     </button>
     <p style="text-align:center; font-size:10px; color:#888; margin-bottom:10px;">
-      Selecciona "80mm" o "Recibo" en el diálogo de impresión
+      Elige "Tamaño de papel: ${pageMm}" (o "Recibo" / el predeterminado del rollo) en el diálogo de impresión
     </p>
   </div>
 

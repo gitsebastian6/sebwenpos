@@ -2,6 +2,8 @@
 
 import { useAuthStore } from '@/stores/auth-store'
 import { useAppStore, type AppView } from '@/stores/app-store'
+import { useOnlineOrders } from '@/hooks/api/use-online-orders'
+import { useOnlineOrdersSync } from '@/hooks/use-online-orders-sync'
 import { VIEW_LABELS } from '@/lib/view-labels'
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger, SidebarInset, SidebarSeparator } from '@/components/ui/sidebar'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -24,6 +26,7 @@ import {
   Sun,
   Armchair,
   Truck,
+  Bike,
   FileBarChart,
   FileText,
   UsersRound,
@@ -40,7 +43,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import { useMemo, useState, useRef, useEffect } from 'react'
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import dynamic from 'next/dynamic'
@@ -56,6 +59,7 @@ const POSView = dynamic(() => import('@/components/pos/pos-view').then(m => ({ d
 const ProductsView = dynamic(() => import('@/components/products/products-view').then(m => ({ default: m.ProductsView })), { ssr: false })
 const CustomersView = dynamic(() => import('@/components/customers/customers-view').then(m => ({ default: m.CustomersView })), { ssr: false })
 const OrdersView = dynamic(() => import('@/components/orders/orders-view').then(m => ({ default: m.OrdersView })), { ssr: false })
+const OnlineOrdersView = dynamic(() => import('@/components/online-orders/online-orders-view').then(m => ({ default: m.OnlineOrdersView })), { ssr: false })
 const InventoryView = dynamic(() => import('@/components/inventory/inventory-view').then(m => ({ default: m.InventoryView })), { ssr: false })
 const ExpirationsView = dynamic(() => import('@/components/expirations/expirations-view').then(m => ({ default: m.ExpirationsView })), { ssr: false })
 const AccountingView = dynamic(() => import('@/components/accounting/accounting-view').then(m => ({ default: m.AccountingView })), { ssr: false })
@@ -102,6 +106,7 @@ const menuGroups: { title: string; items: MenuItem[] }[] = [
     title: 'Ventas',
     items: [
       { view: 'orders', label: 'Órdenes', icon: <ClipboardList className="h-4 w-4" />, permission: 'orders' },
+      { view: 'online-orders', label: 'Pedidos en línea', icon: <Bike className="h-4 w-4" />, permission: 'onlineOrders' },
       { view: 'invoices', label: 'Facturación', icon: <FileText className="h-4 w-4" />, permission: 'invoices' },
       { view: 'quotations', label: 'Cotizaciones', icon: <FileBarChart className="h-4 w-4" />, permission: 'quotations' },
     ],
@@ -125,26 +130,83 @@ const menuGroups: { title: string; items: MenuItem[] }[] = [
   },
 ]
 
+// Vista → permiso requerido (para validar la vista restaurada / el deep-link
+// ?view= contra los permisos del usuario actual).
+const VIEW_PERMISSION = Object.fromEntries(
+  menuGroups.flatMap((g) => g.items.map((i) => [i.view, i.permission] as const))
+) as Record<AppView, string>
+
 export function AppShell() {
   const { user, store, logout, hasPermission, subscription, availableStores, switchStore, loadAvailableStores } = useAuthStore()
   const { currentView, setView } = useAppStore()
   const { theme, setTheme } = useTheme()
   const qc = useQueryClient()
 
-  // ── Handle PWA shortcut ?view= parameter ──
+  // Badge de "Pedidos en línea" pendientes (solo si el usuario ve ese módulo)
+  const canSeeOnlineOrders = hasPermission('onlineOrders')
+  const onlineOrdersQuery = useOnlineOrders(canSeeOnlineOrders ? store?.id : undefined, { status: 'PENDING' })
+  const onlinePendingCount = onlineOrdersQuery.data?.pendingCount ?? 0
+  useOnlineOrdersSync(canSeeOnlineOrders ? store?.id : undefined)
+
+  // ── Vista actual ⇆ URL + permisos ─────────────────────────────────────
+  // La app es un SPA de una ruta; sin esto, cualquier recarga / arranque en
+  // frío de la PWA volvía a 'dashboard'. Ahora la vista vive también en la URL
+  // (?view=) y en `pos-ui` (persist), así al reabrir caes donde estabas y el
+  // botón atrás del celular recorre vistas.
+  const fromPopstate = useRef(false)
+
+  const canSeeView = useCallback(
+    (v: AppView) => {
+      const perm = VIEW_PERMISSION[v]
+      return !perm || perm === 'dashboard' || hasPermission(perm)
+    },
+    [hasPermission]
+  )
+
+  // Al montar: resolver la vista inicial (deep-link ?view= > vista persistida),
+  // validando permiso, y sembrar la URL sin empujar historia.
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    const view = params.get('view')
-    if (view) {
-      const validViews = ['dashboard', 'pos', 'tables', 'products', 'customers', 'providers', 'purchases', 'services', 'orders', 'invoices', 'quotations', 'inventory', 'expirations', 'accounting', 'reports', 'employees', 'roles', 'settings']
-      if (validViews.includes(view)) {
-        setView(view as AppView)
-        // Clean URL
-        window.history.replaceState({}, '', '/')
+    const paramView = new URLSearchParams(window.location.search).get('view') as AppView | null
+    let target: AppView = currentView
+    if (paramView && VIEW_PERMISSION[paramView] !== undefined && canSeeView(paramView)) {
+      target = paramView
+    } else if (!canSeeView(currentView)) {
+      target = 'dashboard'
+    }
+    if (target !== currentView) setView(target)
+    fromPopstate.current = true // que el efecto de push no lo re-empuje
+    window.history.replaceState({ view: target }, '', `?view=${target}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Cada cambio de vista → pushState(?view=…) (salvo si vino del botón atrás).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (fromPopstate.current) {
+      fromPopstate.current = false
+      return
+    }
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('view') === currentView) return
+    url.searchParams.set('view', currentView)
+    window.history.pushState({ view: currentView }, '', url)
+  }, [currentView])
+
+  // Botón atrás/adelante → reaplica la vista de la URL sin volver a empujar.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    function onPopstate(e: PopStateEvent) {
+      const v = ((e.state as { view?: AppView } | null)?.view ??
+        new URLSearchParams(window.location.search).get('view')) as AppView | null
+      if (v && VIEW_PERMISSION[v] !== undefined && v !== currentView) {
+        fromPopstate.current = true
+        setView(canSeeView(v) ? v : 'dashboard')
       }
     }
-  }, [setView])
+    window.addEventListener('popstate', onPopstate)
+    return () => window.removeEventListener('popstate', onPopstate)
+  }, [currentView, setView, canSeeView])
 
   // ── Sync subscription data from API to auth store via TanStack Query ──
   // This keeps the sidebar badge, top banner, and SubscriptionGate up to date
@@ -438,7 +500,12 @@ export function AppShell() {
                       >
                         <span className="data-[active=true]:text-primary">{item.icon}</span>
                         <span>{item.label}</span>
-                        {currentView === item.view && (
+                        {item.view === 'online-orders' && onlinePendingCount > 0 && (
+                          <Badge className="ml-auto h-5 min-w-5 px-1 flex items-center justify-center bg-emerald-500 text-white text-[10px] font-bold rounded-full">
+                            {onlinePendingCount}
+                          </Badge>
+                        )}
+                        {currentView === item.view && !(item.view === 'online-orders' && onlinePendingCount > 0) && (
                           <ChevronRight className="h-3.5 w-3.5 ml-auto text-primary/60" />
                         )}
                       </SidebarMenuButton>
@@ -559,7 +626,7 @@ export function AppShell() {
         )}
 
         {/* ── Top Header ── */}
-        <header className="flex h-14 items-center gap-3 sm:gap-4 border-b bg-background/80 backdrop-blur-sm px-4 sm:px-6 sticky top-0 z-10">
+        <header className="flex h-14 items-center gap-3 sm:gap-4 border-b bg-background/80 backdrop-blur-sm px-4 sm:px-6 sticky top-0 z-30">
           <SidebarTrigger className="hover:bg-accent" />
           <div className="h-5 w-px bg-border" />
           <h1 className="text-sm sm:text-base font-semibold tracking-tight">
@@ -604,6 +671,7 @@ function ViewRouter({ currentView }: { currentView: AppView }) {
     case 'providers': return <ViewErrorBoundary viewName={label}><ProvidersView /></ViewErrorBoundary>
     case 'purchases': return <ViewErrorBoundary viewName={label}><PurchasesView /></ViewErrorBoundary>
     case 'orders': return <ViewErrorBoundary viewName={label}><OrdersView /></ViewErrorBoundary>
+    case 'online-orders': return <ViewErrorBoundary viewName={label}><OnlineOrdersView /></ViewErrorBoundary>
     case 'invoices': return <ViewErrorBoundary viewName={label}><InvoicesView /></ViewErrorBoundary>
     case 'quotations': return <ViewErrorBoundary viewName={label}><QuotationsView /></ViewErrorBoundary>
     case 'inventory': return <ViewErrorBoundary viewName={label}><InventoryView /></ViewErrorBoundary>

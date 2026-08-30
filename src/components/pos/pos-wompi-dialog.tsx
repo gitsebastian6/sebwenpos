@@ -196,6 +196,7 @@ export function PosWompiDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
+        showCloseButton={false}
         className={`sm:max-w-[420px] p-0 overflow-hidden transition-all duration-700 ${
           step === 'creating'
             ? 'border-2 border-emerald-300 dark:border-emerald-700'

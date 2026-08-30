@@ -53,6 +53,7 @@ import {
   type DailySummaryData,
   type ProductCatalogData,
 } from '@/lib/print-ticket'
+import { receiptPaperWidthOf } from '@/lib/receipt-store-fields'
 
 interface DailyReportResponse {
   date: string
@@ -379,6 +380,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
                 const printData: DailySummaryData = {
                   storeName: store.name,
                   storeNIT: store.nit || undefined,
+                  paperWidth: receiptPaperWidthOf(store),
                   date: data.date,
                   totalOrders: data.orders.total,
                   completedOrders: data.orders.completed,
@@ -413,7 +415,7 @@ export function CashRegisterTab({ currencyCode }: CashRegisterTabProps) {
                 const products = rawProducts.map((p: { name: string; category: { name: string } | null; salePrice: number; currentStock: number; sku: string | null }) => ({
                   name: p.name, category: p.category?.name || 'Sin Categoría', price: p.salePrice, stock: p.currentStock, sku: p.sku,
                 }))
-                const printData: ProductCatalogData = { storeName: store.name, storeNIT: store.nit || undefined, products, currencyCode }
+                const printData: ProductCatalogData = { storeName: store.name, storeNIT: store.nit || undefined, paperWidth: receiptPaperWidthOf(store), products, currencyCode }
                 printProductCatalog(printData)
               } catch { toast.error('Error al generar catálogo') }
             }} className="gap-1.5 active:scale-[0.98] transition-all">

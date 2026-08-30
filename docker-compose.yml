@@ -126,7 +126,9 @@ services:
       # ── Alerts ──
       ALERT_API_BASE: ${ALERT_API_BASE:-http://localhost:3010}
       # ── Wompi Payment Gateway ──
-      WOMPI_ENV: ${WOMPI_ENV:-demo}
+      # Default "sandbox": "demo" auto-approves every charge with no real
+      # payment, and the app refuses to boot with NODE_ENV=production + demo.
+      WOMPI_ENV: ${WOMPI_ENV:-sandbox}
       WOMPI_PUBLIC_KEY: ${WOMPI_PUBLIC_KEY:-}
       WOMPI_PRIVATE_KEY: ${WOMPI_PRIVATE_KEY:-}
       WOMPI_WEBHOOK_SECRET: ${WOMPI_WEBHOOK_SECRET:-}

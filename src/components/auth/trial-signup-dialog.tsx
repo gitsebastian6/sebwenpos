@@ -513,7 +513,7 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
 
   return (
     <Dialog open={open} onOpenChange={handleDialogClose}>
-      <DialogContent className="max-w-lg rounded-xl bg-zinc-950 border-zinc-800 text-zinc-100 p-0 overflow-hidden">
+      <DialogContent showCloseButton={false} className="max-w-lg rounded-xl bg-zinc-950 border-zinc-800 text-zinc-100 p-0 overflow-hidden">
         {/* ── Success Screen ── */}
         {submitted ? (
           <div className="px-6 py-10 text-center space-y-5">
@@ -540,8 +540,17 @@ export function TrialSignupDialog({ open, onOpenChange }: TrialSignupDialogProps
           </div>
         ) : (
           <>
+            <button
+              type="button"
+              onClick={() => handleDialogClose(false)}
+              aria-label="Volver"
+              className="mt-4 ml-4 inline-flex w-fit items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-500/10"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver
+            </button>
             {/* ── Progress indicator ── */}
-            <div className="flex items-center gap-2 px-6 pt-6 pb-2">
+            <div className="flex items-center gap-2 px-6 pt-3 pb-2">
               {[1, 2, 3].map((s) => (
                 <div key={s} className="flex items-center gap-2 flex-1">
                   <div

@@ -32,13 +32,23 @@ export default function Home() {
   const logout = useAuthStore((s) => s.logout)
   const isClient = useIsClient()
   const repaired = useRef(false)
+  const prevUserId = useRef<typeof userId>(undefined)
 
-  // ── Reset view to Dashboard on every new login (different user) ──
+  // ── Reset view to Dashboard only when the logged-in user actually changes ──
+  // (NOT on the first mount / auth rehydrate — ahí queremos respetar la vista
+  // persistida en `pos-ui`, si no la PWA siempre abre en Dashboard).
   useEffect(() => {
-    if (isClient && isAuthenticated && userId) {
+    if (!isClient) return
+    if (
+      isAuthenticated &&
+      userId &&
+      prevUserId.current &&
+      prevUserId.current !== userId
+    ) {
       useAppStore.getState().setView('dashboard')
     }
-  }, [isClient, userId]) // triggers when userId changes (new login)
+    prevUserId.current = userId
+  }, [isClient, isAuthenticated, userId])
 
   // On first client mount, check for corrupted auth data and repair it
   useEffect(() => {

@@ -1,10 +1,11 @@
 'use client'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Building2, User, Receipt, CreditCard, Percent, Store } from 'lucide-react'
+import { Building2, User, Receipt, CreditCard, Percent, Store, Printer } from 'lucide-react'
 import { BusinessSettingsTab } from '@/components/settings/business-settings-tab'
 import { PersonalSettingsTab } from '@/components/settings/personal-settings-tab'
 import { InvoiceSettingsTab } from '@/components/settings/invoice-settings-tab'
+import { ReceiptSettingsTab } from '@/components/settings/receipt-settings-tab'
 import { SubscriptionPaymentPanel } from '@/components/settings/subscription-payment-panel'
 import { TaxRatesPanel } from '@/components/settings/tax-rates-panel'
 import { useAppStore } from '@/stores/app-store'
@@ -28,7 +29,7 @@ export function SettingsView() {
       </div>
 
       <Tabs defaultValue={initialTab} className="space-y-6">
-        <TabsList className="w-full flex overflow-x-auto gap-1 md:inline-grid md:grid-cols-5 md:w-auto md:gap-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <TabsList className="w-full flex overflow-x-auto gap-1 md:inline-grid md:grid-cols-6 md:w-auto md:gap-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <TabsTrigger value="business" className="gap-0 shrink-0 md:gap-2 md:shrink">
             <Building2 className="h-4 w-4 shrink-0" />
             <span className="hidden md:inline text-xs whitespace-nowrap">Negocio</span>
@@ -40,6 +41,10 @@ export function SettingsView() {
           <TabsTrigger value="invoice" className="gap-0 shrink-0 md:gap-2 md:shrink">
             <Receipt className="h-4 w-4 shrink-0" />
             <span className="hidden md:inline text-xs whitespace-nowrap">Facturación</span>
+          </TabsTrigger>
+          <TabsTrigger value="receipt" className="gap-0 shrink-0 md:gap-2 md:shrink">
+            <Printer className="h-4 w-4 shrink-0" />
+            <span className="hidden md:inline text-xs whitespace-nowrap">Tirilla</span>
           </TabsTrigger>
           <TabsTrigger value="subscription" className="gap-0 shrink-0 md:gap-2 md:shrink">
             <CreditCard className="h-4 w-4 shrink-0" />
@@ -64,6 +69,11 @@ export function SettingsView() {
         {/* ═══ TAB: FACTURACIÓN ═══ */}
         <TabsContent value="invoice" className="space-y-6">
           <InvoiceSettingsTab />
+        </TabsContent>
+
+        {/* ═══ TAB: TIRILLA ═══ */}
+        <TabsContent value="receipt" className="space-y-6">
+          <ReceiptSettingsTab />
         </TabsContent>
 
         {/* ═══ TAB: SUSCRIPCIÓN Y PAGO ═══ */}

@@ -344,7 +344,7 @@ export function CustomersView() {
 
       {/* ── Create / Edit Dialog ────────────────────────────────── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md rounded-xl backdrop-blur-sm">
+        <DialogContent mobileFullscreen className="sm:max-w-md rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>
               {editingCustomer ? 'Editar Cliente' : 'Nuevo Cliente'}
@@ -409,7 +409,7 @@ export function CustomersView() {
 
       {/* ── Pay Debt Dialog ──────────────────────────────────── */}
       <Dialog open={!!payingCustomer} onOpenChange={(open) => !open && setPayingCustomer(null)}>
-        <DialogContent className="sm:max-w-md rounded-xl backdrop-blur-sm">
+        <DialogContent mobileFullscreen className="sm:max-w-md rounded-xl backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Banknote className="h-5 w-5 text-emerald-600" />

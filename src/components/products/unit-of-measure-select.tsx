@@ -51,10 +51,13 @@ export function UnitOfMeasureSelect({ value, onChange, id, size = 'default', cla
           <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] p-0 flex flex-col overflow-hidden max-h-[min(20rem,var(--radix-popover-content-available-height))]"
+        align="start"
+      >
+        <Command className="flex flex-col overflow-hidden">
           <CommandInput placeholder="Buscar unidad (ej: caja, botella, kg)..." className="h-9" />
-          <CommandList id={listId} className="max-h-60">
+          <CommandList id={listId} className="flex-1 min-h-0 max-h-none">
             <CommandEmpty className="py-3 text-center text-sm text-muted-foreground">Sin resultados</CommandEmpty>
             <CommandGroup>
               {UNIT_OF_MEASURE_OPTIONS.map((u) => (

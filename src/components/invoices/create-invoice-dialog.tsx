@@ -151,7 +151,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, storeId }: CreateInvoi
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl">
+      <DialogContent mobileFullscreen className="sm:max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />

@@ -11,11 +11,13 @@ import {
   type ProductCatalogData,
   type KardexData,
 } from '@/lib/print-ticket'
+import { receiptPaperWidthOf } from '@/lib/receipt-store-fields'
 
 interface StoreInfo {
   id: number
   name: string
   nit?: string | null
+  receiptPaperWidth?: string | null
 }
 
 interface DailyReportResponse {
@@ -48,6 +50,7 @@ export async function handlePrintDailySummary(queryClient: QueryClient, store: S
     const printData: DailySummaryData = {
       storeName: store.name,
       storeNIT: store.nit || undefined,
+      paperWidth: receiptPaperWidthOf(store),
       date: data.date,
       totalOrders: data.orders.total,
       completedOrders: data.orders.completed,
@@ -90,6 +93,7 @@ export async function handlePrintCatalog(queryClient: QueryClient, store: StoreI
     const printData: ProductCatalogData = {
       storeName: store.name,
       storeNIT: store.nit || undefined,
+      paperWidth: receiptPaperWidthOf(store),
       products,
       currencyCode,
     }
@@ -115,6 +119,7 @@ export async function handlePrintKardex(
     })
     const printData: KardexData = {
       storeName: store.name,
+      paperWidth: receiptPaperWidthOf(store),
       productName,
       category,
       sku,

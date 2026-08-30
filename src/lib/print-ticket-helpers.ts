@@ -27,19 +27,46 @@ export function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max - 1) + '…' : str
 }
 
+// ─── Paper width ──────────────────────────────────────────────────────────────
+// El ancho del rollo térmico es configurable por tienda (Configuración → Tirilla).
+// No hay norma DIAN que regule el tamaño del papel; 80 mm (~48 col) y 58 mm
+// (~32 col) son el estándar de facto ESC/POS.
+
+export type PaperWidth = '80' | '58'
+
+export function normalizePaperWidth(w: unknown): PaperWidth {
+  return w === '58' ? '58' : '80'
+}
+
+/** Nº de caracteres imprimibles aprox. por línea, según el ancho del rollo. */
+export function paperColumns(width: PaperWidth): number {
+  return width === '58' ? 32 : 48
+}
+
 // ─── Shared thermal styles ────────────────────────────────────────────────────
 
-export const THERMAL_STYLE = `
-  @page { margin: 0; size: 80mm auto; }
+/**
+ * Genera el bloque `<style>` de un documento térmico para el ancho dado.
+ * - `@page { size: Nmm auto }` + `margin: 0` para que el navegador use el rollo.
+ * - `body { width: Nmm }` SIN tope en px (un `max-width` en px peleaba contra el
+ *   ancho en mm y hacía que 58 mm se desbordara / que A4 no se respetara).
+ */
+export function thermalStyle(width: PaperWidth = '80'): string {
+  const pageMm = width === '58' ? '58mm' : '80mm'
+  const bodyMm = width === '58' ? '54mm' : '72mm'
+  const fontPx = width === '58' ? '9px' : '11px'
+  const padX = width === '58' ? '2mm' : '3mm'
+  return `
+  @page { margin: 0; size: ${pageMm} auto; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body {
     font-family: 'Courier New', 'Lucida Console', monospace;
-    font-size: 11px;
+    font-size: ${fontPx};
     line-height: 1.35;
-    width: 72mm;
-    max-width: 280px;
-    padding: 4mm 3mm;
+    width: ${bodyMm};
+    max-width: 100%;
+    padding: 4mm ${padX};
     color: #111;
     background: #fff;
   }
@@ -50,7 +77,7 @@ export const THERMAL_STYLE = `
     margin-bottom: 6px;
   }
   .store-name {
-    font-size: 15px;
+    font-size: ${width === '58' ? '13px' : '15px'};
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 1.5px;
@@ -79,7 +106,7 @@ export const THERMAL_STYLE = `
     display: flex;
     justify-content: space-between;
     padding: 1px 0;
-    font-size: 11px;
+    font-size: ${fontPx};
   }
   .row span:first-child { color: #555; }
   .row span:last-child { font-weight: 600; text-align: right; }
@@ -135,14 +162,18 @@ export const THERMAL_STYLE = `
   }
   @media print { body { padding: 2mm; } }
 `
+}
 
-export function openPrintWindow(title: string, body: string) {
+/** Compat: estilo por defecto a 80 mm. Prefiere `thermalStyle(width)`. */
+export const THERMAL_STYLE = thermalStyle('80')
+
+export function openPrintWindow(title: string, body: string, width: PaperWidth = '80') {
   const win = window.open('', '_blank', 'width=400,height=700')
   if (!win) {
     alert('Permite las ventanas emergentes para imprimir')
     return
   }
-  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${title}</title><style>${THERMAL_STYLE}</style></head><body>${body}<script>window.onload=function(){window.print();}</script></body></html>`
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${title}</title><style>${thermalStyle(width)}</style></head><body>${body}<script>window.onload=function(){window.print();}</script></body></html>`
   win.document.write(html)
   win.document.close()
 }

@@ -3,7 +3,7 @@
 
 import type { CashRegisterCloseData, DailySummaryData, ProductCatalogData, KardexData } from './print-ticket-types'
 import { PAYMENT_LABELS } from './print-ticket-types'
-import { fmt, fmtDate, truncate, openPrintWindow } from './print-ticket-helpers'
+import { fmt, fmtDate, truncate, openPrintWindow, normalizePaperWidth } from './print-ticket-helpers'
 
 // ─── Print Cash Register Close ────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ export function printCashRegisterClose(data: CashRegisterCloseData) {
     </div>
   `
 
-  openPrintWindow('Cierre de Caja - Informe AZ', body)
+  openPrintWindow('Cierre de Caja - Informe AZ', body, normalizePaperWidth(data.paperWidth))
 }
 
 // ─── Print Daily Summary (Corte Z) ────────────────────────────────────────────
@@ -149,7 +149,7 @@ export function printDailySummary(data: DailySummaryData) {
     </div>
   `
 
-  openPrintWindow('Corte Z', body)
+  openPrintWindow('Corte Z', body, normalizePaperWidth(data.paperWidth))
 }
 
 // ─── Print Product Catalog (A-Z) ──────────────────────────────────────────────
@@ -204,7 +204,7 @@ export function printProductCatalog(data: ProductCatalogData) {
     </div>
   `
 
-  openPrintWindow('Catálogo de Productos', body)
+  openPrintWindow('Catálogo de Productos', body, normalizePaperWidth(data.paperWidth))
 }
 
 // ─── Print Kardex ─────────────────────────────────────────────────────────────
@@ -264,5 +264,5 @@ export function printKardex(data: KardexData) {
     </div>
   `
 
-  openPrintWindow(`Kardex - ${data.productName}`, body)
+  openPrintWindow(`Kardex - ${data.productName}`, body, normalizePaperWidth(data.paperWidth))
 }

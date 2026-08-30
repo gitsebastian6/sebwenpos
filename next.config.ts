@@ -5,6 +5,13 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   allowedDevOrigins: [
     '.space-z.ai',
+    // Pruebas en celular vía túnel HTTPS (necesario para cámara/PWA)
+    '.trycloudflare.com', // cloudflared tunnel --url http://localhost:3000
+    '.loca.lt',           // npx localtunnel --port 3000
+    '.ngrok-free.app',
+    '.ngrok.app',
+    // Pruebas en la misma Wi-Fi (HTTP — sin cámara/PWA)
+    '192.168.2.12',
   ],
   // Prevent Turbopack from bundling server-only packages that use Node.js APIs
   serverExternalPackages: ['z-ai-web-dev-sdk'],

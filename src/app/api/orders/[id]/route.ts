@@ -81,6 +81,10 @@ export async function GET(
       createdAt: order.createdAt.toISOString(),
       customer: order.customer,
       tableName: order.tableSession?.barTable ? `Mesa ${order.tableSession.barTable.number}` : null,
+      fulfillmentType: order.fulfillmentType ?? 'IN_STORE',
+      deliveryFee: Number(order.deliveryFee ?? 0),
+      deliveryAddress: order.deliveryAddress ?? null,
+      placedAt: order.placedAt ? order.placedAt.toISOString() : null,
       orderItems: order.orderItems.map((item) => ({
         id: item.id,
         productName: item.product?.name ?? item.service?.name ?? 'Eliminado',

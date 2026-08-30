@@ -9,12 +9,32 @@ export interface TicketItem {
   isService?: boolean
 }
 
+export type PaperWidth = '80' | '58'
+
 export interface TicketData {
   storeName: string
   storeAddress?: string
   storePhone?: string
   storeNIT?: string
   storeRegime?: string // Régimen fiscal: RESPONSABLE, NO_RESPONSABLE, SIMPLIFICADO
+  // Ancho del rollo térmico (Configuración → Tirilla). Default '80'.
+  paperWidth?: PaperWidth
+  // Denominación impresa del documento (sobreescribe el subtítulo por defecto en
+  // la tirilla no electrónica). Ej: "Documento equivalente de POS".
+  docDenomination?: string
+  // Pie de página configurable (reemplaza "Gracias por su compra").
+  footerText?: string
+  // Leyenda tributaria libre (multilínea; se parte por saltos de línea).
+  extraLegend?: string
+  // Leyendas de calidad tributaria (Res. DIAN 000042/2020 art. 13 num. 8).
+  isIvaWithholdingAgent?: boolean
+  isSelfWithholdingAgent?: boolean
+  isIncResponsible?: boolean
+  // Resolución DIAN del documento equivalente POS (distinta de la de FE).
+  posResolutionNumber?: string
+  posResolutionPrefix?: string
+  posResolutionFrom?: number
+  posResolutionTo?: number
   invoiceResolution?: string // Número de resolución DIAN
   invoicePrefix?: string // Prefijo (FE, POS)
   invoiceStartNumber?: number
@@ -27,6 +47,10 @@ export interface TicketData {
   customer?: string
   customerNit?: string // NIT del comprador
   tableName?: string
+  // Entrega (ventas convertidas desde un pedido de la tienda virtual)
+  fulfillmentType?: string // IN_STORE | DELIVERY | PICKUP
+  deliveryFee?: number
+  deliveryAddress?: string
   items: TicketItem[]
   subtotal: number
   tipAmount: number
@@ -49,6 +73,7 @@ export interface CashRegisterCloseData {
   storeName: string
   storeNIT?: string
   storeAddress?: string
+  paperWidth?: PaperWidth
   openedAt: string
   closedAt: string
   responsibleName: string
@@ -67,6 +92,7 @@ export interface CashRegisterCloseData {
 export interface DailySummaryData {
   storeName: string
   storeNIT?: string
+  paperWidth?: PaperWidth
   date: string
   totalOrders: number
   completedOrders: number
@@ -85,6 +111,7 @@ export interface DailySummaryData {
 export interface ProductCatalogData {
   storeName: string
   storeNIT?: string
+  paperWidth?: PaperWidth
   products: Array<{
     name: string
     category: string
@@ -97,6 +124,7 @@ export interface ProductCatalogData {
 
 export interface KardexData {
   storeName: string
+  paperWidth?: PaperWidth
   productName: string
   category: string
   sku?: string | null

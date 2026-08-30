@@ -8,7 +8,7 @@ import { VIEW_LABELS } from '@/lib/view-labels'
 import { Button } from '@/components/ui/button'
 import {
   MessageCircle,
-  X,
+  ChevronLeft,
   Send,
   Bot,
   User,
@@ -330,10 +330,11 @@ export function AiAssistant() {
                 variant="ghost"
                 size="icon"
                 onClick={() => setOpen(false)}
-                className="h-7 w-7 text-emerald-100 hover:text-white hover:bg-emerald-700"
-                title="Cerrar"
+                className="h-7 w-7 rounded-md border border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                title="Volver"
+                aria-label="Volver"
               >
-                <X className="h-4 w-4" />
+                <ChevronLeft className="h-4 w-4" />
               </Button>
             </div>
           </div>

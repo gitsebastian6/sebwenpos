@@ -10,8 +10,7 @@ import { formatCurrency } from '@/lib/auth'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { floorQty, formatQty, isFractionalUnit } from '@/lib/format'
 import { AlertTriangle, PackageSearch, RotateCcw, Search, X } from 'lucide-react'
-import { useState } from 'react'
-import { BarcodeScannerDialog, ScanButton } from '@/components/shared/barcode-scanner-dialog'
+import { useProductScanner } from '@/hooks/use-product-scanner'
 import type { Product } from './inventory-types'
 
 interface InventoryProductTableProps {
@@ -33,7 +32,15 @@ export function InventoryProductTable({
   onResetStock,
   currencyCode,
 }: InventoryProductTableProps) {
-  const [cameraScanOpen, setCameraScanOpen] = useState(false)
+  // Scanner (camera + USB gun) — feeds the scanned code straight into the
+  // filter; the table's search already matches name/SKU/barcode/category.
+  const { scanButton, scannerDialog } = useProductScanner({
+    products,
+    label: 'Escanear producto',
+    onExactMatch: (_m, code) => onSearchChange(code),
+    onText: (code) => onSearchChange(code),
+  })
+
   return (
     <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200 rounded-xl border-border/50">
       <CardHeader>
@@ -80,13 +87,9 @@ export function InventoryProductTable({
               </button>
             )}
           </div>
-          <ScanButton onClick={() => setCameraScanOpen(true)} label="Escanear producto" />
+          {scanButton}
         </div>
-        <BarcodeScannerDialog
-          open={cameraScanOpen}
-          onClose={() => setCameraScanOpen(false)}
-          onScan={(code) => onSearchChange(code)}
-        />
+        {scannerDialog}
 
         {/* Product table */}
         {isLoading ? (

@@ -694,7 +694,7 @@ export function WompiCheckoutDialog({
 }: WompiCheckoutDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-hidden p-0 gap-0 [&>button]:hidden flex flex-col">
+      <DialogContent showCloseButton={false} className="sm:max-w-md max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col">
         <div className="px-6 pt-6 pb-4 border-b border-border/50 shrink-0">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

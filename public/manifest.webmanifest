@@ -2,6 +2,7 @@
   "name": "Sebwen POS - Sistema de Punto de Venta",
   "short_name": "Sebwen",
   "description": "Sistema de punto de venta e inventario para Colombia. Facturación electrónica DIAN, gestión de inventario, reportes en tiempo real.",
+  "id": "/",
   "start_url": "/",
   "display": "standalone",
   "orientation": "any",

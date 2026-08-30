@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useAuthStore } from '@/stores/auth-store'
 import { formatCurrency } from '@/lib/auth'
 import { formatQty, clampQty, parseQtyInput } from '@/lib/format'
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,7 @@ interface PurchaseDetailDialogProps {
 
 export function PurchaseDetailDialog({ open, onClose, purchaseId, currencyCode, onEdit, onCancel }: PurchaseDetailDialogProps) {
   const { data: purchase, isLoading } = usePurchaseDetail(purchaseId)
+  const receiptPaperWidth = useAuthStore((s) => s.store?.receiptPaperWidth) === '58' ? '58' : '80'
   const purchasePayment = usePurchasePayment()
   const purchaseReturn = usePurchaseReturn()
 
@@ -292,8 +294,8 @@ export function PurchaseDetailDialog({ open, onClose, purchaseId, currencyCode, 
                         <Button variant="outline" size="sm"><Printer className="h-3.5 w-3.5 mr-1" />Imprimir</Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handlePrintPurchaseDetail(purchase, currencyCode)}><FileSpreadsheet className="h-4 w-4 mr-2" />Impresora Normal</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handlePrintThermalDetail(purchase, currencyCode)}><Printer className="h-4 w-4 mr-2" />Térmica 80mm</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handlePrintPurchaseDetail(purchase, currencyCode, receiptPaperWidth)}><FileSpreadsheet className="h-4 w-4 mr-2" />Impresora Normal</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handlePrintThermalDetail(purchase, currencyCode, receiptPaperWidth)}><Printer className="h-4 w-4 mr-2" />Térmica {receiptPaperWidth === '58' ? '58mm' : '80mm'}</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

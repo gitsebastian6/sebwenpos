@@ -9,7 +9,7 @@ import {
 import { Package, DollarSign, PackageSearch, CalendarDays, AlertTriangle, TrendingUp, ShoppingCart, Truck, Plus } from 'lucide-react'
 import type { ReportsData, PurchaseItem, LostSaleItem, TraceabilityItem } from './reports-export'
 import { fdate, fdatetime } from './reports-export'
-import { LOSS_REASONS } from './inventory-action-dialogs'
+import { LOSS_REASON_LABELS } from '@/components/inventory/inventory-types'
 import { Stat, EmptyState } from './report-shared'
 
 interface TabProps { d: ReportsData; cc: string }
@@ -123,7 +123,7 @@ export function PerdidasTab({ d, cc, registeredLosses, totalLossesValue, openLos
               <TableRow className="hover:bg-muted/30 transition-colors" key={m.id + '-' + i}>
                 <TableCell className="text-xs">{fdatetime(m.createdAt)}</TableCell>
                 <TableCell className="text-xs font-medium">{m.product?.name || `ID ${m.productId}`}</TableCell>
-                <TableCell><Badge variant="outline" className="text-[10px]">{LOSS_REASONS[reasonCode] || reasonCode || '—'}</Badge></TableCell>
+                <TableCell><Badge variant="outline" className="text-[10px]">{LOSS_REASON_LABELS[reasonCode] || reasonCode || '—'}</Badge></TableCell>
                 <TableCell className="text-right text-xs font-medium text-red-600">-{Math.abs(m.quantity)}</TableCell>
                 <TableCell className="text-right text-xs font-medium text-red-600">{formatCurrency((Math.abs(m.quantity) * (m.product?.costPrice || 0)), cc)}</TableCell>
                 <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">{userNotes || '—'}</TableCell>

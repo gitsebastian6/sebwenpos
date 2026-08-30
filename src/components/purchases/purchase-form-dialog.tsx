@@ -27,7 +27,7 @@ import {
   type Purchase, type ProviderOption, type ProductPresentationOption,
 } from '@/hooks/api/use-purchases'
 import { buildProductSearchOptions } from '@/lib/product-search'
-import { BarcodeScannerDialog, ScanButton } from '@/components/shared/barcode-scanner-dialog'
+import { useProductScanner } from '@/hooks/use-product-scanner'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { useCategories } from '@/hooks/api/use-categories'
 import { useTaxes } from '@/hooks/api/use-taxes'
@@ -141,21 +141,22 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
 
   function addItem() { setPurchaseItems(prev => [...prev, EMPTY_ITEM()]) }
 
-  // ── Camera scanner: creates a new line with the scanned product pre-selected ──
-  const [cameraScanOpen, setCameraScanOpen] = useState(false)
-
-  function handleCameraScan(code: string) {
-    const opts = buildProductSearchOptions(products, code)
-    if (opts.length === 0) {
-      toast.error(`Producto no encontrado: ${code}`)
-      return
-    }
-    const newItem = EMPTY_ITEM()
-    setPurchaseItems(prev => [...prev, newItem])
-    selectProductLine(newItem.id, opts[0].product, opts[0].presentation)
-    setItemDropdowns(prev => ({ ...prev, [newItem.id]: false }))
-    toast.success(`Escaneado: ${opts[0].product.name}${opts[0].presentation ? ` — ${opts[0].presentation.name}` : ''}`)
-  }
+  // ── Scanner (camera + USB gun): adds a new line with the product pre-selected ──
+  // Exact barcode/SKU only — a purchase line is too consequential to guess.
+  const { scanButton, scannerDialog } = useProductScanner({
+    products,
+    keyboardEnabled: open,
+    size: 'compact',
+    label: 'Escanear producto para nueva línea',
+    onExactMatch: (m) => {
+      const newItem = EMPTY_ITEM()
+      setPurchaseItems(prev => [...prev, newItem])
+      selectProductLine(newItem.id, m.product, m.presentation)
+      setItemDropdowns(prev => ({ ...prev, [newItem.id]: false }))
+      toast.success(`Escaneado: ${m.product.name}${m.presentation ? ` — ${getUnitOfMeasureLabel(m.presentation.unitLabel)}` : ''}`)
+    },
+    onText: (code) => toast.error(`Producto no encontrado: ${code}`),
+  })
 
   function removeItem(itemId: string) {
     if (purchaseItems.length <= 1) { toast.error('Debe haber al menos un producto'); return }
@@ -354,7 +355,7 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose() }}>
-      <DialogContent className="max-w-[95vw] w-[95vw] sm:max-w-[95vw] md:max-w-[95vw] lg:max-w-[95vw] xl:max-w-[95vw] max-h-[92vh] overflow-y-auto">
+      <DialogContent mobileFullscreen className="max-w-[95vw] w-[95vw] sm:max-w-[95vw] md:max-w-[95vw] lg:max-w-[95vw] xl:max-w-[95vw] max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Editar Compra' : 'Nueva Compra'}</DialogTitle>
           <DialogDescription>{isEdit ? `Editando compra #${editingPurchase?.id}` : 'Registra una nueva compra de inventario'}</DialogDescription>
@@ -468,11 +469,11 @@ export function PurchaseFormDialog({ open, onClose, editingPurchase, currencyCod
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">Productos ({purchaseItems.length})</Label>
               <div className="flex items-center gap-1.5">
-                <ScanButton size="compact" label="Escanear producto para nueva línea" onClick={() => setCameraScanOpen(true)} />
+                {scanButton}
                 <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addItem}><Plus className="h-3 w-3 mr-1" />Agregar</Button>
               </div>
             </div>
-            <BarcodeScannerDialog open={cameraScanOpen} onClose={() => setCameraScanOpen(false)} onScan={handleCameraScan} />
+            {scannerDialog}
             <div className="rounded border overflow-x-auto">
               <Table>
                 <TableHeader><TableRow>

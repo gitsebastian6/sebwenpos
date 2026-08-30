@@ -73,7 +73,7 @@ interface PermissionGroup {
   permissions: PermissionDef[]
 }
 
-const TOTAL_PERMISSIONS = 16
+const TOTAL_PERMISSIONS = 17
 
 const PERMISSION_GROUPS: PermissionGroup[] = [
   {
@@ -87,6 +87,7 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'pos', label: 'Punto de Venta' },
       { key: 'tables', label: 'Mesas y Comandas' },
       { key: 'orders', label: 'Órdenes y Ventas' },
+      { key: 'onlineOrders', label: 'Pedidos en línea' },
       { key: 'quotations', label: 'Cotizaciones' },
     ],
   },
@@ -497,7 +498,7 @@ export function RolesView() {
           }
         }}
       >
-        <DialogContent className="max-w-lg rounded-xl backdrop-blur-sm flex flex-col max-h-[90vh] overflow-hidden !gap-0">
+        <DialogContent mobileFullscreen className="max-w-lg rounded-xl backdrop-blur-sm flex flex-col max-h-[90vh] overflow-hidden !gap-0">
           <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5" />

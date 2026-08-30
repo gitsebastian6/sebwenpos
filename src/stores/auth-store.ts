@@ -37,6 +37,24 @@ export interface StoreInfo {
   // DIVIPOLA location
   divipolaCode?: string | null
   cityName?: string | null
+  // Datos fiscales
+  taxRegime?: string | null
+  fiscalResponsibilities?: string | null
+  // Tirilla / recibo térmico (Configuración → Tirilla)
+  receiptPaperWidth?: string
+  receiptDocDenomination?: string | null
+  receiptFooterText?: string | null
+  receiptExtraLegend?: string | null
+  isIvaWithholdingAgent?: boolean
+  isSelfWithholdingAgent?: boolean
+  isIncResponsible?: boolean
+  // Resolución DIAN del documento equivalente POS
+  posResolutionNumber?: string | null
+  posResolutionPrefix?: string | null
+  posResolutionFrom?: number | null
+  posResolutionTo?: number | null
+  posResolutionDate?: string | null
+  posResolutionEndDate?: string | null
 }
 
 export interface SubscriptionInfo {
@@ -135,7 +153,7 @@ export function checkAndRepairAuth(): { isAuthenticated: boolean; storeId: numbe
 // Permisos por defecto (owner tiene todo)
 const DEFAULT_PERMISSIONS: Record<string, boolean> = {
   dashboard: true, pos: true, tables: true, products: true,
-  customers: true, providers: true, orders: true, invoices: true,
+  customers: true, providers: true, orders: true, onlineOrders: true, invoices: true,
   inventory: true, accounting: true, services: true, reports: true,
   settings: true, quotations: true, manageEmployees: true, manageRoles: true,
 }

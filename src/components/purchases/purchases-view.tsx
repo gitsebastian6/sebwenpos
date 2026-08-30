@@ -137,7 +137,7 @@ export function PurchasesView() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => handlePrintPurchases(purchases, statusFilter, search, currencyCode, false)}><FileSpreadsheet className="h-4 w-4 mr-2" />Impresora Normal</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handlePrintPurchases(purchases, statusFilter, search, currencyCode, true)}><Printer className="h-4 w-4 mr-2" />Térmica 80mm</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handlePrintPurchases(purchases, statusFilter, search, currencyCode, true, store?.receiptPaperWidth === '58' ? '58' : '80')}><Printer className="h-4 w-4 mr-2" />Térmica {store?.receiptPaperWidth === '58' ? '58mm' : '80mm'}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button variant="outline" size="sm" onClick={() => { const fn = handleExportExcel(purchases, currencyCode); toast.success(`Archivo ${fn} descargado`) }} disabled={loading || purchases.length === 0} className="gap-1.5">

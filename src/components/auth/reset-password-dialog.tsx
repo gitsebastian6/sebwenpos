@@ -160,7 +160,7 @@ export function ResetPasswordDialog({ open, onOpenChange, onResetSuccess }: Rese
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[440px] bg-zinc-900 border-zinc-800/60 text-zinc-100 p-0 overflow-hidden">
+      <DialogContent showCloseButton={false} className="sm:max-w-[440px] bg-zinc-900 border-zinc-800/60 text-zinc-100 p-0 overflow-hidden">
         {/* ═══ STEP: Select cédula + method ═══ */}
         {resetStep === 'cedula' ? (
           <>

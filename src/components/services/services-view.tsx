@@ -736,7 +736,7 @@ export function ServicesView() {
 
       {/* ═══ CREATE SERVICE DIALOG ═══ */}
       <Dialog open={showCreateService} onOpenChange={(open) => !open && setShowCreateService(false)}>
-        <DialogContent className="backdrop-blur-sm">
+        <DialogContent mobileFullscreen className="backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Nuevo Servicio</DialogTitle>
             <DialogDescription>Crea un nuevo servicio para el bar</DialogDescription>
@@ -787,7 +787,7 @@ export function ServicesView() {
 
       {/* ═══ CREATE TRANSACTION DIALOG ═══ */}
       <Dialog open={showCreateTransaction} onOpenChange={(open) => !open && setShowCreateTransaction(false)}>
-        <DialogContent className="backdrop-blur-sm">
+        <DialogContent mobileFullscreen className="backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Registrar Servicio</DialogTitle>
             <DialogDescription>Registra la prestación de un servicio</DialogDescription>
@@ -842,7 +842,7 @@ export function ServicesView() {
 
       {/* ═══ EDIT SERVICE DIALOG ═══ */}
       <Dialog open={!!editingService} onOpenChange={(open) => !open && setEditingService(null)}>
-        <DialogContent className="backdrop-blur-sm">
+        <DialogContent mobileFullscreen className="backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Editar Servicio</DialogTitle>
             <DialogDescription>Modifica los datos del servicio</DialogDescription>
@@ -897,7 +897,7 @@ export function ServicesView() {
 
       {/* ═══ EDIT TRANSACTION DIALOG ═══ */}
       <Dialog open={!!editingTx} onOpenChange={(open) => !open && setEditingTx(null)}>
-        <DialogContent className="backdrop-blur-sm">
+        <DialogContent mobileFullscreen className="backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Editar Registro #{editingTx?.id}</DialogTitle>
             <DialogDescription>Modifica los datos del registro</DialogDescription>

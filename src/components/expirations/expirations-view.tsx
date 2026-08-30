@@ -12,6 +12,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { Search, CalendarClock, AlertTriangle, CheckCircle2, PackageX, Info } from 'lucide-react'
+import { useProductScanner } from '@/hooks/use-product-scanner'
 import { format, differenceInCalendarDays, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { formatQty } from '@/lib/format'
@@ -80,10 +81,27 @@ export function ExpirationsView() {
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter((l) =>
-        l.productName.toLowerCase().includes(q) || (l.lotNumber || '').toLowerCase().includes(q))
+        l.productName.toLowerCase().includes(q) ||
+        (l.lotNumber || '').toLowerCase().includes(q) ||
+        (l.productSku || '').toLowerCase().includes(q) ||
+        (l.productBarcode || '').toLowerCase().includes(q))
     }
     return list
   }, [enriched, statusFilter, onlyInStock, search])
+
+  // Scanner (camera + USB gun) — the search now matches product SKU/barcode too,
+  // so a scanned code just drops into the filter.
+  const scanCatalog = useMemo(
+    () => lots.map((l) => ({ sku: l.productSku, barcode: l.productBarcode })),
+    [lots],
+  )
+  const { scanButton, scannerDialog } = useProductScanner({
+    products: scanCatalog,
+    size: 'compact',
+    label: 'Escanear producto',
+    onExactMatch: (_m, code) => setSearch(code),
+    onText: (code) => setSearch(code),
+  })
 
   return (
     <div className="space-y-4">
@@ -136,8 +154,12 @@ export function ExpirationsView() {
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Buscar por producto o lote..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input placeholder="Buscar o escanear producto / lote..." className="pl-9 pr-10" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                {scanButton}
+              </div>
             </div>
+            {scannerDialog}
             <div className="flex items-center gap-1.5 flex-wrap">
               {([
                 { key: 'all', label: 'TODOS' },

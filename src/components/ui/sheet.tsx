@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
-import { XIcon } from "lucide-react"
+import { ChevronLeftIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -71,11 +71,15 @@ function SheetContent({
         )}
         {...props}
       >
-        {children}
-        <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
-          <XIcon className="size-4" />
-          <span className="sr-only">Close</span>
+        <SheetPrimitive.Close
+          data-slot="sheet-close"
+          aria-label="Volver"
+          className="sticky top-0 z-20 flex shrink-0 items-center gap-1.5 self-stretch border-b border-border/60 bg-emerald-500/[0.07] px-4 py-3 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/15 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500/40 disabled:pointer-events-none dark:text-emerald-400 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
+        >
+          <ChevronLeftIcon />
+          <span>Volver</span>
         </SheetPrimitive.Close>
+        {children}
       </SheetPrimitive.Content>
     </SheetPortal>
   )

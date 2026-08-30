@@ -1,21 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Set env vars BEFORE importing env.ts
-process.env.AUTH_SECRET = 'test-secret'
-process.env.INTERNAL_SECRET = 'test-internal'
+process.env.AUTH_SECRET = 'test-secret-value-abcdef123456'
+process.env.INTERNAL_SECRET = 'test-internal-value-abcdef123456'
 process.env.NEXT_PUBLIC_APP_URL = 'https://test.example.com'
 process.env.SMTP_FROM = 'test@example.com'
 process.env.ALERT_API_BASE = 'https://test.example.com/api/subscription/alerts'
 // @ts-expect-error
       process.env.NODE_ENV = 'development'
 
-import { requireEnv, envOrDefault, envOrDefaultInt, envOrDefaultBool, assertRequiredEnv } from '../env'
+import { requireEnv, envOrDefault, envOrDefaultInt, envOrDefaultBool, assertRequiredEnv, productionSafetyErrors } from '../env'
 
 describe('env utilities', () => {
   beforeEach(() => {
     delete process.env.TEST_VAR
     delete process.env.TEST_INT
     delete process.env.TEST_BOOL
+    delete process.env.WOMPI_ENV
+    delete process.env.WOMPI_SKIP_SIGNATURE
+    delete process.env.ENCRYPTION_KEY
   })
 
   // ─── requireEnv ──────────────────────────────────────────────────────────
@@ -55,9 +58,28 @@ describe('env utilities', () => {
     it('does not throw when all required vars are set', () => {
       // @ts-expect-error
       process.env.NODE_ENV = 'production'
-      expect(() => assertRequiredEnv()).not.toThrow()
+      process.env.WOMPI_ENV = 'sandbox'
+      try {
+        expect(() => assertRequiredEnv()).not.toThrow()
+      } finally {
+        delete process.env.WOMPI_ENV
+        // @ts-expect-error
+        process.env.NODE_ENV = 'development'
+      }
+    })
+
+    it('throws in production when WOMPI_ENV is demo/unset', () => {
       // @ts-expect-error
-      process.env.NODE_ENV = 'development'
+      process.env.NODE_ENV = 'production'
+      try {
+        expect(() => assertRequiredEnv()).toThrow(/WOMPI_ENV/)
+        process.env.WOMPI_ENV = 'demo'
+        expect(() => assertRequiredEnv()).toThrow(/WOMPI_ENV/)
+      } finally {
+        delete process.env.WOMPI_ENV
+        // @ts-expect-error
+        process.env.NODE_ENV = 'development'
+      }
     })
 
     it('throws in production listing every missing required var', () => {
@@ -89,6 +111,50 @@ describe('env utilities', () => {
         warnSpy.mockRestore()
         process.env.AUTH_SECRET = saved
       }
+    })
+  })
+
+  // ─── productionSafetyErrors ──────────────────────────────────────────────
+
+  describe('productionSafetyErrors', () => {
+    it('flags WOMPI_ENV unset', () => {
+      expect(productionSafetyErrors().some((e) => e.includes('WOMPI_ENV'))).toBe(true)
+    })
+
+    it('flags WOMPI_ENV=demo', () => {
+      process.env.WOMPI_ENV = 'demo'
+      expect(productionSafetyErrors().some((e) => e.includes('WOMPI_ENV'))).toBe(true)
+    })
+
+    it('accepts WOMPI_ENV=sandbox and =production', () => {
+      process.env.WOMPI_ENV = 'sandbox'
+      expect(productionSafetyErrors().some((e) => e.includes('WOMPI_ENV'))).toBe(false)
+      process.env.WOMPI_ENV = 'production'
+      expect(productionSafetyErrors().some((e) => e.includes('WOMPI_ENV'))).toBe(false)
+    })
+
+    it('flags WOMPI_SKIP_SIGNATURE=true', () => {
+      process.env.WOMPI_ENV = 'sandbox'
+      process.env.WOMPI_SKIP_SIGNATURE = 'true'
+      expect(productionSafetyErrors().some((e) => e.includes('WOMPI_SKIP_SIGNATURE'))).toBe(true)
+    })
+
+    it('flags a placeholder security secret', () => {
+      process.env.WOMPI_ENV = 'sandbox'
+      process.env.ENCRYPTION_KEY = 'CHANGE_ME_openssl_rand_base64_32'
+      expect(productionSafetyErrors().some((e) => e.includes('ENCRYPTION_KEY'))).toBe(true)
+    })
+
+    it('flags a security secret that is too short', () => {
+      process.env.WOMPI_ENV = 'sandbox'
+      process.env.ENCRYPTION_KEY = 'short'
+      expect(productionSafetyErrors().some((e) => e.includes('ENCRYPTION_KEY'))).toBe(true)
+    })
+
+    it('accepts a real-looking secret', () => {
+      process.env.WOMPI_ENV = 'sandbox'
+      process.env.ENCRYPTION_KEY = 'v9F2kQ7pLxN3wRt6ZaC1mB8hJ0sD4gY'
+      expect(productionSafetyErrors()).toEqual([])
     })
   })
 

@@ -19,6 +19,7 @@ import {
   printCashRegisterClose,
   type CashRegisterCloseData,
 } from '@/lib/print-ticket'
+import { receiptPaperWidthOf } from '@/lib/receipt-store-fields'
 
 export function useCashRegisterOperations(currencyCode: string) {
   const store = useAuthStore((s) => s.store)
@@ -201,6 +202,7 @@ export function useCashRegisterOperations(currencyCode: string) {
       storeName: store.name,
       storeNIT: store.nit || undefined,
       storeAddress: store.address || undefined,
+      paperWidth: receiptPaperWidthOf(store),
       openedAt: shift.openedAt,
       closedAt: shift.closedAt || new Date().toISOString(),
       responsibleName: shift.user.fullName || 'Usuario',

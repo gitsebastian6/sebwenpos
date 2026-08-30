@@ -21,15 +21,20 @@ import {
   Tag,
   Truck,
   Info,
+  Download,
 } from 'lucide-react'
+import { PRODUCT_IMPORT_COLUMNS } from '@/lib/product-import-columns'
+import { downloadProductImportTemplate } from '@/lib/product-import-template'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface ImportResult {
   success: boolean
   imported: number
+  importedPresentations?: number
   created: string[]
   skipped: { row: number; name: string; reason: string }[]
+  warnings?: { row: number; name: string; message: string }[]
   totalInFile: number
   createdCategories?: string[]
   createdProviders?: string[]
@@ -88,7 +93,7 @@ export function ImportProductsDialog({
     <Dialog open={open} onOpenChange={(isOpen) => {
       if (!isOpen) handleClose()
     }}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl backdrop-blur-sm">
+      <DialogContent mobileFullscreen className="sm:max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl backdrop-blur-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
@@ -154,66 +159,71 @@ export function ImportProductsDialog({
             {/* Instructions */}
             <Card className="border-dashed">
               <CardContent className="p-4 space-y-3">
-                <h4 className="font-semibold text-sm">Formato del Excel</h4>
-                <p className="text-xs text-muted-foreground">
-                  La primera fila debe contener los nombres de las columnas (encabezados). Las columnas se mapean automáticamente:
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-emerald-600">Obligatoria:</span>
-                    <p className="font-mono mt-0.5">Nombre</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-emerald-600">Obligatoria:</span>
-                    <p className="font-mono mt-0.5">Precio Venta</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-muted-foreground">Opcional:</span>
-                    <p className="font-mono mt-0.5">SKU</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-muted-foreground">Opcional:</span>
-                    <p className="font-mono mt-0.5">Categoría</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-muted-foreground">Opcional:</span>
-                    <p className="font-mono mt-0.5">Proveedor</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-muted-foreground">Opcional:</span>
-                    <p className="font-mono mt-0.5">Impuesto</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-muted-foreground">Opcional:</span>
-                    <p className="font-mono mt-0.5">INVIMA</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-muted-foreground">Opcional:</span>
-                    <p className="font-mono mt-0.5">Precio Compra</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-muted-foreground">Opcional:</span>
-                    <p className="font-mono mt-0.5">Comisión</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-muted-foreground">Opcional:</span>
-                    <p className="font-mono mt-0.5">Stock</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-muted-foreground">Opcional:</span>
-                    <p className="font-mono mt-0.5">Stock Mínimo</p>
-                  </div>
-                  <div className="bg-muted/50 rounded-md p-2">
-                    <span className="font-medium text-muted-foreground">Opcional:</span>
-                    <p className="font-mono mt-0.5">Activo (Sí/No)</p>
-                  </div>
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="font-semibold text-sm">Formato del Excel</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 shrink-0"
+                    onClick={() => downloadProductImportTemplate()}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Descargar plantilla
+                  </Button>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  La primera fila debe contener los encabezados. El orden no importa y no se distinguen
+                  mayúsculas ni tildes. Columnas reconocidas:
+                </p>
+
+                {(['required', 'product', 'presentation'] as const).map((group) => {
+                  const cols = PRODUCT_IMPORT_COLUMNS.filter((c) => c.group === group)
+                  const title =
+                    group === 'required'
+                      ? 'Obligatorias'
+                      : group === 'product'
+                        ? 'Opcionales del producto'
+                        : 'Presentaciones adicionales (máx. 2)'
+                  return (
+                    <div key={group} className="space-y-1.5">
+                      <p
+                        className={`text-xs font-semibold ${
+                          group === 'required'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
+                        {title}
+                      </p>
+                      {group === 'presentation' && (
+                        <p className="text-[11px] text-muted-foreground/70">
+                          Para crear un empaque llena su <strong>Nombre</strong>,{' '}
+                          <strong>Unidades por Empaque</strong> y <strong>Precio Venta</strong>. Comparte
+                          el stock del producto base.
+                        </p>
+                      )}
+                      <div className="grid sm:grid-cols-2 gap-1.5 text-xs">
+                        {cols.map((c) => (
+                          <div key={c.field} className="bg-muted/50 rounded-md p-2">
+                            <p className="font-mono">{c.header}</p>
+                            {c.note && (
+                              <p className="text-[11px] text-muted-foreground/70 mt-0.5">{c.note}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+
                 <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-md p-2">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   <ul className="space-y-1 list-disc ml-1">
-                    <li>La columna <strong>Categoría</strong>, <strong>Proveedor</strong> e <strong>Impuesto</strong> se resuelven por nombre (deben existir previamente)</li>
+                    <li><strong>Categoría</strong> y <strong>Proveedor</strong> se crean solos si no existen; <strong>Impuesto</strong> debe existir (por nombre o código)</li>
                     <li>Los precios van en pesos colombianos (sin símbolo $, solo el número)</li>
-                    <li>Máximo 1,000 productos por archivo, tamaño máximo 5MB</li>
+                    <li>Descarga la plantilla .xlsx para ver ejemplos y la lista de unidades válidas</li>
+                    <li>Máximo 1.000 productos por archivo, tamaño máximo 5MB</li>
                   </ul>
                 </div>
               </CardContent>
@@ -352,9 +362,28 @@ export function ImportProductsDialog({
               </div>
             )}
 
+            {result.warnings && result.warnings.length > 0 && (
+              <div className="max-h-48 overflow-y-auto">
+                <p className="text-sm font-medium mb-2 text-amber-600 dark:text-amber-400">Avisos:</p>
+                <div className="space-y-1">
+                  {result.warnings.map((w, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs bg-amber-50 dark:bg-amber-950/20 rounded-md p-2">
+                      <Badge variant="outline" className="shrink-0 font-mono">Fila {w.row}</Badge>
+                      <span className="truncate font-medium">{w.name}</span>
+                      <span className="text-muted-foreground truncate">{w.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {result.imported > 0 && (
               <div className="text-sm text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 rounded-md p-3">
-                Se importaron {result.imported} producto{result.imported !== 1 ? 's' : ''} exitosamente.
+                Se importaron {result.imported} producto{result.imported !== 1 ? 's' : ''} exitosamente
+                {result.importedPresentations
+                  ? ` (con ${result.importedPresentations} presentación${result.importedPresentations !== 1 ? 'es' : ''} adicional${result.importedPresentations !== 1 ? 'es' : ''})`
+                  : ''}
+                .
                 {result.subscription && (
                   <span className="text-xs block mt-1 text-muted-foreground">
                     Total en el sistema: {result.subscription.newTotal}{result.subscription.planLimit ? `/${result.subscription.planLimit}` : ''} productos

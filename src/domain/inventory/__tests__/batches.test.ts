@@ -1,6 +1,21 @@
 import { describe, it, expect } from 'vitest'
-import { consumeBatchesFEFO } from '../batch-consumer'
+import { consumeBatchById, consumeBatchesFEFO, sortBatchesFEFO } from '../batch-consumer'
 import { receiveBatchFromPurchase } from '../batch-receiver'
+
+describe('sortBatchesFEFO', () => {
+  const d = (s: string) => new Date(s)
+  it('vencen antes primero; sin fecha al final por createdAt; no muta el original', () => {
+    const input = [
+      { id: 1, expiryDate: null, createdAt: d('2025-03-01') },
+      { id: 2, expiryDate: d('2026-06-01'), createdAt: d('2025-01-01') },
+      { id: 3, expiryDate: d('2026-01-01'), createdAt: d('2025-02-01') },
+      { id: 4, expiryDate: null, createdAt: d('2025-01-15') },
+    ]
+    const out = sortBatchesFEFO(input)
+    expect(out.map((b) => b.id)).toEqual([3, 2, 4, 1])
+    expect(input.map((b) => b.id)).toEqual([1, 2, 3, 4]) // intacto
+  })
+})
 
 // ── FEFO (consumo por lotes) ─────────────────────────────────────
 
@@ -150,5 +165,48 @@ describe('receiveBatchFromPurchase', () => {
       baseUnitCost: 100,
     })
     expect(created).toHaveLength(0)
+  })
+})
+
+// ── consumeBatchById (pérdida / ajuste dirigido a un lote) ───────────────
+
+function makeByIdTx(batch: { id: number; lotNumber: string; quantity: number; status: string } | null) {
+  let row = batch
+  return {
+    tx: {
+      batch: {
+        findUnique: async () => row,
+        update: async ({ data }: { data: { quantity?: number; status?: string } }) => {
+          if (row) row = { ...row, ...data } as typeof batch
+          return row
+        },
+      },
+    },
+    getRow: () => row,
+  }
+}
+
+describe('consumeBatchById', () => {
+  it('descuenta del lote indicado y lo marca DEPLETED al llegar a 0', async () => {
+    const { tx, getRow } = makeByIdTx({ id: 4, lotNumber: 'L-A', quantity: 6, status: 'ACTIVE' })
+    const res = await consumeBatchById(tx as never, 4, 6)
+    expect(res.consumptions).toEqual([{ batchId: 4, lotNumber: 'L-A', quantity: 6 }])
+    expect(res.uncovered).toBe(0)
+    expect(getRow()!.quantity).toBe(0)
+    expect(getRow()!.status).toBe('DEPLETED')
+  })
+
+  it('lo que el lote no cubre queda como uncovered', async () => {
+    const { tx } = makeByIdTx({ id: 4, lotNumber: 'L-A', quantity: 2, status: 'ACTIVE' })
+    const res = await consumeBatchById(tx as never, 4, 5)
+    expect(res.consumptions[0].quantity).toBe(2)
+    expect(res.uncovered).toBe(3)
+  })
+
+  it('lote inexistente o no ACTIVE → todo uncovered', async () => {
+    const { tx } = makeByIdTx(null)
+    const res = await consumeBatchById(tx as never, 99, 5)
+    expect(res.consumptions).toHaveLength(0)
+    expect(res.uncovered).toBe(5)
   })
 })

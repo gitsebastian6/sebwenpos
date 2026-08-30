@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryFetch } from '@/hooks/api/query-helpers'
+import { useProductScanner } from '@/hooks/use-product-scanner'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -131,6 +132,16 @@ export function ShiftDetailDialog({
   function handleOpenChange(value: boolean) {
     onOpenChange(value)
   }
+
+  // Scanner (camera + USB gun) — drops the code into the product/service filter.
+  const { scanButton, scannerDialog } = useProductScanner({
+    products: detailShiftData?.aggregatedProducts ?? [],
+    keyboardEnabled: open,
+    size: 'compact',
+    label: 'Escanear producto',
+    onExactMatch: (_m, code) => setDetailSearch(code),
+    onText: (code) => setDetailSearch(code),
+  })
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -263,13 +274,17 @@ export function ShiftDetailDialog({
             {/* Search */}
             <div className="relative">
               <Input
-                placeholder="Buscar producto o servicio..."
+                placeholder="Buscar o escanear producto / servicio..."
                 value={detailSearch}
                 onChange={(e) => setDetailSearch(e.target.value)}
-                className="h-9 pl-8"
+                className="h-9 pl-8 pr-10"
               />
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                {scanButton}
+              </div>
             </div>
+            {scannerDialog}
 
             {/* Aggregated Products Table */}
             {(() => {
