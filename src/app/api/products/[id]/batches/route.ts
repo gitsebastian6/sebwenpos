@@ -1,5 +1,6 @@
 import { sortBatchesFEFO } from '@/domain/inventory/batch-consumer'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { toNum } from '@/lib/stock-math'
@@ -22,6 +23,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const accessErr = requireStoreAccess(req, storeId)
     if (accessErr) return accessErr
+    // El selector de lote se usa en el flujo básico de ajuste/pérdida/devolución
+    // (perecederos), así que va con el permiso 'inventory', NO con la feature
+    // advancedInventory (esa gatea solo la analítica: kardex/ABC/reorden).
+    const permErr = await requirePermission(req, 'inventory')
+    if (permErr) return permErr
 
     const rows = await db.batch.findMany({
       where: { productId, storeId, status: 'ACTIVE', quantity: { gt: 0 } },

@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
 import { requirePermission } from '@/lib/permissions'
+import { requireFeature } from '@/lib/subscription-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,6 +84,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (storeAccessErr) return storeAccessErr
     const permErr = await requirePermission(req, 'manageRoles')
     if (permErr) return permErr
+    const featErr = await requireFeature(role.storeId, 'customRoles')
+    if (featErr) return featErr
 
     const updateData: Record<string, unknown> = {}
 

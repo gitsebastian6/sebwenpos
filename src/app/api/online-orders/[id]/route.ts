@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
+import { requireFeature } from '@/lib/subscription-guard'
 import { isSubscriptionActive } from '@/lib/subscription-helpers'
 import { createOrder } from '@/domain/sales/order-factory'
 import { emitOnlineOrderUpdated } from '@/lib/tables-sync'
@@ -52,6 +53,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const storeAccessError = requireStoreAccess(request, onlineOrder.storeId)
     if (storeAccessError) return storeAccessError
+    const featErr = await requireFeature(onlineOrder.storeId, 'onlineStore')
+    if (featErr) return featErr
     const auth = getAuthUser(request)
 
     // ─────────────────────────────── REJECT ───────────────────────────────

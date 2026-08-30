@@ -1,4 +1,6 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
+import { requireFeature } from '@/lib/subscription-guard'
 import { db } from '@/lib/db'
 import { toNum } from '@/lib/stock-math'
 import { buildReorderSuggestions, type DailyDemandRow } from '@/domain/inventory/analytics'
@@ -22,6 +24,10 @@ export async function GET(request: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'inventory')
+    if (permErr) return permErr
+    const featErr = await requireFeature(storeId, 'advancedInventory')
+    if (featErr) return featErr
 
     const DAYS = 90
     const since = new Date()

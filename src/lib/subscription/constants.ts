@@ -6,17 +6,37 @@
 // ---------------------------------------------------------------------------
 
 // ── Plan Feature Keys ──
+//
+// Gates de CÓDIGO (el backend bloquea con 403 y la UI oculta/atenúa):
+//   electronicInvoicing, multiStore, reports, advancedInventory,
+//   onlineStore, customRoles
+// Metadata de PRECIOS (se muestran en la página de planes pero NO son gates —
+// no existe la funcionalidad, o son promesas de SLA, no rutas de código):
+//   api (no hay API pública), customBranding (pendiente), multiCurrency
+//   (app COP-only), support / priority (strings de SLA: "email"/"dedicated").
 export const PLAN_FEATURES = {
   electronicInvoicing: 'Facturación Electrónica',
   multiStore: 'Multi-Tienda',
   reports: 'Reportes Avanzados',
   advancedInventory: 'Inventario Avanzado',
+  onlineStore: 'Tienda Virtual',
+  customRoles: 'Roles Personalizados',
   api: 'Acceso API',
   customBranding: 'Branding Personalizado',
   multiCurrency: 'Multi-Moneda',
   support: 'Soporte',
   priority: 'Soporte Prioritario',
 } as const
+
+/** Features que el backend efectivamente bloquea (para la UI y los tests). */
+export const ENFORCED_PLAN_FEATURES = [
+  'electronicInvoicing',
+  'multiStore',
+  'reports',
+  'advancedInventory',
+  'onlineStore',
+  'customRoles',
+] as const
 
 export type PlanFeatureKey = keyof typeof PLAN_FEATURES
 

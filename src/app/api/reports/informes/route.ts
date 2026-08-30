@@ -1,5 +1,6 @@
 import { requireStoreAccess } from '@/lib/api-auth'
 import { requirePermission } from '@/lib/permissions'
+import { requireFeature } from '@/lib/subscription-guard'
 import { db } from '@/lib/db'
 import { sql } from '@/lib/db-dialect'
 import { logger } from '@/lib/logger'
@@ -29,6 +30,8 @@ export async function GET(request: NextRequest) {
     if (storeAccessErr) return storeAccessErr
     const permErr = await requirePermission(request, 'reports')
     if (permErr) return permErr
+    const featErr = await requireFeature(storeId, 'reports')
+    if (featErr) return featErr
 
     const now = new Date()
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())

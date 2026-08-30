@@ -10,6 +10,8 @@ const featuresSchema = z.object({
   electronicInvoicing: z.boolean().optional(),
   multiStore: z.boolean().optional(),
   reports: z.boolean().optional(),
+  onlineStore: z.boolean().optional(),
+  customRoles: z.boolean().optional(),
   support: z.enum(['none', 'email', 'dedicated']).optional(),
   priority: z.boolean().optional(),
   advancedInventory: z.boolean().optional(),

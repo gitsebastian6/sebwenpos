@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
+import { requireFeature } from '@/lib/subscription-guard'
 import { rateLimit, getClientIp } from '@/lib/rate-limiter'
 import { generateOnlineOrderNumber } from '@/lib/auth'
 import { normalizePhone, defaultDialCode } from '@/lib/phone'
@@ -71,6 +72,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ sto
     if (!store || !store.storeActive) {
       return NextResponse.json({ error: 'Tienda no encontrada' }, { status: 404 })
     }
+    const featErr = await requireFeature(store.id, 'onlineStore')
+    if (featErr) return featErr
     if (!store.acceptingOrders) {
       return NextResponse.json({ error: 'La tienda no está recibiendo pedidos en este momento.' }, { status: 409 })
     }

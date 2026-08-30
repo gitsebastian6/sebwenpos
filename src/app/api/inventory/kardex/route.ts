@@ -1,4 +1,6 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
+import { requireFeature } from '@/lib/subscription-guard'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { toNum } from '@/lib/stock-math'
@@ -23,6 +25,10 @@ export async function GET(request: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'inventory')
+    if (permErr) return permErr
+    const featErr = await requireFeature(storeId, 'advancedInventory')
+    if (featErr) return featErr
 
     // Verify product exists and belongs to store
     const product = await db.product.findFirst({

@@ -136,6 +136,14 @@ const VIEW_PERMISSION = Object.fromEntries(
   menuGroups.flatMap((g) => g.items.map((i) => [i.view, i.permission] as const))
 ) as Record<AppView, string>
 
+// Vista → feature de plan requerida (además del permiso). HALLAZGO #2:
+// el backend responde 403 en estas rutas si el plan no incluye la feature;
+// acá ocultamos el item del menú para que sea coherente.
+const VIEW_FEATURE: Partial<Record<AppView, 'reports' | 'onlineStore'>> = {
+  reports: 'reports',
+  'online-orders': 'onlineStore',
+}
+
 export function AppShell() {
   const { user, store, logout, hasPermission, subscription, availableStores, switchStore, loadAvailableStores } = useAuthStore()
   const { currentView, setView } = useAppStore()
@@ -155,12 +163,24 @@ export function AppShell() {
   // botón atrás del celular recorre vistas.
   const fromPopstate = useRef(false)
 
+  const planFeatures = (subscription?.planLimits?.features ?? {}) as Record<string, boolean>
+  const planActive = !!subscription?.hasSubscription &&
+    ['ACTIVE', 'TRIAL', 'PAST_DUE'].includes(subscription?.subscriptionStatus || '')
+  const hasViewFeature = useCallback(
+    (v: AppView) => {
+      const f = VIEW_FEATURE[v]
+      return !f || (planActive && planFeatures[f] === true)
+    },
+    [planActive, planFeatures]
+  )
+
   const canSeeView = useCallback(
     (v: AppView) => {
       const perm = VIEW_PERMISSION[v]
-      return !perm || perm === 'dashboard' || hasPermission(perm)
+      const permOk = !perm || perm === 'dashboard' || hasPermission(perm)
+      return permOk && hasViewFeature(v)
     },
-    [hasPermission]
+    [hasPermission, hasViewFeature]
   )
 
   // Al montar: resolver la vista inicial (deep-link ?view= > vista persistida),
@@ -483,7 +503,7 @@ export function AppShell() {
         {/* ── Sidebar Menu ── */}
         <SidebarContent className="px-2 py-1">
           {menuGroups.map((group) => {
-            const visibleItems = group.items.filter((item) => hasPermission(item.permission))
+            const visibleItems = group.items.filter((item) => hasPermission(item.permission) && hasViewFeature(item.view))
             if (visibleItems.length === 0) return null
             return (
               <SidebarGroup key={group.title} className="py-1">

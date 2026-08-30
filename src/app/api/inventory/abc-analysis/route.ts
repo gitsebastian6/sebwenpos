@@ -1,4 +1,6 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
+import { requireFeature } from '@/lib/subscription-guard'
 import { db } from '@/lib/db'
 import { classifyAbc, type AbcRow } from '@/domain/inventory/analytics'
 import { NextRequest, NextResponse } from 'next/server'
@@ -21,6 +23,10 @@ export async function GET(request: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'inventory')
+    if (permErr) return permErr
+    const featErr = await requireFeature(storeId, 'advancedInventory')
+    if (featErr) return featErr
 
     const since = new Date()
     since.setFullYear(since.getFullYear() - 1)

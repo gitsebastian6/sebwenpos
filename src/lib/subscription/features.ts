@@ -35,10 +35,26 @@ export function planHasFeature(featuresJson: string, featureKey: PlanFeatureKey)
  * Returns null if no subscription exists.
  */
 export async function getStoreSubscription(storeId: number) {
-  const subscription = await db.subscription.findUnique({
+  let subscription = await db.subscription.findUnique({
     where: { storeId },
     include: { plan: true },
   })
+
+  // HALLAZGO #6: las sucursales no tienen fila propia en `subscription` —
+  // heredan el plan (y sus features/limites) de la tienda padre.
+  if (!subscription) {
+    const store = await db.store.findUnique({
+      where: { id: storeId },
+      select: { parentStoreId: true },
+    })
+    if (store?.parentStoreId) {
+      subscription = await db.subscription.findUnique({
+        where: { storeId: store.parentStoreId },
+        include: { plan: true },
+      })
+    }
+  }
+
   if (!subscription) return null
   return {
     ...subscription,
