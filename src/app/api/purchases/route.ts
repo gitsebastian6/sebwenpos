@@ -1,4 +1,5 @@
 import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
+import { requireActiveSubscription } from '@/lib/subscription-guard'
 import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
@@ -278,6 +279,8 @@ export async function POST(req: NextRequest) {
     if (storeAccessError) return storeAccessError
     const permErr = await requirePermission(req, 'purchases')
     if (permErr) return permErr
+    const subErr = await requireActiveSubscription(data.storeId)
+    if (subErr) return subErr
     const auth = getAuthUser(req)
 
     // Verify all products belong to the store

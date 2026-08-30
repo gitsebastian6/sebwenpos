@@ -42,6 +42,7 @@ const mockApiAuth = vi.hoisted(() => ({
   getAuthUser: vi.fn().mockReturnValue({ userId: 1, role: 'OWNER', storeId: 1, employeeId: null }),
 }))
 
+vi.mock('@/lib/subscription-guard', () => ({ requireActiveSubscription: vi.fn().mockResolvedValue(null) }))
 vi.mock('@/lib/db', () => ({ db: mockDb }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }))
 vi.mock('@/lib/api-auth', () => mockApiAuth)

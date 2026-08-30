@@ -660,11 +660,22 @@ export function AppShell() {
   )
 }
 
+// Vistas accesibles aún con suscripción EXPIRED/CANCELLED: el usuario necesita
+// llegar a Configuración para renovar/pagar. Todo lo demás pasa por
+// SubscriptionGate (antes solo el POS estaba bloqueado server-side por UI).
+const SUBSCRIPTION_EXEMPT_VIEWS: ReadonlySet<AppView> = new Set<AppView>(['settings'])
+
 function ViewRouter({ currentView }: { currentView: AppView }) {
+  const view = renderView(currentView)
+  if (SUBSCRIPTION_EXEMPT_VIEWS.has(currentView)) return view
+  return <SubscriptionGate>{view}</SubscriptionGate>
+}
+
+function renderView(currentView: AppView) {
   const label = VIEW_LABELS[currentView] || currentView
   switch (currentView) {
     case 'dashboard': return <ViewErrorBoundary viewName={label}><DashboardView /></ViewErrorBoundary>
-    case 'pos': return <ViewErrorBoundary viewName={label}><SubscriptionGate><POSView /></SubscriptionGate></ViewErrorBoundary>
+    case 'pos': return <ViewErrorBoundary viewName={label}><POSView /></ViewErrorBoundary>
     case 'tables': return <ViewErrorBoundary viewName={label}><TablesView /></ViewErrorBoundary>
     case 'products': return <ViewErrorBoundary viewName={label}><ProductsView /></ViewErrorBoundary>
     case 'customers': return <ViewErrorBoundary viewName={label}><CustomersView /></ViewErrorBoundary>

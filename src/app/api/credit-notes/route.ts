@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requireActiveSubscription } from '@/lib/subscription-guard'
 import { requirePermission } from '@/lib/permissions'
 import { DIAN_CONSUMIDOR_FINAL_NIT, getSoftwareProviderNIT } from '@/lib/constants'
 import { db } from '@/lib/db'
@@ -187,6 +188,8 @@ export async function POST(req: NextRequest) {
     if (storeAccessError) return storeAccessError
     const permErr = await requirePermission(req, 'invoices')
     if (permErr) return permErr
+    const subErr = await requireActiveSubscription(data.storeId)
+    if (subErr) return subErr
 
     // 1. Buscar la factura original
     const invoice = await db.invoice.findFirst({

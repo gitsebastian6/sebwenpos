@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requireActiveSubscription } from '@/lib/subscription-guard'
 import { requirePermission } from '@/lib/permissions'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
@@ -87,6 +88,8 @@ export async function POST(request: NextRequest) {
     if (storeAccessError) return storeAccessError
     const permErr = await requirePermission(request, 'accounting')
     if (permErr) return permErr
+    const subErr = await requireActiveSubscription(storeId)
+    if (subErr) return subErr
 
     const expense = await db.$transaction(async (tx) => {
       // Find expense account (EXPENSE type)

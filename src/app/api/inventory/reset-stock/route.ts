@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requireActiveSubscription } from '@/lib/subscription-guard'
 import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
@@ -30,6 +31,8 @@ export async function POST(request: NextRequest) {
     if (storeAccessErr) return storeAccessErr
     const permErr = await requirePermission(request, 'inventory')
     if (permErr) return permErr
+    const subErr = await requireActiveSubscription(storeId)
+    if (subErr) return subErr
 
     // Get all products with stock > 0
     const productsWithStock = await db.product.findMany({

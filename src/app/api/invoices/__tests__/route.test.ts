@@ -28,6 +28,7 @@ const mockInvoiceUtils = vi.hoisted(() => ({
   validateNITDV: vi.fn(() => true),
 }))
 
+vi.mock('@/lib/subscription-guard', () => ({ requireActiveSubscription: vi.fn().mockResolvedValue(null) }))
 vi.mock('@/lib/db', () => ({ db: mockDb }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }))
 vi.mock('@/lib/api-auth', () => ({

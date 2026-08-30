@@ -3,7 +3,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/permissions'
 import { auditLogFromRequest } from '@/lib/audit-logger'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
-import { isSubscriptionActive } from '@/lib/subscription-helpers'
+import { requireActiveSubscription } from '@/lib/subscription-guard'
 import { createOrder, findOrderByIdempotencyKey, type OrderWithItems } from '@/domain/sales/order-factory'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -113,13 +113,8 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Subscription gate: block order creation when subscription is expired/cancelled ──
-    const subActive = await isSubscriptionActive(data.storeId)
-    if (!subActive) {
-      return NextResponse.json(
-        { error: 'Tu suscripción está vencida. Renueva tu plan para continuar vendiendo.' },
-        { status: 403 },
-      )
-    }
+    const subErr = await requireActiveSubscription(data.storeId)
+    if (subErr) return subErr
 
     const result = await createOrder({
       storeId: data.storeId,

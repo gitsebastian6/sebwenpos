@@ -4,7 +4,7 @@ import { generateOrderNumber } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { mul, toNum } from '@/lib/stock-math'
-import { isSubscriptionActive } from '@/lib/subscription-helpers'
+import { requireActiveSubscription } from '@/lib/subscription-guard'
 import { emitComandaItemsUpdated, emitPaymentProcessed } from '@/lib/tables-sync'
 import { calcLineTax, type TaxRateInfo } from '@/domain/sales/tax-calculator'
 import { reserveStock } from '@/domain/inventory/stock-reserver'
@@ -71,13 +71,8 @@ export async function POST(
     const auth = getAuthUser(req)
 
     // ── Subscription gate: block payment when subscription is expired/cancelled ──
-    const subActive = await isSubscriptionActive(data.storeId)
-    if (!subActive) {
-      return NextResponse.json(
-        { error: 'Tu suscripción está vencida. Renueva tu plan para continuar vendiendo.' },
-        { status: 403 },
-      )
-    }
+    const subErr = await requireActiveSubscription(data.storeId)
+    if (subErr) return subErr
 
     // Get comanda items to pay — must be SERVED or PENDING (not already PAID or CANCELLED)
     const comandaItems = await db.comandaItem.findMany({
