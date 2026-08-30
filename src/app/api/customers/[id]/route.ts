@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 const updateCustomerSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio').max(150).optional(),
@@ -30,6 +31,8 @@ export async function PUT(
     }
     const storeAccessErr = requireStoreAccess(request, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'customers')
+    if (permErr) return permErr
 
     const customer = await db.customer.update({
       where: { id: Number(id) },

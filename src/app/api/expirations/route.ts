@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { lt, sub, toNum } from '@/lib/stock-math'
@@ -26,6 +27,8 @@ export async function GET(req: NextRequest) {
 
     const storeAccessError = requireStoreAccess(req, storeIdNum)
     if (storeAccessError) return storeAccessError
+    const permErr = await requirePermission(req, 'inventory')
+    if (permErr) return permErr
 
     const items = await db.purchaseItem.findMany({
       where: {

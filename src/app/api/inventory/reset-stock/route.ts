@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { toNum } from '@/lib/stock-math'
@@ -27,6 +28,8 @@ export async function POST(request: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'inventory')
+    if (permErr) return permErr
 
     // Get all products with stock > 0
     const productsWithStock = await db.product.findMany({

@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { roundQty, toNum } from '@/lib/stock-math'
@@ -41,6 +42,8 @@ export async function PUT(
 
     const storeAccessErr = requireStoreAccess(req, existing.service.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'services')
+    if (permErr) return permErr
 
     // Si cambia la cantidad o el precio unitario, el total se recalcula aquí
     // (nunca confiado del cliente) y se redondea a COP entero.
@@ -105,6 +108,8 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(_request, existing.serviceId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(_request, 'services')
+    if (permErr) return permErr
 
     await db.serviceTransaction.delete({ where: { id: sid } })
     return NextResponse.json({ message: 'Transacción eliminada' })

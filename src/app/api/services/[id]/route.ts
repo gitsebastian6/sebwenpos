@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from 'next/server'
@@ -96,6 +97,8 @@ export async function PUT(
 
     const storeAccessErr = requireStoreAccess(req, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'services')
+    if (permErr) return permErr
 
     const updated = await db.service.update({
       where: { id: sid },
@@ -139,6 +142,8 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(_request, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(_request, 'services')
+    if (permErr) return permErr
 
     // Delete related transactions first
     await db.serviceTransaction.deleteMany({

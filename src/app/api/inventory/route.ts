@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { NextRequest, NextResponse } from 'next/server'
@@ -80,6 +81,8 @@ export async function POST(req: NextRequest) {
     // Verify product
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'inventory')
+    if (permErr) return permErr
 
     // Verify product exists and belongs to store
     const product = await db.product.findFirst({

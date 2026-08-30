@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { roundQty, toNum } from '@/lib/stock-math'
@@ -67,6 +68,9 @@ export async function GET(request: NextRequest) {
 // body.type = "service" | "transaction"
 export async function POST(request: NextRequest) {
   try {
+    const permErr = await requirePermission(request, 'services')
+    if (permErr) return permErr
+
     const body = await request.json()
 
     if (body.type === 'transaction') {

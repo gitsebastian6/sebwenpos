@@ -1,6 +1,7 @@
 import { adjustStock, InsufficientStockError } from '@/domain/inventory/adjust-stock'
 import { lotInputFields, resolveLotInput } from '@/domain/inventory/lot-input'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
@@ -30,6 +31,8 @@ export async function POST(req: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'inventory')
+    if (permErr) return permErr
 
     const product = await db.product.findFirst({
       where: { id: data.productId, storeId: data.storeId },
