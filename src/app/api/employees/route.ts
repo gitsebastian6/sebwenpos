@@ -4,6 +4,7 @@ import { hashPassword } from '@/lib/auth'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +30,8 @@ export async function GET(req: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(req, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageEmployees')
+    if (permErr) return permErr
 
     const employees = await db.employee.findMany({
       where: { storeId },
@@ -54,6 +57,8 @@ export async function POST(req: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageEmployees')
+    if (permErr) return permErr
 
     // Verificar cédula no registrada
     const existingUser = await db.user.findUnique({ where: { cedula: data.cedula } })

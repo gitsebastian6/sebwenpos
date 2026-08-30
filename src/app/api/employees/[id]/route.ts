@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +35,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     const storeAccessErr = requireStoreAccess(req, Number(employee.storeId))
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageEmployees')
+    if (permErr) return permErr
     return NextResponse.json(employee)
   } catch (error) {
     logger.error('Get employee error:', error)
@@ -56,6 +59,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const storeAccessErr = requireStoreAccess(req, Number(employee.storeId))
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageEmployees')
+    if (permErr) return permErr
 
     // Verificar rol existe si se proporcionó
     if (data.roleId !== undefined && data.roleId !== null) {
@@ -119,6 +124,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const storeAccessErr = requireStoreAccess(req, Number(employee.storeId))
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageEmployees')
+    if (permErr) return permErr
 
     await db.$transaction(async (tx) => {
       await tx.employee.delete({ where: { id: employeeId } })

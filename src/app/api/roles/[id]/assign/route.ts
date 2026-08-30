@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Verify store access
     const storeAccessErr = requireStoreAccess(req, role.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageRoles')
+    if (permErr) return permErr
 
     // Update all employees to have this role
     const result = await db.employee.updateMany({

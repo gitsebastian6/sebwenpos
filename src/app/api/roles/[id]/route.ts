@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,6 +55,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const storeAccessErr = requireStoreAccess(req, role.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageRoles')
+    if (permErr) return permErr
 
     return NextResponse.json(role)
   } catch (error) {
@@ -77,6 +80,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const storeAccessErr = requireStoreAccess(req, role.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageRoles')
+    if (permErr) return permErr
 
     const updateData: Record<string, unknown> = {}
 
@@ -132,6 +137,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const storeAccessErr = requireStoreAccess(req, role.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageRoles')
+    if (permErr) return permErr
 
     if (role._count.employees > 0) {
       return NextResponse.json(

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +46,8 @@ export async function GET(req: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(req, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageRoles')
+    if (permErr) return permErr
 
     const roles = await db.role.findMany({
       where: { storeId },
@@ -70,6 +73,8 @@ export async function POST(req: NextRequest) {
     // Verify store access
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'manageRoles')
+    if (permErr) return permErr
 
     // Verificar nombre no exista en la tienda
     const existingRole = await db.role.findFirst({
