@@ -38,3 +38,9 @@ señalan un import realmente roto; si ambos pasan tras `clean`, era la caché.
 
 `npm install` regenera el cliente (hook `postinstall`). Si los tipos de `@prisma/client`
 se ven desincronizados, corre `npm run db:generate`.
+
+Un 500 en runtime con `column ... does not exist` (típico en `/api/auth/login`)
+= hay migraciones en `prisma/migrations/` sin aplicar a la BD local. `tsc` +
+`vitest` + `next build` + `smoke` NO lo detectan (mockean o no tocan la BD real).
+Aplica con `npm run db:migrate:local` (host) — el CLI de Prisma lee `.env`
+(`@postgres:5432`, Docker), no `.env.local` (`localhost:5432`).

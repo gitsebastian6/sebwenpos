@@ -30,6 +30,9 @@ npm run dev                  # http://localhost:3000
 | `npm run smoke` | Arranca la app compilada y hace GET a las rutas reales. |
 | `npm run db:migrate` | Crea + aplica una migración en dev. Commitea la carpeta en `prisma/migrations/`. |
 | `npm run db:migrate:deploy` | Aplica migraciones pendientes (prod / CI, out-of-band). |
+| `npm run db:migrate:local` | Aplica migraciones pendientes a la BD **local del host** (`localhost:5432`). Córrelo tras un `git pull` que traiga migraciones si trabajas con `npm run dev`. |
+| `npm run docker:dev` | Dev en Docker (recomendado): `postgres` + `migrate deploy` + `next dev` con hot-reload por `compose watch`. **No reconstruye la imagen** en cada arranque. |
+| `npm run docker:dev:build` | Igual pero forzando `--build` (primer arranque, o tras cambiar el `Dockerfile`). |
 
 ## Gates de calidad
 
@@ -54,6 +57,17 @@ error persiste tras un `clean`, entonces sí es un import realmente roto — `np
 
 **El cliente Prisma quedó desactualizado tras `git pull`.**
 `npm install` lo regenera (hook `postinstall`); si no, `npm run db:generate`.
+
+**Login (u otra ruta) devuelve 500 con `column ... does not exist` tras `git pull`.**
+El pull trajo migraciones nuevas en `prisma/migrations/` que tu BD local todavía
+no tiene. Aplícalas:
+
+- Trabajas con **Docker** (`npm run docker:dev`): ya se aplican solas en cada
+  arranque del contenedor. Solo reinícialo.
+- Trabajas con **`npm run dev`** en el host: `npm run db:migrate:local`.
+
+> El CLI de Prisma (`db:migrate*`) lee `.env` (`@postgres:5432`, hostname de
+> Docker); `db:migrate:local` usa la URL de `.env.local` (`localhost:5432`).
 
 ## Despliegue
 

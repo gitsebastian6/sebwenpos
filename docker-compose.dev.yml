@@ -25,8 +25,15 @@ services:
       context: .
       dockerfile: Dockerfile
       target: devserver
-    # `prisma generate` en cada arranque/reinicio (cubre cambios de schema).
-    command: sh -c "npx prisma generate && exec npx next dev -p 3000 -H 0.0.0.0"
+    # En cada arranque/reinicio (incluye el sync+restart al tocar schema.prisma):
+    #   1. migrate deploy — aplica migraciones pendientes de prisma/migrations/
+    #      (idempotente, forward-only; nunca borra columnas/tablas).
+    #   2. prisma generate — regenera el cliente para el schema nuevo.
+    # Así un `git pull` que traiga migraciones no vuelve a romper el login.
+    command: sh -c "npx prisma migrate deploy && npx prisma generate && exec npx next dev -p 3000 -H 0.0.0.0"
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: "1"
