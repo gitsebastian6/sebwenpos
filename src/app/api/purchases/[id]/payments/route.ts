@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess, getAuthUser } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +48,8 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(request, purchase.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'purchases')
+    if (permErr) return permErr
 
     if (purchase.status === 'CANCELLED') {
       return NextResponse.json(

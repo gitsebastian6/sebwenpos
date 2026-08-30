@@ -39,6 +39,7 @@ export const PERMISSION_KEYS = [
   'products',
   'customers',
   'providers',
+  'purchases',
   'orders',
   'invoices',
   'inventory',

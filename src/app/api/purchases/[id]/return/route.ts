@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { add, gt, gte, lt, lte, mul, sub, toNum } from '@/lib/stock-math'
@@ -66,6 +67,8 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(request, purchase.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'purchases')
+    if (permErr) return permErr
 
     if (purchase.status === 'CANCELLED') {
       return NextResponse.json(

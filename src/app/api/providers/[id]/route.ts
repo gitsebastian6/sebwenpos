@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,6 +82,8 @@ export async function PUT(
 
     const storeAccessErr = requireStoreAccess(req, provider.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'providers')
+    if (permErr) return permErr
 
     const updated = await db.provider.update({
       where: { id: pid },
@@ -126,6 +129,8 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(_request, provider.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(_request, 'providers')
+    if (permErr) return permErr
 
     await db.provider.delete({ where: { id: pid } })
     return NextResponse.json({ message: 'Proveedor eliminado' })

@@ -14,6 +14,7 @@ const ALL_PERMISSIONS: Record<string, boolean> = {
   products: false,
   customers: false,
   providers: false,
+  purchases: false,
   orders: false,
   invoices: false,
   inventory: false,

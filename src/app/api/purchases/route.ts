@@ -1,4 +1,5 @@
 import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { add, div, mul, toDec, toNum } from '@/lib/stock-math'
@@ -128,6 +129,8 @@ export async function GET(request: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(request, sid)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'purchases')
+    if (permErr) return permErr
 
     // Build where clause
     const where: Record<string, unknown> = { storeId: sid }
@@ -273,6 +276,8 @@ export async function POST(req: NextRequest) {
     // Auth
     const storeAccessError = requireStoreAccess(req, data.storeId)
     if (storeAccessError) return storeAccessError
+    const permErr = await requirePermission(req, 'purchases')
+    if (permErr) return permErr
     const auth = getAuthUser(req)
 
     // Verify all products belong to the store

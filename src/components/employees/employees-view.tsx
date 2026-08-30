@@ -90,6 +90,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   products: 'Productos',
   customers: 'Clientes',
   providers: 'Proveedores',
+  purchases: 'Compras',
   orders: 'Órdenes y Ventas',
   invoices: 'Facturación',
   inventory: 'Inventario',

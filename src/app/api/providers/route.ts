@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,6 +91,8 @@ export async function POST(req: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'providers')
+    if (permErr) return permErr
 
     const provider = await db.provider.create({
       data: {

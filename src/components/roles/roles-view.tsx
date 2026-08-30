@@ -102,6 +102,7 @@ const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'products', label: 'Productos' },
       { key: 'inventory', label: 'Inventario' },
       { key: 'providers', label: 'Proveedores' },
+      { key: 'purchases', label: 'Compras' },
     ],
   },
   {
