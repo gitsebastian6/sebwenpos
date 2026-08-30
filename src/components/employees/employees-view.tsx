@@ -92,6 +92,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   providers: 'Proveedores',
   purchases: 'Compras',
   orders: 'Órdenes y Ventas',
+  onlineOrders: 'Pedidos en línea',
   invoices: 'Facturación',
   inventory: 'Inventario',
   accounting: 'Contabilidad',

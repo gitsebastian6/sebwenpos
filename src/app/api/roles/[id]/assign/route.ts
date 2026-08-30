@@ -32,7 +32,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // Update all employees to have this role
     const result = await db.employee.updateMany({
-      where: { id: { in: data.employeeIds } },
+      // storeId acota a la tienda del rol: sin esto, pasando IDs de empleados
+      // de OTRA tienda se les podía asignar este rol.
+      where: { id: { in: data.employeeIds }, storeId: role.storeId },
       data: { roleId },
     })
 

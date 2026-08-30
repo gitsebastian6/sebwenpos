@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { requireFeature } from '@/lib/subscription-guard'
 import { isSubscriptionActive } from '@/lib/subscription-helpers'
 import { createOrder } from '@/domain/sales/order-factory'
@@ -53,6 +54,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const storeAccessError = requireStoreAccess(request, onlineOrder.storeId)
     if (storeAccessError) return storeAccessError
+    const permErr = await requirePermission(request, 'onlineOrders')
+    if (permErr) return permErr
     const featErr = await requireFeature(onlineOrder.storeId, 'onlineStore')
     if (featErr) return featErr
     const auth = getAuthUser(request)

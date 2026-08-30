@@ -41,6 +41,7 @@ export const PERMISSION_KEYS = [
   'providers',
   'purchases',
   'orders',
+  'onlineOrders',
   'invoices',
   'inventory',
   'accounting',

@@ -200,6 +200,11 @@ export async function PUT(
     const storeAccessErr = requireStoreAccess(request, shift.storeId)
     if (storeAccessErr) return storeAccessErr
 
+    // Reabrir un turno cerrado es una corrección contable, no algo de cajero.
+    if (body.action === 'reopen') {
+      const permErr = await requirePermission(request, 'accounting')
+      if (permErr) return permErr
+    }
 
     // ── Reopen closed shift ────────────────────────────────────────────────
     if (body.action === 'reopen' && shift.status === 'CLOSED') {

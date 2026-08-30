@@ -98,9 +98,16 @@ function isSubscriptionExemptPath(pathname: string): boolean {
 // registrar ventas nuevas. Coincide con el flag permissions.pos=false que
 // el login ya aplicaba — esto lo hace cumplir en el servidor.
 // ---------------------------------------------------------------------------
+// En gracia se permite: consultar, cobrar deudas de clientes, cerrar caja y
+// renovar. Se bloquea "operar el negocio como siempre": vender, comprar,
+// mover inventario, registrar gastos.
 const PAST_DUE_WRITE_PREFIXES = [
-  '/api/orders',   // crear órdenes / devoluciones de venta
-  '/api/tables',   // comandas y pagos de mesa
+  '/api/orders',     // crear órdenes / devoluciones de venta
+  '/api/tables',     // comandas y pagos de mesa
+  '/api/purchases',  // compras a proveedores
+  '/api/expenses',   // gastos
+  '/api/inventory',  // ajustes / mermas / devoluciones / reset de stock
+  '/api/services',   // alta de servicio y venta de servicio
 ]
 
 function isPastDueRestrictedWrite(method: string, pathname: string): boolean {
