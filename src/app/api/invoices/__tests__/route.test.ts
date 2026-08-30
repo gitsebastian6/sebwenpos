@@ -30,7 +30,10 @@ const mockInvoiceUtils = vi.hoisted(() => ({
 
 vi.mock('@/lib/db', () => ({ db: mockDb }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }))
-vi.mock('@/lib/api-auth', () => ({ requireStoreAccess: vi.fn().mockReturnValue(null) }))
+vi.mock('@/lib/api-auth', () => ({
+  requireStoreAccess: vi.fn().mockReturnValue(null),
+  getAuthUser: vi.fn().mockReturnValue({ userId: 1, role: 'OWNER', storeId: 1, employeeId: null }),
+}))
 vi.mock('@/lib/invoicing/consecutive-counter', () => mockConsecutive)
 vi.mock('@/lib/invoice-utils', () => mockInvoiceUtils)
 vi.mock('@/lib/invoicing/xml-generator', () => ({ generateUBL21XML: vi.fn(() => '<Invoice/>') }))

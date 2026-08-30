@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { emitSessionClosed, emitSessionUpdated, emitSessionDeleted } from '@/lib/tables-sync'
 
 export const dynamic = 'force-dynamic'
@@ -57,6 +58,8 @@ export async function GET(
 
     const storeAccessErr = requireStoreAccess(request, session.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'tables')
+    if (permErr) return permErr
 
     // Calculate session totals from comanda items
     const pendingItems = session.comandaItems.filter((i) => i.status === 'PENDING')
@@ -134,6 +137,8 @@ export async function PUT(
 
     const storeAccessErr = requireStoreAccess(req, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'tables')
+    if (permErr) return permErr
 
     // If closing the session, check for pending or served items that haven't been paid
     if (data.action === 'CLOSE') {
@@ -263,6 +268,8 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(_req, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(_req, 'tables')
+    if (permErr) return permErr
 
     // Only allow deletion if no comanda items and no orders
     if (existing._count.comandaItems > 0) {

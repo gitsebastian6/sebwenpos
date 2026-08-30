@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { emitTableCreated } from '@/lib/tables-sync'
 
 export const dynamic = 'force-dynamic'
@@ -30,6 +31,8 @@ export async function GET(req: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(req, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'tables')
+    if (permErr) return permErr
 
     const tables = await db.barTable.findMany({
       where: { storeId },
@@ -100,6 +103,8 @@ export async function POST(req: NextRequest) {
     // Verify store access
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'tables')
+    if (permErr) return permErr
 
     // Verify store exists
     const store = await db.store.findUnique({ where: { id: data.storeId } })

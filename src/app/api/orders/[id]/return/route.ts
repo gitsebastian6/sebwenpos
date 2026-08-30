@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requireAnyPermission } from '@/lib/permissions'
 import { auditLogFromRequest } from '@/lib/audit-logger'
 import { DIAN_CONSUMIDOR_FINAL_NIT, getSoftwareProviderNIT } from '@/lib/constants'
 import { db } from '@/lib/db'
@@ -70,6 +71,8 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(request, order.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requireAnyPermission(request, ['orders', 'pos'])
+    if (permErr) return permErr
 
     if (order.status === 'CANCELLED') {
       return NextResponse.json(

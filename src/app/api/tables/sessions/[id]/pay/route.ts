@@ -1,4 +1,5 @@
 import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { generateOrderNumber } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
@@ -65,6 +66,8 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'tables')
+    if (permErr) return permErr
     const auth = getAuthUser(req)
 
     // ── Subscription gate: block payment when subscription is expired/cancelled ──

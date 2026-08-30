@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { DIAN_CONSUMIDOR_FINAL_NIT, getSoftwareName, getSoftwareProviderNIT, unitCodeFor } from '@/lib/constants'
 import { db } from '@/lib/db'
 import { formatInvoiceNumber } from '@/lib/invoice-utils'
@@ -36,6 +37,8 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'invoices')
+    if (permErr) return permErr
 
     // 1. Obtener factura con datos completos
     const invoice = await db.invoice.findFirst({

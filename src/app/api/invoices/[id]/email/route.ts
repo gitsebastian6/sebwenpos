@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { formatInvoiceNumber } from '@/lib/invoice-utils'
 import { sendInvoiceEmail } from '@/lib/invoicing/email-sender'
@@ -41,6 +42,8 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'invoices')
+    if (permErr) return permErr
 
     // 2. Obtener factura completa con orden, items y tienda
     const invoice = await db.invoice.findFirst({

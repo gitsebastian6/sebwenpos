@@ -1,4 +1,5 @@
 import { getAuthUser, requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission, requireAnyPermission } from '@/lib/permissions'
 import { auditLogFromRequest } from '@/lib/audit-logger'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
@@ -91,6 +92,8 @@ export async function POST(req: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(req, data.storeId)
     if (storeAccessError) return storeAccessError
+    const permErr = await requireAnyPermission(req, ['orders', 'pos'])
+    if (permErr) return permErr
     const auth = getAuthUser(req)
 
     // ── Idempotency (Kleppmann Ch. 11): un POST reintentado tras un timeout
@@ -187,6 +190,8 @@ export async function GET(request: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(request, storeId)
     if (storeAccessError) return storeAccessError
+    const permErr = await requireAnyPermission(request, ['orders', 'pos'])
+    if (permErr) return permErr
 
     const where: Record<string, unknown> = { storeId }
 

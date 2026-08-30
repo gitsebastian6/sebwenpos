@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { DIAN_CONSUMIDOR_FINAL_NIT, getSoftwareProviderNIT } from '@/lib/constants'
 import { db } from '@/lib/db'
 import { decryptField } from '@/lib/field-encryption'
@@ -65,6 +66,8 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'invoices')
+    if (permErr) return permErr
 
     const body = await request.json()
     const data = creditNoteFromInvoiceSchema.parse(body)

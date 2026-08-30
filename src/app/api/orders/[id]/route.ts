@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requireAnyPermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,8 @@ export async function GET(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requireAnyPermission(request, ['orders', 'pos'])
+    if (permErr) return permErr
 
     const order = await db.order.findFirst({
       where: { id: Number(id), storeId },

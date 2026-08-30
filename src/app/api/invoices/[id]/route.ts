@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { formatInvoiceNumber } from '@/lib/invoice-utils'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission, requireAnyPermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,6 +45,8 @@ export async function GET(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requireAnyPermission(request, ['invoices', 'pos'])
+    if (permErr) return permErr
 
     const invoice = await db.invoice.findFirst({
       where: { id: Number(id), storeId },
@@ -172,6 +175,8 @@ export async function PUT(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'invoices')
+    if (permErr) return permErr
 
     // Verificar que la factura existe
     const existing = await db.invoice.findFirst({
@@ -282,6 +287,8 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'invoices')
+    if (permErr) return permErr
 
     const invoice = await db.invoice.findFirst({
       where: { id: Number(id), storeId },

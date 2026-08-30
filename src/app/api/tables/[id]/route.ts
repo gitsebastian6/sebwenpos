@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { emitTableUpdated, emitTableDeleted } from '@/lib/tables-sync'
 
 export const dynamic = 'force-dynamic'
@@ -39,6 +40,8 @@ export async function GET(
 
     const storeAccessErr = requireStoreAccess(request, table.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'tables')
+    if (permErr) return permErr
 
     const openSession = await db.tableSession.findFirst({
       where: { barTableId: tableId, status: 'OPEN' },
@@ -99,6 +102,8 @@ export async function PUT(
 
     const storeAccessErr = requireStoreAccess(req, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'tables')
+    if (permErr) return permErr
 
     const table = await db.barTable.update({
       where: { id: tableId },
@@ -143,6 +148,8 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(_req, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(_req, 'tables')
+    if (permErr) return permErr
 
     // Check for open sessions
     const openSession = await db.tableSession.findFirst({

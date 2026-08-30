@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission, requireAnyPermission } from '@/lib/permissions'
 import { auditLogFromRequest } from '@/lib/audit-logger'
 import { DIAN_CONSUMIDOR_FINAL_NIT, getSoftwareName, getSoftwareProviderNIT, unitCodeFor } from '@/lib/constants'
 import { db } from '@/lib/db'
@@ -60,6 +61,8 @@ export async function GET(request: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(request, storeId)
     if (storeAccessError) return storeAccessError
+    const permErr = await requirePermission(request, 'invoices')
+    if (permErr) return permErr
 
     const where: Record<string, unknown> = { storeId }
 
@@ -214,6 +217,8 @@ export async function POST(req: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(req, order.storeId)
     if (storeAccessError) return storeAccessError
+    const permErr = await requireAnyPermission(req, ['invoices', 'pos'])
+    if (permErr) return permErr
 
     // Verify subscription has electronic invoicing feature enabled
     const subscription = await db.subscription.findFirst({

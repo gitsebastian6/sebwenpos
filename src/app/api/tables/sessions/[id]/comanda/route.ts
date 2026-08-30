@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { getUnitOfMeasureLabel } from '@/lib/constants'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
@@ -60,6 +61,15 @@ export async function GET(
     if (isNaN(sid)) {
       return NextResponse.json({ error: 'ID de sesión inválido' }, { status: 400 })
     }
+
+    const session = await db.tableSession.findUnique({ where: { id: sid }, select: { storeId: true } })
+    if (!session) {
+      return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 })
+    }
+    const storeAccessErr = requireStoreAccess(request, session.storeId)
+    if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'tables')
+    if (permErr) return permErr
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
@@ -146,6 +156,8 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'tables')
+    if (permErr) return permErr
 
     // Separate product items and service items
     const productItems = data.items.filter((i) => i.productId)
@@ -390,6 +402,10 @@ export async function PATCH(
     if (!session) {
       return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 })
     }
+    const storeAccessErr = requireStoreAccess(req, session.storeId)
+    if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'tables')
+    if (permErr) return permErr
     if (session.status !== 'OPEN') {
       return NextResponse.json({ error: 'La sesión está cerrada' }, { status: 400 })
     }
@@ -504,6 +520,10 @@ export async function DELETE(
     if (!session) {
       return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 })
     }
+    const storeAccessErr = requireStoreAccess(req, session.storeId)
+    if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'tables')
+    if (permErr) return permErr
     if (session.status !== 'OPEN') {
       return NextResponse.json({ error: 'La sesión está cerrada' }, { status: 400 })
     }
