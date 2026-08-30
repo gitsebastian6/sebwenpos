@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest) {
     const { storeId, type, from, to, accountId, page, limit } = params
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'accounting')
+    if (permErr) return permErr
 
     const skip = (page - 1) * limit
 

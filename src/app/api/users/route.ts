@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
-import { requireStoreAccess, getAuthStoreId } from '@/lib/api-auth'
+import { requireStoreAccess, getAuthStoreId, getAuthUser } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +39,14 @@ export async function PUT(request: NextRequest) {
 
     if (!existing) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    // Editar el PROPIO perfil (personal-settings-tab) no requiere permiso;
+    // editar a otro usuario del staff sí (manageEmployees).
+    const auth = getAuthUser(request)
+    if (auth?.userId !== parseInt(userId)) {
+      const permErr = await requirePermission(request, 'manageEmployees')
+      if (permErr) return permErr
     }
 
     // Store isolation: only allow updating users in the same store

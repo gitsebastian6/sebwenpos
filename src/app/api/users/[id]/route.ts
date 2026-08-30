@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,8 @@ export async function DELETE(
     // Auth required
     const auth = requireAuth(req)
     if (auth instanceof NextResponse) return auth
+    const permErr = await requirePermission(req, 'manageEmployees')
+    if (permErr) return permErr
 
     const { id } = await params
     const userId = parseInt(id)
@@ -79,6 +82,8 @@ export async function GET(
     // Auth required
     const auth = requireAuth(req)
     if (auth instanceof NextResponse) return auth
+    const permErr = await requirePermission(req, 'manageEmployees')
+    if (permErr) return permErr
 
     const { id } = await params
     const userId = parseInt(id)

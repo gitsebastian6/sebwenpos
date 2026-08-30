@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 
@@ -33,6 +34,11 @@ export async function GET(request: NextRequest) {
     if (!storeId || isNaN(storeId)) {
       return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
     }
+
+    const storeAccessErr = requireStoreAccess(request, storeId)
+    if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'accounting')
+    if (permErr) return permErr
 
     const where: Record<string, unknown> = { storeId }
 
@@ -79,6 +85,8 @@ export async function POST(request: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(request, storeId)
     if (storeAccessError) return storeAccessError
+    const permErr = await requirePermission(request, 'accounting')
+    if (permErr) return permErr
 
     const expense = await db.$transaction(async (tx) => {
       // Find expense account (EXPENSE type)

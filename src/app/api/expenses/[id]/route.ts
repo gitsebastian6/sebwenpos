@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { z } from 'zod'
 import { logger } from '@/lib/logger'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,6 +47,8 @@ export async function PUT(
     }
     const storeAccessErr = requireStoreAccess(request, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'accounting')
+    if (permErr) return permErr
 
     const updateData: Record<string, unknown> = {}
     if (parsed.data.category !== undefined) updateData.category = parsed.data.category
@@ -142,6 +145,8 @@ export async function DELETE(
     }
     const storeAccessErr = requireStoreAccess(request, existing.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'accounting')
+    if (permErr) return permErr
 
     await db.$transaction(async (tx) => {
       // Delete journal entries first
