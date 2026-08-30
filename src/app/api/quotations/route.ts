@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { calcLineTax, type TaxRateInfo } from '@/domain/sales/tax-calculator'
@@ -67,6 +68,8 @@ export async function POST(req: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(req, data.storeId)
     if (storeAccessError) return storeAccessError
+    const permErr = await requirePermission(req, 'quotations')
+    if (permErr) return permErr
 
     // Fetch store's default tax rate
     const defaultTaxRate = await db.taxRate.findFirst({
@@ -276,6 +279,11 @@ export async function GET(request: NextRequest) {
     if (!storeId) {
       return NextResponse.json({ error: 'storeId requerido' }, { status: 400 })
     }
+
+    const storeAccessError = requireStoreAccess(request, storeId)
+    if (storeAccessError) return storeAccessError
+    const permErr = await requirePermission(request, 'quotations')
+    if (permErr) return permErr
 
     const where: Record<string, unknown> = { storeId }
 

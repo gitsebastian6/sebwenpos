@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,8 @@ export async function GET(req: NextRequest) {
     // Auth: verify user has access to this store
     const storeAccessError = requireStoreAccess(req, storeIdNum)
     if (storeAccessError) return storeAccessError
+    const permErr = await requirePermission(req, 'manageEmployees')
+    if (permErr) return permErr
 
     // Query employees (not users) — employees belong to a store via Employee model
     const employees = await db.employee.findMany({

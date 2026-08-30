@@ -96,6 +96,19 @@ export async function requirePermission(
   request: NextRequest,
   permission: PermissionKey,
 ): Promise<null | NextResponse> {
+  return requireAnyPermission(request, [permission])
+}
+
+/**
+ * Like `requirePermission`, but passes when the caller holds *any* of the
+ * given permissions. Use for a read that legitimately belongs to more than one
+ * module — e.g. `/api/reports/daily` is consulted from both the Reports view
+ * (`reports`) and the Accounting view (`accounting`).
+ */
+export async function requireAnyPermission(
+  request: NextRequest,
+  permissions: PermissionKey[],
+): Promise<null | NextResponse> {
   const user = getAuthUser(request)
   if (!user) {
     return NextResponse.json({ error: 'Autenticación requerida' }, { status: 401 })
@@ -105,7 +118,7 @@ export async function requirePermission(
 
   if (user.role === 'EMPLOYEE' && user.employeeId) {
     const perms = await resolveEmployeePermissions(user.employeeId)
-    if (perms[permission] === true) return null
+    if (permissions.some((p) => perms[p] === true)) return null
   }
 
   return NextResponse.json(

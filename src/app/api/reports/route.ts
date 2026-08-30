@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requireAnyPermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { sql } from '@/lib/db-dialect'
 import { logger } from '@/lib/logger'
@@ -22,6 +23,8 @@ export async function GET(request: NextRequest) {
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requireAnyPermission(request, ['reports', 'accounting'])
+    if (permErr) return permErr
 
     // Build date filter for Prisma queries
     const dateFilter: Record<string, unknown> = {}

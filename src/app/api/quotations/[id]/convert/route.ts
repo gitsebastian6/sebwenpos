@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { lt, mul, toNum } from '@/lib/stock-math'
@@ -27,6 +28,8 @@ export async function POST(
 
     const storeAccessErr = requireStoreAccess(req, data.storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(req, 'quotations')
+    if (permErr) return permErr
 
     const quotation = await db.quotation.findFirst({
       where: { id: Number(id), storeId: data.storeId },

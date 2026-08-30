@@ -1,4 +1,5 @@
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { db } from '@/lib/db'
 import { logger } from '@/lib/logger'
 import { calcLineTax, type TaxRateInfo } from '@/domain/sales/tax-calculator'
@@ -50,6 +51,8 @@ export async function GET(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'quotations')
+    if (permErr) return permErr
 
     const quotation = await db.quotation.findFirst({
       where: { id: Number(id), storeId },
@@ -127,6 +130,8 @@ export async function PUT(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'quotations')
+    if (permErr) return permErr
 
     const quotation = await db.quotation.findFirst({
       where: { id: Number(id), storeId },
@@ -324,6 +329,8 @@ export async function DELETE(
 
     const storeAccessErr = requireStoreAccess(request, storeId)
     if (storeAccessErr) return storeAccessErr
+    const permErr = await requirePermission(request, 'quotations')
+    if (permErr) return permErr
 
     const quotation = await db.quotation.findFirst({
       where: { id: Number(id), storeId },

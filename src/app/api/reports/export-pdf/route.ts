@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import PDFDocument from 'pdfkit'
 import { requireStoreAccess } from '@/lib/api-auth'
+import { requirePermission } from '@/lib/permissions'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest) {
 
     const authError = requireStoreAccess(req, storeId)
     if (authError) return authError
+    const permErr = await requirePermission(req, 'reports')
+    if (permErr) return permErr
 
     const doc = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true })
     const buffers: Buffer[] = []
